@@ -8,6 +8,7 @@ use hf_hub::api::sync::Api;
 use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
 
 pub mod bert;
+mod spec;
 
 /// LLM interface
 ///

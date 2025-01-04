@@ -1,0 +1,6 @@
+[book]
+authors = ["clearloop"]
+language = "en"
+multilingual = false
+src = "src"
+title = "The Cydonia Book"
