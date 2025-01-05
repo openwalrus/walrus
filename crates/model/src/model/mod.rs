@@ -1,30 +1,27 @@
 //! LLM models
 
-use crate::{chat::Message, config::Config};
+use crate::{chat::Message, config::Config, manifest::Manifest};
 use anyhow::Result;
-pub use bert::Bert;
-use candle_core::{DType, Tensor};
+use candle_core::Tensor;
 use hf_hub::api::sync::Api;
 use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
+pub use {bert::Bert, llama::Llama};
 
 pub mod bert;
+mod llama;
 
 /// LLM interface
 ///
 /// TODO: use trait or a single struct?
 pub trait Model: Sized {
-    /// The hugging face repo of the model.
-    const REPO: &str;
-
-    /// The type of the model.
-    const DTYPE: DType;
-
     /// Load the model from config.
-    fn build(api: Api, config: Config) -> Result<Self>;
+    fn build(api: Api, config: Config, manifest: Manifest) -> Result<Self>;
 
     /// Complete the chat.
-    fn complete(&mut self, _messages: &mut [Message]) -> Result<()> {
-        anyhow::bail!("model {} does not support complete", Self::REPO);
+    ///
+    /// TODO: use output stream
+    fn complete(&mut self, _messages: &mut [Message]) -> Result<String> {
+        anyhow::bail!("model does not support complete");
     }
 
     /// Embed the messages.
@@ -37,7 +34,7 @@ pub trait Model: Sized {
         _messages: Vec<Message>,
         _score: f32,
     ) -> Result<Vec<Message>> {
-        anyhow::bail!("model {} does not support similar messages", Self::REPO);
+        anyhow::bail!("model does not support similar messages");
     }
 
     /// Get the tokenizer
