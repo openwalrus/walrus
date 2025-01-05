@@ -1,47 +1,9 @@
-//! Model manifest
-
-/// Manifest of a quantized model
-use std::collections::HashMap;
-#[derive(Debug)]
-pub struct Manifest {
-    /// The name of the model
-    pub name: String,
-
-    /// The tag of the model
-    pub tag: String,
-
-    /// The family of the model
-    pub family: Family,
-
-    /// The parameters of the model
-    pub parameters: u64,
-
-    /// The quantization of the model
-    pub quantization: Quantization,
-
-    /// The revision of the model
-    pub revision: [u8; 12],
-
-    /// The parameters of the model
-    pub params: HashMap<String, String>,
-
-    /// The license of the model
-    pub license: String,
-}
-
-/// The family of the model
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Family {
-    /// Gemma from Google Deepmind
-    Gemma,
-    /// Llama from Meta
-    Llama,
-}
+use std::fmt::Display;
 
 /// The quantization of the GGUF model.
 ///
 /// see <https://huggingface.co/docs/hub/gguf> for more details
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[allow(non_camel_case_types)]
 pub enum Quantization {
     /// 64-bit standard IEEE 754 double-precision floating-point number.
@@ -83,6 +45,7 @@ pub enum Quantization {
     Q5_K,
     /// 4-bit round-to-nearest quantization (q). Each block has 32 weights.
     /// Weight formula: w = q * block_scale. Legacy quantization method not used widely as of today.
+    #[default]
     Q4_0,
     /// 4-bit round-to-nearest quantization (q). Each block has 32 weights.
     /// Weight formula: w = q * block_scale + block_minimum. Legacy quantization method not used widely as of today.
@@ -90,6 +53,16 @@ pub enum Quantization {
     /// 4-bit quantization (q). Super-blocks with 8 blocks, each block has 32 weights.
     /// Weight formula: w = q * block_scale(6-bit) + block_min(6-bit), resulting in 4.5 bits-per-weight.
     Q4_K,
+    /// 4-bit quantization (q). Super-blocks with 8 blocks, each block has 32 weights.
+    /// Weight formula: w = q * block_scale(6-bit) + block_min(6-bit), resulting in 4.5 bits-per-weight.
+    ///
+    /// in small size
+    Q4_k_S,
+    /// 4-bit quantization (q). Super-blocks with 8 blocks, each block has 32 weights.
+    /// Weight formula: w = q * block_scale(6-bit) + block_min(6-bit), resulting in 4.5 bits-per-weight.
+    ///
+    /// in medium size
+    Q4_k_M,
     /// 3-bit quantization (q). Super-blocks with 16 blocks, each block has 16 weights.
     /// Weight formula: w = q * block_scale(6-bit), resulting in 3.4375 bits-per-weight.
     Q3_K,
@@ -114,4 +87,10 @@ pub enum Quantization {
     IQ1_S,
     /// 1-bit quantization (q). Super-blocks with 256 weights. Weight w is obtained using super_block_scale & importance matrix, resulting in 1.75 bits-per-weight.
     IQ1_M,
+}
+
+impl Display for Quantization {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
