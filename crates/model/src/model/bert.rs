@@ -1,7 +1,7 @@
 //! bert model
 #![allow(unused)]
 
-use crate::{util, Config, Message, Model};
+use crate::{manifest::Manifest, util, Config, Message, Model};
 use anyhow::Result;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
@@ -21,22 +21,19 @@ pub struct Bert {
 }
 
 impl Model for Bert {
-    const DTYPE: DType = bert::DTYPE;
-    const REPO: &str = "sentence-transformers/all-MiniLM-L6-v2";
-
-    fn build(api: Api, config: Config) -> Result<Self> {
+    fn build(api: Api, config: Config, _manifest: Manifest) -> Result<Self> {
         let device = util::device(config.cpu)?;
         let repo = api.repo(Repo::with_revision(
-            Self::REPO.to_string(),
+            "sentence-transformers/all-MiniLM-L6-v2".to_string(),
             RepoType::Model,
             config.revision.clone(),
         ));
 
         let builder = if config.pth {
-            VarBuilder::from_pth(repo.get(PYTORCH)?, Self::DTYPE, &device)
+            VarBuilder::from_pth(repo.get(PYTORCH)?, bert::DTYPE, &device)
         } else {
             unsafe {
-                VarBuilder::from_mmaped_safetensors(&[repo.get(SAFETENSORS)?], Self::DTYPE, &device)
+                VarBuilder::from_mmaped_safetensors(&[repo.get(SAFETENSORS)?], bert::DTYPE, &device)
             }
         };
 

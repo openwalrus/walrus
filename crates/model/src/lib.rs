@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod config;
+pub mod manifest;
 pub mod model;
 pub mod util;
 

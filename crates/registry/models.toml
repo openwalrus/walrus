@@ -1,0 +1,29 @@
+# Supported Models by Default
+#
+# Since we currently don't have a way to download models from the internet,
+# we only support predefined models in the following.
+
+family = ["gemma", "llama"]
+
+[gemma.gemma]
+description = "Gemma from Google DeepMind"
+family = "gemma"
+
+[gemma.gemma2]
+description = "Gemma2 from Google DeepMind"
+tags = ["latest", "2b-instruct-q4_K_S", "2b-instruct-q4_K_S_v2"]
+
+[llama]
+description = "Llama family developed by Meta"
+
+[llama.llama3]
+description = "Llama3 from Llama"
+
+[llama.llama3.1]
+description = "Llama3.1 from Llama"
+
+[llama.llama3.2]
+description = "Llama3.2 from Llama"
+
+[llama.llama3.3]
+description = "Llama3.3 from Llama"

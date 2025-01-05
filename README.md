@@ -1,16 +1,24 @@
 # Cydonia
 
-Multi-Agent framework for building morden AI applications.
+Cydonia is a library based on [candle][candle] for developing modern AI applications in rust.
 
-## Supported Models
+```rust
+use cydonia::Model;
+fn main() {
+    let model = Model::new("gemma2").tag("latest");
+    let response = model.invoke("Hello, world!");
+    println!("{}", response);
+}
+```
 
-We support various models for building AI applications with the Multi-Agent architecture.
+We support quantized models only derived from `gemma` and `llama` family.
 
-- [x] Text Classification
-  - [x] Sentence-Transformers/all-MiniLM-L6-v2
-- [ ] Text Generation
-  - [ ] TBA
+## Special Thanks
 
-## LICENSE
+- [candle][candle]
+- [ollama][ollama]
 
-GPL-3.0
+<!-- links -->
+
+[candle]: https://github.com/huggingface/candle
+[ollama]: https://github.com/ollama/ollama
