@@ -2,10 +2,10 @@
 
 use crate::{chat::Message, config::Config, manifest::Manifest};
 use anyhow::Result;
-pub use bert::Bert;
 use candle_core::Tensor;
 use hf_hub::api::sync::Api;
 use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
+pub use {bert::Bert, llama::Llama};
 
 pub mod bert;
 mod llama;

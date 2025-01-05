@@ -19,6 +19,15 @@ impl Display for Message {
     }
 }
 
+impl From<&str> for Message {
+    fn from(s: &str) -> Self {
+        Self {
+            role: Role::User,
+            content: s.to_string(),
+        }
+    }
+}
+
 impl FromStr for Message {
     type Err = anyhow::Error;
 
