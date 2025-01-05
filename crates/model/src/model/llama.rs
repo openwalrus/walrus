@@ -1,7 +1,5 @@
 //! llama model interface
 
-use std::fs;
-
 use crate::{
     manifest::Manifest,
     util::{self, TokenOutputStream},
@@ -14,6 +12,7 @@ use candle_transformers::{
     models::quantized_llama::{self, ModelWeights},
 };
 use hf_hub::api::sync::Api;
+use std::{fs, io::Write};
 use tokenizers::Tokenizer;
 
 /// Llama model from by Meta
@@ -90,7 +89,6 @@ impl Model for Llama {
         }
 
         // process the prompt tokens
-        println!("prompt tokens: {:?}", prompt_tokens);
         let input = Tensor::new(prompt_tokens.as_slice(), &self.device)?.unsqueeze(0)?;
         let logits = self.model.forward(&input, 0)?.squeeze(0)?;
         let mut next_token = self.processor.sample(&logits)?;
@@ -102,7 +100,7 @@ impl Model for Llama {
             .get("</s>")
             .ok_or_else(|| anyhow::anyhow!("eos token not found"))?;
 
-        let mut response = String::new();
+        let response = String::new();
         for index in 0..to_sample {
             let input = Tensor::new(&[next_token], &self.device)?.unsqueeze(0)?;
             let logits = self
@@ -124,7 +122,8 @@ impl Model for Llama {
 
             if let Some(t) = tos.next_token(next_token)? {
                 print!("{t}");
-                response += t.as_ref();
+                std::io::stdout().flush()?;
+                // response += t.as_ref();
             }
 
             if next_token == eos_token {
@@ -132,6 +131,7 @@ impl Model for Llama {
             }
         }
 
+        println!();
         Ok(response)
     }
 

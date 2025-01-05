@@ -108,10 +108,8 @@ impl Display for Family {
 impl FromStr for Family {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            _ => Family::Llama,
-        })
+    fn from_str(_: &str) -> Result<Self, Self::Err> {
+        Ok(Family::Llama)
     }
 }
 
