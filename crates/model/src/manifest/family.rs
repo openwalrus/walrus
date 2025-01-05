@@ -41,6 +41,11 @@ impl Release {
         }
     }
 
+    /// Get the tokenizer path from the tokenizer repo
+    pub fn tokenizer(&self) -> &str {
+        "llama2/tokenizer.json"
+    }
+
     /// Get the model path of the model
     ///
     /// NOTE: only support llama2 for now
