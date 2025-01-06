@@ -388,8 +388,11 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "cydonia-core",
+ "hf-hub",
  "rand",
  "serde",
+ "tokenizers",
  "tracing",
 ]
 

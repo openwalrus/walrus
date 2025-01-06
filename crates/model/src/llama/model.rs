@@ -2,12 +2,10 @@
 
 use crate::util::TokenOutputStream;
 use anyhow::Result;
-use candle::{Processor, ProcessorConfig};
-use candle_core::quantized::gguf_file;
+use candle::{Loader, Processor, ProcessorConfig};
 use candle_transformers::models::quantized_llama::{self, ModelWeights};
-use ccore::{Manifest, Message, TOKENIZER};
-use hf_hub::api::sync::Api;
-use std::{fs, io::Write};
+use ccore::{Manifest, Message};
+use std::io::Write;
 use tokenizers::Tokenizer;
 
 /// Llama model from by Meta
@@ -24,19 +22,11 @@ pub struct Llama {
 
 impl Llama {
     /// Build the llama model
-    pub fn build(api: Api, config: ProcessorConfig, manifest: Manifest) -> Result<Self> {
-        let trepo = api.model(TOKENIZER.into());
-        let tokenizer = Tokenizer::from_file(trepo.get(manifest.release.tokenizer())?)
-            .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
+    pub fn build(config: ProcessorConfig, manifest: Manifest) -> Result<Self> {
+        let loader = Loader::new(manifest)?;
+        let tokenizer = loader.tokenizer()?;
         let processor = config.build();
-
-        // load the model
-        let mrepo = api.model(manifest.release.repo()?.into());
-        let model = mrepo.get(&manifest.release.model(manifest.quantization))?;
-        let mut file = fs::File::open(model)?;
-
-        let model = gguf_file::Content::read(&mut file)?;
-        let model = ModelWeights::from_gguf(model, &mut file, &processor.device)?;
+        let model = loader.model::<ModelWeights>(&processor.device)?;
 
         Ok(Self {
             tokenizer,
