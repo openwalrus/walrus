@@ -4,15 +4,6 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    /// Model revision.
-    pub revision: String,
-
-    /// Use pytorch weights rather than the safetensors ones.
-    pub pth: bool,
-
-    /// Use CPU rather than GPU.
-    pub cpu: bool,
-
     /// The seed of the model
     pub seed: u64,
 
@@ -38,9 +29,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            revision: "main".to_string(),
-            pth: false,
-            cpu: false,
             seed: 1_024_243_212,
             temp: Some(0.6),
             top_p: Some(0.9),

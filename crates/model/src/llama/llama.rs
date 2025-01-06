@@ -1,8 +1,9 @@
 //! llama model interface
 
 use crate::{
+    llama::Model,
     util::{self, TokenOutputStream},
-    Config, Model,
+    Config,
 };
 use anyhow::Result;
 use candle_core::{quantized::gguf_file, Device, Tensor};
@@ -44,7 +45,7 @@ impl Model for Llama {
         let model = mrepo.get(&manifest.release.model(manifest.quantization))?;
         let mut file = fs::File::open(model)?;
         let model = gguf_file::Content::read(&mut file)?;
-        let device = util::device(config.cpu)?;
+        let device = util::device(false)?;
         let model = ModelWeights::from_gguf(model, &mut file, &device)?;
 
         // load the logits processor
@@ -133,13 +134,5 @@ impl Model for Llama {
 
         println!();
         Ok(response)
-    }
-
-    fn tokenizer(&mut self) -> &mut Tokenizer {
-        &mut self.tokenizer
-    }
-
-    fn embed(&mut self, _messages: Vec<String>) -> Result<Tensor> {
-        todo!()
     }
 }

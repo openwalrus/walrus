@@ -1,7 +1,9 @@
 //! bert model
+//!
+//! Legacy interface, reserved for future usages.
 #![allow(unused)]
 
-use crate::{util, Config, Model};
+use crate::{util, Config};
 use anyhow::Result;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
@@ -21,16 +23,13 @@ pub struct Bert {
     device: Device,
 }
 
-impl Model for Bert {
-    fn build(api: Api, config: Config, _manifest: Manifest) -> Result<Self> {
-        let device = util::device(config.cpu)?;
-        let repo = api.repo(Repo::with_revision(
-            "sentence-transformers/all-MiniLM-L6-v2".to_string(),
-            RepoType::Model,
-            config.revision.clone(),
-        ));
+impl Bert {
+    /// Build a new bert model
+    pub fn build(api: Api, pth: bool, cpu: bool) -> Result<Self> {
+        let device = util::device(cpu)?;
+        let repo = api.model("sentence-transformers/all-MiniLM-L6-v2".to_string());
 
-        let builder = if config.pth {
+        let builder = if pth {
             VarBuilder::from_pth(repo.get(PYTORCH)?, bert::DTYPE, &device)
         } else {
             unsafe {
@@ -129,7 +128,16 @@ impl Model for Bert {
             .map_err(Into::into)
     }
 
-    fn tokenizer(&mut self) -> &mut Tokenizer {
-        &mut self.tokenizer
+    /// Ensure padding strategy
+    fn ensure_padding_strategy(&mut self, strategy: PaddingStrategy) {
+        if let Some(pp) = self.tokenizer.get_padding_mut() {
+            pp.strategy = strategy;
+        } else {
+            let pp = PaddingParams {
+                strategy,
+                ..Default::default()
+            };
+            self.tokenizer.with_padding(Some(pp));
+        }
     }
 }

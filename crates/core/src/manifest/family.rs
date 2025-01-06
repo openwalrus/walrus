@@ -42,27 +42,13 @@ impl Release {
 
     /// Get the tokenizer path from the tokenizer repo
     pub fn tokenizer(&self) -> &str {
-<<<<<<< Updated upstream:crates/model/src/manifest/family.rs
         "llama2/tokenizer.json"
-=======
-        match self.family {
-            Family::Llama => "llama2/tokenizer.json",
-        }
->>>>>>> Stashed changes:crates/core/src/manifest/family.rs
     }
 
     /// Get the model path of the model
     ///
     /// NOTE: only support llama2 for now
     pub fn model(&self, quant: Quantization) -> String {
-<<<<<<< Updated upstream:crates/model/src/manifest/family.rs
-        format!(
-            "llama-2-{}b-{}.{}.gguf",
-            self.parameters.ceil() as u8,
-            self.tag.as_deref().unwrap_or("chat"),
-            quant
-        )
-=======
         match self.family {
             Family::Llama => format!(
                 "llama-2-{}b-{}.{}.gguf",
@@ -71,7 +57,6 @@ impl Release {
                 quant
             ),
         }
->>>>>>> Stashed changes:crates/core/src/manifest/family.rs
     }
 }
 

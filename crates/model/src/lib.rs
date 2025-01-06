@@ -1,7 +1,8 @@
 //! LLM interfaces
 
+pub mod bert;
 pub mod config;
-pub mod model;
+pub mod llama;
 pub mod util;
 
-pub use {config::Config, model::Model};
+pub use config::Config;
