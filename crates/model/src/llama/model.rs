@@ -63,9 +63,10 @@ impl Llama {
         }
 
         // process the prompt tokens
-        let input = self.processor.tensor(&prompt_tokens, 0)?;
-        let logits = self.model.forward(&input, 0)?.squeeze(0)?;
-        let mut next_token = self.processor.sample(&logits)?;
+        let mut next_token = self
+            .processor
+            .sample_tokens(&prompt_tokens)
+            .sample(&mut self.model)?;
 
         // process the tokens
         let mut all_tokens = vec![next_token];
@@ -76,16 +77,16 @@ impl Llama {
             .ok_or_else(|| anyhow::anyhow!("eos token not found"))?;
 
         let response = String::new();
+        let pos = prompt_tokens.len();
         for index in 0..to_sample {
-            let input = self.processor.tensor(&[next_token], 0)?;
-            let logits = self
-                .model
-                .forward(&input, prompt_tokens.len() + index)?
-                .squeeze(0)?;
-            let logits = self.processor.repeat_penalty(logits, &all_tokens)?;
-            next_token = self.processor.sample(&logits)?;
-            all_tokens.push(next_token);
+            next_token = self
+                .processor
+                .sample_tokens(&[next_token])
+                .all_tokens(&all_tokens)
+                .pos(pos + index)
+                .sample(&mut self.model)?;
 
+            all_tokens.push(next_token);
             if let Some(t) = tos.next_token(next_token)? {
                 print!("{t}");
                 std::io::stdout().flush()?;

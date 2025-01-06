@@ -2,7 +2,6 @@
 //!
 //! Legacy interface, reserved for future usages.
 
-use crate::util;
 use anyhow::Result;
 use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
@@ -25,7 +24,7 @@ pub struct Bert {
 impl Bert {
     /// Build a new bert model
     pub fn build(api: Api, pth: bool, cpu: bool) -> Result<Self> {
-        let device = util::device(cpu)?;
+        let device = candle::device(cpu)?;
         let repo = api.model("sentence-transformers/all-MiniLM-L6-v2".to_string());
 
         let builder = if pth {

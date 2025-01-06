@@ -1,1 +1,0 @@
-//! Cydonia model configuration

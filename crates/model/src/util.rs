@@ -3,31 +3,6 @@
 
 use candle_core::{utils, Device, Result};
 
-/// Get the device
-pub fn device(cpu: bool) -> Result<Device> {
-    if cpu {
-        Ok(Device::Cpu)
-    } else if utils::cuda_is_available() {
-        Ok(Device::new_cuda(0)?)
-    } else if utils::metal_is_available() {
-        Ok(Device::new_metal(0)?)
-    } else {
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        {
-            tracing::warn!(
-                "Running on CPU, to run on GPU(metal), build this library with `--features metal`"
-            );
-        }
-        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-        {
-            tracing::warn!(
-                "Running on CPU, to run on GPU, build this library with `--features cuda`"
-            );
-        }
-        Ok(Device::Cpu)
-    }
-}
-
 /// This is a wrapper around a tokenizer to ensure that tokens can be returned to the user in a
 /// streaming way rather than having to wait for the full decoding.
 pub struct TokenOutputStream {

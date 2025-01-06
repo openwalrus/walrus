@@ -1,6 +1,5 @@
 //! LLM models
 
-pub use {config::Config, model::Llama};
+pub use model::Llama;
 
-mod config;
 mod model;
