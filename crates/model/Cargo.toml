@@ -10,8 +10,8 @@ candle-core.workspace = true
 candle-nn.workspace = true
 candle-transformers.workspace = true
 ccore.workspace = true
+candle.workspace = true
 clap = { workspace = true, features = ["derive"] }
-dirs.workspace = true
 hf-hub.workspace = true
 once_cell.workspace = true
 serde = { workspace = true, features = ["derive"] }

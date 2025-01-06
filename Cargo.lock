@@ -381,6 +381,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
+name = "cydonia-candle"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "rand",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "cydonia-core"
 version = "0.0.0"
 dependencies = [
@@ -397,8 +410,8 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "clap",
+ "cydonia-candle",
  "cydonia-core",
- "dirs",
  "hf-hub",
  "once_cell",
  "serde",

@@ -1,17 +1,16 @@
 //! bert model
 //!
 //! Legacy interface, reserved for future usages.
-#![allow(unused)]
 
-use crate::{util, Config};
+use crate::util;
 use anyhow::Result;
-use candle_core::{DType, Device, Tensor};
+use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert;
-use ccore::{Manifest, Message};
-use hf_hub::{api::sync::Api, Repo, RepoType};
+use ccore::Message;
+use hf_hub::api::sync::Api;
 use std::fs;
-use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
+use tokenizers::{PaddingParams, PaddingStrategy};
 
 const PYTORCH: &str = "pytorch_model.bin";
 const SAFETENSORS: &str = "model.safetensors";
@@ -48,7 +47,8 @@ impl Bert {
         })
     }
 
-    fn similar(
+    /// Find the similar messages
+    pub fn similar(
         &mut self,
         source: Message,
         mut messages: Vec<Message>,
@@ -60,8 +60,7 @@ impl Bert {
         self.ensure_padding_strategy(PaddingStrategy::BatchLongest);
 
         // embed the messages
-
-        let mut embeddings = self.embed(sentences)?;
+        let embeddings = self.embed(sentences)?;
         tracing::trace!("generated embeddings: {:?}", embeddings.shape());
 
         let (_n_sentences, n_tokens, _hidden_size) = embeddings.dims3()?;

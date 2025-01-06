@@ -4,6 +4,9 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    /// If running the model with gpu
+    pub gpu: bool,
+
     /// The seed of the model
     pub seed: u64,
 
@@ -29,6 +32,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            gpu: false,
             seed: 1_024_243_212,
             temp: Some(0.6),
             top_p: Some(0.9),

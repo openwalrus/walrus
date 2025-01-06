@@ -1,79 +1,52 @@
 //! llama model interface
 
-use crate::{
-    llama::Model,
-    util::{self, TokenOutputStream},
-    Config,
-};
+use crate::util::TokenOutputStream;
 use anyhow::Result;
-use candle_core::{quantized::gguf_file, Device, Tensor};
-use candle_transformers::{
-    generation::{LogitsProcessor, Sampling},
-    models::quantized_llama::{self, ModelWeights},
-};
-use ccore::{Manifest, Message};
+use candle::{Processor, ProcessorConfig};
+use candle_core::quantized::gguf_file;
+use candle_transformers::models::quantized_llama::{self, ModelWeights};
+use ccore::{Manifest, Message, TOKENIZER};
 use hf_hub::api::sync::Api;
 use std::{fs, io::Write};
 use tokenizers::Tokenizer;
 
 /// Llama model from by Meta
 pub struct Llama {
-    /// The config of the model
-    config: Config,
-
     /// The tokenizer of the model
     tokenizer: Tokenizer,
-
-    /// The device of the model
-    device: Device,
 
     /// The model weights of the model
     model: ModelWeights,
 
     /// The logits processor of the model
-    processor: LogitsProcessor,
+    processor: Processor,
 }
 
-impl Model for Llama {
-    fn build(api: Api, config: Config, manifest: Manifest) -> Result<Self> {
-        let trepo = api.model("clearloop/tokenizer".into());
+impl Llama {
+    /// Build the llama model
+    pub fn build(api: Api, config: ProcessorConfig, manifest: Manifest) -> Result<Self> {
+        let trepo = api.model(TOKENIZER.into());
         let tokenizer = Tokenizer::from_file(trepo.get(manifest.release.tokenizer())?)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
+        let processor = config.build();
 
         // load the model
         let mrepo = api.model(manifest.release.repo()?.into());
         let model = mrepo.get(&manifest.release.model(manifest.quantization))?;
         let mut file = fs::File::open(model)?;
-        let model = gguf_file::Content::read(&mut file)?;
-        let device = util::device(false)?;
-        let model = ModelWeights::from_gguf(model, &mut file, &device)?;
 
-        // load the logits processor
-        let processor = {
-            let temperature = config.temp.unwrap_or(0.6);
-            let sampling = if temperature <= 0. {
-                Sampling::ArgMax
-            } else {
-                match (config.top_k, config.top_p) {
-                    (None, None) => Sampling::All { temperature },
-                    (Some(k), None) => Sampling::TopK { k, temperature },
-                    (None, Some(p)) => Sampling::TopP { p, temperature },
-                    (Some(k), Some(p)) => Sampling::TopKThenTopP { k, p, temperature },
-                }
-            };
-            LogitsProcessor::from_sampling(config.seed, sampling)
-        };
+        let model = gguf_file::Content::read(&mut file)?;
+        let model = ModelWeights::from_gguf(model, &mut file, &processor.device)?;
 
         Ok(Self {
-            config,
             tokenizer,
-            device,
             model,
             processor,
         })
     }
 
-    fn complete(&mut self, messages: &mut [Message]) -> Result<String> {
+    /// Complete the chat
+    pub fn complete(&mut self, messages: &mut [Message]) -> Result<String> {
         let message = messages
             .first()
             .ok_or_else(|| anyhow::anyhow!("no messages"))?;
@@ -83,17 +56,18 @@ impl Model for Llama {
             .encode(message.content.clone(), true)
             .map_err(|e| anyhow::anyhow!("failed to encode message: {e}"))?;
 
-        let to_sample = self.config.sample_len.saturating_sub(1);
+        let to_sample = self.processor.sample_len.saturating_sub(1);
         let mut prompt_tokens = tokens.get_ids().to_vec();
         if prompt_tokens.len() + to_sample > quantized_llama::MAX_SEQ_LEN - 10 {
             prompt_tokens = prompt_tokens[prompt_tokens.len().saturating_sub(to_sample)..].to_vec();
         }
 
         // process the prompt tokens
-        let input = Tensor::new(prompt_tokens.as_slice(), &self.device)?.unsqueeze(0)?;
+        let input = self.processor.tensor(&prompt_tokens, 0)?;
         let logits = self.model.forward(&input, 0)?.squeeze(0)?;
         let mut next_token = self.processor.sample(&logits)?;
 
+        // process the tokens
         let mut all_tokens = vec![next_token];
         let eos_token = *tos
             .tokenizer()
@@ -103,28 +77,18 @@ impl Model for Llama {
 
         let response = String::new();
         for index in 0..to_sample {
-            let input = Tensor::new(&[next_token], &self.device)?.unsqueeze(0)?;
+            let input = self.processor.tensor(&[next_token], 0)?;
             let logits = self
                 .model
                 .forward(&input, prompt_tokens.len() + index)?
                 .squeeze(0)?;
-            let logits = if self.config.repeat_penalty == 1. {
-                logits
-            } else {
-                let start_at = all_tokens.len().saturating_sub(self.config.repeat_last_n);
-                candle_transformers::utils::apply_repeat_penalty(
-                    &logits,
-                    self.config.repeat_penalty,
-                    &all_tokens[start_at..],
-                )?
-            };
+            let logits = self.processor.repeat_penalty(logits, &all_tokens)?;
             next_token = self.processor.sample(&logits)?;
             all_tokens.push(next_token);
 
             if let Some(t) = tos.next_token(next_token)? {
                 print!("{t}");
                 std::io::stdout().flush()?;
-                // response += t.as_ref();
             }
 
             if next_token == eos_token {

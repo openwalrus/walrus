@@ -1,0 +1,14 @@
+[package]
+name = "cydonia-candle"
+version = "0.0.0"
+edition = "2021"
+description = "Cydonia candle utils re-exports"
+
+[dependencies]
+anyhow.workspace = true
+candle-core.workspace = true
+candle-nn.workspace = true
+candle-transformers.workspace = true
+rand.workspace = true
+serde.workspace = true
+tracing.workspace = true

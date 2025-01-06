@@ -1,4 +1,5 @@
 //! LLM utils
+#![allow(unused)]
 
 use candle_core::{utils, Device, Result};
 
