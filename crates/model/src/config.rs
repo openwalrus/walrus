@@ -6,8 +6,10 @@ use serde::Deserialize;
 pub struct Config {
     /// Model revision.
     pub revision: String,
+
     /// Use pytorch weights rather than the safetensors ones.
     pub pth: bool,
+
     /// Use CPU rather than GPU.
     pub cpu: bool,
 

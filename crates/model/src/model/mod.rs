@@ -1,8 +1,9 @@
 //! LLM models
 
-use crate::{chat::Message, config::Config, manifest::Manifest};
+use crate::config::Config;
 use anyhow::Result;
 use candle_core::Tensor;
+use ccore::{Manifest, Message};
 use hf_hub::api::sync::Api;
 use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
 pub use {bert::Bert, llama::Llama};

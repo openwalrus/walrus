@@ -3,6 +3,10 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
+ccore = { path = "crates/core", package = "cydonia-core" }
+
+
+# crates.io
 anyhow = "1"
 candle-core = "0.8.1"
 candle-nn = "0.8.1"

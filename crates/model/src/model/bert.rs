@@ -1,11 +1,12 @@
 //! bert model
 #![allow(unused)]
 
-use crate::{manifest::Manifest, util, Config, Message, Model};
+use crate::{util, Config, Model};
 use anyhow::Result;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert;
+use ccore::{Manifest, Message};
 use hf_hub::{api::sync::Api, Repo, RepoType};
 use std::fs;
 use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};

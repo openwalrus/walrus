@@ -1,4 +1,8 @@
-use cydonia_model::{config::Config, manifest::Manifest, model::Llama, Model};
+use ccore::Manifest;
+use cydonia_model::{
+    config::Config,
+    model::{Llama, Model},
+};
 
 const PROMPT: &str = r#"
 [INST] 
@@ -12,8 +16,7 @@ Hello, world!
 
 fn main() -> anyhow::Result<()> {
     let api = hf_hub::api::sync::Api::new()?;
-    let mut model = Llama::build(api, Config::default(), Manifest::default())?;
-    println!("model built");
+    let mut model = Llama::build(api, Config::default(), Manifest::new("llama2")?)?;
     let _response = model.complete(&mut vec![PROMPT.into()])?;
     Ok(())
 }

@@ -1,9 +1,8 @@
 //! llama model interface
 
 use crate::{
-    manifest::Manifest,
     util::{self, TokenOutputStream},
-    Config, Message, Model,
+    Config, Model,
 };
 use anyhow::Result;
 use candle_core::{quantized::gguf_file, Device, Tensor};
@@ -11,6 +10,7 @@ use candle_transformers::{
     generation::{LogitsProcessor, Sampling},
     models::quantized_llama::{self, ModelWeights},
 };
+use ccore::{Manifest, Message};
 use hf_hub::api::sync::Api;
 use std::{fs, io::Write};
 use tokenizers::Tokenizer;
