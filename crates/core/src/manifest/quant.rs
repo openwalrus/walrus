@@ -57,12 +57,12 @@ pub enum Quantization {
     /// Weight formula: w = q * block_scale(6-bit) + block_min(6-bit), resulting in 4.5 bits-per-weight.
     ///
     /// in small size
-    Q4_k_S,
+    Q4_K_S,
     /// 4-bit quantization (q). Super-blocks with 8 blocks, each block has 32 weights.
     /// Weight formula: w = q * block_scale(6-bit) + block_min(6-bit), resulting in 4.5 bits-per-weight.
     ///
     /// in medium size
-    Q4_k_M,
+    Q4_K_M,
     /// 3-bit quantization (q). Super-blocks with 16 blocks, each block has 16 weights.
     /// Weight formula: w = q * block_scale(6-bit), resulting in 3.4375 bits-per-weight.
     Q3_K,

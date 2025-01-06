@@ -36,7 +36,6 @@ impl Release {
     pub fn repo(&self) -> Result<&str> {
         match self.family.as_ref() {
             "llama" => Ok("TheBloke/Llama-2-7B-Chat-GGUF"),
-            "gemma" => Ok("bartowski/gemma-2-2b-it-GGUF"),
             _ => anyhow::bail!("invalid family: {}", self.family),
         }
     }
@@ -50,12 +49,14 @@ impl Release {
     ///
     /// NOTE: only support llama2 for now
     pub fn model(&self, quant: Quantization) -> String {
-        format!(
-            "llama-2-{}b-{}.{}.gguf",
-            self.parameters.ceil() as u8,
-            self.tag.as_deref().unwrap_or("chat"),
-            quant
-        )
+        match self.family {
+            Family::Llama => format!(
+                "llama-2-{}b-{}.{}.gguf",
+                self.parameters.ceil() as u8,
+                self.tag.as_deref().unwrap_or("chat"),
+                quant
+            ),
+        }
     }
 }
 

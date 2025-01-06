@@ -1,7 +1,10 @@
 //! Model manifest
 
 use std::collections::HashMap;
-pub use {family::Release, quant::Quantization};
+pub use {
+    family::{Family, Release},
+    quant::Quantization,
+};
 
 mod family;
 mod quant;
@@ -23,9 +26,22 @@ pub struct Manifest {
 
     /// The parameters of the model
     pub params: HashMap<String, String>,
+}
 
-    /// The license of the model
-    pub license: String,
+impl Manifest {
+    /// Create a new manifest from a model name
+    pub fn new(name: &str) -> anyhow::Result<Self> {
+        let release = Release::new(name)?;
+        Ok(Self {
+            name: name.into(),
+            quantization: match release.family {
+                Family::Llama => Quantization::Q4_0,
+            },
+            release,
+            revision: [0; 12],
+            params: HashMap::new(),
+        })
+    }
 }
 
 impl Default for Manifest {
@@ -36,7 +52,6 @@ impl Default for Manifest {
             quantization: Quantization::Q4_0,
             revision: [0; 12],
             params: HashMap::new(),
-            license: "llama2".into(),
         }
     }
 }
