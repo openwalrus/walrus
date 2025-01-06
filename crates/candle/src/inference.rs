@@ -7,6 +7,9 @@ use candle_transformers::models::quantized_llama;
 
 /// The inference interface for language models
 pub trait Inference: Sized {
+    /// The max sequence length
+    const MAX_SEQ_LEN: usize;
+
     /// Load model from gguf file
     fn gguf(device: &Device, file: &mut File) -> Result<Self>;
 
@@ -15,6 +18,8 @@ pub trait Inference: Sized {
 }
 
 impl Inference for quantized_llama::ModelWeights {
+    const MAX_SEQ_LEN: usize = quantized_llama::MAX_SEQ_LEN;
+
     fn gguf(device: &Device, file: &mut File) -> Result<Self> {
         let content = Content::read(file)?;
         let model = Self::from_gguf(content, file, device)?;

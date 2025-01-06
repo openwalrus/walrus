@@ -1,12 +1,11 @@
 //! Model loader
 
-use std::fs::File;
-
-use crate::Inference;
+use crate::{Inference, TokenStream};
 use anyhow::Result;
 use candle_core::Device;
 use ccore::{Manifest, TOKENIZER};
 use hf_hub::api::sync::Api;
+use std::fs::File;
 use tokenizers::Tokenizer;
 
 /// Huggingface model loader
@@ -30,11 +29,11 @@ impl Loader {
     }
 
     /// Load the tokenizer
-    pub fn tokenizer(&self) -> Result<Tokenizer> {
+    pub fn tokenizer(&self) -> Result<TokenStream> {
         let trepo = self.api.model(TOKENIZER.into());
         let tokenizer = Tokenizer::from_file(trepo.get(self.manifest.release.tokenizer())?)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
-        Ok(tokenizer)
+        Ok(TokenStream::new(tokenizer))
     }
 
     /// Load the model
@@ -42,7 +41,7 @@ impl Loader {
         let mrepo = self.api.model(self.manifest.release.repo()?.into());
         let model = mrepo.get(&self.manifest.release.model(self.manifest.quantization))?;
         let mut file = File::open(model)?;
-        let model = M::gguf(&device, &mut file)?;
+        let model = M::gguf(device, &mut file)?;
         Ok(model)
     }
 }
