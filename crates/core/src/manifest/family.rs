@@ -1,124 +1,151 @@
-use crate::manifest::Quantization;
+//! Model family
+
 use anyhow::Result;
+pub use llama::LlamaVer;
 use std::{fmt::Display, str::FromStr};
 
-/// Release info of a model
-#[derive(Debug)]
-pub struct Release {
-    /// The family of the model
-    pub family: Family,
-
-    /// The version of the model
-    pub version: u8,
-
-    /// The parameters of the model in billions
-    pub parameters: f32,
-
-    /// The tag of the model
-    pub tag: Option<String>,
-}
-
-impl Release {
-    /// Create a new release from a model name
-    pub fn new(model: &str) -> Result<Self> {
-        match model {
-            "llama2" | "llama2-7b" | "llama2-7b-chat" => Ok(Self {
-                family: Family::Llama,
-                version: 2,
-                parameters: 6.74,
-                tag: Some("chat".into()),
-            }),
-            _ => anyhow::bail!("invalid model: {model}"),
-        }
-    }
-
-    /// Get the repo of the model
-    pub fn repo(&self) -> Result<&str> {
-        match self.family.as_ref() {
-            "llama" => Ok("TheBloke/Llama-2-7B-Chat-GGUF"),
-            _ => anyhow::bail!("invalid family: {}", self.family),
-        }
-    }
-
-    /// Get the tokenizer path from the tokenizer repo
-    pub fn tokenizer(&self) -> &str {
-        "llama2/tokenizer.json"
-    }
-
-    /// Get the model path of the model
-    ///
-    /// NOTE: only support llama2 for now
-    pub fn model(&self, quant: Quantization) -> String {
-        match self.family {
-            Family::Llama => format!(
-                "llama-2-{}b-{}.{}.gguf",
-                self.parameters.ceil() as u8,
-                self.tag.as_deref().unwrap_or("chat"),
-                quant
-            ),
-        }
-    }
-}
-
-impl Default for Release {
-    fn default() -> Self {
-        Self {
-            family: Family::Llama,
-            version: 2,
-            parameters: 6.74,
-            tag: Some("chat".into()),
-        }
-    }
-}
-
-impl Display for Release {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}{}-{}b-{}",
-            self.family.as_ref(),
-            self.version,
-            self.parameters.ceil() as u8,
-            self.tag.as_deref().unwrap_or("chat")
-        )
-    }
-}
-
 /// The family of the model
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Family {
     /// Llama from Meta
-    #[default]
-    Llama,
+    Llama {
+        /// The version of the model
+        version: LlamaVer,
+
+        /// The parameters of the model
+        params: Params,
+
+        /// The tag of the model
+        tag: Tag,
+    },
 }
 
-impl AsRef<str> for Family {
-    fn as_ref(&self) -> &str {
-        match self {
-            Family::Llama => "llama",
+impl Default for Family {
+    fn default() -> Self {
+        Self::Llama {
+            version: LlamaVer::V3_2,
+            params: Params::V1B,
+            tag: Tag::Instruct,
         }
+    }
+}
+
+impl From<&str> for Family {
+    fn from(s: &str) -> Self {
+        Self::from_str(s).unwrap_or_default()
     }
 }
 
 impl Display for Family {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(
+            f,
+            "{}",
+            match self {
+                Family::Llama {
+                    version,
+                    params,
+                    tag,
+                } => format!("llama-{version}-{params}-{tag}"),
+            }
+        )
     }
 }
 
 impl FromStr for Family {
     type Err = anyhow::Error;
 
-    fn from_str(_: &str) -> Result<Self, Self::Err> {
-        Ok(Family::Llama)
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let model = s
+            .trim()
+            .to_lowercase()
+            .replace('-', "")
+            .replace("instruct", "");
+
+        match model.as_ref() {
+            "llama3.18b" => Ok(Family::Llama {
+                version: LlamaVer::V3_1,
+                params: Params::V8B,
+                tag: Tag::Instruct,
+            }),
+            "llama3.21b" => Ok(Family::Llama {
+                version: LlamaVer::V3_2,
+                params: Params::V1B,
+                tag: Tag::Instruct,
+            }),
+            "llama3.23b" => Ok(Family::Llama {
+                version: LlamaVer::V3_2,
+                params: Params::V3B,
+                tag: Tag::Instruct,
+            }),
+            _ => {
+                tracing::warn!("invalid family {s}, using default llama-3.2-1B-Instruct");
+                Ok(Family::Llama {
+                    version: LlamaVer::V3_2,
+                    params: Params::V1B,
+                    tag: Tag::Instruct,
+                })
+            }
+        }
     }
 }
 
-#[test]
-fn test_fmt_release() {
-    assert_eq!(Release::default().to_string(), "llama2-7b-chat");
-    assert_eq!(
-        Release::default().model(Quantization::Q4_0),
-        "llama-2-7b-chat.Q4_0.gguf"
-    );
+/// The parameters of the model
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Params {
+    V1B,
+    V3B,
+    V8B,
+}
+
+impl Display for Params {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Params::V1B => "1B",
+                Params::V3B => "3B",
+                Params::V8B => "8B",
+            }
+        )
+    }
+}
+
+/// The tag of the model
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Tag {
+    #[default]
+    Instruct,
+}
+
+impl Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+mod llama {
+    use std::fmt::Display;
+
+    /// The version of the llama model
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub enum LlamaVer {
+        V3_1,
+        #[default]
+        V3_2,
+    }
+
+    impl Display for LlamaVer {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                f,
+                "{}",
+                match self {
+                    LlamaVer::V3_1 => "3.1",
+                    LlamaVer::V3_2 => "3.2",
+                }
+            )
+        }
+    }
 }

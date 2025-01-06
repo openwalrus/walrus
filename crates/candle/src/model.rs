@@ -2,7 +2,7 @@
 
 use crate::{Inference, Loader, Processor, ProcessorConfig, TokenStream};
 use anyhow::Result;
-use ccore::{Manifest, Message};
+use ccore::{Message, Release};
 use std::io::Write;
 
 /// Language Model interface
@@ -19,8 +19,8 @@ pub struct Model<I: Inference> {
 
 impl<I: Inference> Model<I> {
     /// Create a new model
-    pub fn new(config: ProcessorConfig, manifest: Manifest) -> Result<Self> {
-        let loader = Loader::new(manifest)?;
+    pub fn new(config: ProcessorConfig, release: Release) -> Result<Self> {
+        let loader = Loader::new(release)?;
         let tokenizer = loader.tokenizer()?;
         let processor = config.build();
         let weights = loader.model::<I>(&processor.device)?;

@@ -4,6 +4,7 @@ Cydonia is a library based on [candle][candle] for developing modern AI applicat
 
 ```rust
 use cydonia::Model;
+
 fn main() {
     let model = Model::new("gemma2").tag("latest");
     let response = model.invoke("Hello, world!");
