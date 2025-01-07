@@ -32,7 +32,7 @@ impl Loader {
         let trepo = self.api.model(TOKENIZER.into());
         let tokenizer = tokenizers::Tokenizer::from_file(trepo.get(self.release.tokenizer())?)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
-        Ok(Tokenizer::new::<I>(tokenizer)?)
+        Tokenizer::new::<I>(tokenizer)
     }
 
     /// Load the model

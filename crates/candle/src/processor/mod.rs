@@ -40,7 +40,7 @@ impl Processor {
     }
 
     /// Sample tokens
-    pub fn sample_token<'s>(&'s mut self, token: u32) -> SampleBuilder<'s> {
+    pub fn sample_token(&mut self, token: u32) -> SampleBuilder<'_> {
         SampleBuilder::new(self, token)
     }
 

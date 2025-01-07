@@ -33,8 +33,8 @@ impl Tokenizer {
         })
     }
 
-    /// Get the position
-    pub fn len(&self) -> usize {
+    /// Get the count of the tokens
+    pub fn tokens(&self) -> usize {
         self.tokens.len()
     }
 

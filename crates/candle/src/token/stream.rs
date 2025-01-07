@@ -37,7 +37,7 @@ impl<'ts, I: Inference> TokenStream<'ts, I> {
     ) -> Result<Self> {
         let mut this = Self {
             cur_tokens: vec![],
-            pos: tokenizer.len(),
+            pos: tokenizer.tokens(),
             next: 0,
             sampled: 0,
             processor,
@@ -55,7 +55,7 @@ impl<'ts, I: Inference> TokenStream<'ts, I> {
     fn sample_prompt(&mut self, prompt: &str) -> Result<()> {
         let tokens = self
             .tokenizer
-            .prompt(&prompt)?
+            .prompt(prompt)?
             .sample_len(self.processor.sample_len)
             .max_seq_len::<I>()
             .encode::<I>()?;
@@ -86,7 +86,7 @@ impl<I: Inference> Iterator for TokenStream<'_, I> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pos == self.tokenizer.len() {
+        if self.pos == self.tokenizer.tokens() {
             return self.tokenizer.embed(self.next).ok();
         }
 

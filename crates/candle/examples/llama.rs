@@ -23,8 +23,10 @@ fn main() {
         // Generate response
         let mut response = String::new();
         let message = Message::user(input);
-        let mut stream = model.complete(&[message], last).unwrap();
-        while let Some(token) = stream.next() {
+        let stream = model
+            .complete(&[message], last)
+            .expect("failed to generate response");
+        for token in stream {
             response.push_str(&token);
 
             print!("{}", token);

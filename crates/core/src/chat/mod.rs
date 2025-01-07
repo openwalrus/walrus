@@ -65,7 +65,7 @@ impl FromStr for Message {
         let (role, content) = s
             .split_once(": ")
             .ok_or_else(|| anyhow::anyhow!("invalid message format"))?;
-        Ok(match role.to_lowercase().trim().as_ref() {
+        Ok(match role.to_lowercase().trim() {
             "assistant" => Self::Assistant(content.to_string()),
             "user" => Self::User(content.to_string()),
             "system" => Self::System(content.to_string()),
