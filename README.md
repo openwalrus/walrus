@@ -16,7 +16,6 @@ We support quantized models only derived from `gemma` and `llama` family.
 
 ## TODOs
 
-- [ ] Output tokenstream with `std::io::Write`
 - [ ] Support chat interface ( history prompts )
 - [ ] Function encoder for llama3 tools (static)
 - [ ] Cydonia as service
@@ -32,4 +31,3 @@ We support quantized models only derived from `gemma` and `llama` family.
 <!-- links -->
 
 [candle]: https://github.com/huggingface/candle
-[ollama]: https://github.com/ollama/ollama

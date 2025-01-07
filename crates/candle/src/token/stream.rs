@@ -11,9 +11,6 @@ pub struct TokenStream<'ts, I: Inference> {
     /// The end of stream token
     eos: u32,
 
-    /// The index
-    index: usize,
-
     /// The next token
     next: u32,
 
@@ -23,8 +20,11 @@ pub struct TokenStream<'ts, I: Inference> {
     /// The processor
     processor: &'ts mut Processor,
 
-    /// The sample length
-    sample: usize,
+    /// The sample
+    sample: Vec<u32>,
+
+    /// The target sample length limit
+    to_sample: usize,
 
     /// The tokenizer
     tokenizer: &'ts mut Tokenizer,
@@ -41,54 +41,52 @@ impl<'ts, I: Inference> TokenStream<'ts, I> {
         tokenizer: &'ts mut Tokenizer,
         prompt: &'ts str,
     ) -> Result<Self> {
-        let sample = processor.sample_len.saturating_sub(1);
-
-        // TODO: adapt the eos token from weights spec
+        let to_sample = processor.sample_len.saturating_sub(1);
         let eos = tokenizer
-            .token("</s>")
+            // This is specified by llama3 spec
+            .token("<|end_of_text|>")
             .ok_or_else(|| anyhow::anyhow!("eos token not found"))?;
 
         // TODO: support split prompts
         let prompt_tokens = tokenizer
             .prompt(prompt)?
-            .sample_len(sample)
+            .sample_len(to_sample)
             .max_seq_len::<I>()
             .encode()?;
 
-        // process the prompt tokens
-        let next = processor.sample_tokens(&prompt_tokens).sample(weights)?;
         Ok(Self {
-            all: vec![next],
+            all: vec![],
             eos,
-            index: 0,
-            next,
-            pos: prompt_tokens.len(),
+            next: 0,
+            pos: 0,
             processor,
-            sample,
+            sample: prompt_tokens,
+            to_sample,
             tokenizer,
             weights,
         })
     }
 }
 
-impl<'ts, I: Inference> Iterator for TokenStream<'ts, I> {
+impl<I: Inference> Iterator for TokenStream<'_, I> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.sample || self.next == self.eos {
+        if self.pos >= self.to_sample || self.next == self.eos {
             return None;
         }
 
         self.next = self
             .processor
-            .sample_tokens(&[self.next])
+            .sample_tokens(&self.sample)
             .all_tokens(&self.all)
-            .pos(self.pos + self.index)
+            .pos(self.pos)
             .sample(self.weights)
             .ok()?;
 
         self.all.push(self.next);
-        self.index += 1;
+        self.pos += self.sample.len();
+        self.sample = vec![self.next];
         self.tokenizer.next_token(self.next).ok().flatten()
     }
 }

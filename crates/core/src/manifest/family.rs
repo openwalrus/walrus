@@ -46,7 +46,7 @@ impl Display for Family {
                     version,
                     params,
                     tag,
-                } => format!("llama-{version}-{params}-{tag}"),
+                } => format!("Llama-{version}-{params}-{tag}"),
             }
         )
     }

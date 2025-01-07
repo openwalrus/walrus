@@ -55,6 +55,12 @@ impl Display for Release {
 
 #[test]
 fn test_fmt_release() {
-    assert_eq!(Release::default().to_string(), "llama2-7b-chat");
-    assert_eq!(Release::default().model(), "llama-2-7b-chat.Q4_0.gguf");
+    assert_eq!(
+        Release::default().to_string(),
+        "llama-3.2-1B-Instruct.Q4_K_M"
+    );
+    assert_eq!(
+        Release::default().model(),
+        "llama-3.2-1B-Instruct.Q4_K_M.gguf"
+    );
 }

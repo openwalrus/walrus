@@ -112,7 +112,7 @@ impl Default for ProcessorConfig {
     fn default() -> Self {
         Self {
             gpu: false,
-            seed: Some(1_024_243_212),
+            seed: None,
             temperature: Some(0.6),
             top_p: Some(0.9),
             top_k: Some(50),
