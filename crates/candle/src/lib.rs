@@ -5,7 +5,7 @@ mod inference;
 mod loader;
 mod model;
 mod processor;
-mod stream;
+mod token;
 
 pub use {
     device::detect as device,
@@ -13,7 +13,7 @@ pub use {
     loader::Loader,
     model::Model,
     processor::{Processor, ProcessorConfig, SampleBuilder},
-    stream::TokenStream,
+    token::{TokenStream, Tokenizer},
 };
 
 /// The Llama model

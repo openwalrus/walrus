@@ -4,19 +4,17 @@ Cydonia is a library based on [candle][candle] for developing modern AI applicat
 
 ```rust
 use cydonia::Model;
+
 fn main() {
-    let model = Model::new("gemma2").tag("latest");
+    let model = Model::new("llama3.2-1b");
     let response = model.invoke("Hello, world!");
     println!("{}", response);
 }
 ```
 
-We support quantized models only derived from `gemma` and `llama` family.
+## LICENSE
 
-## Special Thanks
-
-- [candle][candle]
-- [ollama][ollama]
+[GPL-3.0](LICENSE)
 
 <!-- links -->
 

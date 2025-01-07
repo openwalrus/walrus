@@ -2,10 +2,13 @@
 //!
 //! This library gathers the user interfaces of cydonia
 
-mod chat;
-mod manifest;
+pub mod chat;
+pub mod manifest;
 
-pub use {chat::Message, manifest::Manifest};
+pub use {
+    chat::Message,
+    manifest::{Family, Quantization, Release},
+};
 
 /// The tokenizer repo of cydonia in huggingface.
 pub const TOKENIZER: &str = "clearloop/tokenizer";

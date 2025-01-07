@@ -45,7 +45,6 @@ pub enum Quantization {
     Q5_K,
     /// 4-bit round-to-nearest quantization (q). Each block has 32 weights.
     /// Weight formula: w = q * block_scale. Legacy quantization method not used widely as of today.
-    #[default]
     Q4_0,
     /// 4-bit round-to-nearest quantization (q). Each block has 32 weights.
     /// Weight formula: w = q * block_scale + block_minimum. Legacy quantization method not used widely as of today.
@@ -62,6 +61,7 @@ pub enum Quantization {
     /// Weight formula: w = q * block_scale(6-bit) + block_min(6-bit), resulting in 4.5 bits-per-weight.
     ///
     /// in medium size
+    #[default]
     Q4_K_M,
     /// 3-bit quantization (q). Super-blocks with 16 blocks, each block has 16 weights.
     /// Weight formula: w = q * block_scale(6-bit), resulting in 3.4375 bits-per-weight.

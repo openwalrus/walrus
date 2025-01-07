@@ -40,8 +40,8 @@ impl Processor {
     }
 
     /// Sample tokens
-    pub fn sample_tokens<'s>(&'s mut self, tokens: &'s [u32]) -> SampleBuilder<'s> {
-        SampleBuilder::new(self, tokens)
+    pub fn sample_token(&mut self, token: u32) -> SampleBuilder<'_> {
+        SampleBuilder::new(self, token)
     }
 
     /// Apply repeat penalty
