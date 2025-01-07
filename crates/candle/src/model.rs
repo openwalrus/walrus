@@ -22,9 +22,9 @@ pub struct Model<I: Inference> {
 impl<I: Inference> Model<I> {
     /// Create a new model
     pub fn new(config: ProcessorConfig, release: Release) -> Result<Self> {
-        let loader = Loader::new(release)?;
-        let tokenizer = loader.tokenizer()?;
         let processor = config.build();
+        let loader = Loader::new(release)?;
+        let tokenizer = loader.tokenizer::<I>()?;
         let weights = loader.model::<I>(&processor.device)?;
 
         Ok(Self {

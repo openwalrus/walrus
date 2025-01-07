@@ -28,11 +28,11 @@ impl Loader {
     }
 
     /// Load the tokenizer
-    pub fn tokenizer(&self) -> Result<Tokenizer> {
+    pub fn tokenizer<I: Inference>(&self) -> Result<Tokenizer> {
         let trepo = self.api.model(TOKENIZER.into());
         let tokenizer = tokenizers::Tokenizer::from_file(trepo.get(self.release.tokenizer())?)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
-        Ok(tokenizer.into())
+        Ok(Tokenizer::new::<I>(tokenizer)?)
     }
 
     /// Load the model

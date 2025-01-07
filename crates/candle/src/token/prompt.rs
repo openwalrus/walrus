@@ -6,7 +6,7 @@ use anyhow::Result;
 /// Prompt builder
 pub struct PromptBuilder<'t> {
     /// The token stream
-    tos: &'t Tokenizer,
+    tos: &'t mut Tokenizer,
 
     /// The text
     text: &'t str,
@@ -23,7 +23,7 @@ pub struct PromptBuilder<'t> {
 
 impl<'t> PromptBuilder<'t> {
     /// Create a new prompt builder
-    pub fn new(tos: &'t Tokenizer, text: &'t str) -> Self {
+    pub fn new(tos: &'t mut Tokenizer, text: &'t str) -> Self {
         Self {
             tos,
             text,
@@ -62,6 +62,7 @@ impl<'t> PromptBuilder<'t> {
             }
         }
 
+        self.tos.sampled(&tokens);
         Ok(tokens)
     }
 }
