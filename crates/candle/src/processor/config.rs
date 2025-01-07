@@ -102,6 +102,8 @@ impl ProcessorConfig {
     }
 
     /// Set the sample length
+    ///
+    /// TODO: if there is a way to embed the sample length in the system prompt?
     pub fn sample_len(mut self, sample_len: usize) -> Self {
         self.sample_len = sample_len;
         self

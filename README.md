@@ -16,7 +16,7 @@ We support quantized models only derived from `gemma` and `llama` family.
 
 ## TODOs
 
-- [ ] Support chat interface ( history prompts )
+- [x] Support chat interface ( history prompts )
 - [ ] Function encoder for llama3 tools (static)
 - [ ] Cydonia as service
   - [ ] RPC support for llama3 tools (remote)

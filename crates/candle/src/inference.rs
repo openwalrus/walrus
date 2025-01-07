@@ -46,8 +46,8 @@ impl Inference for quantized_llama::ModelWeights {
         Ok(model)
     }
 
-    fn forward(&mut self, input: &Tensor, squeeze: usize) -> Result<Tensor> {
-        quantized_llama::ModelWeights::forward(self, input, squeeze)
+    fn forward(&mut self, input: &Tensor, pos: usize) -> Result<Tensor> {
+        quantized_llama::ModelWeights::forward(self, input, pos)
             .map_err(|e| anyhow::anyhow!("failed to forward: {e}"))
     }
 }

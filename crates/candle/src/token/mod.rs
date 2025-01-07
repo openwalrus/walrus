@@ -9,9 +9,16 @@ mod stream;
 
 /// A token stream handler
 pub struct Tokenizer {
+    /// The tokenizer
     tokenizer: tokenizers::Tokenizer,
+    /// The full context including the tokens inferenced by the model
+    /// and the users' input
+    context: Vec<u32>,
+    /// The tokens inferenced by the model
     tokens: Vec<u32>,
+    /// The previous index
     prev_index: usize,
+    /// The current index
     current_index: usize,
 }
 
@@ -19,11 +26,22 @@ impl Tokenizer {
     /// Create a new token stream
     pub fn new(tokenizer: tokenizers::Tokenizer) -> Self {
         Self {
+            context: Vec::new(),
             tokenizer,
             tokens: Vec::new(),
             prev_index: 0,
             current_index: 0,
         }
+    }
+
+    /// Get the position
+    pub fn pos(&self) -> usize {
+        self.context.len()
+    }
+
+    /// Add a token to the context
+    pub fn sampled(&mut self, token: u32) {
+        self.context.push(token);
     }
 
     /// Clear the token stream
@@ -49,6 +67,9 @@ impl Tokenizer {
     }
 
     /// Get the next token
+    ///
+    /// TODO: refactor this function, should return None on the head of
+    /// the tokens, the function name is confusing.
     pub fn next_token(&mut self, token: u32) -> Result<Option<String>> {
         let prev_text = if self.tokens.is_empty() {
             String::new()
@@ -57,6 +78,7 @@ impl Tokenizer {
             self.decode(tokens)?
         };
 
+        self.context.push(token);
         self.tokens.push(token);
         let text = self.decode(&self.tokens[self.prev_index..])?;
         if text.len() > prev_text.len() {

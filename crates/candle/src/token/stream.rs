@@ -68,20 +68,23 @@ impl<'ts, I: Inference> TokenStream<'ts, I> {
             .max_seq_len::<I>()
             .encode::<I>()?;
 
-        for (pos, token) in tokens.iter().enumerate() {
+        self.pos = self.tokenizer.pos();
+        for token in tokens.iter() {
             self.next = self
                 .processor
-                .sample_tokens(&[*token])
-                .pos(pos)
+                .sample_token(*token)
+                .pos(self.pos)
                 .sample(self.weights)?;
 
             self.cur_tokens.push(self.next);
+            self.tokenizer.sampled(self.next);
+            self.pos += 1;
         }
 
-        if let Some(message) = self.tokenizer.next_token(self.next)? {
-            self.initial = Some(message);
+        if let Some(token) = self.tokenizer.next_token(self.next).ok().flatten() {
+            self.initial = Some(token);
         }
-        self.pos = tokens.len();
+
         Ok(())
     }
 }
@@ -90,8 +93,8 @@ impl<I: Inference> Iterator for TokenStream<'_, I> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(s) = self.initial.take() {
-            return Some(s);
+        if let Some(token) = self.initial.take() {
+            return Some(token);
         }
 
         if self.next == self.eos || self.sampled >= self.processor.sample_len {
@@ -100,15 +103,15 @@ impl<I: Inference> Iterator for TokenStream<'_, I> {
 
         self.next = self
             .processor
-            .sample_tokens(&[self.next])
+            .sample_token(self.next)
             .cur_tokens(&self.cur_tokens)
             .pos(self.pos)
             .sample(self.weights)
             .ok()?;
 
         self.pos += 1;
-        self.cur_tokens.push(self.next);
         self.sampled += 1;
+        self.cur_tokens.push(self.next);
 
         Some(
             self.tokenizer

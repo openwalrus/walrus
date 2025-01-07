@@ -3,7 +3,7 @@ use crate::{Inference, Processor};
 
 /// Sample builder
 pub struct SampleBuilder<'s> {
-    tokens: &'s [u32],
+    token: u32,
     unsqueeze: usize,
     pos: usize,
     squeeze: usize,
@@ -13,9 +13,9 @@ pub struct SampleBuilder<'s> {
 
 impl<'s> SampleBuilder<'s> {
     /// Create a new sample builder
-    pub fn new(processor: &'s mut Processor, tokens: &'s [u32]) -> Self {
+    pub fn new(processor: &'s mut Processor, token: u32) -> Self {
         Self {
-            tokens,
+            token,
             unsqueeze: 0,
             pos: 0,
             squeeze: 0,
@@ -50,7 +50,7 @@ impl<'s> SampleBuilder<'s> {
 
     /// Build the sample
     pub fn sample(self, model: &mut impl Inference) -> anyhow::Result<u32> {
-        let input = self.processor.tensor(self.tokens, self.unsqueeze)?;
+        let input = self.processor.tensor(&[self.token], self.unsqueeze)?;
         let mut logits = model.forward(&input, self.pos)?.squeeze(self.squeeze)?;
         if !self.cur_tokens.is_empty() {
             logits = self.processor.repeat_penalty(logits, self.cur_tokens)?;
