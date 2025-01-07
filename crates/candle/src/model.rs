@@ -39,10 +39,10 @@ impl<I: Inference> Model<I> {
     pub fn complete<'ts>(
         &'ts mut self,
         messages: &[Message],
-        complete: bool,
+        last: Option<Message>,
     ) -> Result<TokenStream<'ts, I>> {
-        let formatted = if complete {
-            I::complete_format(messages)?
+        let formatted = if let Some(last) = last {
+            I::complete_format(last, messages)?
         } else {
             I::format(messages)?
         };

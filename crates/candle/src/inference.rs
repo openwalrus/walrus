@@ -24,8 +24,8 @@ pub trait Inference: Sized {
     }
 
     /// Complete the messages
-    fn complete_format(messages: &[Message]) -> Result<String> {
-        <Self::Formatter as chat::Formatter>::complete(messages)
+    fn complete_format(last: Message, messages: &[Message]) -> Result<String> {
+        <Self::Formatter as chat::Formatter>::complete(last, messages)
     }
 
     /// Load model from gguf file

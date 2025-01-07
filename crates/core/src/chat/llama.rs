@@ -40,6 +40,10 @@ impl Llama3 {
         ));
     }
 
+    fn emit_eot(&mut self) {
+        self.output.push_str("<|eot_id|>\n");
+    }
+
     fn emit_complete(&mut self) {
         self.output
             .push_str("<|start_header_id|>assistant<|end_header_id|>\n");
@@ -54,11 +58,24 @@ impl Formatter for Llama3 {
         formatter.emit_begin();
         formatter.default_system();
 
-        Ok([formatter.output, Self::complete(messages)?].concat())
+        for message in messages {
+            match message {
+                Message::System(system) => formatter.emit_system(system),
+                Message::User(user) => formatter.emit_user(user),
+                Message::Assistant(assistant) => formatter.emit_assistant(assistant),
+            }
+        }
+
+        formatter.emit_complete();
+        println!("{}", formatter.output);
+        Ok(formatter.output)
     }
 
-    fn complete(messages: &[Message]) -> anyhow::Result<String> {
+    fn complete(last: Message, messages: &[Message]) -> anyhow::Result<String> {
         let mut formatter = Llama3::default();
+        formatter.output.push_str(last.text());
+        formatter.emit_eot();
+
         for message in messages {
             match message {
                 Message::System(system) => formatter.emit_system(system),
@@ -67,6 +84,7 @@ impl Formatter for Llama3 {
             }
         }
         formatter.emit_complete();
+        println!("{}", formatter.output);
         Ok(formatter.output)
     }
 }
