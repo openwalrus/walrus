@@ -24,7 +24,7 @@ impl Default for Family {
     fn default() -> Self {
         Self::Llama {
             version: LlamaVer::V3_2,
-            params: Params::V1B,
+            params: Params::V3B,
             tag: Tag::Instruct,
         }
     }

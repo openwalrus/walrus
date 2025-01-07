@@ -116,7 +116,7 @@ impl Default for ProcessorConfig {
             temperature: Some(0.6),
             top_p: Some(0.9),
             top_k: Some(50),
-            sample_len: 256,
+            sample_len: 4096,
             repeat_penalty: 1.0,
             repeat_last_n: 64,
         }

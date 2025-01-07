@@ -86,9 +86,10 @@ impl Tokenizer {
         &'ts mut self,
         weights: &'ts mut I,
         processor: &'ts mut Processor,
-        prompt: &'ts str,
+        tokens: &'ts mut Vec<u32>,
+        prompt: String,
     ) -> Result<TokenStream<'ts, I>> {
-        TokenStream::new(weights, processor, self, prompt)
+        TokenStream::new(weights, processor, self, prompt, tokens)
     }
 }
 

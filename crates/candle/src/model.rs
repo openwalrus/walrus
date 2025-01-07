@@ -14,6 +14,9 @@ pub struct Model<I: Inference> {
 
     /// The logits processor of the model
     processor: Processor,
+
+    /// The tokens
+    tokens: Vec<u32>,
 }
 
 impl<I: Inference> Model<I> {
@@ -28,19 +31,27 @@ impl<I: Inference> Model<I> {
             tokenizer,
             weights,
             processor,
+            tokens: vec![],
         })
     }
 
     /// Complete the chat
     pub fn complete<'ts>(
         &'ts mut self,
-        messages: &'ts mut [Message],
+        messages: &[Message],
+        complete: bool,
     ) -> Result<TokenStream<'ts, I>> {
-        let message = messages
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("no messages"))?;
+        let formatted = if complete {
+            I::complete_format(messages)?
+        } else {
+            I::format(messages)?
+        };
 
-        self.tokenizer
-            .stream(&mut self.weights, &mut self.processor, &message.content)
+        self.tokenizer.stream(
+            &mut self.weights,
+            &mut self.processor,
+            &mut self.tokens,
+            formatted,
+        )
     }
 }

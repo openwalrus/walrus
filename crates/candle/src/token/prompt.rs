@@ -11,6 +11,9 @@ pub struct PromptBuilder<'t> {
     /// The text
     text: &'t str,
 
+    /// The previous tokens
+    pre_tokens: &'t [u32],
+
     /// The special tokens
     special_tokens: bool,
 
@@ -27,10 +30,17 @@ impl<'t> PromptBuilder<'t> {
         Self {
             tos,
             text,
+            pre_tokens: &[],
             special_tokens: true,
             sample_len: None,
             max_seq_len: None,
         }
+    }
+
+    /// Set the previous tokens
+    pub fn pre_tokens(mut self, pre_tokens: &'t [u32]) -> Self {
+        self.pre_tokens = pre_tokens;
+        self
     }
 
     /// Set the special tokens
@@ -52,12 +62,11 @@ impl<'t> PromptBuilder<'t> {
     }
 
     /// Encode the text to tokens
-    pub fn encode(self) -> Result<Vec<u32>> {
+    pub fn encode<I: Inference>(self) -> Result<Vec<u32>> {
         let mut tokens = self.tos.encode(self.text, self.special_tokens)?;
+        tokens = [self.pre_tokens.to_vec(), tokens].concat();
         if let (Some(max_seq_len), Some(sample_len)) = (self.max_seq_len, self.sample_len) {
-            // NOTE: we need to subtract 10 to account for the eos token
-            if tokens.len() + sample_len > max_seq_len.saturating_sub(10) {
-                // TODO: handle the case where the tokens are too long
+            if tokens.len() + sample_len > max_seq_len.saturating_sub(I::eos_token().len()) {
                 tokens = tokens[tokens.len().saturating_sub(sample_len)..].to_vec();
             }
         }

@@ -2,7 +2,7 @@
 //!
 //! This library gathers the user interfaces of cydonia
 
-mod chat;
+pub mod chat;
 pub mod manifest;
 
 pub use {
