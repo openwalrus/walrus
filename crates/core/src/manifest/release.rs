@@ -19,7 +19,7 @@ impl Release {
         let family = Family::from(model);
         Self {
             family,
-            quant: Quantization::Q4_0,
+            quant: Quantization::Q4_K_M,
         }
     }
 

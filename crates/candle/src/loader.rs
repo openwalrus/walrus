@@ -1,12 +1,11 @@
 //! Model loader
 
-use crate::{Inference, TokenStream};
+use crate::{Inference, Tokenizer};
 use anyhow::Result;
 use candle_core::Device;
 use ccore::{Release, TOKENIZER};
 use hf_hub::api::sync::Api;
 use std::fs::File;
-use tokenizers::Tokenizer;
 
 /// Huggingface model loader
 ///
@@ -29,11 +28,11 @@ impl Loader {
     }
 
     /// Load the tokenizer
-    pub fn tokenizer(&self) -> Result<TokenStream> {
+    pub fn tokenizer(&self) -> Result<Tokenizer> {
         let trepo = self.api.model(TOKENIZER.into());
-        let tokenizer = Tokenizer::from_file(trepo.get(self.release.tokenizer())?)
+        let tokenizer = tokenizers::Tokenizer::from_file(trepo.get(self.release.tokenizer())?)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
-        Ok(TokenStream::new(tokenizer))
+        Ok(tokenizer.into())
     }
 
     /// Load the model

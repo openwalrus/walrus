@@ -1,22 +1,23 @@
 //! Token stream handler
 
+use crate::{Inference, Processor};
 use anyhow::Result;
-use prompt::PromptBuilder;
-use tokenizers::Tokenizer;
+pub use {prompt::PromptBuilder, stream::TokenStream};
 
 mod prompt;
+mod stream;
 
 /// A token stream handler
-pub struct TokenStream {
-    tokenizer: Tokenizer,
+pub struct Tokenizer {
+    tokenizer: tokenizers::Tokenizer,
     tokens: Vec<u32>,
     prev_index: usize,
     current_index: usize,
 }
 
-impl TokenStream {
+impl Tokenizer {
     /// Create a new token stream
-    pub fn new(tokenizer: Tokenizer) -> Self {
+    pub fn new(tokenizer: tokenizers::Tokenizer) -> Self {
         Self {
             tokenizer,
             tokens: Vec::new(),
@@ -57,6 +58,7 @@ impl TokenStream {
             let tokens = &self.tokens[self.prev_index..self.current_index];
             self.decode(tokens)?
         };
+
         self.tokens.push(token);
         let text = self.decode(&self.tokens[self.prev_index..])?;
         if text.len() > prev_text.len() && text.chars().last().unwrap().is_alphanumeric() {
@@ -77,5 +79,21 @@ impl TokenStream {
     /// Get token from the input string
     pub fn token(&self, token_s: &str) -> Option<u32> {
         self.tokenizer.get_vocab(true).get(token_s).copied()
+    }
+
+    /// Get the token stream
+    pub fn stream<'ts, I: Inference>(
+        &'ts mut self,
+        weights: &'ts mut I,
+        processor: &'ts mut Processor,
+        prompt: &'ts str,
+    ) -> Result<TokenStream<'ts, I>> {
+        TokenStream::new(weights, processor, self, prompt)
+    }
+}
+
+impl From<tokenizers::Tokenizer> for Tokenizer {
+    fn from(tokenizer: tokenizers::Tokenizer) -> Self {
+        Self::new(tokenizer)
     }
 }

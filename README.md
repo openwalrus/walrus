@@ -14,10 +14,20 @@ fn main() {
 
 We support quantized models only derived from `gemma` and `llama` family.
 
-## Special Thanks
+## TODOs
 
-- [candle][candle]
-- [ollama][ollama]
+- [ ] Output tokenstream with `std::io::Write`
+- [ ] Support chat interface ( history prompts )
+- [ ] Function encoder for llama3 tools (static)
+- [ ] Cydonia as service
+  - [ ] RPC support for llama3 tools (remote)
+  - [ ] GraphQL support for llama3 tools (remote)
+- [ ] RAG support
+- [ ] Agent interface
+- [ ] Multi-agent support (single-node)
+- [ ] An application based on the tools
+- [ ] p2p for the decentralized cydonia network (multi-node)
+- [ ] Test gpu
 
 <!-- links -->
 

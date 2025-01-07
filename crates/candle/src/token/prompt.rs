@@ -1,12 +1,12 @@
 //! Prompt builder
 
-use crate::{Inference, TokenStream};
+use crate::{Inference, Tokenizer};
 use anyhow::Result;
 
 /// Prompt builder
 pub struct PromptBuilder<'t> {
     /// The token stream
-    tos: &'t TokenStream,
+    tos: &'t Tokenizer,
 
     /// The text
     text: &'t str,
@@ -23,7 +23,7 @@ pub struct PromptBuilder<'t> {
 
 impl<'t> PromptBuilder<'t> {
     /// Create a new prompt builder
-    pub fn new(tos: &'t TokenStream, text: &'t str) -> Self {
+    pub fn new(tos: &'t Tokenizer, text: &'t str) -> Self {
         Self {
             tos,
             text,
