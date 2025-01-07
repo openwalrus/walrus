@@ -49,8 +49,6 @@ impl Tokenizer {
     }
 
     /// Get the next token
-    ///
-    /// <https://github.com/huggingface/text-generation-inference/blob/5ba53d44a18983a4de32d122f4cb46f4a17d9ef6/server/text_generation_server/models/model.py#L68>
     pub fn next_token(&mut self, token: u32) -> Result<Option<String>> {
         let prev_text = if self.tokens.is_empty() {
             String::new()
@@ -61,7 +59,7 @@ impl Tokenizer {
 
         self.tokens.push(token);
         let text = self.decode(&self.tokens[self.prev_index..])?;
-        if text.len() > prev_text.len() && text.chars().last().unwrap().is_alphanumeric() {
+        if text.len() > prev_text.len() {
             let text = text.split_at(prev_text.len());
             self.prev_index = self.current_index;
             self.current_index = self.tokens.len();
@@ -86,10 +84,9 @@ impl Tokenizer {
         &'ts mut self,
         weights: &'ts mut I,
         processor: &'ts mut Processor,
-        tokens: &'ts mut Vec<u32>,
         prompt: String,
     ) -> Result<TokenStream<'ts, I>> {
-        TokenStream::new(weights, processor, self, prompt, tokens)
+        TokenStream::new(weights, processor, self, prompt)
     }
 }
 

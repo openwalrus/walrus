@@ -23,8 +23,8 @@ fn main() {
         // Generate response
         let mut response = String::new();
         let message = Message::user(input);
-        let stream = model.complete(&[message], last).unwrap();
-        for token in stream {
+        let mut stream = model.complete(&[message], last).unwrap();
+        while let Some(token) = stream.next() {
             response.push_str(&token);
 
             print!("{}", token);

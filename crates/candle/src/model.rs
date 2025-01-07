@@ -6,6 +6,9 @@ use ccore::{Message, Release};
 
 /// Language Model interface
 pub struct Model<I: Inference> {
+    /// The config of the model
+    config: ProcessorConfig,
+
     /// The tokenizer of the model
     tokenizer: Tokenizer,
 
@@ -14,9 +17,6 @@ pub struct Model<I: Inference> {
 
     /// The logits processor of the model
     processor: Processor,
-
-    /// The tokens
-    tokens: Vec<u32>,
 }
 
 impl<I: Inference> Model<I> {
@@ -28,10 +28,10 @@ impl<I: Inference> Model<I> {
         let weights = loader.model::<I>(&processor.device)?;
 
         Ok(Self {
+            config,
             tokenizer,
             weights,
             processor,
-            tokens: vec![],
         })
     }
 
@@ -42,16 +42,13 @@ impl<I: Inference> Model<I> {
         last: Option<Message>,
     ) -> Result<TokenStream<'ts, I>> {
         let formatted = if let Some(last) = last {
+            self.processor = self.config.build();
             I::complete_format(last, messages)?
         } else {
             I::format(messages)?
         };
 
-        self.tokenizer.stream(
-            &mut self.weights,
-            &mut self.processor,
-            &mut self.tokens,
-            formatted,
-        )
+        self.tokenizer
+            .stream(&mut self.weights, &mut self.processor, formatted)
     }
 }

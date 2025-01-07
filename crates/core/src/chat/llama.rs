@@ -19,39 +19,35 @@ impl Llama3 {
         self.output
             .push_str("<|start_header_id|>system<|end_header_id|>\n");
         self.output
-            .push_str("You are a helpful assistant.<|eot_id|>\n");
+            .push_str("You are a helpful assistant.<|eot_id|>");
     }
 
     fn emit_system(&mut self, system: &str) {
         self.output.push_str(&format!(
-            "<|start_header_id|>system<|end_header_id|>\n{system}<|eot_id|>\n"
+            "<|start_header_id|>system<|end_header_id|>\n\n{system}<|eot_id|>"
         ));
     }
 
     fn emit_user(&mut self, user: &str) {
         self.output.push_str(&format!(
-            "<|start_header_id|>user<|end_header_id|>\n{user}<|eot_id|>\n"
+            "<|start_header_id|>user<|end_header_id|>\n\n{user}<|eot_id|>"
         ));
     }
 
     fn emit_assistant(&mut self, assistant: &str) {
         self.output.push_str(&format!(
-            "<|start_header_id|>assistant<|end_header_id|>\n{assistant}<|eot_id|>\n"
+            "<|start_header_id|>assistant<|end_header_id|>\n\n{assistant}<|eot_id|>"
         ));
-    }
-
-    fn emit_eot(&mut self) {
-        self.output.push_str("<|eot_id|>\n");
     }
 
     fn emit_complete(&mut self) {
         self.output
-            .push_str("<|start_header_id|>assistant<|end_header_id|>\n");
+            .push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
     }
 }
 
 impl Formatter for Llama3 {
-    const EOS_TOKEN: &str = "<|end_of_text|>";
+    const EOS_TOKEN: &str = "<|eot_id|>";
 
     fn format(messages: &[Message]) -> anyhow::Result<String> {
         let mut formatter = Llama3::default();
@@ -67,15 +63,11 @@ impl Formatter for Llama3 {
         }
 
         formatter.emit_complete();
-        println!("{}", formatter.output);
         Ok(formatter.output)
     }
 
-    fn complete(last: Message, messages: &[Message]) -> anyhow::Result<String> {
+    fn complete(_last: Message, messages: &[Message]) -> anyhow::Result<String> {
         let mut formatter = Llama3::default();
-        formatter.output.push_str(last.text());
-        formatter.emit_eot();
-
         for message in messages {
             match message {
                 Message::System(system) => formatter.emit_system(system),
@@ -84,7 +76,6 @@ impl Formatter for Llama3 {
             }
         }
         formatter.emit_complete();
-        println!("{}", formatter.output);
         Ok(formatter.output)
     }
 }

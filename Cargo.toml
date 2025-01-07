@@ -8,9 +8,9 @@ candle = { path = "crates/candle", package = "cydonia-candle" }
 
 # crates.io
 anyhow = "1"
-candle-core = "0.8.1"
-candle-nn = "0.8.1"
-candle-transformers = "0.8.1"
+candle-core = { version = "0.8.1", features = ["accelerate"] }
+candle-nn = { version = "0.8.1", features = ["accelerate"] }
+candle-transformers = { version = "0.8.1", features = ["accelerate"] }
 clap = "4.5.23"
 dirs = "5.0.1"
 hf-hub = "0.4.1"
