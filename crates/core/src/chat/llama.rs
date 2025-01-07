@@ -66,7 +66,7 @@ impl Formatter for Llama3 {
         Ok(formatter.output)
     }
 
-    fn complete(_last: Message, messages: &[Message]) -> anyhow::Result<String> {
+    fn complete(messages: &[Message]) -> anyhow::Result<String> {
         let mut formatter = Llama3::default();
         for message in messages {
             match message {

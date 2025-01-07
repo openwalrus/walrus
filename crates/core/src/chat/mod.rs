@@ -83,5 +83,5 @@ pub trait Formatter {
     fn format(messages: &[Message]) -> anyhow::Result<String>;
 
     /// Format a single message
-    fn complete(last: Message, messages: &[Message]) -> anyhow::Result<String>;
+    fn complete(messages: &[Message]) -> anyhow::Result<String>;
 }

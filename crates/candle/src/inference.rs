@@ -19,13 +19,13 @@ pub trait Inference: Sized {
     }
 
     /// Format the messages into a prompt
-    fn format(messages: &[Message]) -> Result<String> {
+    fn prompt(messages: &[Message]) -> Result<String> {
         <Self::Formatter as chat::Formatter>::format(messages)
     }
 
     /// Complete the messages
-    fn complete_format(last: Message, messages: &[Message]) -> Result<String> {
-        <Self::Formatter as chat::Formatter>::complete(last, messages)
+    fn complete(messages: &[Message]) -> Result<String> {
+        <Self::Formatter as chat::Formatter>::complete(messages)
     }
 
     /// Load model from gguf file

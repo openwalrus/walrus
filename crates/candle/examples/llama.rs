@@ -4,8 +4,7 @@ use std::io::Write;
 
 fn main() {
     let mut model = Llama::new(ProcessorConfig::default(), Release::default()).unwrap();
-
-    let mut last = None;
+    let mut init = true;
     loop {
         print!("> ");
         std::io::stdout().flush().unwrap();
@@ -24,7 +23,7 @@ fn main() {
         let mut response = String::new();
         let message = Message::user(input);
         let stream = model
-            .complete(&[message], last)
+            .complete(&[message], init)
             .expect("failed to generate response");
         for token in stream {
             response.push_str(&token);
@@ -34,6 +33,6 @@ fn main() {
         }
         println!();
 
-        last = Some(Message::assistant(response));
+        init = false;
     }
 }
