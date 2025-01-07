@@ -57,10 +57,10 @@ impl Display for Release {
 fn test_fmt_release() {
     assert_eq!(
         Release::default().to_string(),
-        "llama-3.2-1B-Instruct.Q4_K_M"
+        "Llama-3.2-3B-Instruct.Q4_K_M"
     );
     assert_eq!(
         Release::default().model(),
-        "llama-3.2-1B-Instruct.Q4_K_M.gguf"
+        "Llama-3.2-3B-Instruct.Q4_K_M.gguf"
     );
 }
