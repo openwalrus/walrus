@@ -1,12 +1,12 @@
 //! Prompt builder
 
-use crate::{Inference, TokenStream};
+use crate::{Inference, Tokenizer};
 use anyhow::Result;
 
 /// Prompt builder
 pub struct PromptBuilder<'t> {
     /// The token stream
-    tos: &'t TokenStream,
+    tos: &'t mut Tokenizer,
 
     /// The text
     text: &'t str,
@@ -23,11 +23,11 @@ pub struct PromptBuilder<'t> {
 
 impl<'t> PromptBuilder<'t> {
     /// Create a new prompt builder
-    pub fn new(tos: &'t TokenStream, text: &'t str) -> Self {
+    pub fn new(tos: &'t mut Tokenizer, text: &'t str) -> Self {
         Self {
             tos,
             text,
-            special_tokens: true,
+            special_tokens: false,
             sample_len: None,
             max_seq_len: None,
         }
@@ -52,16 +52,17 @@ impl<'t> PromptBuilder<'t> {
     }
 
     /// Encode the text to tokens
-    pub fn encode(self) -> Result<Vec<u32>> {
+    pub fn encode<I: Inference>(self) -> Result<Vec<u32>> {
         let mut tokens = self.tos.encode(self.text, self.special_tokens)?;
         if let (Some(max_seq_len), Some(sample_len)) = (self.max_seq_len, self.sample_len) {
-            // NOTE: we need to subtract 10 to account for the eos token
-            if tokens.len() + sample_len > max_seq_len.saturating_sub(10) {
-                // TODO: handle the case where the tokens are too long
-                tokens = tokens[tokens.len().saturating_sub(sample_len)..].to_vec();
+            let eos_token_len = I::eos_token().len();
+            if tokens.len() + sample_len > max_seq_len.saturating_sub(eos_token_len) {
+                let to_remove = tokens.len() + sample_len + eos_token_len - max_seq_len;
+                tokens = tokens[tokens.len().saturating_sub(to_remove)..].to_vec();
             }
         }
 
+        self.tos.sampled(&tokens);
         Ok(tokens)
     }
 }

@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "accelerate-src"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "415ed64958754dbe991900f3940677e6a7eefb4d7367afd70d642677b0c7d19d"
+
+[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -151,9 +157,11 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1e306c8a4276ba57ce9fac76d823cc8c8a7fca14bf222ac20ad8b12c4273152"
 dependencies = [
+ "accelerate-src",
  "byteorder",
  "gemm",
  "half",
+ "libc",
  "memmap2",
  "num-traits",
  "num_cpus",
@@ -173,6 +181,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39d417059c44d719fd03a0f711ccfe148d341469c9273d4b5731ebe965b2c97e"
 dependencies = [
+ "accelerate-src",
  "candle-core",
  "half",
  "num-traits",
@@ -188,6 +197,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "962a277e90dea20968164175138b836bba8b51b57505579fd628d79933da2b70"
 dependencies = [
+ "accelerate-src",
  "byteorder",
  "candle-core",
  "candle-nn",
@@ -307,6 +317,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "serde",
+ "tracing",
 ]
 
 [[package]]

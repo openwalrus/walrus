@@ -102,6 +102,8 @@ impl ProcessorConfig {
     }
 
     /// Set the sample length
+    ///
+    /// TODO: if there is a way to embed the sample length in the system prompt?
     pub fn sample_len(mut self, sample_len: usize) -> Self {
         self.sample_len = sample_len;
         self
@@ -112,11 +114,11 @@ impl Default for ProcessorConfig {
     fn default() -> Self {
         Self {
             gpu: false,
-            seed: Some(1_024_243_212),
+            seed: None,
             temperature: Some(0.6),
             top_p: Some(0.9),
             top_k: Some(50),
-            sample_len: 256,
+            sample_len: 1024,
             repeat_penalty: 1.0,
             repeat_last_n: 64,
         }

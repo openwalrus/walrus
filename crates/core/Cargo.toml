@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
+tracing.workspace = true
