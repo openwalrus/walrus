@@ -1,0 +1,127 @@
+//! Chat command
+
+use super::Config;
+use crate::DeepSeek;
+use anyhow::Result;
+use clap::{Args, ValueEnum};
+use futures_util::StreamExt;
+use std::{
+    fmt::{Display, Formatter},
+    io::{BufRead, Write},
+};
+use ucore::{Chat, Client, LLM, Message};
+
+/// Chat command arguments
+#[derive(Debug, Args)]
+pub struct ChatCmd {
+    /// The model provider to use
+    #[arg(short, long, default_value = "deepseek")]
+    pub model: Model,
+
+    /// The message to send (if empty, starts interactive mode)
+    pub message: Option<String>,
+}
+
+impl ChatCmd {
+    /// Run the chat command
+    pub async fn run(&self, stream: bool) -> Result<()> {
+        let config = Config::load()?;
+        let key = config
+            .key
+            .get(&self.model.to_string())
+            .ok_or_else(|| anyhow::anyhow!("missing {:?} API key in config", self.model))?;
+        let provider = match self.model {
+            Model::Deepseek => DeepSeek::new(Client::new(), key)?,
+        };
+
+        let mut chat = provider.chat(config.config().clone());
+        if let Some(msg) = &self.message {
+            Self::send(&mut chat, Message::user(msg), stream).await?;
+        } else {
+            let stdin = std::io::stdin();
+            let mut stdout = std::io::stdout();
+            loop {
+                print!("> ");
+                stdout.flush()?;
+
+                let mut input = String::new();
+                if stdin.lock().read_line(&mut input)? == 0 {
+                    break;
+                }
+
+                let input = input.trim();
+                if input.is_empty() {
+                    continue;
+                }
+                if input == "/quit" || input == "/exit" {
+                    break;
+                }
+
+                Self::send(&mut chat, Message::user(input), stream).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn send(chat: &mut Chat<DeepSeek>, message: Message, stream: bool) -> Result<()> {
+        if stream {
+            let mut response_content = String::new();
+            {
+                let mut reasoning = false;
+                let mut stream = std::pin::pin!(chat.stream(message));
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk?;
+                    if let Some(content) = chunk.content() {
+                        if reasoning {
+                            print!("\ncontent: ");
+                            reasoning = false;
+                        }
+                        print!("{content}");
+                        response_content.push_str(content);
+                    }
+
+                    if let Some(reasoning_content) = chunk.reasoning_content() {
+                        if !reasoning {
+                            print!("thinking: ");
+                            reasoning = true;
+                        }
+                        print!("{reasoning_content}");
+                        response_content.push_str(reasoning_content);
+                    }
+                }
+            }
+            println!();
+            chat.messages
+                .push(Message::assistant(&response_content).into());
+        } else {
+            let response = chat.send(message).await?;
+            if let Some(reasoning_content) = response.reasoning() {
+                println!("reasoning: {reasoning_content}");
+            }
+
+            if let Some(content) = response.message() {
+                println!("{content}");
+            }
+            chat.messages
+                .push(Message::assistant(response.message().unwrap_or(&String::new())).into());
+        }
+        Ok(())
+    }
+}
+
+/// Available model providers
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub enum Model {
+    /// DeepSeek model
+    #[default]
+    Deepseek,
+}
+
+impl Display for Model {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Model::Deepseek => write!(f, "deepseek"),
+        }
+    }
+}
