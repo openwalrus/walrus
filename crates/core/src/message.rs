@@ -42,6 +42,15 @@ impl Message {
             content: content.into(),
         }
     }
+
+    /// Create a new tool message
+    pub fn tool(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Tool,
+            name: String::new(),
+            content: content.into(),
+        }
+    }
 }
 
 /// A tool message in the chat

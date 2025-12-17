@@ -11,14 +11,3 @@ keywords.workspace = true
 [dependencies]
 deepseek.workspace = true
 ucore.workspace = true
-
-# crates-io dependencies
-anyhow.workspace = true
-clap.workspace = true
-dirs.workspace = true
-futures-util.workspace = true
-serde.workspace = true
-tokio.workspace = true
-toml.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true

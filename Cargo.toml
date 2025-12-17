@@ -12,11 +12,12 @@ documentation = "https://cydonia.docs.rs"
 keywords = ["llm", "agent", "ai"]
 
 [workspace.dependencies]
-model = { path = "legacy/model", package = "cydonia-model" }
 candle = { path = "crates/candle", package = "cydonia-candle" }
-ucore = { path = "crates/core", package = "ullm-core" }
 deepseek = { path = "llm/deepseek", package = "ullm-deepseek" }
-
+model = { path = "legacy/model", package = "cydonia-model" }
+ullm = { path = "crates/ullm" }
+ucore = { path = "crates/core", package = "ullm-core" }
+ucli = { path = "crates/cli", package = "ullm-cli" }
 
 # crates.io
 anyhow = "1"
