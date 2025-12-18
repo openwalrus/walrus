@@ -1,9 +1,12 @@
 //! Chat abstractions for the unified LLM Interfaces
 
-use crate::{Agent, Config, FinishReason, General, LLM, Response, Role, message::Message};
+use crate::{
+    Agent, Config, FinishReason, General, LLM, Response, Role, ToolCall, message::Message,
+};
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use std::collections::HashMap;
 
 const MAX_TOOL_CALLS: usize = 16;
 
@@ -120,13 +123,25 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 let inner = self.provider.stream(config.clone(), &messages, self.usage);
                 futures_util::pin_mut!(inner);
 
-                let mut tool_calls = None;
+                let mut tool_calls: HashMap<u32, ToolCall> = HashMap::new();
                 let mut message = String::new();
                 let mut reasoning = String::new();
                 while let Some(chunk) = inner.next().await {
                     let chunk = chunk?;
                     if let Some(calls) = chunk.tool_calls() {
-                        tool_calls = Some(calls.to_vec());
+                        for call in calls {
+                            let entry = tool_calls.entry(call.index).or_default();
+                            if !call.id.is_empty() {
+                                entry.id.clone_from(&call.id);
+                            }
+                            if !call.call_type.is_empty() {
+                                entry.call_type.clone_from(&call.call_type);
+                            }
+                            if !call.function.name.is_empty() {
+                                entry.function.name.clone_from(&call.function.name);
+                            }
+                            entry.function.arguments.push_str(&call.function.arguments);
+                        }
                     }
 
                     if let Some(content) = chunk.content() {
@@ -147,15 +162,17 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                     }
                 }
 
-                if !message.is_empty() {
-                    let reasoning = if reasoning.is_empty() { None } else { Some(reasoning) };
-                    self.messages.push(Message::assistant(&message, reasoning, tool_calls.as_deref()));
-                }
-
-                if let Some(calls) = tool_calls {
+                let reasoning = if reasoning.is_empty() { None } else { Some(reasoning) };
+                if !tool_calls.is_empty() {
+                    let mut calls: Vec<_> = tool_calls.into_values().collect();
+                    calls.sort_by_key(|c| c.index);
+                    self.messages.push(Message::assistant(&message, reasoning, Some(&calls)));
                     let result = self.agent.dispatch(&calls).await;
-                    self.messages.extend(result.into_iter().map(Into::into));
+                    self.messages.extend(result);
                 } else {
+                    if !message.is_empty() {
+                        self.messages.push(Message::assistant(&message, reasoning, None));
+                    }
                     break;
                 }
             }

@@ -3,6 +3,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use schemars::JsonSchema;
+use serde::Deserialize;
 use ullm::{Agent, Message, StreamChunk, Tool, ToolCall};
 
 /// Anto - a basic agent with tools for testing tool calls
@@ -11,10 +12,10 @@ pub struct Anto;
 
 /// Parameters for the get_time tool
 #[allow(dead_code)]
-#[derive(JsonSchema)]
+#[derive(JsonSchema, Deserialize)]
 struct GetTimeParams {
-    /// Optional timezone (e.g., "UTC", "Local"). Defaults to local time.
-    timezone: Option<String>,
+    /// If returns UNIX timestamp instead
+    timestamp: bool,
 }
 
 impl Agent for Anto {
@@ -38,7 +39,15 @@ impl Agent for Anto {
                 .map(|call| {
                     let result = match call.function.name.as_str() {
                         "get_time" => {
-                            Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                            tracing::debug!("get_time arguments: {}", call.function.arguments);
+                            let args =
+                                serde_json::from_str::<GetTimeParams>(&call.function.arguments)
+                                    .unwrap();
+                            if args.timestamp {
+                                Utc::now().timestamp().to_string()
+                            } else {
+                                Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                            }
                         }
                         _ => format!("Unknown tool: {}", call.function.name),
                     };

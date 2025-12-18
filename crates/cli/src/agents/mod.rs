@@ -1,10 +1,9 @@
 //! CLI Agents
 
-mod anto;
-
 pub use anto::Anto;
-
 use clap::ValueEnum;
+
+mod anto;
 
 /// Available agent types
 #[derive(Debug, Clone, Copy, ValueEnum)]

@@ -31,7 +31,7 @@ impl LLM for DeepSeek {
     /// Send a message to the LLM
     async fn send(&mut self, req: &Request, messages: &[Message]) -> Result<Response> {
         let body = req.messages(messages);
-        tracing::debug!("request: {}", serde_json::to_string_pretty(&body)?);
+        tracing::debug!("request: {}", serde_json::to_string(&body)?);
         let text = self
             .client
             .request(Method::POST, ENDPOINT)
@@ -65,7 +65,7 @@ impl LLM for DeepSeek {
         let body = req.messages(messages).stream(usage);
         tracing::debug!(
             "request: {}",
-            serde_json::to_string_pretty(&body).unwrap_or_default()
+            serde_json::to_string(&body).unwrap_or_default()
         );
         let request = self
             .client
@@ -78,7 +78,7 @@ impl LLM for DeepSeek {
             while let Some(chunk) = stream.next().await {
                 let text = String::from_utf8_lossy(&chunk?).into_owned();
                 for data in text.split("data: ").skip(1).filter(|s| !s.starts_with("[DONE]")) {
-                    tracing::debug!("response: {data}");
+                    tracing::debug!("response: {}", data.trim());
                     if let Ok(chunk) = serde_json::from_str(data.trim()) {
                         yield chunk;
                     } else {
