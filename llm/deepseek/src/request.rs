@@ -105,7 +105,13 @@ impl From<General> for Request {
             stop: None,
             stream: None,
             stream_options: None,
-            thinking: None,
+            thinking: if config.think {
+                Some(json!({
+                    "type": "enabled"
+                }))
+            } else {
+                None
+            },
             temperature: None,
             tool_choice: None,
             tools: None,

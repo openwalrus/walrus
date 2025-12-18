@@ -1,8 +1,7 @@
 //! Turbofish LLM message
 
-use serde::{Deserialize, Serialize};
-
 use crate::ToolCall;
+use serde::{Deserialize, Serialize};
 
 /// A message in the chat
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -24,7 +23,7 @@ pub struct Message {
 
     /// The reasoning content
     #[serde(skip_serializing_if = "String::is_empty")]
-    pub reasoning: String,
+    pub reasoning_content: String,
 
     /// The tool call id
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -63,7 +62,7 @@ impl Message {
         Self {
             role: Role::Assistant,
             content: content.into(),
-            reasoning: reasoning.unwrap_or_default().into(),
+            reasoning_content: reasoning.unwrap_or_default().into(),
             tool_calls: tool_calls.unwrap_or_default().to_vec(),
             ..Default::default()
         }

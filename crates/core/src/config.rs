@@ -20,8 +20,10 @@ pub struct General {
     /// The model to use
     pub model: String,
 
+    /// Whether to enable thinking
+    pub think: bool,
+
     /// The tools to use
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tool>>,
 
     /// Whether to return the usage information in stream mode
@@ -33,6 +35,7 @@ impl General {
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
+            think: false,
             tools: None,
             usage: false,
         }
@@ -43,6 +46,7 @@ impl Default for General {
     fn default() -> Self {
         Self {
             model: "deepseek-chat".into(),
+            think: false,
             tools: None,
             usage: false,
         }

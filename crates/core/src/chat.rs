@@ -40,6 +40,18 @@ impl<P: LLM> Chat<P, ()> {
 }
 
 impl<P: LLM, A: Agent> Chat<P, A> {
+    /// Get the chat messages
+    pub fn messages(&self) -> Vec<Message> {
+        self.messages
+            .clone()
+            .into_iter()
+            .map(|mut m| {
+                m.reasoning_content = String::new();
+                m
+            })
+            .collect()
+    }
+
     /// Add the system prompt to the chat
     pub fn system<B: Agent>(mut self, agent: B) -> Chat<P, B> {
         let mut messages = self.messages;
@@ -104,7 +116,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
         async_stream::try_stream! {
             for _ in 0..MAX_TOOL_CALLS {
-                let messages = self.messages.clone();
+                let messages = self.messages();
                 let inner = self.provider.stream(config.clone(), &messages, self.usage);
                 futures_util::pin_mut!(inner);
 
@@ -147,8 +159,6 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                     break;
                 }
             }
-
-            Err(anyhow::anyhow!("max tool calls reached"))?;
         }
     }
 }

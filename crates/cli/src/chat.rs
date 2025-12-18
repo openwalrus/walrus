@@ -22,6 +22,10 @@ pub struct ChatCmd {
     #[arg(short, long)]
     pub agent: Option<AgentKind>,
 
+    /// Whether to enable thinking
+    #[arg(short, long)]
+    pub think: bool,
+
     /// The message to send (if empty, starts interactive mode)
     pub message: Option<String>,
 }
@@ -122,7 +126,7 @@ impl ChatCmd {
             }
 
             if let Some(content) = response.message() {
-                println!("{content}");
+                println!("content: {content}");
             }
         }
         Ok(())
