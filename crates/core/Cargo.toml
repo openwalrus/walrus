@@ -1,5 +1,6 @@
 [package]
 name = "cydonia-core"
+description = "Cydonia core abstractions"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

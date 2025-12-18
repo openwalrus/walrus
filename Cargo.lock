@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "cydonia-candle"
-version = "0.0.0"
+version = "0.0.9"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -533,7 +533,7 @@ dependencies = [
 
 [[package]]
 name = "cydonia-model"
-version = "0.0.0"
+version = "0.0.9"
 dependencies = [
  "anyhow",
  "serde",

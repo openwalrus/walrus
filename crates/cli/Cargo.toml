@@ -1,5 +1,6 @@
 [package]
 name = "cydonia-cli"
+description = "Cydonia command line interfaces"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
