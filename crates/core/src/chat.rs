@@ -48,8 +48,8 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         self.messages
             .clone()
             .into_iter()
-            .map(|mut m| {
-                m.reasoning_content = String::new();
+            .map(|m| {
+                // m.reasoning_content = String::new();
                 m
             })
             .collect()
@@ -163,17 +163,15 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 }
 
                 let reasoning = if reasoning.is_empty() { None } else { Some(reasoning) };
-                if !tool_calls.is_empty() {
+                if tool_calls.is_empty() {
+                    self.messages.push(Message::assistant(&message, reasoning, None));
+                    break;
+                } else {
                     let mut calls: Vec<_> = tool_calls.into_values().collect();
                     calls.sort_by_key(|c| c.index);
                     self.messages.push(Message::assistant(&message, reasoning, Some(&calls)));
                     let result = self.agent.dispatch(&calls).await;
                     self.messages.extend(result);
-                } else {
-                    if !message.is_empty() {
-                        self.messages.push(Message::assistant(&message, reasoning, None));
-                    }
-                    break;
                 }
             }
         }

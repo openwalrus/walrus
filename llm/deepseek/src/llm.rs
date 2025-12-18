@@ -79,10 +79,9 @@ impl LLM for DeepSeek {
                 let text = String::from_utf8_lossy(&chunk?).into_owned();
                 for data in text.split("data: ").skip(1).filter(|s| !s.starts_with("[DONE]")) {
                     tracing::debug!("response: {}", data.trim());
-                    if let Ok(chunk) = serde_json::from_str(data.trim()) {
-                        yield chunk;
-                    } else {
-                        continue;
+                    match serde_json::from_str::<StreamChunk>(data.trim()) {
+                        Ok(chunk) => yield chunk,
+                        Err(e) => tracing::warn!("failed to parse chunk: {e}, data: {}", data.trim()),
                     }
                 }
             }
