@@ -27,7 +27,7 @@ pub struct ToolCall {
     pub id: String,
 
     /// The index of the tool call (used in streaming)
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing)]
     pub index: u32,
 
     /// The type of tool (currently only "function")
