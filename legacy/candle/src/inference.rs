@@ -2,7 +2,7 @@
 use anyhow::Result;
 use candle_core::{quantized::gguf_file::Content, Device, Tensor};
 use candle_transformers::models::quantized_llama;
-use ccore::{chat, Message};
+use model::{chat, Message};
 use std::fs::File;
 
 /// The inference interface for language models

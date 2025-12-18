@@ -1,25 +1,42 @@
 [workspace]
-resolver = "2"
-members = ["crates/*"]
+resolver = "3"
+members = ["legacy/*"]
+
+[workspace.package]
+version = "0.0.9"
+edition = "2024"
+authors = ["clearloop <tianyi.gc@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/clearloop/cydonia"
 
 [workspace.dependencies]
-ccore = { path = "crates/core", package = "cydonia-core" }
+model = { path = "legacy/model", package = "cydonia-model" }
 candle = { path = "crates/candle", package = "cydonia-candle" }
 
 # crates.io
 anyhow = "1"
+async-stream = "0.3"
+bytes = "1.11.0"
+clap = { version = "4.5", features = ["derive"] }
+derive_more = { version = "2.1", features = ["display", "try_from"] }
+dirs = "6"
+futures-core = "0.3"
+futures-util = "0.3"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+schemars = "1.1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+toml = "0.9.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# legacy dependencies
 candle-core = "0.8.1"
 candle-nn = "0.8.1"
 candle-transformers = "0.8.1"
-clap = "4.5.23"
-dirs = "5.0.1"
 hf-hub = "0.4.1"
 llamac-sys = { version = "0.1.86", package = "llama-cpp-sys-2" }
-once_cell = "1.20.2"
+once_cell = "1.21"
 rand = "0.8.5"
-serde = "1.0.217"
-serde_json = "1.0.134"
 tokenizers = "0.21.0"
-toml = "0.8.19"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.19"

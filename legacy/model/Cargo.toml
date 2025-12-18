@@ -1,5 +1,5 @@
 [package]
-name = "cydonia-core"
+name = "cydonia-model"
 version = "0.0.0"
 edition = "2021"
 

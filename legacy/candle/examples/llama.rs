@@ -1,5 +1,5 @@
-use ccore::{Message, Release};
 use cydonia_candle::{Llama, ProcessorConfig};
+use model::{Message, Release};
 use std::io::Write;
 
 fn main() {
