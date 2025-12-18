@@ -1,6 +1,6 @@
 //! Device detection
 
-use candle_core::{utils, Device};
+use candle_core::{Device, utils};
 
 /// Detect the device
 pub fn detect(cpu: bool) -> anyhow::Result<Device> {

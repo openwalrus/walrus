@@ -1,11 +1,12 @@
 //! CLI commands for ullm
 
-mod chat;
-mod config;
-
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, fmt};
 pub use {chat::ChatCmd, config::Config};
+
+mod agents;
+mod chat;
+mod config;
 
 /// Unified LLM Interface CLI
 #[derive(Debug, Parser)]

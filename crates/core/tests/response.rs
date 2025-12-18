@@ -1,6 +1,6 @@
 //! Tests for the response module
 
-use ullm_core::{Response, StreamChunk};
+use cydonia_core::{Response, StreamChunk};
 
 const DEEPSEEK_RESPONSE_JSON: &str = include_str!("../templates/deepseek/response.json");
 const DEEPSEEK_STREAM_CHUNK_JSON: &str = include_str!("../templates/deepseek/stream.json");

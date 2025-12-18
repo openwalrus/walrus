@@ -1,7 +1,13 @@
 [package]
 name = "cydonia-model"
-version = "0.0.0"
-edition = "2021"
+description = "Cydonia model utils"
+documentation = "https://docs.rs/cydonia-model"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
 
 [dependencies]
 anyhow.workspace = true

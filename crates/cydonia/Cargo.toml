@@ -1,13 +1,14 @@
 [package]
-name = "ullm"
+name = "cydonia"
+description = "Cydonia umbrella crate"
+documentation = "https://docs.rs/cydonia"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-documentation.workspace = true
 keywords.workspace = true
 
 [dependencies]
 deepseek.workspace = true
-ucore.workspace = true
+ccore.workspace = true

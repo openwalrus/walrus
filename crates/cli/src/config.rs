@@ -10,7 +10,7 @@ static CONFIG: LazyLock<PathBuf> =
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     /// The configuration for the CLI
-    config: ullm::General,
+    pub config: cydonia::General,
 
     /// The API keys for LLMs
     pub key: BTreeMap<String, String>,
@@ -31,7 +31,7 @@ impl Config {
     }
 
     /// Get the core config
-    pub fn config(&self) -> &ullm::General {
+    pub fn config(&self) -> &cydonia::General {
         &self.config
     }
 }
@@ -39,7 +39,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            config: ullm::General::default(),
+            config: cydonia::General::default(),
             key: [("deepseek".to_string(), "YOUR_API_KEY".to_string())]
                 .into_iter()
                 .collect::<_>(),

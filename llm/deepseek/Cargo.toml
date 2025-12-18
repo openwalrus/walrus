@@ -1,15 +1,16 @@
 [package]
-name = "ullm-deepseek"
+name = "cydonia-deepseek"
+description = "Cydonia DeepSeek provider implementation"
+documentation = "https://docs.rs/cydonia-deepseek"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-documentation.workspace = true
 keywords.workspace = true
 
 [dependencies]
-ucore.workspace = true
+ccore.workspace = true
 
 # crates-io dependencies
 anyhow.workspace = true
