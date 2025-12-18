@@ -1,12 +1,12 @@
 [package]
 name = "cydonia-cli"
 description = "Cydonia command line interfaces"
+documentation = "https://docs.rs/cydonia-cli"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-documentation.workspace = true
 keywords.workspace = true
 
 [dependencies]

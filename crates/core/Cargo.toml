@@ -1,12 +1,12 @@
 [package]
 name = "cydonia-core"
 description = "Cydonia core abstractions"
+documentation = "https://docs.rs/cydonia-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-documentation.workspace = true
 keywords.workspace = true
 
 [dependencies]

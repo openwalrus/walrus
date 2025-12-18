@@ -1,12 +1,12 @@
 [package]
 name = "cydonia"
 description = "Cydonia umbrella crate"
+documentation = "https://docs.rs/cydonia"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-documentation.workspace = true
 keywords.workspace = true
 
 [dependencies]

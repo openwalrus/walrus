@@ -6,9 +6,8 @@ members = ["crates/*", "llm/*", "legacy/*"]
 version = "0.0.9"
 edition = "2024"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
-license = "MIT"
+license = "GPL-3.0"
 repository = "https://github.com/clearloop/cydonia"
-documentation = "https://cydonia.docs.rs"
 keywords = ["llm", "agent", "ai"]
 
 [workspace.dependencies]
