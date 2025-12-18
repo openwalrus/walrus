@@ -1,8 +1,9 @@
 //! Core abstractions for Unified LLM Interface
 
 pub use {
+    agent::Agent,
     chat::{Chat, ChatMessage},
-    config::Config,
+    config::{Config, General},
     message::{Message, Role},
     provider::LLM,
     reqwest::{self, Client},
@@ -11,15 +12,14 @@ pub use {
         ResponseMessage, TopLogProb, Usage,
     },
     stream::{Delta, StreamChoice, StreamChunk},
-    template::Template,
     tool::{FunctionCall, Tool, ToolCall, ToolChoice},
 };
 
+mod agent;
 mod chat;
 mod config;
 mod message;
 mod provider;
 mod response;
 mod stream;
-mod template;
 mod tool;

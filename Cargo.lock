@@ -2951,17 +2951,23 @@ dependencies = [
 name = "ullm"
 version = "0.0.9"
 dependencies = [
+ "ullm-core",
+ "ullm-deepseek",
+]
+
+[[package]]
+name = "ullm-cli"
+version = "0.0.9"
+dependencies = [
  "anyhow",
  "clap",
  "dirs",
  "futures-util",
  "serde",
- "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
- "ullm-core",
- "ullm-deepseek",
+ "ullm",
 ]
 
 [[package]]
@@ -2969,8 +2975,10 @@ name = "ullm-core"
 version = "0.0.9"
 dependencies = [
  "anyhow",
+ "async-stream",
  "derive_more",
  "futures-core",
+ "futures-util",
  "reqwest",
  "schemars",
  "serde",

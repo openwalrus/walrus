@@ -1,5 +1,5 @@
 [package]
-name = "ullm-core"
+name = "ullm-cli"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,12 +9,14 @@ documentation.workspace = true
 keywords.workspace = true
 
 [dependencies]
+ullm.workspace = true
+
+# crates-io dependencies
 anyhow.workspace = true
-async-stream.workspace = true
-derive_more.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-futures-core.workspace = true
+clap.workspace = true
+dirs.workspace = true
 futures-util.workspace = true
-reqwest.workspace = true
-schemars.workspace = true
+serde.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

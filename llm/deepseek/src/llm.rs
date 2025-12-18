@@ -6,7 +6,7 @@ use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use ucore::{
-    Chat, ChatMessage, Client, Config, LLM, Response, StreamChunk,
+    ChatMessage, Client, LLM, Response, StreamChunk,
     reqwest::{
         Method,
         header::{self, HeaderMap},
@@ -17,7 +17,7 @@ const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
 impl LLM for DeepSeek {
     /// The chat configuration.
-    type ChatConfig = Config;
+    type ChatConfig = Request;
 
     /// Create a new LLM provider
     fn new(client: Client, key: &str) -> Result<Self> {
@@ -28,22 +28,13 @@ impl LLM for DeepSeek {
         Ok(Self { client, headers })
     }
 
-    /// Create a new chat
-    fn chat(&self, config: Config) -> Chat<Self> {
-        Chat {
-            config,
-            messages: Vec::new(),
-            provider: self.clone(),
-        }
-    }
-
     /// Send a message to the LLM
-    async fn send(&mut self, config: &Config, messages: &[ChatMessage]) -> Result<Response> {
+    async fn send(&mut self, req: &Request, messages: &[ChatMessage]) -> Result<Response> {
         let text = self
             .client
             .request(Method::POST, ENDPOINT)
             .headers(self.headers.clone())
-            .json(&Request::from(config).messages(messages))
+            .json(&req.messages(messages))
             .send()
             .await?
             .text()
@@ -64,18 +55,15 @@ impl LLM for DeepSeek {
     /// Send a message to the LLM with streaming
     fn stream(
         &mut self,
-        config: &Config,
+        req: Request,
         messages: &[ChatMessage],
+        usage: bool,
     ) -> impl Stream<Item = Result<StreamChunk>> {
         let request = self
             .client
             .request(Method::POST, ENDPOINT)
             .headers(self.headers.clone())
-            .json(
-                &Request::from(config)
-                    .messages(messages)
-                    .stream(config.usage),
-            );
+            .json(&req.messages(messages).stream(usage));
 
         try_stream! {
             let mut stream = request.send().await?.bytes_stream();

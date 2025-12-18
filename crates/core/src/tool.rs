@@ -44,7 +44,7 @@ pub struct FunctionCall {
 }
 
 /// Controls which tool is called by the model
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub enum ToolChoice {
     /// Model will not call any tool
     #[serde(rename = "none")]
@@ -52,6 +52,7 @@ pub enum ToolChoice {
 
     /// Model can pick between generating a message or calling tools
     #[serde(rename = "auto")]
+    #[default]
     Auto,
 
     /// Model must call one or more tools
@@ -72,12 +73,11 @@ pub struct ToolChoiceFunction {
     pub name: String,
 }
 
-impl ToolChoice {
-    /// Create a tool choice for a specific function
-    pub fn function(name: impl Into<String>) -> Self {
+impl From<&str> for ToolChoice {
+    fn from(value: &str) -> Self {
         ToolChoice::Function {
             r#type: "function".into(),
-            function: ToolChoiceFunction { name: name.into() },
+            function: ToolChoiceFunction { name: value.into() },
         }
     }
 }

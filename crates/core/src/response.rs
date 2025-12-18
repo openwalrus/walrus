@@ -42,6 +42,20 @@ impl Response {
             .first()
             .and_then(|choice| choice.message.reasoning_content.as_ref())
     }
+
+    /// Get the tool calls from the response
+    pub fn tool_calls(&self) -> Option<&[ToolCall]> {
+        self.choices
+            .first()
+            .and_then(|choice| choice.message.tool_calls.as_deref())
+    }
+
+    /// Get the reason the model stopped generating
+    pub fn reason(&self) -> Option<&FinishReason> {
+        self.choices
+            .first()
+            .and_then(|choice| choice.finish_reason.as_ref())
+    }
 }
 
 /// A completion choice in a non-streaming response

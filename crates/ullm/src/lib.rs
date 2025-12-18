@@ -1,6 +1,6 @@
 //! Unified LLM Interface
-
-pub mod cmd;
+//!
+//! This is the umbrella crate that re-exports all ullm components.
 
 pub use deepseek::DeepSeek;
-pub use ucore::{Chat, ChatMessage, Client, Config, LLM, Message, Response, StreamChunk};
+pub use ucore::{self, Chat, ChatMessage, Client, Config, General, LLM, Message};
