@@ -4,12 +4,12 @@ use super::Config;
 use crate::agents::{AgentKind, Anto};
 use anyhow::Result;
 use clap::{Args, ValueEnum};
+use cydonia::{Agent, Chat, Client, DeepSeek, LLM, Message, StreamChunk};
 use futures_util::StreamExt;
 use std::{
     fmt::{Display, Formatter},
     io::{BufRead, Write},
 };
-use ullm::{Agent, Chat, Client, DeepSeek, LLM, Message, StreamChunk};
 
 /// Chat command arguments
 #[derive(Debug, Args)]

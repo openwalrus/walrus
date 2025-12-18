@@ -1,5 +1,5 @@
 [package]
-name = "ullm-cli"
+name = "cydonia-cli"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,12 +8,8 @@ repository.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 
-[[bin]]
-name = "ullm"
-path = "bin/ullm.rs"
-
 [dependencies]
-ullm.workspace = true
+cydonia.workspace = true
 
 # crates-io dependencies
 anyhow.workspace = true

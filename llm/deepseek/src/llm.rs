@@ -3,15 +3,15 @@
 use crate::{DeepSeek, Request};
 use anyhow::Result;
 use async_stream::try_stream;
-use futures_core::Stream;
-use futures_util::StreamExt;
-use ucore::{
+use ccore::{
     Client, LLM, Message, Response, StreamChunk,
     reqwest::{
         Method,
         header::{self, HeaderMap},
     },
 };
+use futures_core::Stream;
+use futures_util::StreamExt;
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
