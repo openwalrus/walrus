@@ -62,7 +62,7 @@ impl Message {
         Self {
             role: Role::Assistant,
             content: content.into(),
-            reasoning_content: reasoning.unwrap_or_default().into(),
+            reasoning_content: reasoning.unwrap_or_default(),
             tool_calls: tool_calls.unwrap_or_default().to_vec(),
             ..Default::default()
         }

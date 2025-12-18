@@ -27,34 +27,31 @@ impl Agent for Anto {
         vec![Tool {
             name: "get_time".into(),
             description: "Gets the current UTC time in ISO 8601 format.".into(),
-            parameters: schemars::schema_for!(GetTimeParams).into(),
+            parameters: schemars::schema_for!(GetTimeParams),
             strict: true,
         }]
     }
 
-    fn dispatch(&self, tools: &[ToolCall]) -> impl Future<Output = Vec<Message>> {
-        async move {
-            tools
-                .iter()
-                .map(|call| {
-                    let result = match call.function.name.as_str() {
-                        "get_time" => {
-                            tracing::debug!("get_time arguments: {}", call.function.arguments);
-                            let args =
-                                serde_json::from_str::<GetTimeParams>(&call.function.arguments)
-                                    .unwrap();
-                            if args.timestamp {
-                                Utc::now().timestamp().to_string()
-                            } else {
-                                Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
-                            }
+    async fn dispatch(&self, tools: &[ToolCall]) -> Vec<Message> {
+        tools
+            .iter()
+            .map(|call| {
+                let result = match call.function.name.as_str() {
+                    "get_time" => {
+                        tracing::debug!("get_time arguments: {}", call.function.arguments);
+                        let args = serde_json::from_str::<GetTimeParams>(&call.function.arguments)
+                            .unwrap();
+                        if args.timestamp {
+                            Utc::now().timestamp().to_string()
+                        } else {
+                            Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
                         }
-                        _ => format!("Unknown tool: {}", call.function.name),
-                    };
-                    Message::tool(result, call.id.clone())
-                })
-                .collect()
-        }
+                    }
+                    _ => format!("Unknown tool: {}", call.function.name),
+                };
+                Message::tool(result, call.id.clone())
+            })
+            .collect()
     }
 
     async fn chunk(&self, chunk: &StreamChunk) -> Result<Self::Chunk> {

@@ -102,7 +102,7 @@ impl ChatCmd {
             while let Some(Ok(chunk)) = stream.next().await {
                 if let Some(content) = chunk.content() {
                     if reasoning {
-                        print!("\n\n\nCONTENT\n");
+                        println!("\n\n\nCONTENT");
                         reasoning = false;
                     }
                     print!("{content}");
@@ -111,7 +111,7 @@ impl ChatCmd {
 
                 if let Some(reasoning_content) = chunk.reasoning_content() {
                     if !reasoning {
-                        print!("REASONING\n");
+                        println!("REASONING");
                         reasoning = true;
                     }
                     print!("{reasoning_content}");

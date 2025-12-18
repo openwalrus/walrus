@@ -33,28 +33,16 @@ impl StreamChunk {
     pub fn content(&self) -> Option<&str> {
         self.choices
             .first()
-            .and_then(|choice| choice.delta.content.as_deref())
-            .and_then(|content| {
-                if content.is_empty() {
-                    None
-                } else {
-                    Some(content)
-                }
-            })
+            .and_then(|c| c.delta.content.as_deref())
+            .filter(|s| !s.is_empty())
     }
 
     /// Get the reasoning content of the first choice
     pub fn reasoning_content(&self) -> Option<&str> {
         self.choices
             .first()
-            .and_then(|choice| choice.delta.reasoning_content.as_deref())
-            .and_then(|reasoning| {
-                if reasoning.is_empty() {
-                    None
-                } else {
-                    Some(reasoning)
-                }
-            })
+            .and_then(|c| c.delta.reasoning_content.as_deref())
+            .filter(|s| !s.is_empty())
     }
 
     /// Get the tool calls of the first choice
