@@ -17,6 +17,7 @@ ullm.workspace = true
 
 # crates-io dependencies
 anyhow.workspace = true
+chrono.workspace = true
 clap.workspace = true
 dirs.workspace = true
 futures-util.workspace = true

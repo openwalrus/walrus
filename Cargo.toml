@@ -21,6 +21,7 @@ ucli = { path = "crates/cli", package = "ullm-cli" }
 
 # crates.io
 anyhow = "1"
+chrono = "0.4"
 async-stream = "0.3"
 bytes = "1.11.0"
 clap = { version = "4.5", features = ["derive"] }
