@@ -1,6 +1,7 @@
 //! Chat command
 
 use super::Config;
+use crate::agents::{AgentKind, Anto};
 use anyhow::Result;
 use clap::{Args, ValueEnum};
 use futures_util::StreamExt;
@@ -8,8 +9,7 @@ use std::{
     fmt::{Display, Formatter},
     io::{BufRead, Write},
 };
-use ullm::DeepSeek;
-use ullm::{Chat, Client, LLM, Message};
+use ullm::{Agent, Chat, Client, Config as _, DeepSeek, Message, StreamChunk, LLM};
 
 /// Chat command arguments
 #[derive(Debug, Args)]
@@ -17,6 +17,10 @@ pub struct ChatCmd {
     /// The model provider to use
     #[arg(short, long, default_value = "deepseek")]
     pub model: Model,
+
+    /// The agent to use for the chat
+    #[arg(short, long)]
+    pub agent: Option<AgentKind>,
 
     /// The message to send (if empty, starts interactive mode)
     pub message: Option<String>,
@@ -34,9 +38,25 @@ impl ChatCmd {
             Model::Deepseek => DeepSeek::new(Client::new(), key)?,
         };
 
-        let mut chat = provider.chat(config.config().clone());
+        match self.agent {
+            Some(AgentKind::Anto) => {
+                let mut chat = provider.chat(config.config().clone()).system(Anto);
+                chat.config = chat.config.with_tools(Anto::tools());
+                self.run_chat(&mut chat, stream).await
+            }
+            None => {
+                let mut chat = provider.chat(config.config().clone());
+                self.run_chat(&mut chat, stream).await
+            }
+        }
+    }
+
+    async fn run_chat<A>(&self, chat: &mut Chat<DeepSeek, A>, stream: bool) -> Result<()>
+    where
+        A: Agent<Chunk = StreamChunk>,
+    {
         if let Some(msg) = &self.message {
-            Self::send(&mut chat, Message::user(msg), stream).await?;
+            Self::send(chat, Message::user(msg), stream).await?;
         } else {
             let stdin = std::io::stdin();
             let mut stdout = std::io::stdout();
@@ -57,14 +77,17 @@ impl ChatCmd {
                     break;
                 }
 
-                Self::send(&mut chat, Message::user(input), stream).await?;
+                Self::send(chat, Message::user(input), stream).await?;
             }
         }
 
         Ok(())
     }
 
-    async fn send(chat: &mut Chat<DeepSeek, ()>, message: Message, stream: bool) -> Result<()> {
+    async fn send<A>(chat: &mut Chat<DeepSeek, A>, message: Message, stream: bool) -> Result<()>
+    where
+        A: Agent<Chunk = StreamChunk>,
+    {
         if stream {
             let mut response_content = String::new();
             {

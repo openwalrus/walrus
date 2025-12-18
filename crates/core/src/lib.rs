@@ -4,7 +4,7 @@ pub use {
     agent::Agent,
     chat::{Chat, ChatMessage},
     config::{Config, General},
-    message::{Message, Role},
+    message::{Message, Role, ToolMessage},
     provider::LLM,
     reqwest::{self, Client},
     response::{

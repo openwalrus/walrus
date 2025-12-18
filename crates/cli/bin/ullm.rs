@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use ucli::{App, Command, Config};
+use ullm_cli::{App, Command, Config};
 
 #[tokio::main]
 async fn main() -> Result<()> {

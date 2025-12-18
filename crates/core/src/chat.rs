@@ -58,7 +58,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 .collect();
         }
 
-        self.config = self.config.with_tools(A::TOOLS);
+        self.config = self.config.with_tools(A::tools());
         Chat {
             messages,
             provider: self.provider,

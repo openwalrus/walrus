@@ -14,7 +14,9 @@ pub trait Agent: Clone {
     const SYSTEM_PROMPT: &str;
 
     /// The tools for the agent
-    const TOOLS: Vec<Tool> = Vec::new();
+    fn tools() -> Vec<Tool> {
+        Vec::new()
+    }
 
     /// Filter the messages to match required tools for the agent
     fn filter(&self, _message: &str) -> ToolChoice {
