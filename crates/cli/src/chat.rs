@@ -9,7 +9,7 @@ use std::{
     fmt::{Display, Formatter},
     io::{BufRead, Write},
 };
-use ullm::{Agent, Chat, Client, Config as _, DeepSeek, LLM, Message, StreamChunk};
+use ullm::{Agent, Chat, Client, DeepSeek, LLM, Message, StreamChunk};
 
 /// Chat command arguments
 #[derive(Debug, Args)]
@@ -33,7 +33,7 @@ pub struct ChatCmd {
 impl ChatCmd {
     /// Run the chat command
     pub async fn run(&self, stream: bool) -> Result<()> {
-        let config = Config::load()?;
+        let mut config = Config::load()?;
         let key = config
             .key
             .get(&self.model.to_string())
@@ -42,10 +42,13 @@ impl ChatCmd {
             Model::Deepseek => DeepSeek::new(Client::new(), key)?,
         };
 
+        // override the think flag in the config
+        config.config.think = self.think;
+
+        // run the chat
         match self.agent {
             Some(AgentKind::Anto) => {
                 let mut chat = provider.chat(config.config().clone()).system(Anto);
-                chat.config = chat.config.with_tools(Anto::tools());
                 self.run_chat(&mut chat, stream).await
             }
             None => {
@@ -94,39 +97,36 @@ impl ChatCmd {
     {
         if stream {
             let mut response_content = String::new();
-            {
-                let mut reasoning = false;
-                let mut stream = std::pin::pin!(chat.stream(message));
-                while let Some(chunk) = stream.next().await {
-                    let chunk = chunk?;
-                    if let Some(content) = chunk.content() {
-                        if reasoning {
-                            print!("\ncontent: ");
-                            reasoning = false;
-                        }
-                        print!("{content}");
-                        response_content.push_str(content);
+            let mut reasoning = false;
+            let mut stream = std::pin::pin!(chat.stream(message));
+            while let Some(Ok(chunk)) = stream.next().await {
+                if let Some(content) = chunk.content() {
+                    if reasoning {
+                        print!("\n\n\nCONTENT\n");
+                        reasoning = false;
                     }
+                    print!("{content}");
+                    response_content.push_str(content);
+                }
 
-                    if let Some(reasoning_content) = chunk.reasoning_content() {
-                        if !reasoning {
-                            print!("thinking: ");
-                            reasoning = true;
-                        }
-                        print!("{reasoning_content}");
-                        response_content.push_str(reasoning_content);
+                if let Some(reasoning_content) = chunk.reasoning_content() {
+                    if !reasoning {
+                        print!("REASONING\n");
+                        reasoning = true;
                     }
+                    print!("{reasoning_content}");
+                    response_content.push_str(reasoning_content);
                 }
             }
             println!();
         } else {
             let response = chat.send(message).await?;
             if let Some(reasoning_content) = response.reasoning() {
-                println!("reasoning: {reasoning_content}");
+                println!("REASONING\n{reasoning_content}");
             }
 
             if let Some(content) = response.message() {
-                println!("content: {content}");
+                println!("\n\nCONTENT\n{content}");
             }
         }
         Ok(())

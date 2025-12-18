@@ -10,7 +10,7 @@ static CONFIG: LazyLock<PathBuf> =
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     /// The configuration for the CLI
-    config: ullm::General,
+    pub config: ullm::General,
 
     /// The API keys for LLMs
     pub key: BTreeMap<String, String>,

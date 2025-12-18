@@ -43,13 +43,15 @@ impl<P: LLM> Chat<P, ()> {
 }
 
 impl<P: LLM, A: Agent> Chat<P, A> {
-    /// Get the chat messages
+    /// Get the chat messages for API requests.
     pub fn messages(&self) -> Vec<Message> {
         self.messages
             .clone()
             .into_iter()
-            .map(|m| {
-                // m.reasoning_content = String::new();
+            .map(|mut m| {
+                if m.tool_calls.is_empty() {
+                    m.reasoning_content = String::new();
+                }
                 m
             })
             .collect()
@@ -69,7 +71,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 .collect();
         }
 
-        self.config = self.config.with_tools(A::tools());
+        self.config = self.config.with_tools(B::tools());
         Chat {
             messages,
             provider: self.provider,
@@ -85,9 +87,8 @@ impl<P: LLM, A: Agent> Chat<P, A> {
             .config
             .with_tool_choice(self.agent.filter(message.content.as_str()));
         self.messages.push(message);
-
         for _ in 0..MAX_TOOL_CALLS {
-            let response = self.provider.send(&config, &self.messages).await?;
+            let response = self.provider.send(&config, &self.messages()).await?;
             if let Some(message) = response.message() {
                 self.messages.push(Message::assistant(
                     message,
