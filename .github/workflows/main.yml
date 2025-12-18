@@ -15,10 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - name: Install Toolchain
+        run: rustup update stable && rustup default stable
+      - uses: taiki-e/install-action@sccache
       - uses: taiki-e/install-action@nextest
 
       - name: Run Tests
@@ -29,9 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: arduino/setup-protoc@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install Toolchain
+        run: |
+          rustup update stable && rustup default stable
+          rustup component add clippy rustfmt
+      - uses: taiki-e/install-action@sccache
       - name: Format
         run: cargo fmt --check
       - name: Clippy
