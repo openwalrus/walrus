@@ -30,16 +30,22 @@ impl LLM for DeepSeek {
 
     /// Send a message to the LLM
     async fn send(&mut self, req: &Request, messages: &[ChatMessage]) -> Result<Response> {
+        let body = req.messages(messages);
+        tracing::debug!(
+            "request: {}",
+            serde_json::to_string_pretty(&body).unwrap_or_default()
+        );
         let text = self
             .client
             .request(Method::POST, ENDPOINT)
             .headers(self.headers.clone())
-            .json(&req.messages(messages))
+            .json(&body)
             .send()
             .await?
             .text()
             .await?;
 
+        tracing::debug!("response: {text}");
         serde_json::from_str(&text).map_err(Into::into)
         // self.client
         //     .request(Method::POST, ENDPOINT)

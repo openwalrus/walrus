@@ -117,6 +117,15 @@ impl From<General> for Request {
 
 impl Config for Request {
     fn with_tools(self, tools: Vec<Tool>) -> Self {
+        let tools = tools
+            .into_iter()
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "function": json!(tool),
+                })
+            })
+            .collect::<Vec<_>>();
         Self {
             tools: Some(json!(tools)),
             ..self.clone()
