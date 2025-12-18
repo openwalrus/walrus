@@ -48,11 +48,11 @@ impl<P: LLM, A: Agent> Chat<P, A> {
     pub fn system<B: Agent>(mut self, agent: B) -> Chat<P, B> {
         let mut messages = self.messages;
         if messages.is_empty() {
-            messages.push(Message::system(A::SYSTEM_PROMPT).into());
+            messages.push(Message::system(B::SYSTEM_PROMPT).into());
         } else if let Some(ChatMessage::System(_)) = messages.first() {
-            messages.insert(0, Message::system(A::SYSTEM_PROMPT).into());
+            messages.insert(0, Message::system(B::SYSTEM_PROMPT).into());
         } else {
-            messages = vec![Message::system(A::SYSTEM_PROMPT).into()]
+            messages = vec![Message::system(B::SYSTEM_PROMPT).into()]
                 .into_iter()
                 .chain(messages)
                 .collect();
@@ -77,6 +77,10 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
         for _ in 0..MAX_TOOL_CALLS {
             let response = self.provider.send(&config, &self.messages).await?;
+            if let Some(message) = response.message() {
+                self.messages.push(Message::assistant(message).into());
+            }
+
             let Some(tool_calls) = response.tool_calls() else {
                 return Ok(response);
             };
@@ -171,7 +175,7 @@ impl From<Message> for ChatMessage {
             }),
             Role::System => ChatMessage::System(message),
             Role::Tool => ChatMessage::Tool(ToolMessage {
-                tool: String::new(),
+                call: String::new(),
                 message,
             }),
         }

@@ -29,7 +29,7 @@ pub trait Agent: Clone {
             tools
                 .iter()
                 .map(|tool| ToolMessage {
-                    tool: tool.id.clone(),
+                    call: tool.id.clone(),
                     message: Message::tool(format!(
                         "function {} not available",
                         tool.function.name

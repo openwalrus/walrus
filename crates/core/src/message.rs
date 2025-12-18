@@ -61,8 +61,8 @@ pub struct ToolMessage {
     pub message: Message,
 
     /// The tool call id
-    #[serde(alias = "tool_call_id")]
-    pub tool: String,
+    #[serde(rename = "tool_call_id")]
+    pub call: String,
 }
 
 /// An assistant message in the chat
@@ -76,7 +76,7 @@ pub struct AssistantMessage {
     pub prefix: bool,
 
     /// The reasoning content
-    #[serde(alias = "reasoning_content")]
+    #[serde(alias = "reasoning_content", skip_serializing_if = "String::is_empty")]
     pub reasoning: String,
 }
 

@@ -45,7 +45,7 @@ impl Agent for Anto {
                         _ => format!("Unknown tool: {}", call.function.name),
                     };
                     ToolMessage {
-                        tool: call.id.clone(),
+                        call: call.id.clone(),
                         message: Message::tool(result),
                     }
                 })
