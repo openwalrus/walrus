@@ -1,6 +1,6 @@
 //! Turbofish Agent library
 
-use crate::{Message, StreamChunk, Tool, ToolCall, ToolChoice, message::ToolMessage};
+use crate::{Message, StreamChunk, Tool, ToolCall, ToolChoice};
 use anyhow::Result;
 
 /// A trait for turbofish agents
@@ -14,7 +14,9 @@ pub trait Agent: Clone {
     const SYSTEM_PROMPT: &str;
 
     /// The tools for the agent
-    const TOOLS: Vec<Tool> = Vec::new();
+    fn tools() -> Vec<Tool> {
+        Vec::new()
+    }
 
     /// Filter the messages to match required tools for the agent
     fn filter(&self, _message: &str) -> ToolChoice {
@@ -22,16 +24,15 @@ pub trait Agent: Clone {
     }
 
     /// Dispatch tool calls
-    fn dispatch(&self, tools: &[ToolCall]) -> impl Future<Output = Vec<ToolMessage>> {
+    fn dispatch(&self, tools: &[ToolCall]) -> impl Future<Output = Vec<Message>> {
         async move {
             tools
                 .iter()
-                .map(|tool| ToolMessage {
-                    tool: tool.id.clone(),
-                    message: Message::tool(format!(
-                        "function {} not available",
-                        tool.function.name
-                    )),
+                .map(|tool| {
+                    Message::tool(
+                        format!("function {} not available", tool.function.name),
+                        tool.id.clone(),
+                    )
                 })
                 .collect()
         }

@@ -1,14 +1,14 @@
 //! The request body for the DeepSeek API
 
+use ccore::{Config, General, Message, Tool, ToolChoice};
 use serde::Serialize;
 use serde_json::{Value, json};
-use ucore::{ChatMessage, Config, General, Tool, ToolChoice};
 
 /// The request body for the DeepSeek API
 #[derive(Debug, Clone, Serialize)]
 pub struct Request {
     /// The messages to send to the API
-    pub messages: Vec<ChatMessage>,
+    pub messages: Vec<Message>,
 
     /// The model we are using
     pub model: String,
@@ -73,7 +73,7 @@ pub struct Request {
 
 impl Request {
     /// Construct the messages for the request
-    pub fn messages(&self, messages: &[ChatMessage]) -> Self {
+    pub fn messages(&self, messages: &[Message]) -> Self {
         Self {
             messages: messages.to_vec(),
             ..self.clone()
@@ -105,7 +105,13 @@ impl From<General> for Request {
             stop: None,
             stream: None,
             stream_options: None,
-            thinking: None,
+            thinking: if config.think {
+                Some(json!({
+                    "type": "enabled"
+                }))
+            } else {
+                None
+            },
             temperature: None,
             tool_choice: None,
             tools: None,
@@ -117,6 +123,15 @@ impl From<General> for Request {
 
 impl Config for Request {
     fn with_tools(self, tools: Vec<Tool>) -> Self {
+        let tools = tools
+            .into_iter()
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "function": json!(tool),
+                })
+            })
+            .collect::<Vec<_>>();
         Self {
             tools: Some(json!(tools)),
             ..self.clone()

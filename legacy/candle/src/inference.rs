@@ -1,8 +1,8 @@
 //! Cydonia inference interface
 use anyhow::Result;
-use candle_core::{quantized::gguf_file::Content, Device, Tensor};
+use candle_core::{Device, Tensor, quantized::gguf_file::Content};
 use candle_transformers::models::quantized_llama;
-use model::{chat, Message};
+use model::{Message, chat};
 use std::fs::File;
 
 /// The inference interface for language models

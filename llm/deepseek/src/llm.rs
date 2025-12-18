@@ -3,15 +3,15 @@
 use crate::{DeepSeek, Request};
 use anyhow::Result;
 use async_stream::try_stream;
-use futures_core::Stream;
-use futures_util::StreamExt;
-use ucore::{
-    ChatMessage, Client, LLM, Response, StreamChunk,
+use ccore::{
+    Client, LLM, Message, Response, StreamChunk,
     reqwest::{
         Method,
         header::{self, HeaderMap},
     },
 };
+use futures_core::Stream;
+use futures_util::StreamExt;
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
@@ -29,17 +29,20 @@ impl LLM for DeepSeek {
     }
 
     /// Send a message to the LLM
-    async fn send(&mut self, req: &Request, messages: &[ChatMessage]) -> Result<Response> {
+    async fn send(&mut self, req: &Request, messages: &[Message]) -> Result<Response> {
+        let body = req.messages(messages);
+        tracing::debug!("request: {}", serde_json::to_string(&body)?);
         let text = self
             .client
             .request(Method::POST, ENDPOINT)
             .headers(self.headers.clone())
-            .json(&req.messages(messages))
+            .json(&body)
             .send()
             .await?
             .text()
             .await?;
 
+        tracing::debug!("response: {text}");
         serde_json::from_str(&text).map_err(Into::into)
         // self.client
         //     .request(Method::POST, ENDPOINT)
@@ -56,21 +59,30 @@ impl LLM for DeepSeek {
     fn stream(
         &mut self,
         req: Request,
-        messages: &[ChatMessage],
+        messages: &[Message],
         usage: bool,
     ) -> impl Stream<Item = Result<StreamChunk>> {
+        let body = req.messages(messages).stream(usage);
+        tracing::debug!(
+            "request: {}",
+            serde_json::to_string(&body).unwrap_or_default()
+        );
         let request = self
             .client
             .request(Method::POST, ENDPOINT)
             .headers(self.headers.clone())
-            .json(&req.messages(messages).stream(usage));
+            .json(&body);
 
         try_stream! {
             let mut stream = request.send().await?.bytes_stream();
             while let Some(chunk) = stream.next().await {
                 let text = String::from_utf8_lossy(&chunk?).into_owned();
                 for data in text.split("data: ").skip(1).filter(|s| !s.starts_with("[DONE]")) {
-                    yield serde_json::from_str(data.trim())?;
+                    tracing::debug!("response: {}", data.trim());
+                    match serde_json::from_str::<StreamChunk>(data.trim()) {
+                        Ok(chunk) => yield chunk,
+                        Err(e) => tracing::warn!("failed to parse chunk: {e}, data: {}", data.trim()),
+                    }
                 }
             }
         }

@@ -1,7 +1,7 @@
 //! The LLM provider
 
+use ccore::{Client, reqwest::header::HeaderMap};
 pub use request::Request;
-use ucore::{Client, reqwest::header::HeaderMap};
 
 mod llm;
 mod request;
