@@ -2,17 +2,37 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ToolCall;
+
 /// A message in the chat
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Message {
+    /// The role of the message
+    pub role: Role,
+
     /// The content of the message
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub content: String,
 
     /// The name of the message
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub name: String,
 
-    /// The role of the message
-    pub role: Role,
+    /// Whether to prefix the message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<bool>,
+
+    /// The reasoning content
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reasoning: String,
+
+    /// The tool call id
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub tool_call_id: String,
+
+    /// The tool calls
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
 }
 
 impl Message {
@@ -20,8 +40,8 @@ impl Message {
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: Role::System,
-            name: String::new(),
             content: content.into(),
+            ..Default::default()
         }
     }
 
@@ -29,62 +49,43 @@ impl Message {
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             role: Role::User,
-            name: String::new(),
             content: content.into(),
+            ..Default::default()
         }
     }
 
     /// Create a new assistant message
-    pub fn assistant(content: impl Into<String>) -> Self {
+    pub fn assistant(
+        content: impl Into<String>,
+        reasoning: Option<String>,
+        tool_calls: Option<&[ToolCall]>,
+    ) -> Self {
         Self {
             role: Role::Assistant,
-            name: String::new(),
             content: content.into(),
+            reasoning: reasoning.unwrap_or_default().into(),
+            tool_calls: tool_calls.unwrap_or_default().to_vec(),
+            ..Default::default()
         }
     }
 
     /// Create a new tool message
-    pub fn tool(content: impl Into<String>) -> Self {
+    pub fn tool(content: impl Into<String>, call: impl Into<String>) -> Self {
         Self {
             role: Role::Tool,
-            name: String::new(),
             content: content.into(),
+            tool_call_id: call.into(),
+            ..Default::default()
         }
     }
 }
 
-/// A tool message in the chat
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ToolMessage {
-    /// The message
-    #[serde(flatten)]
-    pub message: Message,
-
-    /// The tool call id
-    #[serde(rename = "tool_call_id")]
-    pub call: String,
-}
-
-/// An assistant message in the chat
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AssistantMessage {
-    /// The message
-    #[serde(flatten)]
-    pub message: Message,
-
-    /// Whether to prefix the message
-    pub prefix: bool,
-
-    /// The reasoning content
-    #[serde(alias = "reasoning_content", skip_serializing_if = "String::is_empty")]
-    pub reasoning: String,
-}
-
 /// The role of a message
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
 pub enum Role {
     /// The user role
     #[serde(rename = "user")]
+    #[default]
     User,
     /// The assistant role
     #[serde(rename = "assistant")]

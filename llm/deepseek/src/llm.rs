@@ -6,7 +6,7 @@ use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use ucore::{
-    ChatMessage, Client, LLM, Response, StreamChunk,
+    Client, LLM, Message, Response, StreamChunk,
     reqwest::{
         Method,
         header::{self, HeaderMap},
@@ -29,7 +29,7 @@ impl LLM for DeepSeek {
     }
 
     /// Send a message to the LLM
-    async fn send(&mut self, req: &Request, messages: &[ChatMessage]) -> Result<Response> {
+    async fn send(&mut self, req: &Request, messages: &[Message]) -> Result<Response> {
         let body = req.messages(messages);
         tracing::debug!(
             "request: {}",
@@ -62,7 +62,7 @@ impl LLM for DeepSeek {
     fn stream(
         &mut self,
         req: Request,
-        messages: &[ChatMessage],
+        messages: &[Message],
         usage: bool,
     ) -> impl Stream<Item = Result<StreamChunk>> {
         let request = self

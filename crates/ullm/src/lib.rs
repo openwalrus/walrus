@@ -4,6 +4,5 @@
 
 pub use deepseek::DeepSeek;
 pub use ucore::{
-    self, Agent, Chat, ChatMessage, Client, Config, General, LLM, Message, StreamChunk, Tool,
-    ToolCall, ToolMessage,
+    self, Agent, Chat, Client, Config, General, LLM, Message, StreamChunk, Tool, ToolCall,
 };

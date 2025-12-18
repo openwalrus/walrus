@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use schemars::JsonSchema;
-use ullm::{Agent, Message, StreamChunk, Tool, ToolCall, ToolMessage};
+use ullm::{Agent, Message, StreamChunk, Tool, ToolCall};
 
 /// Anto - a basic agent with tools for testing tool calls
 #[derive(Clone)]
@@ -30,7 +30,7 @@ impl Agent for Anto {
         }]
     }
 
-    fn dispatch(&self, tools: &[ToolCall]) -> impl Future<Output = Vec<ToolMessage>> {
+    fn dispatch(&self, tools: &[ToolCall]) -> impl Future<Output = Vec<Message>> {
         async move {
             tools
                 .iter()
@@ -44,10 +44,7 @@ impl Agent for Anto {
                         }
                         _ => format!("Unknown tool: {}", call.function.name),
                     };
-                    ToolMessage {
-                        call: call.id.clone(),
-                        message: Message::tool(result),
-                    }
+                    Message::tool(result, call.id.clone())
                 })
                 .collect()
         }

@@ -2,9 +2,9 @@
 
 pub use {
     agent::Agent,
-    chat::{Chat, ChatMessage},
+    chat::Chat,
     config::{Config, General},
-    message::{Message, Role, ToolMessage},
+    message::{Message, Role},
     provider::LLM,
     reqwest::{self, Client},
     response::{

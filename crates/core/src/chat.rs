@@ -1,13 +1,9 @@
 //! Chat abstractions for the unified LLM Interfaces
 
-use crate::{
-    Agent, Config, FinishReason, General, LLM, Response, Role,
-    message::{AssistantMessage, Message, ToolMessage},
-};
+use crate::{Agent, Config, FinishReason, General, LLM, Response, Role, message::Message};
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use serde::Serialize;
 
 const MAX_TOOL_CALLS: usize = 16;
 
@@ -18,7 +14,7 @@ pub struct Chat<P: LLM, A: Agent> {
     pub config: P::ChatConfig,
 
     /// Chat history in memory
-    pub messages: Vec<ChatMessage>,
+    pub messages: Vec<Message>,
 
     /// The LLM provider
     provider: P,
@@ -48,11 +44,11 @@ impl<P: LLM, A: Agent> Chat<P, A> {
     pub fn system<B: Agent>(mut self, agent: B) -> Chat<P, B> {
         let mut messages = self.messages;
         if messages.is_empty() {
-            messages.push(Message::system(B::SYSTEM_PROMPT).into());
-        } else if let Some(ChatMessage::System(_)) = messages.first() {
-            messages.insert(0, Message::system(B::SYSTEM_PROMPT).into());
+            messages.push(Message::system(B::SYSTEM_PROMPT));
+        } else if messages.first().map(|m| m.role) == Some(Role::System) {
+            messages.insert(0, Message::system(B::SYSTEM_PROMPT));
         } else {
-            messages = vec![Message::system(B::SYSTEM_PROMPT).into()]
+            messages = vec![Message::system(B::SYSTEM_PROMPT)]
                 .into_iter()
                 .chain(messages)
                 .collect();
@@ -73,12 +69,16 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         let config = self
             .config
             .with_tool_choice(self.agent.filter(message.content.as_str()));
-        self.messages.push(message.into());
+        self.messages.push(message);
 
         for _ in 0..MAX_TOOL_CALLS {
             let response = self.provider.send(&config, &self.messages).await?;
             if let Some(message) = response.message() {
-                self.messages.push(Message::assistant(message).into());
+                self.messages.push(Message::assistant(
+                    message,
+                    response.reasoning().cloned(),
+                    response.tool_calls(),
+                ));
             }
 
             let Some(tool_calls) = response.tool_calls() else {
@@ -86,7 +86,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
             };
 
             let result = self.agent.dispatch(tool_calls).await;
-            self.messages.extend(result.into_iter().map(Into::into));
+            self.messages.extend(result);
         }
 
         anyhow::bail!("max tool calls reached");
@@ -100,7 +100,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         let config = self
             .config
             .with_tool_choice(self.agent.filter(message.content.as_str()));
-        self.messages.push(message.into());
+        self.messages.push(message);
 
         async_stream::try_stream! {
             for _ in 0..MAX_TOOL_CALLS {
@@ -110,6 +110,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
                 let mut tool_calls = None;
                 let mut message = String::new();
+                let mut reasoning = String::new();
                 while let Some(chunk) = inner.next().await {
                     let chunk = chunk?;
                     if let Some(calls) = chunk.tool_calls() {
@@ -118,6 +119,10 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
                     if let Some(content) = chunk.content() {
                         message.push_str(content);
+                    }
+
+                    if let Some(reason) = chunk.reasoning_content() {
+                        reasoning.push_str(reason);
                     }
 
                     yield self.agent.chunk(&chunk).await?;
@@ -131,7 +136,8 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 }
 
                 if !message.is_empty() {
-                    self.messages.push(Message::assistant(&message).into());
+                    let reasoning = if reasoning.is_empty() { None } else { Some(reasoning) };
+                    self.messages.push(Message::assistant(&message, reasoning, tool_calls.as_deref()));
                 }
 
                 if let Some(calls) = tool_calls {
@@ -144,46 +150,5 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
             Err(anyhow::anyhow!("max tool calls reached"))?;
         }
-    }
-}
-
-/// A chat message in memory
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
-pub enum ChatMessage {
-    /// A user message
-    User(Message),
-
-    /// An assistant message
-    Assistant(AssistantMessage),
-
-    /// A tool message
-    Tool(ToolMessage),
-
-    /// A system message
-    System(Message),
-}
-
-impl From<Message> for ChatMessage {
-    fn from(message: Message) -> Self {
-        match message.role {
-            Role::User => ChatMessage::User(message),
-            Role::Assistant => ChatMessage::Assistant(AssistantMessage {
-                message,
-                prefix: false,
-                reasoning: String::new(),
-            }),
-            Role::System => ChatMessage::System(message),
-            Role::Tool => ChatMessage::Tool(ToolMessage {
-                call: String::new(),
-                message,
-            }),
-        }
-    }
-}
-
-impl From<ToolMessage> for ChatMessage {
-    fn from(message: ToolMessage) -> Self {
-        ChatMessage::Tool(message)
     }
 }

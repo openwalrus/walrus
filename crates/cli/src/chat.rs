@@ -9,7 +9,7 @@ use std::{
     fmt::{Display, Formatter},
     io::{BufRead, Write},
 };
-use ullm::{Agent, Chat, Client, Config as _, DeepSeek, Message, StreamChunk, LLM};
+use ullm::{Agent, Chat, Client, Config as _, DeepSeek, LLM, Message, StreamChunk};
 
 /// Chat command arguments
 #[derive(Debug, Args)]
@@ -115,8 +115,6 @@ impl ChatCmd {
                 }
             }
             println!();
-            chat.messages
-                .push(Message::assistant(&response_content).into());
         } else {
             let response = chat.send(message).await?;
             if let Some(reasoning_content) = response.reasoning() {
@@ -126,8 +124,6 @@ impl ChatCmd {
             if let Some(content) = response.message() {
                 println!("{content}");
             }
-            chat.messages
-                .push(Message::assistant(response.message().unwrap_or(&String::new())).into());
         }
         Ok(())
     }
