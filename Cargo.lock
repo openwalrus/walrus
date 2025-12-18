@@ -303,7 +303,7 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
- "cydonia-core",
+ "cydonia-model",
  "hf-hub",
  "rand",
  "serde",
@@ -312,20 +312,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cydonia-core"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "serde",
- "tracing",
-]
-
-[[package]]
 name = "cydonia-model"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "cydonia-candle",
+ "serde",
  "tracing",
 ]
 
@@ -899,10 +890,6 @@ name = "httparse"
 version = "1.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d71d3574edd2771538b901e6549113b4006ece66150fb69c0fb6d9a2adae946"
-
-[[package]]
-name = "hub"
-version = "0.1.0"
 
 [[package]]
 name = "hyper"

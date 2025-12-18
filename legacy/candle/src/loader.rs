@@ -3,8 +3,8 @@
 use crate::{Inference, Tokenizer};
 use anyhow::Result;
 use candle_core::Device;
-use ccore::{Release, TOKENIZER};
 use hf_hub::api::sync::Api;
+use model::{Release, TOKENIZER};
 use std::fs::File;
 
 /// Huggingface model loader

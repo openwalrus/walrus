@@ -2,7 +2,7 @@
 
 use crate::{Inference, Loader, Processor, ProcessorConfig, TokenStream, Tokenizer};
 use anyhow::Result;
-use ccore::{Message, Release};
+use model::{Message, Release};
 
 /// Language Model interface
 pub struct Model<I: Inference> {
