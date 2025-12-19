@@ -96,7 +96,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
             }
 
             let result = self.agent.dispatch(&message.tool_calls).await;
-            self.messages.extend(vec![vec![message], result].concat());
+            self.messages.extend([vec![message], result].concat());
         }
 
         anyhow::bail!("max tool calls reached");
@@ -141,7 +141,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
 
                 let result = self.agent.dispatch(&message.tool_calls).await;
-                self.messages.extend(vec![vec![message], result].concat());
+                self.messages.extend([vec![message], result].concat());
             }
         }
     }
