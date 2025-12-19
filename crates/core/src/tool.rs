@@ -38,6 +38,22 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
+impl ToolCall {
+    /// Merge two tool calls into one
+    pub fn merge(&mut self, call: &Self) {
+        if !call.id.is_empty() {
+            self.id.clone_from(&call.id);
+        }
+        if !call.call_type.is_empty() {
+            self.call_type.clone_from(&call.call_type);
+        }
+        if !call.function.name.is_empty() {
+            self.function.name.clone_from(&call.function.name);
+        }
+        self.function.arguments.push_str(&call.function.arguments);
+    }
+}
+
 /// A function call within a tool call
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct FunctionCall {

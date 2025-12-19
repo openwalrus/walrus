@@ -127,21 +127,11 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 let mut tool_calls: HashMap<u32, ToolCall> = HashMap::new();
                 let mut message = String::new();
                 let mut reasoning = String::new();
-                while let Some(chunk) = inner.next().await {
-                    let chunk = chunk?;
+                while let Some(Ok(chunk)) = inner.next().await {
                     if let Some(calls) = chunk.tool_calls() {
                         for call in calls {
                             let entry = tool_calls.entry(call.index).or_default();
-                            if !call.id.is_empty() {
-                                entry.id.clone_from(&call.id);
-                            }
-                            if !call.call_type.is_empty() {
-                                entry.call_type.clone_from(&call.call_type);
-                            }
-                            if !call.function.name.is_empty() {
-                                entry.function.name.clone_from(&call.function.name);
-                            }
-                            entry.function.arguments.push_str(&call.function.arguments);
+                            entry.merge(call);
                         }
                     }
 
