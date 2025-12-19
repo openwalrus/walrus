@@ -10,6 +10,9 @@ pub trait Agent: Clone {
     /// The parsed chunk from [StreamChunk]
     type Chunk;
 
+    /// The name of the agent
+    const NAME: &str;
+
     /// The system prompt for the agent
     const SYSTEM_PROMPT: &str;
 
@@ -44,6 +47,8 @@ pub trait Agent: Clone {
 
 impl Agent for () {
     type Chunk = StreamChunk;
+
+    const NAME: &str = "Default";
 
     const SYSTEM_PROMPT: &str = "You are a helpful assistant.";
 
