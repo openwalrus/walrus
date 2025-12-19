@@ -1,12 +1,9 @@
 //! Chat abstractions for the unified LLM Interfaces
 
-use crate::{
-    Agent, Config, FinishReason, General, LLM, Response, Role, ToolCall, message::Message,
-};
+use crate::{Agent, Config, FinishReason, General, LLM, Response, Role, message::Message};
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use std::collections::HashMap;
 
 const MAX_TOOL_CALLS: usize = 16;
 
@@ -89,20 +86,17 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         self.messages.push(message);
         for _ in 0..MAX_TOOL_CALLS {
             let response = self.provider.send(&config, &self.messages()).await?;
-            if let Some(message) = response.message() {
-                self.messages.push(Message::assistant(
-                    message,
-                    response.reasoning().cloned(),
-                    response.tool_calls(),
-                ));
-            }
-
-            let Some(tool_calls) = response.tool_calls() else {
+            let Some(message) = response.message() else {
                 return Ok(response);
             };
 
-            let result = self.agent.dispatch(tool_calls).await;
-            self.messages.extend(result);
+            if message.tool_calls.is_empty() {
+                self.messages.push(message);
+                return Ok(response);
+            }
+
+            let result = self.agent.dispatch(&message.tool_calls).await;
+            self.messages.extend(vec![vec![message], result].concat());
         }
 
         anyhow::bail!("max tool calls reached");
@@ -121,28 +115,13 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         async_stream::try_stream! {
             for _ in 0..MAX_TOOL_CALLS {
                 let messages = self.messages();
+                let mut builder = Message::builder(Role::Assistant);
+
+                // Stream the chunks
                 let inner = self.provider.stream(config.clone(), &messages, self.usage);
                 futures_util::pin_mut!(inner);
-
-                let mut tool_calls: HashMap<u32, ToolCall> = HashMap::new();
-                let mut message = String::new();
-                let mut reasoning = String::new();
                 while let Some(Ok(chunk)) = inner.next().await {
-                    if let Some(calls) = chunk.tool_calls() {
-                        for call in calls {
-                            let entry = tool_calls.entry(call.index).or_default();
-                            entry.merge(call);
-                        }
-                    }
-
-                    if let Some(content) = chunk.content() {
-                        message.push_str(content);
-                    }
-
-                    if let Some(reason) = chunk.reasoning_content() {
-                        reasoning.push_str(reason);
-                    }
-
+                    builder.accept(&chunk);
                     yield self.agent.chunk(&chunk).await?;
                     if let Some(reason) = chunk.reason() {
                         match reason {
@@ -153,17 +132,16 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                     }
                 }
 
-                let reasoning = if reasoning.is_empty() { None } else { Some(reasoning) };
-                if tool_calls.is_empty() {
-                    self.messages.push(Message::assistant(&message, reasoning, None));
+                // Build the message and dispatch tool calls
+                let message = builder.build();
+                if message.tool_calls.is_empty() {
+                    self.messages.push(message);
                     break;
-                } else {
-                    let mut calls: Vec<_> = tool_calls.into_values().collect();
-                    calls.sort_by_key(|c| c.index);
-                    self.messages.push(Message::assistant(&message, reasoning, Some(&calls)));
-                    let result = self.agent.dispatch(&calls).await;
-                    self.messages.extend(result);
                 }
+
+
+                let result = self.agent.dispatch(&message.tool_calls).await;
+                self.messages.extend(vec![vec![message], result].concat());
             }
         }
     }
