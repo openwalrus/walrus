@@ -120,10 +120,18 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 // Stream the chunks
                 let inner = self.provider.stream(config.clone(), &messages, self.usage);
                 futures_util::pin_mut!(inner);
-                while let Some(Ok(chunk)) = inner.next().await {
+                while let Some(result) = inner.next().await {
+                    let chunk = match result {
+                        Ok(chunk) => chunk,
+                        Err(e) => {
+                            tracing::error!("Error in LLM stream: {:?}", e);
+                            Err(e)?
+                        }
+                    };
                     builder.accept(&chunk);
                     yield self.agent.chunk(&chunk).await?;
                     if let Some(reason) = chunk.reason() {
+                        tracing::debug!("Finish reason: {:?}", reason);
                         match reason {
                             FinishReason::Stop => return,
                             FinishReason::ToolCalls => break,
@@ -131,10 +139,12 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                         }
                     }
                 }
+                tracing::debug!("LLM stream exhausted, building message");
 
                 // Build the message and dispatch tool calls
                 let message = builder.build();
                 if message.tool_calls.is_empty() {
+                    tracing::debug!("No tool calls, pushing message and exiting");
                     self.messages.push(message);
                     break;
                 }

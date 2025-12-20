@@ -74,17 +74,60 @@ impl LLM for DeepSeek {
             .json(&body);
 
         try_stream! {
-            let mut stream = request.send().await?.bytes_stream();
-            while let Some(chunk) = stream.next().await {
-                let text = String::from_utf8_lossy(&chunk?).into_owned();
+            tracing::debug!("Sending request to DeepSeek API");
+            let response = request.send().await?;
+            tracing::debug!("DeepSeek API responded with status: {}", response.status());
+            let mut stream = response.bytes_stream();
+            let mut chunk_count = 0;
+            let mut last_chunk_time = std::time::Instant::now();
+            while let Some(chunk_result) = stream.next().await {
+                let elapsed_since_last = last_chunk_time.elapsed();
+                last_chunk_time = std::time::Instant::now();
+
+                let bytes = match chunk_result {
+                    Ok(b) => b,
+                    Err(e) => {
+                        tracing::error!(
+                            "DeepSeek stream error after {} chunks ({}s since last chunk): {:?}",
+                            chunk_count,
+                            elapsed_since_last.as_secs_f32(),
+                            e
+                        );
+                        Err(e)?
+                    }
+                };
+
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                tracing::trace!("Raw SSE chunk ({} bytes, {}ms since last): {:?}",
+                    bytes.len(),
+                    elapsed_since_last.as_millis(),
+                    &text[..text.len().min(200)]
+                );
+
                 for data in text.split("data: ").skip(1).filter(|s| !s.starts_with("[DONE]")) {
-                    tracing::debug!("response: {}", data.trim());
-                    match serde_json::from_str::<StreamChunk>(data.trim()) {
-                        Ok(chunk) => yield chunk,
-                        Err(e) => tracing::warn!("failed to parse chunk: {e}, data: {}", data.trim()),
+                    let trimmed = data.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    match serde_json::from_str::<StreamChunk>(trimmed) {
+                        Ok(chunk) => {
+                            chunk_count += 1;
+                            tracing::debug!("Parsed chunk #{}: content={:?}, reasoning={:?}, finish={:?}",
+                                chunk_count,
+                                chunk.content().map(|s| s.len()),
+                                chunk.reasoning_content().map(|s| s.len()),
+                                chunk.reason()
+                            );
+                            yield chunk;
+                        }
+                        Err(e) => tracing::warn!("Failed to parse chunk: {e}, data: {}", trimmed),
                     }
                 }
+                if text.contains("[DONE]") {
+                    tracing::debug!("Received [DONE] marker after {} chunks", chunk_count);
+                }
             }
+            tracing::debug!("DeepSeek stream closed normally after {} chunks", chunk_count);
         }
     }
 }
