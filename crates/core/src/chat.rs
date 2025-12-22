@@ -131,7 +131,6 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                     builder.accept(&chunk);
                     yield self.agent.chunk(&chunk).await?;
                     if let Some(reason) = chunk.reason() {
-                        tracing::debug!("Finish reason: {:?}", reason);
                         match reason {
                             FinishReason::Stop => return,
                             FinishReason::ToolCalls => break,
@@ -139,12 +138,10 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                         }
                     }
                 }
-                tracing::debug!("LLM stream exhausted, building message");
 
                 // Build the message and dispatch tool calls
                 let message = builder.build();
                 if message.tool_calls.is_empty() {
-                    tracing::debug!("No tool calls, pushing message and exiting");
                     self.messages.push(message);
                     break;
                 }

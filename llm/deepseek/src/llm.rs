@@ -62,15 +62,6 @@ impl LLM for DeepSeek {
         usage: bool,
     ) -> impl Stream<Item = Result<StreamChunk>> {
         let body = req.messages(messages).stream(usage);
-        tracing::info!(
-            "DeepSeek request tools: {:?}, tool_choice: {:?}",
-            body.tools,
-            body.tool_choice
-        );
-        tracing::trace!(
-            "request: {}",
-            serde_json::to_string(&body).unwrap_or_default()
-        );
         let request = self
             .client
             .request(Method::POST, ENDPOINT)
