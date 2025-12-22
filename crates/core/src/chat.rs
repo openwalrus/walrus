@@ -41,9 +41,12 @@ impl<P: LLM> Chat<P, ()> {
 
 impl<P: LLM, A: Agent> Chat<P, A> {
     /// Get the chat messages for API requests.
+    ///
+    /// This applies agent-specific compaction to reduce token usage,
+    /// then strips reasoning content from non-tool-call messages.
     pub fn messages(&self) -> Vec<Message> {
-        self.messages
-            .clone()
+        self.agent
+            .compact(self.messages.clone())
             .into_iter()
             .map(|mut m| {
                 if m.tool_calls.is_empty() {

@@ -26,6 +26,17 @@ pub trait Agent: Clone {
         ToolChoice::Auto
     }
 
+    /// Compact the chat history to reduce token usage.
+    ///
+    /// This method is called before each LLM request (both `send` and `stream`).
+    /// Agents can override this to remove redundant data from historical messages,
+    /// such as outdated candle data or large context that's no longer relevant.
+    ///
+    /// The default implementation returns messages unchanged.
+    fn compact(&self, messages: Vec<Message>) -> Vec<Message> {
+        messages
+    }
+
     /// Dispatch tool calls
     fn dispatch(&self, tools: &[ToolCall]) -> impl Future<Output = Vec<Message>> {
         async move {
