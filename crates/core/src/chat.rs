@@ -40,6 +40,11 @@ impl<P: LLM> Chat<P, ()> {
 }
 
 impl<P: LLM, A: Agent> Chat<P, A> {
+    /// Get a mutable reference to the agent
+    pub fn agent_mut(&mut self) -> &mut A {
+        &mut self.agent
+    }
+
     /// Get the chat messages for API requests.
     ///
     /// This applies agent-specific compaction to reduce token usage,
