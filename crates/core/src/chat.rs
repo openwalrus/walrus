@@ -141,7 +141,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                         }
                     };
 
-                    if !builder.accept(&chunk) {
+                    if builder.accept(&chunk) {
                         yield self.agent.chunk(&chunk).await?;
                     }
 
