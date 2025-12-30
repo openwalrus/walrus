@@ -108,7 +108,7 @@ impl MessageBuilder {
     }
 
     /// Accept a chunk from the stream
-    pub fn accept(&mut self, chunk: &StreamChunk) {
+    pub fn accept(&mut self, chunk: &StreamChunk) -> bool {
         if let Some(calls) = chunk.tool_calls() {
             for call in calls {
                 let entry = self.calls.entry(call.index).or_default();
@@ -116,13 +116,17 @@ impl MessageBuilder {
             }
         }
 
+        let mut has_content = false;
         if let Some(content) = chunk.content() {
             self.message.content.push_str(content);
+            has_content = true;
         }
 
         if let Some(reason) = chunk.reasoning_content() {
             self.message.reasoning_content.push_str(reason);
         }
+
+        has_content
     }
 
     /// Build the message

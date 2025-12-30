@@ -1,7 +1,8 @@
 //! Chat abstractions for the unified LLM Interfaces
 
 use crate::{
-    Agent, Config, FinishReason, General, LLM, Response, Role, ToolChoice, message::Message,
+    Agent, Config, FinishReason, General, LLM, Response, Role, StreamChunk, ToolChoice,
+    message::Message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -139,8 +140,11 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                             Err(e)?
                         }
                     };
-                    builder.accept(&chunk);
-                    yield self.agent.chunk(&chunk).await?;
+
+                    if !builder.accept(&chunk) {
+                        yield self.agent.chunk(&chunk).await?;
+                    }
+
                     if let Some(reason) = chunk.reason() {
                         match reason {
                             FinishReason::Stop => return,
@@ -158,6 +162,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 }
 
 
+                yield self.agent.chunk(&StreamChunk::tool(&message.tool_calls)).await?;
                 let result = self.agent.dispatch(&message.tool_calls).await;
                 self.messages.extend([vec![message], result].concat());
                 config = config.with_tool_choice(ToolChoice::None);

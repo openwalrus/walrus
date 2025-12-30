@@ -73,6 +73,7 @@ impl LLM for DeepSeek {
             let mut stream = response.bytes_stream();
             while let Some(Ok(bytes)) = stream.next().await {
                 let text = String::from_utf8_lossy(&bytes).into_owned();
+                tracing::debug!("chunk: {}", text);
                 for data in text.split("data: ").skip(1).filter(|s| !s.starts_with("[DONE]")) {
                     let trimmed = data.trim();
                     if trimmed.is_empty() {
