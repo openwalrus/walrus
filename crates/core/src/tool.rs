@@ -83,24 +83,11 @@ pub enum ToolChoice {
     Required,
 
     /// Model must call the specified function
-    Function {
-        r#type: String,
-        function: ToolChoiceFunction,
-    },
-}
-
-/// A specific function to call
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ToolChoiceFunction {
-    /// The name of the function to call
-    pub name: String,
+    Function(String),
 }
 
 impl From<&str> for ToolChoice {
     fn from(value: &str) -> Self {
-        ToolChoice::Function {
-            r#type: "function".into(),
-            function: ToolChoiceFunction { name: value.into() },
-        }
+        ToolChoice::Function(value.into())
     }
 }

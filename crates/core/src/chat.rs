@@ -1,6 +1,8 @@
 //! Chat abstractions for the unified LLM Interfaces
 
-use crate::{Agent, Config, FinishReason, General, LLM, Response, Role, message::Message};
+use crate::{
+    Agent, Config, FinishReason, General, LLM, Response, Role, ToolChoice, message::Message,
+};
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -88,7 +90,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
     /// Send a message to the LLM
     pub async fn send(&mut self, message: Message) -> Result<Response> {
-        let config = self
+        let mut config = self
             .config
             .with_tool_choice(self.agent.filter(message.content.as_str()));
         self.messages.push(message);
@@ -105,6 +107,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
             let result = self.agent.dispatch(&message.tool_calls).await;
             self.messages.extend([vec![message], result].concat());
+            config = config.with_tool_choice(ToolChoice::None);
         }
 
         anyhow::bail!("max tool calls reached");
@@ -115,7 +118,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         &mut self,
         message: Message,
     ) -> impl Stream<Item = Result<A::Chunk>> + use<'_, P, A> {
-        let config = self
+        let mut config = self
             .config
             .with_tool_choice(self.agent.filter(message.content.as_str()));
         self.messages.push(message);
@@ -157,6 +160,7 @@ impl<P: LLM, A: Agent> Chat<P, A> {
 
                 let result = self.agent.dispatch(&message.tool_calls).await;
                 self.messages.extend([vec![message], result].concat());
+                config = config.with_tool_choice(ToolChoice::None);
             }
         }
     }
