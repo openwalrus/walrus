@@ -71,12 +71,9 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         if messages.is_empty() {
             messages.push(Message::system(B::SYSTEM_PROMPT));
         } else if messages.first().map(|m| m.role) == Some(Role::System) {
-            messages.insert(0, Message::system(B::SYSTEM_PROMPT));
+            messages[0] = Message::system(B::SYSTEM_PROMPT);
         } else {
-            messages = vec![Message::system(B::SYSTEM_PROMPT)]
-                .into_iter()
-                .chain(messages)
-                .collect();
+            messages.insert(0, Message::system(B::SYSTEM_PROMPT));
         }
 
         self.config = self.config.with_tools(B::tools());

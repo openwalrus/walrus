@@ -12,11 +12,12 @@ keywords.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-stream.workspace = true
-derive_more.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
 schemars.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

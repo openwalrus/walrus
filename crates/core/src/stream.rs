@@ -1,25 +1,18 @@
 //! Streaming response abstractions for the unified LLM Interfaces
 
-use crate::{FinishReason, Role, tool::ToolCall};
+use crate::{
+    FinishReason,
+    response::{CompletionMeta, Delta, LogProbs},
+    tool::ToolCall,
+};
 use serde::Deserialize;
 
 /// A streaming chat completion chunk
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct StreamChunk {
-    /// A unique identifier for the chat completion
-    pub id: String,
-
-    /// The object type, always "chat.completion.chunk"
-    pub object: String,
-
-    /// Unix timestamp (in seconds) of when the chunk was created
-    pub created: u64,
-
-    /// The model used for the completion
-    pub model: String,
-
-    /// Backend configuration identifier
-    pub system_fingerprint: Option<String>,
+    /// Completion metadata
+    #[serde(flatten)]
+    pub meta: CompletionMeta,
 
     /// The list of completion choices (with delta content)
     pub choices: Vec<StreamChoice>,
@@ -84,24 +77,8 @@ pub struct StreamChoice {
     pub delta: Delta,
 
     /// The reason the model stopped generating
-    pub finish_reason: Option<crate::FinishReason>,
+    pub finish_reason: Option<FinishReason>,
 
     /// Log probability information
-    pub logprobs: Option<crate::LogProbs>,
-}
-
-/// Delta content in a streaming response
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct Delta {
-    /// The role of the message author
-    pub role: Option<Role>,
-
-    /// The content delta
-    pub content: Option<String>,
-
-    /// The reasoning content delta (for deepseek-reasoner model)
-    pub reasoning_content: Option<String>,
-
-    /// Tool calls delta
-    pub tool_calls: Option<Vec<ToolCall>>,
+    pub logprobs: Option<LogProbs>,
 }
