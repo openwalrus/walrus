@@ -1,29 +1,21 @@
 //! Turbofish Agent library
 
-use crate::{Message, StreamChunk, Tool, ToolCall, ToolChoice};
+use crate::{Message, StreamChunk, Tool, ToolCall};
 use anyhow::Result;
 
 /// A trait for turbofish agents
-///
-/// TODO: add schemar for request and response
 pub trait Agent: Clone {
     /// The parsed chunk from [StreamChunk]
     type Chunk;
 
-    /// The name of the agent
-    const NAME: &str;
-
-    /// The system prompt for the agent
-    const SYSTEM_PROMPT: &str;
+    /// Build the system prompt for this agent.
+    ///
+    /// Called before each LLM request. Never stored in memory.
+    fn system_prompt(&self) -> String;
 
     /// The tools for the agent
     fn tools() -> Vec<Tool> {
         Vec::new()
-    }
-
-    /// Filter the messages to match required tools for the agent
-    fn filter(&self, _message: &str) -> ToolChoice {
-        ToolChoice::Auto
     }
 
     /// Compact the chat history to reduce token usage.
@@ -59,9 +51,9 @@ pub trait Agent: Clone {
 impl Agent for () {
     type Chunk = StreamChunk;
 
-    const NAME: &str = "Default";
-
-    const SYSTEM_PROMPT: &str = "You are a helpful assistant.";
+    fn system_prompt(&self) -> String {
+        "You are a helpful assistant.".into()
+    }
 
     async fn chunk(&self, chunk: &StreamChunk) -> Result<Self::Chunk> {
         Ok(chunk.clone())

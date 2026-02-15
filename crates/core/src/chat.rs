@@ -1,8 +1,7 @@
 //! Chat abstractions for the unified LLM Interfaces
 
 use crate::{
-    Agent, Config, FinishReason, General, InMemory, LLM, Memory, Response, Role, StreamChunk,
-    ToolChoice,
+    Agent, Config, FinishReason, General, LLM, Memory, Response, Role, StreamChunk, ToolChoice,
     message::Message,
 };
 use anyhow::Result;
@@ -13,39 +12,26 @@ const MAX_TOOL_CALLS: usize = 16;
 
 /// A chat for the LLM
 #[derive(Clone)]
-pub struct Chat<P: LLM, A: Agent, M: Memory = InMemory> {
+pub struct Chat<P: LLM, A: Agent, M: Memory> {
     /// The chat configuration
     pub config: P::ChatConfig,
 
     /// Conversation memory
     pub memory: M,
 
+    /// The agent
+    pub agent: A,
+
     /// The LLM provider
     provider: P,
-
-    /// The agent
-    agent: A,
 
     /// Whether to return the usage information in stream mode
     usage: bool,
 }
 
-impl<P: LLM> Chat<P, (), InMemory> {
-    /// Create a new chat
-    pub fn new(config: General, provider: P) -> Self {
-        Self {
-            memory: InMemory::default(),
-            provider,
-            usage: config.usage,
-            agent: (),
-            config: config.into(),
-        }
-    }
-}
-
 impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
-    /// Create a chat with a custom memory backend.
-    pub fn with_memory(config: General, provider: P, agent: A, memory: M) -> Self {
+    /// Create a new chat
+    pub fn new(config: General, provider: P, agent: A, memory: M) -> Self {
         let usage = config.usage;
         let config_typed: P::ChatConfig = config.into();
         let config_typed = config_typed.with_tools(A::tools());
@@ -58,21 +44,16 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
         }
     }
 
-    /// Get a mutable reference to the agent
-    pub fn agent_mut(&mut self) -> &mut A {
-        &mut self.agent
-    }
-
     /// Get the chat messages for API requests.
     ///
     /// Loads from memory, prepends the system prompt, applies agent-specific
     /// compaction, then strips reasoning content from non-tool-call messages.
-    pub async fn messages(&self) -> Result<Vec<Message>> {
+    async fn messages(&self) -> Result<Vec<Message>> {
         let mut messages = self.memory.load().await?;
 
-        // Ensure system prompt is always first
+        // Prepend system prompt (built at runtime, never stored in memory)
         if messages.first().map(|m| m.role) != Some(Role::System) {
-            messages.insert(0, Message::system(A::SYSTEM_PROMPT));
+            messages.insert(0, Message::system(self.agent.system_prompt()));
         }
 
         Ok(self
@@ -88,26 +69,9 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
             .collect())
     }
 
-    /// Set the agent and configure tools.
-    ///
-    /// The system prompt is not stored in memory — it is prepended
-    /// dynamically by [`messages()`] before each LLM call.
-    pub fn system<B: Agent>(self, agent: B) -> Chat<P, B, M> {
-        let config = self.config.with_tools(B::tools());
-        Chat {
-            memory: self.memory,
-            provider: self.provider,
-            usage: self.usage,
-            agent,
-            config,
-        }
-    }
-
     /// Send a message to the LLM
     pub async fn send(&mut self, message: Message) -> Result<Response> {
-        let mut config = self
-            .config
-            .with_tool_choice(self.agent.filter(message.content.as_str()));
+        let mut config = self.config.with_tool_choice(ToolChoice::Auto);
         self.memory.append(&[message]).await?;
 
         for _ in 0..MAX_TOOL_CALLS {
@@ -137,12 +101,11 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
         &mut self,
         message: Message,
     ) -> impl Stream<Item = Result<A::Chunk>> + use<'_, P, A, M> {
-        let mut config = self
-            .config
-            .with_tool_choice(self.agent.filter(message.content.as_str()));
+        let config = self.config.with_tool_choice(ToolChoice::Auto);
 
         async_stream::try_stream! {
             self.memory.append(&[message]).await?;
+            let mut config = config;
 
             for _ in 0..MAX_TOOL_CALLS {
                 let messages = self.messages().await?;

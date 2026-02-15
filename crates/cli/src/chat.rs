@@ -4,7 +4,7 @@ use super::Config;
 use crate::agents::{AgentKind, Anto};
 use anyhow::Result;
 use clap::{Args, ValueEnum};
-use cydonia::{Agent, Chat, Client, DeepSeek, LLM, Message, StreamChunk};
+use cydonia::{Agent, Chat, Client, DeepSeek, InMemory, LLM, Message, StreamChunk};
 use futures_util::StreamExt;
 use std::{
     fmt::{Display, Formatter},
@@ -44,21 +44,26 @@ impl ChatCmd {
 
         // override the think flag in the config
         config.config.think = self.think;
+        let config = config.config().clone();
 
         // run the chat
         match self.agent {
             Some(AgentKind::Anto) => {
-                let mut chat = provider.chat(config.config().clone()).system(Anto);
+                let mut chat = Chat::new(config, provider, Anto, InMemory::default());
                 self.run_chat(&mut chat, stream).await
             }
             None => {
-                let mut chat = provider.chat(config.config().clone());
+                let mut chat = Chat::new(config, provider, (), InMemory::default());
                 self.run_chat(&mut chat, stream).await
             }
         }
     }
 
-    async fn run_chat<A>(&self, chat: &mut Chat<DeepSeek, A>, stream: bool) -> Result<()>
+    async fn run_chat<A>(
+        &self,
+        chat: &mut Chat<DeepSeek, A, InMemory>,
+        stream: bool,
+    ) -> Result<()>
     where
         A: Agent<Chunk = StreamChunk>,
     {
@@ -91,7 +96,11 @@ impl ChatCmd {
         Ok(())
     }
 
-    async fn send<A>(chat: &mut Chat<DeepSeek, A>, message: Message, stream: bool) -> Result<()>
+    async fn send<A>(
+        chat: &mut Chat<DeepSeek, A, InMemory>,
+        message: Message,
+        stream: bool,
+    ) -> Result<()>
     where
         A: Agent<Chunk = StreamChunk>,
     {
