@@ -4,7 +4,6 @@ pub use {
     agent::Agent,
     chat::Chat,
     config::{Config, General},
-    memory::{InMemory, Memory},
     message::{Message, Role},
     provider::LLM,
     reqwest::{self, Client},
@@ -16,7 +15,6 @@ pub use {
 mod agent;
 mod chat;
 mod config;
-pub mod memory;
 mod message;
 mod provider;
 mod response;

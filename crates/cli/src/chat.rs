@@ -4,7 +4,7 @@ use super::Config;
 use crate::agents::{AgentKind, Anto};
 use anyhow::Result;
 use clap::{Args, ValueEnum};
-use cydonia::{Agent, Chat, Client, DeepSeek, InMemory, LLM, Message, StreamChunk};
+use cydonia::{Agent, Chat, Client, DeepSeek, LLM, Message, StreamChunk};
 use futures_util::StreamExt;
 use std::{
     fmt::{Display, Formatter},
@@ -49,11 +49,11 @@ impl ChatCmd {
         // run the chat
         match self.agent {
             Some(AgentKind::Anto) => {
-                let mut chat = Chat::new(config, provider, Anto, InMemory::default());
+                let mut chat = Chat::new(config, provider, Anto, Vec::new());
                 self.run_chat(&mut chat, stream).await
             }
             None => {
-                let mut chat = Chat::new(config, provider, (), InMemory::default());
+                let mut chat = Chat::new(config, provider, (), Vec::new());
                 self.run_chat(&mut chat, stream).await
             }
         }
@@ -61,7 +61,7 @@ impl ChatCmd {
 
     async fn run_chat<A>(
         &self,
-        chat: &mut Chat<DeepSeek, A, InMemory>,
+        chat: &mut Chat<DeepSeek, A>,
         stream: bool,
     ) -> Result<()>
     where
@@ -97,7 +97,7 @@ impl ChatCmd {
     }
 
     async fn send<A>(
-        chat: &mut Chat<DeepSeek, A, InMemory>,
+        chat: &mut Chat<DeepSeek, A>,
         message: Message,
         stream: bool,
     ) -> Result<()>

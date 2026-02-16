@@ -1,7 +1,7 @@
 //! Chat abstractions for the unified LLM Interfaces
 
 use crate::{
-    Agent, Config, FinishReason, General, LLM, Memory, Response, Role, StreamChunk, ToolChoice,
+    Agent, Config, FinishReason, General, LLM, Response, Role, StreamChunk, ToolChoice,
     message::Message,
 };
 use anyhow::Result;
@@ -12,12 +12,12 @@ const MAX_TOOL_CALLS: usize = 16;
 
 /// A chat for the LLM
 #[derive(Clone)]
-pub struct Chat<P: LLM, A: Agent, M: Memory> {
+pub struct Chat<P: LLM, A: Agent> {
     /// The chat configuration
     pub config: P::ChatConfig,
 
-    /// Conversation memory
-    pub memory: M,
+    /// Conversation messages
+    pub messages: Vec<Message>,
 
     /// The agent
     pub agent: A,
@@ -29,14 +29,14 @@ pub struct Chat<P: LLM, A: Agent, M: Memory> {
     usage: bool,
 }
 
-impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
+impl<P: LLM, A: Agent> Chat<P, A> {
     /// Create a new chat
-    pub fn new(config: General, provider: P, agent: A, memory: M) -> Self {
+    pub fn new(config: General, provider: P, agent: A, messages: Vec<Message>) -> Self {
         let usage = config.usage;
         let config_typed: P::ChatConfig = config.into();
         let config_typed = config_typed.with_tools(A::tools());
         Self {
-            memory,
+            messages,
             provider,
             usage,
             agent,
@@ -44,20 +44,19 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
         }
     }
 
-    /// Get the chat messages for API requests.
+    /// Build the message list for an API request.
     ///
-    /// Loads from memory, prepends the system prompt, applies agent-specific
-    /// compaction, then strips reasoning content from non-tool-call messages.
-    async fn messages(&self) -> Result<Vec<Message>> {
-        let mut messages = self.memory.load().await?;
+    /// Prepends the system prompt, applies agent-specific compaction,
+    /// then strips reasoning content from non-tool-call messages.
+    fn api_messages(&self) -> Vec<Message> {
+        let mut messages = self.messages.clone();
 
-        // Prepend system prompt (built at runtime, never stored in memory)
+        // Prepend system prompt (built at runtime, never stored)
         if messages.first().map(|m| m.role) != Some(Role::System) {
             messages.insert(0, Message::system(self.agent.system_prompt()));
         }
 
-        Ok(self
-            .agent
+        self.agent
             .compact(messages)
             .into_iter()
             .map(|mut m| {
@@ -66,30 +65,29 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
                 }
                 m
             })
-            .collect())
+            .collect()
     }
 
     /// Send a message to the LLM
     pub async fn send(&mut self, message: Message) -> Result<Response> {
         let mut config = self.config.with_tool_choice(ToolChoice::Auto);
-        self.memory.append(&[message]).await?;
+        self.messages.push(message);
 
         for _ in 0..MAX_TOOL_CALLS {
-            let messages = self.messages().await?;
+            let messages = self.api_messages();
             let response = self.provider.send(&config, &messages).await?;
             let Some(message) = response.message() else {
                 return Ok(response);
             };
 
             if message.tool_calls.is_empty() {
-                self.memory.append(&[message]).await?;
+                self.messages.push(message);
                 return Ok(response);
             }
 
             let result = self.agent.dispatch(&message.tool_calls).await;
-            let mut new_messages = vec![message];
-            new_messages.extend(result);
-            self.memory.append(&new_messages).await?;
+            self.messages.push(message);
+            self.messages.extend(result);
             config = config.with_tool_choice(ToolChoice::None);
         }
 
@@ -100,15 +98,15 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
     pub fn stream(
         &mut self,
         message: Message,
-    ) -> impl Stream<Item = Result<A::Chunk>> + use<'_, P, A, M> {
+    ) -> impl Stream<Item = Result<A::Chunk>> + use<'_, P, A> {
         let config = self.config.with_tool_choice(ToolChoice::Auto);
 
         async_stream::try_stream! {
-            self.memory.append(&[message]).await?;
+            self.messages.push(message);
             let mut config = config;
 
             for _ in 0..MAX_TOOL_CALLS {
-                let messages = self.messages().await?;
+                let messages = self.api_messages();
                 let mut builder = Message::builder(Role::Assistant);
 
                 // Stream the chunks
@@ -139,15 +137,14 @@ impl<P: LLM, A: Agent, M: Memory> Chat<P, A, M> {
                 // Build the message and dispatch tool calls
                 let message = builder.build();
                 if message.tool_calls.is_empty() {
-                    self.memory.append(&[message]).await?;
+                    self.messages.push(message);
                     break;
                 }
 
                 yield self.agent.chunk(&StreamChunk::tool(&message.tool_calls)).await?;
                 let result = self.agent.dispatch(&message.tool_calls).await;
-                let mut new_messages = vec![message];
-                new_messages.extend(result);
-                self.memory.append(&new_messages).await?;
+                self.messages.push(message);
+                self.messages.extend(result);
                 config = config.with_tool_choice(ToolChoice::None);
             }
         }
