@@ -59,11 +59,7 @@ impl ChatCmd {
         }
     }
 
-    async fn run_chat<A>(
-        &self,
-        chat: &mut Chat<DeepSeek, A>,
-        stream: bool,
-    ) -> Result<()>
+    async fn run_chat<A>(&self, chat: &mut Chat<DeepSeek, A>, stream: bool) -> Result<()>
     where
         A: Agent<Chunk = StreamChunk>,
     {
@@ -96,11 +92,7 @@ impl ChatCmd {
         Ok(())
     }
 
-    async fn send<A>(
-        chat: &mut Chat<DeepSeek, A>,
-        message: Message,
-        stream: bool,
-    ) -> Result<()>
+    async fn send<A>(chat: &mut Chat<DeepSeek, A>, message: Message, stream: bool) -> Result<()>
     where
         A: Agent<Chunk = StreamChunk>,
     {
