@@ -456,6 +456,7 @@ version = "0.0.9"
 dependencies = [
  "cydonia-core",
  "cydonia-deepseek",
+ "cydonia-memory",
 ]
 
 [[package]]
@@ -520,6 +521,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "cydonia-memory"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "cydonia-core",
 ]
 
 [[package]]

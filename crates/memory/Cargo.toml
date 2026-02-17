@@ -1,15 +1,13 @@
 [package]
-name = "cydonia"
-description = "Cydonia umbrella crate"
-documentation = "https://docs.rs/cydonia"
+name = "cydonia-memory"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
+description = "Cydonia persistent memory"
 
 [dependencies]
-deepseek.workspace = true
+anyhow.workspace = true
 ccore.workspace = true
-memory.workspace = true
