@@ -6,3 +6,4 @@ pub use ccore::{
     self, Agent, Chat, Client, Config, General, LLM, Message, Role, StreamChunk, Tool, ToolCall,
 };
 pub use deepseek::DeepSeek;
+pub use memory::{self, InMemory, Memory, WithMemory};

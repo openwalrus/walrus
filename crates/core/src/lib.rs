@@ -7,11 +7,8 @@ pub use {
     message::{Message, Role},
     provider::LLM,
     reqwest::{self, Client},
-    response::{
-        Choice, CompletionTokensDetails, FinishReason, LogProb, LogProbs, Response,
-        ResponseMessage, TopLogProb, Usage,
-    },
-    stream::{Delta, StreamChoice, StreamChunk},
+    response::{FinishReason, Response, Usage},
+    stream::StreamChunk,
     tool::{FunctionCall, Tool, ToolCall, ToolChoice},
 };
 

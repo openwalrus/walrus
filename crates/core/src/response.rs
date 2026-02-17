@@ -3,13 +3,13 @@
 use crate::{Message, Role, tool::ToolCall};
 use serde::{Deserialize, Serialize};
 
-/// A chat completion response from the LLM
-#[derive(Debug, Clone, Deserialize)]
-pub struct Response {
+/// Common metadata shared between streaming and non-streaming completions
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CompletionMeta {
     /// A unique identifier for the chat completion
     pub id: String,
 
-    /// The object type, always "chat.completion"
+    /// The object type
     pub object: String,
 
     /// Unix timestamp (in seconds) of when the response was created
@@ -20,6 +20,32 @@ pub struct Response {
 
     /// Backend configuration identifier
     pub system_fingerprint: Option<String>,
+}
+
+/// Message content in a completion response
+///
+/// Used for both streaming deltas and non-streaming response messages.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct Delta {
+    /// The role of the message author
+    pub role: Option<Role>,
+
+    /// The content of the message
+    pub content: Option<String>,
+
+    /// The reasoning content (for deepseek-reasoner model)
+    pub reasoning_content: Option<String>,
+
+    /// Tool calls made by the model
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+/// A chat completion response from the LLM
+#[derive(Debug, Clone, Deserialize)]
+pub struct Response {
+    /// Completion metadata
+    #[serde(flatten)]
+    pub meta: CompletionMeta,
 
     /// The list of completion choices
     pub choices: Vec<Choice>,
@@ -74,29 +100,13 @@ pub struct Choice {
     pub index: u32,
 
     /// The generated message
-    pub message: ResponseMessage,
+    pub message: Delta,
 
     /// The reason the model stopped generating
     pub finish_reason: Option<FinishReason>,
 
     /// Log probability information
     pub logprobs: Option<LogProbs>,
-}
-
-/// A message in the response
-#[derive(Debug, Clone, Deserialize)]
-pub struct ResponseMessage {
-    /// The role of the message author (always "assistant")
-    pub role: Role,
-
-    /// The content of the message
-    pub content: Option<String>,
-
-    /// The reasoning content (for deepseek-reasoner model)
-    pub reasoning_content: Option<String>,
-
-    /// Tool calls made by the model
-    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 /// The reason the model stopped generating

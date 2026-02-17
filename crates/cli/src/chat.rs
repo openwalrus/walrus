@@ -44,15 +44,16 @@ impl ChatCmd {
 
         // override the think flag in the config
         config.config.think = self.think;
+        let config = config.config().clone();
 
         // run the chat
         match self.agent {
             Some(AgentKind::Anto) => {
-                let mut chat = provider.chat(config.config().clone()).system(Anto);
+                let mut chat = Chat::new(config, provider, Anto, Vec::new());
                 self.run_chat(&mut chat, stream).await
             }
             None => {
-                let mut chat = provider.chat(config.config().clone());
+                let mut chat = Chat::new(config, provider, (), Vec::new());
                 self.run_chat(&mut chat, stream).await
             }
         }
