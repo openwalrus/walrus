@@ -2,7 +2,7 @@
 
 use crate::Memory;
 use anyhow::Result;
-use ccore::{Agent, Layer, Message, StreamChunk, Tool, ToolCall, Tools};
+use ccore::{Agent, Layer, Message, StreamChunk, Tool, ToolCall};
 
 /// An agent wrapper that injects structured memory into the system prompt.
 ///
@@ -45,8 +45,8 @@ impl<A: Agent, M: Memory> Agent for WithMemory<A, M> {
         }
     }
 
-    fn tools() -> Vec<Tool> {
-        A::tools()
+    fn tools(&self) -> Vec<Tool> {
+        self.agent.tools()
     }
 
     fn compact(&self, messages: Vec<Message>) -> Vec<Message> {
@@ -59,12 +59,6 @@ impl<A: Agent, M: Memory> Agent for WithMemory<A, M> {
 
     async fn chunk(&self, chunk: &StreamChunk) -> Result<Self::Chunk> {
         self.agent.chunk(chunk).await
-    }
-}
-
-impl<A: Agent + Tools, M: Memory> Tools for WithMemory<A, M> {
-    fn tools(&self) -> Vec<Tool> {
-        self.agent.tools()
     }
 }
 

@@ -87,7 +87,7 @@ impl<P: LLM, A: Agent> AgentSub<P, A> {
 impl<P, A> SubAgent for AgentSub<P, A>
 where
     P: LLM + Clone,
-    A: Agent + Clone + ccore::Tools,
+    A: Agent + Clone,
 {
     fn name(&self) -> &str {
         &self.name
@@ -106,7 +106,7 @@ where
         let input = input.to_string();
         CALL_DEPTH
             .scope(depth + 1, async {
-                let mut chat = Chat::with_tools(
+                let mut chat = Chat::new(
                     self.config.clone(),
                     self.provider.clone(),
                     self.agent.clone(),

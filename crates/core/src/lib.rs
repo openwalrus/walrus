@@ -1,7 +1,7 @@
 //! Core abstractions for Unified LLM Interface
 
 pub use {
-    agent::{Agent, Tools},
+    agent::Agent,
     chat::Chat,
     config::{Config, General},
     layer::Layer,

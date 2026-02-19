@@ -2,7 +2,7 @@
 
 use crate::sub::{SubAgent, extract_input};
 use anyhow::Result;
-use ccore::{Agent, Message, StreamChunk, Tool, ToolCall, Tools};
+use ccore::{Agent, Message, StreamChunk, Tool, ToolCall};
 
 /// Agent layer that adds a single sub-agent as a tool.
 ///
@@ -42,8 +42,10 @@ impl<A: Agent, S: SubAgent> Agent for WithTeam<A, S> {
         self.agent.system_prompt()
     }
 
-    fn tools() -> Vec<Tool> {
-        A::tools()
+    fn tools(&self) -> Vec<Tool> {
+        let mut tools = self.agent.tools();
+        tools.push(self.sub.tool());
+        tools
     }
 
     fn compact(&self, messages: Vec<Message>) -> Vec<Message> {
@@ -94,18 +96,9 @@ impl<A: Agent, S: SubAgent> Agent for WithTeam<A, S> {
     }
 }
 
-impl<A: Agent + Tools, S: SubAgent> Tools for WithTeam<A, S> {
-    fn tools(&self) -> Vec<Tool> {
-        let mut tools = self.agent.tools();
-        tools.push(self.sub.tool());
-        tools
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ccore::Tools;
 
     #[derive(Clone)]
     struct MockSub {
@@ -127,7 +120,7 @@ mod tests {
     #[test]
     fn tools_includes_sub() {
         let team = WithTeam::new((), MockSub { name: "analyst" });
-        let tools = Tools::tools(&team);
+        let tools = team.tools();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "analyst");
     }
@@ -136,7 +129,7 @@ mod tests {
     fn tools_recursive_across_nested_layers() {
         let team = WithTeam::new((), MockSub { name: "analyst" });
         let team = WithTeam::new(team, MockSub { name: "risk" });
-        let tools = Tools::tools(&team);
+        let tools = team.tools();
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0].name, "analyst");
         assert_eq!(tools[1].name, "risk");

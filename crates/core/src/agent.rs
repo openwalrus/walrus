@@ -14,7 +14,7 @@ pub trait Agent: Clone {
     fn system_prompt(&self) -> String;
 
     /// The tools for the agent
-    fn tools() -> Vec<Tool> {
+    fn tools(&self) -> Vec<Tool> {
         Vec::new()
     }
 
@@ -47,21 +47,6 @@ pub trait Agent: Clone {
     /// Parse a chunk from [StreamChunk]
     fn chunk(&self, chunk: &StreamChunk) -> impl Future<Output = Result<Self::Chunk>>;
 }
-
-/// Instance-level tool collection for layered agents.
-///
-/// The static [`Agent::tools()`] method cannot access instance data,
-/// so layers like `WithTeam` that register sub-agent tools at runtime
-/// use this trait to collect them. Leaf agents implement the default
-/// (empty vec).
-pub trait Tools {
-    /// Collect tools registered by this layer and all inner layers.
-    fn tools(&self) -> Vec<Tool> {
-        vec![]
-    }
-}
-
-impl Tools for () {}
 
 impl Agent for () {
     type Chunk = StreamChunk;
