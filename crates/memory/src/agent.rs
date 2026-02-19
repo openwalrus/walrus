@@ -35,6 +35,14 @@ impl<A: Agent, M: Memory> WithMemory<A, M> {
 impl<A: Agent, M: Memory> Agent for WithMemory<A, M> {
     type Chunk = A::Chunk;
 
+    fn name(&self) -> &str {
+        self.agent.name()
+    }
+
+    fn description(&self) -> &str {
+        self.agent.description()
+    }
+
     fn system_prompt(&self) -> String {
         let base = self.agent.system_prompt();
         let mem = self.memory.compile();
