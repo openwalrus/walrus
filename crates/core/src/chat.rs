@@ -44,6 +44,34 @@ impl<P: LLM, A: Agent> Chat<P, A> {
         }
     }
 
+    /// Create a new chat with additional instance-level tools from layers.
+    ///
+    /// Like [`new`](Self::new), but also collects dynamic tools registered
+    /// by agent layers (e.g. `WithTeam`). Use this when the agent
+    /// implements [`Tools`](crate::Tools).
+    pub fn with_tools(
+        config: General,
+        provider: P,
+        agent: A,
+        messages: Vec<Message>,
+    ) -> Self
+    where
+        A: crate::Tools,
+    {
+        let usage = config.usage;
+        let mut tools = <A as Agent>::tools();
+        tools.extend(crate::Tools::tools(&agent));
+        let config_typed: P::ChatConfig = config.into();
+        let config_typed = config_typed.with_tools(tools);
+        Self {
+            messages,
+            provider,
+            usage,
+            agent,
+            config: config_typed,
+        }
+    }
+
     /// Build the message list for an API request.
     ///
     /// Prepends the system prompt, applies agent-specific compaction,

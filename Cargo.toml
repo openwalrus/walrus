@@ -18,6 +18,7 @@ model = { path = "legacy/model", package = "cydonia-model", version = "0.0.9" }
 cydonia = { path = "crates/cydonia", version = "0.0.9" }
 ccore = { path = "crates/core", package = "cydonia-core", version = "0.0.9" }
 memory = { path = "crates/memory", package = "cydonia-memory", version = "0.0.9" }
+team = { path = "crates/team", package = "cydonia-team", version = "0.0.9" }
 
 # crates.io
 anyhow = "1"

@@ -541,6 +541,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cydonia-team"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "cydonia-core",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"

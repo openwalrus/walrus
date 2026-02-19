@@ -2,7 +2,7 @@
 
 use crate::Memory;
 use anyhow::Result;
-use ccore::{Agent, Message, StreamChunk, Tool, ToolCall};
+use ccore::{Agent, Layer, Message, StreamChunk, Tool, ToolCall, Tools};
 
 /// An agent wrapper that injects structured memory into the system prompt.
 ///
@@ -59,6 +59,32 @@ impl<A: Agent, M: Memory> Agent for WithMemory<A, M> {
 
     async fn chunk(&self, chunk: &StreamChunk) -> Result<Self::Chunk> {
         self.agent.chunk(chunk).await
+    }
+}
+
+impl<A: Agent + Tools, M: Memory> Tools for WithMemory<A, M> {
+    fn tools(&self) -> Vec<Tool> {
+        self.agent.tools()
+    }
+}
+
+/// Memory layer — wraps any Agent and injects memory into its system prompt.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use cydonia_memory::MemoryLayer;
+///
+/// let agent = MemoryLayer(memory).layer(inner_agent);
+/// ```
+#[derive(Clone)]
+pub struct MemoryLayer<M: Memory>(pub M);
+
+impl<A: Agent, M: Memory> Layer<A> for MemoryLayer<M> {
+    type Agent = WithMemory<A, M>;
+
+    fn layer(self, agent: A) -> Self::Agent {
+        WithMemory::new(agent, self.0)
     }
 }
 
