@@ -84,10 +84,7 @@ impl<T: Team> Agent for T {
                             results.push(Message::tool(output, &call.id));
                         }
                         Err(e) => {
-                            results.push(Message::tool(
-                                format!("worker error: {e}"),
-                                &call.id,
-                            ));
+                            results.push(Message::tool(format!("worker error: {e}"), &call.id));
                         }
                     },
                     Err(e) => {
