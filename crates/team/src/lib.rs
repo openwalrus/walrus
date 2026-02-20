@@ -1,30 +1,28 @@
-//! Pluggable agent teams.
+//! Pluggable agent teams for Cydonia.
 //!
-//! A [`Team<A>`] is a leader agent with a dynamic registry of workers.
-//! Workers can be registered and removed at runtime. Each worker is
-//! exposed as a tool the LLM can call.
+//! This crate re-exports the [`Team`] trait and helpers from `ccore`.
 //!
-//! Communication between leader and workers goes through a [`Protocol`]
-//! trait, allowing both in-process ([`Local`]) and remote transports.
+//! Implement [`Team`] on your own struct to compose a leader agent
+//! with typed worker agents. No `dyn`, no type erasure.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use cydonia_team::{Team, Worker};
+//! use cydonia_team::{Team, tool};
+//! use ccore::{Agent, Tool};
 //!
-//! let mut team = Team::new(leader_agent);
-//! team.register(Worker::local(analyst, provider.clone(), config.clone()));
-//! let chat = Chat::new(config, provider, team, vec![]);
+//! #[derive(Clone)]
+//! struct MyTeam { leader: MyLeader, analyst: Analyst }
+//!
+//! impl Team for MyTeam {
+//!     type Leader = MyLeader;
+//!     fn leader(&self) -> &MyLeader { &self.leader }
+//!     fn workers(&self) -> Vec<Tool> { vec![tool("analyst", "analysis")] }
+//!     async fn call(&self, name: &str, input: String) -> anyhow::Result<String> {
+//!         // route to worker by name
+//!         todo!()
+//!     }
+//! }
 //! ```
 
-pub use local::Local;
-pub use protocol::Protocol;
-pub use task::{Task, TaskResult};
-pub use team::Team;
-pub use worker::Worker;
-
-mod local;
-mod protocol;
-mod task;
-mod team;
-mod worker;
+pub use ccore::team::{Team, extract_input, tool};

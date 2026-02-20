@@ -544,12 +544,7 @@ dependencies = [
 name = "cydonia-team"
 version = "0.0.9"
 dependencies = [
- "anyhow",
  "cydonia-core",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

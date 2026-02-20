@@ -10,6 +10,7 @@ pub use {
     reqwest::{self, Client},
     response::{FinishReason, Response, Usage},
     stream::StreamChunk,
+    team::Team,
     tool::{FunctionCall, Tool, ToolCall, ToolChoice},
 };
 
@@ -21,4 +22,5 @@ mod message;
 mod provider;
 mod response;
 mod stream;
+pub mod team;
 mod tool;
