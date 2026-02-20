@@ -1,16 +1,15 @@
-//! CLI commands for ullm
+//! Cydonia CLI
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, fmt};
 pub use {chat::ChatCmd, config::Config};
 
-mod agents;
 mod chat;
 mod config;
 
-/// Unified LLM Interface CLI
+/// Cydonia CLI
 #[derive(Debug, Parser)]
-#[command(name = "ullm", version, about)]
+#[command(name = "cydonia", version, about)]
 pub struct App {
     /// Enable streaming mode
     #[arg(short, long, global = true)]
@@ -41,8 +40,8 @@ impl App {
         let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
             let directive = match self.verbose {
                 0 => "info",
-                1 => "ullm=debug",
-                2 => "ullm=trace",
+                1 => "cydonia=debug",
+                2 => "cydonia=trace",
                 3 => "debug",
                 _ => "trace",
             };

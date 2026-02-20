@@ -1,6 +1,6 @@
 //! The request body for the DeepSeek API
 
-use ccore::{Config, General, Message, Tool, ToolChoice};
+use llm::{Config, General, Message, Tool, ToolChoice};
 use serde::Serialize;
 use serde_json::{Value, json};
 

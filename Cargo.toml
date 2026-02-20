@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "llm/*", "legacy/*"]
+members = ["crates/*", "crates/llm/deepseek", "legacy/*"]
 
 [workspace.package]
 version = "0.0.9"
@@ -13,12 +13,12 @@ keywords = ["llm", "agent", "ai"]
 [workspace.dependencies]
 candle = { path = "crates/candle", package = "cydonia-candle", version = "0.0.9" }
 cli = { path = "crates/cli", package = "cydonia-cli", version = "0.0.9" }
-deepseek = { path = "llm/deepseek", package = "cydonia-deepseek", version = "0.0.9" }
+deepseek = { path = "crates/llm/deepseek", package = "cydonia-deepseek", version = "0.0.9" }
+llm = { path = "crates/llm", package = "cydonia-llm", version = "0.0.9" }
 model = { path = "legacy/model", package = "cydonia-model", version = "0.0.9" }
 cydonia = { path = "crates/cydonia", version = "0.0.9" }
-ccore = { path = "crates/core", package = "cydonia-core", version = "0.0.9" }
-memory = { path = "crates/memory", package = "cydonia-memory", version = "0.0.9" }
-team = { path = "crates/team", package = "cydonia-team", version = "0.0.9" }
+agent = { path = "crates/agent", package = "cydonia-agent", version = "0.0.9" }
+runtime = { path = "crates/runtime", package = "cydonia-runtime", version = "0.0.9" }
 
 # crates.io
 anyhow = "1"
@@ -49,4 +49,4 @@ rand = "0.9.2"
 tokenizers = "0.21.0"
 
 [workspace.metadata.conta]
-packages = ["ccore", "deepseek", "cydonia", "cli"]
+packages = ["agent", "deepseek", "cydonia", "cli"]

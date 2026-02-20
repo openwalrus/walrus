@@ -454,9 +454,28 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 name = "cydonia"
 version = "0.0.9"
 dependencies = [
- "cydonia-core",
+ "cydonia-agent",
  "cydonia-deepseek",
- "cydonia-memory",
+ "cydonia-llm",
+ "cydonia-runtime",
+]
+
+[[package]]
+name = "cydonia-agent"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "cydonia-deepseek",
+ "cydonia-llm",
+ "cydonia-runtime",
+ "futures-core",
+ "futures-util",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -495,7 +514,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "cydonia-core"
+name = "cydonia-deepseek"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "cydonia-llm",
+ "futures-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "cydonia-llm"
 version = "0.0.9"
 dependencies = [
  "anyhow",
@@ -510,28 +543,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cydonia-deepseek"
-version = "0.0.9"
-dependencies = [
- "anyhow",
- "async-stream",
- "cydonia-core",
- "futures-core",
- "futures-util",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "cydonia-memory"
-version = "0.0.9"
-dependencies = [
- "anyhow",
- "cydonia-core",
-]
-
-[[package]]
 name = "cydonia-model"
 version = "0.0.9"
 dependencies = [
@@ -541,18 +552,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "cydonia-node"
-version = "0.0.9"
-
-[[package]]
 name = "cydonia-runtime"
 version = "0.0.9"
-
-[[package]]
-name = "cydonia-team"
-version = "0.0.9"
 dependencies = [
- "cydonia-core",
+ "anyhow",
+ "cydonia-llm",
+ "schemars",
+ "tokio",
 ]
 
 [[package]]

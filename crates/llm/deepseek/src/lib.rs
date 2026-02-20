@@ -1,13 +1,12 @@
-//! The LLM provider
+//! DeepSeek LLM provider
 
-use ccore::{Client, reqwest::header::HeaderMap};
+use llm::reqwest::{Client, header::HeaderMap};
 pub use request::Request;
 
-mod llm;
+mod provider;
 mod request;
 
 /// The DeepSeek LLM provider
-
 #[derive(Clone)]
 pub struct DeepSeek {
     /// The HTTP client

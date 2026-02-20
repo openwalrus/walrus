@@ -10,6 +10,7 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
+agent.workspace = true
 deepseek.workspace = true
-ccore.workspace = true
-memory.workspace = true
+llm.workspace = true
+runtime.workspace = true

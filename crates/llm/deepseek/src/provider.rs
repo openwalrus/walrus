@@ -3,7 +3,7 @@
 use crate::{DeepSeek, Request};
 use anyhow::Result;
 use async_stream::try_stream;
-use ccore::{
+use llm::{
     Client, LLM, Message, Response, StreamChunk,
     reqwest::{
         Method,

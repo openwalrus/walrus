@@ -1,0 +1,22 @@
+[package]
+name = "cydonia-deepseek"
+description = "Cydonia DeepSeek provider implementation"
+documentation = "https://docs.rs/cydonia-deepseek"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+llm.workspace = true
+
+# crates-io dependencies
+anyhow.workspace = true
+async-stream.workspace = true
+futures-core.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

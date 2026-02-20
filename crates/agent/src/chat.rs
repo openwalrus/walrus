@@ -1,64 +1,63 @@
-//! Chat abstractions for the unified LLM Interfaces
+//! Chat orchestration — no generics.
+//!
+//! [`Chat`] holds a [`Provider`], an [`Agent`], and a [`Runtime`].
+//! Tool dispatch goes through the runtime; streaming returns
+//! [`StreamChunk`] directly (the caller handles display).
 
-use crate::{
-    Agent, Config, FinishReason, General, LLM, Response, Role, StreamChunk, ToolChoice,
-    message::Message,
-};
+use crate::{Agent, Provider};
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use llm::{FinishReason, General, Message, Response, Role, StreamChunk, ToolChoice};
+use runtime::Runtime;
 
 const MAX_TOOL_CALLS: usize = 16;
 
-/// A chat for the LLM
-#[derive(Clone)]
-pub struct Chat<P: LLM, A: Agent> {
-    /// The chat configuration
-    pub config: P::ChatConfig,
-
-    /// Conversation messages
+/// A chat session: agent config + provider + runtime + history.
+pub struct Chat {
+    /// The agent configuration.
+    pub agent: Agent,
+    /// Conversation messages.
     pub messages: Vec<Message>,
-
-    /// The agent
-    pub agent: A,
-
-    /// The LLM provider
-    provider: P,
-
-    /// Whether to return the usage information in stream mode
-    usage: bool,
+    /// The tool runtime.
+    pub runtime: Runtime,
+    /// LLM provider.
+    provider: Provider,
+    /// LLM config.
+    config: General,
 }
 
-impl<P: LLM, A: Agent> Chat<P, A> {
-    /// Create a new chat
-    pub fn new(config: General, provider: P, agent: A, messages: Vec<Message>) -> Self {
-        let usage = config.usage;
-        let config_typed: P::ChatConfig = config.into();
-        let config_typed = config_typed.with_tools(agent.tools());
+impl Chat {
+    /// Create a new chat session.
+    pub fn new(
+        config: General,
+        provider: Provider,
+        agent: Agent,
+        runtime: Runtime,
+    ) -> Self {
         Self {
-            messages,
-            provider,
-            usage,
             agent,
-            config: config_typed,
+            messages: Vec::new(),
+            runtime,
+            provider,
+            config,
         }
     }
 
     /// Build the message list for an API request.
     ///
-    /// Prepends the system prompt, applies agent-specific compaction,
-    /// and strips reasoning content from non-tool-call messages (LLMs
-    /// reject reasoning content on follow-up messages).
+    /// Prepends the system prompt, applies compaction,
+    /// and strips reasoning content from non-tool-call messages.
     fn api_messages(&self) -> Vec<Message> {
         let mut messages = self.messages.clone();
 
         // Prepend system prompt (built at runtime, never stored)
         if messages.first().map(|m| m.role) != Some(Role::System) {
-            messages.insert(0, Message::system(self.agent.system_prompt()));
+            messages.insert(0, Message::system(&self.agent.system_prompt));
         }
 
-        self.agent
-            .compact(messages)
+        self.runtime
+            .compact(&self.agent.name, messages)
             .into_iter()
             .map(|mut m| {
                 if m.tool_calls.is_empty() {
@@ -69,14 +68,18 @@ impl<P: LLM, A: Agent> Chat<P, A> {
             .collect()
     }
 
-    /// Send a message to the LLM
+    /// Send a message to the LLM (non-streaming).
     pub async fn send(&mut self, message: Message) -> Result<Response> {
-        let mut config = self.config.clone().with_tool_choice(ToolChoice::Auto);
+        let tools = self.runtime.resolve(&self.agent.tools);
+        let mut tool_choice = ToolChoice::Auto;
         self.messages.push(message);
 
         for _ in 0..MAX_TOOL_CALLS {
             let messages = self.api_messages();
-            let response = self.provider.send(&config, &messages).await?;
+            let response = self
+                .provider
+                .send(&self.config, &tools, tool_choice.clone(), &messages)
+                .await?;
             let Some(message) = response.message() else {
                 return Ok(response);
             };
@@ -86,33 +89,40 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                 return Ok(response);
             }
 
-            let result = self.agent.dispatch(&message.tool_calls).await;
+            let result = self.runtime.dispatch(&message.tool_calls).await;
             self.messages.push(message);
             self.messages.extend(result);
-            config = config.with_tool_choice(ToolChoice::None);
+            tool_choice = ToolChoice::None;
         }
 
         anyhow::bail!("max tool calls reached");
     }
 
-    /// Send a message to the LLM with streaming
+    /// Send a message to the LLM with streaming.
+    ///
+    /// Returns [`StreamChunk`] directly — the caller handles display.
     pub fn stream(
         &mut self,
         message: Message,
-    ) -> impl Stream<Item = Result<A::Chunk>> + use<'_, P, A> {
-        let config = self.config.clone().with_tool_choice(ToolChoice::Auto);
+    ) -> impl Stream<Item = Result<StreamChunk>> + use<'_> {
+        let tools = self.runtime.resolve(&self.agent.tools);
 
         async_stream::try_stream! {
             self.messages.push(message);
-            let mut config = config;
+            let mut tool_choice = ToolChoice::Auto;
 
             for _ in 0..MAX_TOOL_CALLS {
                 let messages = self.api_messages();
                 let mut builder = Message::builder(Role::Assistant);
 
-                // Stream the chunks
-                let inner = self.provider.stream(config.clone(), &messages, self.usage);
+                let inner = self.provider.stream(
+                    &self.config,
+                    &tools,
+                    tool_choice.clone(),
+                    &messages,
+                );
                 futures_util::pin_mut!(inner);
+
                 while let Some(result) = inner.next().await {
                     let chunk = match result {
                         Ok(chunk) => chunk,
@@ -122,11 +132,13 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                         }
                     };
 
+                    let reason = chunk.reason().cloned();
+
                     if builder.accept(&chunk) {
-                        yield self.agent.chunk(&chunk).await?;
+                        yield chunk;
                     }
 
-                    if let Some(reason) = chunk.reason() {
+                    if let Some(reason) = reason {
                         match reason {
                             FinishReason::Stop => return,
                             FinishReason::ToolCalls => break,
@@ -142,11 +154,10 @@ impl<P: LLM, A: Agent> Chat<P, A> {
                     break;
                 }
 
-                yield self.agent.chunk(&StreamChunk::tool(&message.tool_calls)).await?;
-                let result = self.agent.dispatch(&message.tool_calls).await;
+                let result = self.runtime.dispatch(&message.tool_calls).await;
                 self.messages.push(message);
                 self.messages.extend(result);
-                config = config.with_tool_choice(ToolChoice::None);
+                tool_choice = ToolChoice::None;
             }
         }
     }

@@ -1,11 +1,13 @@
 //! Chat command
 
 use super::Config;
-use crate::agents::{AgentKind, Anto};
 use anyhow::Result;
+use chrono::Utc;
 use clap::{Args, ValueEnum};
-use cydonia::{Agent, Chat, Client, DeepSeek, LLM, Message, StreamChunk};
+use cydonia::{Agent, Chat, Client, Message, Provider, Runtime, Tool};
 use futures_util::StreamExt;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use std::{
     fmt::{Display, Formatter},
     io::{BufRead, Write},
@@ -30,6 +32,30 @@ pub struct ChatCmd {
     pub message: Option<String>,
 }
 
+/// Available agent types
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum AgentKind {
+    /// Anto - basic agent with time tool for testing
+    Anto,
+}
+
+/// Parameters for the get_time tool
+#[allow(dead_code)]
+#[derive(JsonSchema, Deserialize)]
+struct GetTimeParams {
+    /// If returns UNIX timestamp instead
+    timestamp: bool,
+}
+
+fn get_time_tool() -> Tool {
+    Tool {
+        name: "get_time".into(),
+        description: "Gets the current UTC time in ISO 8601 format.".into(),
+        parameters: schemars::schema_for!(GetTimeParams),
+        strict: true,
+    }
+}
+
 impl ChatCmd {
     /// Run the chat command
     pub async fn run(&self, stream: bool) -> Result<()> {
@@ -38,31 +64,41 @@ impl ChatCmd {
             .key
             .get(&self.model.to_string())
             .ok_or_else(|| anyhow::anyhow!("missing {:?} API key in config", self.model))?;
-        let provider = match self.model {
-            Model::Deepseek => DeepSeek::new(Client::new(), key)?,
-        };
+
+        let provider = Provider::new(&config.config.model, Client::new(), key)?;
 
         // override the think flag in the config
         config.config.think = self.think;
-        let config = config.config().clone();
+        let general = config.config().clone();
 
-        // run the chat
-        match self.agent {
+        // Build agent + runtime
+        let mut runtime = Runtime::new();
+        let agent = match self.agent {
             Some(AgentKind::Anto) => {
-                let mut chat = Chat::new(config, provider, Anto, Vec::new());
-                self.run_chat(&mut chat, stream).await
+                runtime.register(get_time_tool(), |args| async move {
+                    let args: GetTimeParams =
+                        serde_json::from_str(&args).unwrap_or(GetTimeParams { timestamp: false });
+                    if args.timestamp {
+                        Utc::now().timestamp().to_string()
+                    } else {
+                        Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                    }
+                });
+
+                Agent::new("anto")
+                    .system_prompt(
+                        "You are Anto, a helpful assistant. You can get the current time.",
+                    )
+                    .tool("get_time")
             }
-            None => {
-                let mut chat = Chat::new(config, provider, (), Vec::new());
-                self.run_chat(&mut chat, stream).await
-            }
-        }
+            None => Agent::new("assistant").system_prompt("You are a helpful assistant."),
+        };
+
+        let mut chat = Chat::new(general, provider, agent, runtime);
+        self.run_chat(&mut chat, stream).await
     }
 
-    async fn run_chat<A>(&self, chat: &mut Chat<DeepSeek, A>, stream: bool) -> Result<()>
-    where
-        A: Agent<Chunk = StreamChunk>,
-    {
+    async fn run_chat(&self, chat: &mut Chat, stream: bool) -> Result<()> {
         if let Some(msg) = &self.message {
             Self::send(chat, Message::user(msg), stream).await?;
         } else {
@@ -92,12 +128,8 @@ impl ChatCmd {
         Ok(())
     }
 
-    async fn send<A>(chat: &mut Chat<DeepSeek, A>, message: Message, stream: bool) -> Result<()>
-    where
-        A: Agent<Chunk = StreamChunk>,
-    {
+    async fn send(chat: &mut Chat, message: Message, stream: bool) -> Result<()> {
         if stream {
-            let mut response_content = String::new();
             let mut reasoning = false;
             let mut stream = std::pin::pin!(chat.stream(message));
             while let Some(Ok(chunk)) = stream.next().await {
@@ -107,7 +139,6 @@ impl ChatCmd {
                         reasoning = false;
                     }
                     print!("{content}");
-                    response_content.push_str(content);
                 }
 
                 if let Some(reasoning_content) = chunk.reasoning_content() {
@@ -116,7 +147,6 @@ impl ChatCmd {
                         reasoning = true;
                     }
                     print!("{reasoning_content}");
-                    response_content.push_str(reasoning_content);
                 }
             }
             println!();
