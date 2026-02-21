@@ -94,7 +94,7 @@ impl Request {
 
 impl From<General> for Request {
     fn from(config: General) -> Self {
-        Self {
+        let mut req = Self {
             messages: Vec::new(),
             model: config.model.clone(),
             frequency_penalty: None,
@@ -117,7 +117,16 @@ impl From<General> for Request {
             tools: None,
             top_logprobs: None,
             top_p: None,
+        };
+
+        if let Some(tools) = config.tools {
+            req = req.with_tools(tools);
         }
+        if let Some(tool_choice) = config.tool_choice {
+            req = req.with_tool_choice(tool_choice);
+        }
+
+        req
     }
 }
 

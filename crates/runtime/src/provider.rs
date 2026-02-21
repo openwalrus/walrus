@@ -3,7 +3,7 @@
 use anyhow::Result;
 use deepseek::DeepSeek;
 use futures_core::Stream;
-use llm::{Client, Config, General, LLM, Message, Response, StreamChunk, Tool, ToolChoice};
+use llm::{Client, General, LLM, Message, Response, StreamChunk};
 
 /// Unified LLM provider (static dispatch, no dyn).
 #[derive(Clone)]
@@ -30,39 +30,34 @@ impl Provider {
             Self::DeepSeek(_) => 64_000,
         })
     }
+}
 
-    /// Send a non-streaming request.
-    pub async fn send(
-        &self,
-        config: &General,
-        tools: &[Tool],
-        tool_choice: ToolChoice,
-        messages: &[Message],
-    ) -> Result<Response> {
+impl LLM for Provider {
+    type ChatConfig = General;
+
+    fn new(client: Client, key: &str) -> Result<Self> {
+        Ok(Self::DeepSeek(DeepSeek::new(client, key)?))
+    }
+
+    async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {
         match self {
             Self::DeepSeek(p) => {
-                let cfg = deepseek::Request::from(config.clone())
-                    .with_tools(tools.to_vec())
-                    .with_tool_choice(tool_choice);
+                let cfg = deepseek::Request::from(config.clone());
                 p.send(&cfg, messages).await
             }
         }
     }
 
-    /// Send a streaming request.
-    pub fn stream(
+    fn stream(
         &self,
-        config: &General,
-        tools: &[Tool],
-        tool_choice: ToolChoice,
+        config: General,
         messages: &[Message],
+        usage: bool,
     ) -> impl Stream<Item = Result<StreamChunk>> {
         match self {
             Self::DeepSeek(p) => {
-                let cfg = deepseek::Request::from(config.clone())
-                    .with_tools(tools.to_vec())
-                    .with_tool_choice(tool_choice);
-                p.stream(cfg, messages, config.usage)
+                let cfg = deepseek::Request::from(config);
+                p.stream(cfg, messages, usage)
             }
         }
     }

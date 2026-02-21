@@ -19,22 +19,20 @@
 //! ```
 
 pub use {
-    chat::Chat,
     provider::Provider,
     team::{build_team, extract_input, worker_tool},
 };
 
-use agent::Agent;
+use agent::{Agent, Chat};
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use llm::{
-    FinishReason, General, Message, Response, Role, StreamChunk, Tool, ToolCall, ToolChoice,
-    estimate_tokens,
+    Config, FinishReason, General, LLM, Message, Response, Role, StreamChunk, Tool, ToolCall,
+    ToolChoice, estimate_tokens,
 };
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
-mod chat;
 mod provider;
 pub mod team;
 
@@ -187,6 +185,14 @@ impl Runtime {
             .collect()
     }
 
+    /// Build a config with the given tools and tool choice.
+    fn build_config(&self, tools: Vec<Tool>, tool_choice: ToolChoice) -> General {
+        self.config
+            .clone()
+            .with_tools(tools)
+            .with_tool_choice(tool_choice)
+    }
+
     /// Send a message through a chat session (non-streaming).
     pub async fn send(&self, chat: &mut Chat, message: Message) -> Result<Response> {
         let agent = self
@@ -199,10 +205,8 @@ impl Runtime {
 
         for _ in 0..MAX_TOOL_CALLS {
             let messages = self.api_messages(chat);
-            let response = self
-                .provider
-                .send(&self.config, &tools, tool_choice.clone(), &messages)
-                .await?;
+            let cfg = self.build_config(tools.clone(), tool_choice.clone());
+            let response = self.provider.send(&cfg, &messages).await?;
             let Some(message) = response.message() else {
                 return Ok(response);
             };
@@ -243,14 +247,10 @@ impl Runtime {
 
             for _ in 0..MAX_TOOL_CALLS {
                 let messages = self.api_messages(chat);
+                let cfg = self.build_config(tools.clone(), tool_choice.clone());
                 let mut builder = Message::builder(Role::Assistant);
 
-                let inner = self.provider.stream(
-                    &self.config,
-                    &tools,
-                    tool_choice.clone(),
-                    &messages,
-                );
+                let inner = self.provider.stream(cfg, &messages, self.config.usage);
                 futures_util::pin_mut!(inner);
 
                 while let Some(result) = inner.next().await {
