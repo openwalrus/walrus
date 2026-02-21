@@ -3,6 +3,8 @@
 use crate::{DeepSeek, Request};
 use anyhow::Result;
 use async_stream::try_stream;
+use futures_core::Stream;
+use futures_util::StreamExt;
 use llm::{
     Client, LLM, Message, Response, StreamChunk,
     reqwest::{
@@ -10,8 +12,6 @@ use llm::{
         header::{self, HeaderMap},
     },
 };
-use futures_core::Stream;
-use futures_util::StreamExt;
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
@@ -29,7 +29,7 @@ impl LLM for DeepSeek {
     }
 
     /// Send a message to the LLM
-    async fn send(&mut self, req: &Request, messages: &[Message]) -> Result<Response> {
+    async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
         let body = req.messages(messages);
         tracing::trace!("request: {}", serde_json::to_string(&body)?);
         let text = self
@@ -47,7 +47,7 @@ impl LLM for DeepSeek {
 
     /// Send a message to the LLM with streaming
     fn stream(
-        &mut self,
+        &self,
         req: Request,
         messages: &[Message],
         usage: bool,

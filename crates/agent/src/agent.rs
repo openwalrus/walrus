@@ -1,13 +1,13 @@
 //! Agent configuration.
 //!
 //! An [`Agent`] is pure config — name, system prompt, and tool names.
-//! Tool handlers live in the [`Runtime`](crate::Runtime).
+//! Tool handlers live in the runtime.
 
 /// An agent configuration.
 ///
 /// Agents are portable configs: they describe *what* an agent does
-/// but not *how* tool calls are dispatched. The [`Runtime`](crate::Runtime)
-/// holds the actual tool handlers.
+/// but not *how* tool calls are dispatched. The runtime holds the
+/// actual tool handlers.
 #[derive(Debug, Clone, Default)]
 pub struct Agent {
     /// Agent identifier (used for tool registration in teams).

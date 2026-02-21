@@ -1,6 +1,6 @@
 [package]
 name = "cydonia-agent"
-description = "Cydonia agent framework"
+description = "Cydonia agent library"
 documentation = "https://docs.rs/cydonia-agent"
 version.workspace = true
 edition.workspace = true
@@ -11,16 +11,3 @@ keywords.workspace = true
 
 [dependencies]
 llm.workspace = true
-deepseek.workspace = true
-runtime.workspace = true
-
-# crates-io dependencies
-anyhow.workspace = true
-async-stream.workspace = true
-schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-futures-core.workspace = true
-futures-util.workspace = true
-reqwest.workspace = true
-tracing.workspace = true

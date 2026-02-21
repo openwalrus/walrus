@@ -5,7 +5,7 @@
 
 pub use {
     config::{Config, General},
-    message::{Message, Role},
+    message::{Message, Role, estimate_tokens},
     provider::LLM,
     reqwest::{self, Client},
     response::{FinishReason, Response, Usage},

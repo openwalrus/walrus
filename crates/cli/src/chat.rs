@@ -71,8 +71,9 @@ impl ChatCmd {
         config.config.think = self.think;
         let general = config.config().clone();
 
-        // Build agent + runtime
-        let mut runtime = Runtime::new();
+        // Build runtime with agent + tools
+        let mut runtime = Runtime::new(general, provider);
+
         let agent = match self.agent {
             Some(AgentKind::Anto) => {
                 runtime.register(get_time_tool(), |args| async move {
@@ -94,13 +95,14 @@ impl ChatCmd {
             None => Agent::new("assistant").system_prompt("You are a helpful assistant."),
         };
 
-        let mut chat = Chat::new(general, provider, agent, runtime);
-        self.run_chat(&mut chat, stream).await
+        runtime.add_agent(agent.clone());
+        let mut chat = runtime.chat(&agent.name)?;
+        self.run_chat(&runtime, &mut chat, stream).await
     }
 
-    async fn run_chat(&self, chat: &mut Chat, stream: bool) -> Result<()> {
+    async fn run_chat(&self, runtime: &Runtime, chat: &mut Chat, stream: bool) -> Result<()> {
         if let Some(msg) = &self.message {
-            Self::send(chat, Message::user(msg), stream).await?;
+            Self::send(runtime, chat, Message::user(msg), stream).await?;
         } else {
             let stdin = std::io::stdin();
             let mut stdout = std::io::stdout();
@@ -121,17 +123,22 @@ impl ChatCmd {
                     break;
                 }
 
-                Self::send(chat, Message::user(input), stream).await?;
+                Self::send(runtime, chat, Message::user(input), stream).await?;
             }
         }
 
         Ok(())
     }
 
-    async fn send(chat: &mut Chat, message: Message, stream: bool) -> Result<()> {
+    async fn send(
+        runtime: &Runtime,
+        chat: &mut Chat,
+        message: Message,
+        stream: bool,
+    ) -> Result<()> {
         if stream {
             let mut reasoning = false;
-            let mut stream = std::pin::pin!(chat.stream(message));
+            let mut stream = std::pin::pin!(runtime.stream(chat, message));
             while let Some(Ok(chunk)) = stream.next().await {
                 if let Some(content) = chunk.content() {
                     if reasoning {
@@ -151,7 +158,7 @@ impl ChatCmd {
             }
             println!();
         } else {
-            let response = chat.send(message).await?;
+            let response = runtime.send(chat, message).await?;
             if let Some(reasoning_content) = response.reasoning() {
                 println!("REASONING\n{reasoning_content}");
             }

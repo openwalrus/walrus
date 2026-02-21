@@ -28,6 +28,11 @@ pub struct General {
 
     /// Whether to return the usage information in stream mode
     pub usage: bool,
+
+    /// Context window limit override (in tokens).
+    /// If `None`, the provider uses its default for the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_limit: Option<usize>,
 }
 
 impl General {
@@ -38,6 +43,7 @@ impl General {
             think: false,
             tools: None,
             usage: false,
+            context_limit: None,
         }
     }
 }
@@ -49,6 +55,7 @@ impl Default for General {
             think: false,
             tools: None,
             usage: false,
+            context_limit: None,
         }
     }
 }

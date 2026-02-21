@@ -17,14 +17,14 @@ pub trait LLM: Sized + Clone {
 
     /// Send a message to the LLM
     fn send(
-        &mut self,
+        &self,
         config: &Self::ChatConfig,
         messages: &[Message],
     ) -> impl Future<Output = Result<Response>>;
 
     /// Send a message to the LLM with streaming
     fn stream(
-        &mut self,
+        &self,
         config: Self::ChatConfig,
         messages: &[Message],
         usage: bool,

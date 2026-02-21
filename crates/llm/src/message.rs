@@ -76,6 +76,26 @@ impl Message {
     pub fn builder(role: Role) -> MessageBuilder {
         MessageBuilder::new(role)
     }
+
+    /// Estimate the number of tokens in this message.
+    ///
+    /// Uses a simple heuristic: ~4 characters per token.
+    pub fn estimate_tokens(&self) -> usize {
+        let chars = self.content.len()
+            + self.reasoning_content.len()
+            + self.tool_call_id.len()
+            + self
+                .tool_calls
+                .iter()
+                .map(|tc| tc.function.name.len() + tc.function.arguments.len())
+                .sum::<usize>();
+        (chars / 4).max(1)
+    }
+}
+
+/// Estimate total tokens across a slice of messages.
+pub fn estimate_tokens(messages: &[Message]) -> usize {
+    messages.iter().map(|m| m.estimate_tokens()).sum()
 }
 
 /// A builder for messages

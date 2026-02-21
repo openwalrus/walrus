@@ -464,18 +464,7 @@ dependencies = [
 name = "cydonia-agent"
 version = "0.0.9"
 dependencies = [
- "anyhow",
- "async-stream",
- "cydonia-deepseek",
  "cydonia-llm",
- "cydonia-runtime",
- "futures-core",
- "futures-util",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -556,9 +545,18 @@ name = "cydonia-runtime"
 version = "0.0.9"
 dependencies = [
  "anyhow",
+ "async-stream",
+ "cydonia-agent",
+ "cydonia-deepseek",
  "cydonia-llm",
+ "futures-core",
+ "futures-util",
+ "reqwest",
  "schemars",
+ "serde",
+ "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -21,9 +21,19 @@ impl Provider {
         }
     }
 
+    /// Context window limit for the current provider/model.
+    ///
+    /// If `config.context_limit` is set, that takes precedence.
+    /// Otherwise, model-based defaults are used.
+    pub fn context_limit(&self, config: &General) -> usize {
+        config.context_limit.unwrap_or(match self {
+            Self::DeepSeek(_) => 64_000,
+        })
+    }
+
     /// Send a non-streaming request.
     pub async fn send(
-        &mut self,
+        &self,
         config: &General,
         tools: &[Tool],
         tool_choice: ToolChoice,
@@ -41,7 +51,7 @@ impl Provider {
 
     /// Send a streaming request.
     pub fn stream(
-        &mut self,
+        &self,
         config: &General,
         tools: &[Tool],
         tool_choice: ToolChoice,
