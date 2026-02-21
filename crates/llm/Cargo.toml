@@ -1,7 +1,7 @@
 [package]
-name = "cydonia-runtime"
-description = "Cydonia runtime"
-documentation = "https://docs.rs/cydonia-runtime"
+name = "cydonia-llm"
+description = "Cydonia unified LLM interface"
+documentation = "https://docs.rs/cydonia-llm"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,20 +10,15 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
-llm.workspace = true
-deepseek.workspace = true
-agent.workspace = true
-
-# crates-io dependencies
 anyhow.workspace = true
 async-stream.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
 schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+serde_json.workspace = true
