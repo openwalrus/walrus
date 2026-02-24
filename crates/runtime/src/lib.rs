@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use walrus_agent::Agent;
+//! use walrus_core::Agent;
 //! use walrus_runtime::{Runtime, Provider};
 //! use llm::{General, Message};
 //!
