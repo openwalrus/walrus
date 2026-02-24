@@ -1,6 +1,6 @@
-# cydonia-deepseek
+# walrus-deepseek
 
-DeepSeek LLM provider for cydonia.
+DeepSeek LLM provider for walrus.
 
 ## Overview
 
@@ -14,7 +14,7 @@ Implements the `LLM` trait for DeepSeek API, supporting:
 ## Usage
 
 ```rust
-use cydonia::{DeepSeek, LLM};
+use walrus::{DeepSeek, LLM};
 
 let provider = DeepSeek::new(client, "your-api-key")?;
 ```

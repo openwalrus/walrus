@@ -7,14 +7,14 @@ version = "0.0.9"
 edition = "2024"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
 license = "GPL-3.0"
-repository = "https://github.com/clearloop/cydonia"
+repository = "https://github.com/clearloop/walrus"
 keywords = ["llm", "agent", "ai"]
 
 [workspace.dependencies]
-deepseek = { path = "crates/llm/deepseek", package = "cydonia-deepseek", version = "0.0.9" }
-llm = { path = "crates/llm", package = "cydonia-llm", version = "0.0.9" }
-agent = { path = "crates/agent", package = "cydonia-agent", version = "0.0.9" }
-runtime = { path = "crates/runtime", package = "cydonia-runtime", version = "0.0.9" }
+deepseek = { path = "crates/llm/deepseek", package = "walrus-deepseek", version = "0.0.9" }
+llm = { path = "crates/llm", package = "walrus-llm", version = "0.0.9" }
+agent = { path = "crates/agent", package = "walrus-agent", version = "0.0.9" }
+runtime = { path = "crates/runtime", package = "walrus-runtime", version = "0.0.9" }
 
 # crates.io
 anyhow = "1"

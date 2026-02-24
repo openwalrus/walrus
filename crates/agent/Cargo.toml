@@ -1,7 +1,7 @@
 [package]
-name = "cydonia-agent"
-description = "Cydonia agent library"
-documentation = "https://docs.rs/cydonia-agent"
+name = "walrus-agent"
+description = "Walrus agent library"
+documentation = "https://docs.rs/walrus-agent"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
