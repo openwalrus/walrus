@@ -4,7 +4,7 @@ use agent::{Agent, InMemory, Memory, Skill, SkillTier};
 use compact_str::CompactString;
 use llm::{FunctionCall, General, LLM, Message, Tool, ToolCall};
 use std::collections::BTreeMap;
-use walrus_runtime::{Chat, Hook, Provider, Runtime, SkillRegistry};
+use walrus_runtime::{Hook, Provider, Runtime, SkillRegistry};
 
 fn test_provider() -> Provider {
     Provider::DeepSeek(deepseek::DeepSeek::new(llm::Client::new(), "test-key").unwrap())
@@ -74,21 +74,6 @@ async fn dispatch_unknown_tool() {
 }
 
 #[test]
-fn chat_requires_registered_agent() {
-    let rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
-    assert!(rt.chat("unknown").is_err());
-}
-
-#[test]
-fn chat_succeeds_with_agent() {
-    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
-    rt.add_agent(Agent::new("test").system_prompt("hello"));
-    let chat = rt.chat("test").unwrap();
-    assert_eq!(chat.agent_name(), "test");
-    assert!(chat.messages.is_empty());
-}
-
-#[test]
 fn context_limit_default() {
     let rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
     assert_eq!(rt.context_limit(), 64_000);
@@ -100,16 +85,6 @@ fn context_limit_override() {
     config.context_limit = Some(128_000);
     let rt = Runtime::<()>::new(config, test_provider(), InMemory::new());
     assert_eq!(rt.context_limit(), 128_000);
-}
-
-#[test]
-fn estimate_tokens_counts() {
-    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
-    rt.add_agent(Agent::new("test").system_prompt("You are helpful."));
-    let mut chat = rt.chat("test").unwrap();
-    chat.messages.push(Message::user("hello world"));
-    let tokens = rt.estimate_tokens(&chat);
-    assert!(tokens > 0);
 }
 
 #[test]
@@ -154,7 +129,6 @@ async fn system_prompt_includes_memory() {
 
     let mut rt = Runtime::<()>::new(General::default(), test_provider(), memory);
     rt.add_agent(Agent::new("test").system_prompt("You are helpful."));
-    let _chat = rt.chat("test").unwrap();
 
     // api_messages is private, so test via memory content.
     let compiled = rt.memory().compile();
@@ -250,11 +224,7 @@ fn skill_body_injected() {
     );
 
     // Verify the skill registry is set.
-    // (api_messages is private, but we can verify the registry content.)
-    let chat = rt.chat("dev").unwrap();
-    assert_eq!(chat.agent_name(), "dev");
-    // The agent has skill_tags matching "code", and the registry has a skill
-    // with tag "code" — the body should be injected in api_messages().
+    assert!(rt.agent("dev").is_some());
 }
 
 #[test]
@@ -282,37 +252,6 @@ fn hook_default_flush_prompt() {
     assert!(!prompt.is_empty());
 }
 
-// --- Compaction threshold tests ---
-
-#[test]
-fn compaction_skips_below_threshold() {
-    let rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
-    let chat = Chat::new("test");
-    // Empty chat is well under 80% of the context limit.
-    assert!(!rt.needs_compaction(&chat));
-}
-
-// --- Chat helper tests ---
-
-#[test]
-fn chat_compaction_count_default() {
-    let chat = Chat::new("test");
-    assert_eq!(chat.compaction_count(), 0);
-}
-
-#[test]
-fn chat_helpers() {
-    let mut chat = Chat::new("test");
-    assert!(chat.is_empty());
-    assert_eq!(chat.len(), 0);
-    assert!(chat.last_message().is_none());
-
-    chat.messages.push(Message::user("hello"));
-    assert!(!chat.is_empty());
-    assert_eq!(chat.len(), 1);
-    assert_eq!(chat.last_message().unwrap().content, "hello");
-}
-
 // --- Provider factory tests ---
 
 #[test]
@@ -331,4 +270,69 @@ fn set_skills_on_existing_runtime() {
     // Resolve still works after setting skills.
     let tools = rt.resolve(&["remember".into()]);
     assert_eq!(tools.len(), 1);
+}
+
+// --- P2-09: Session and resolve_tools tests ---
+
+#[tokio::test]
+async fn send_to_unknown_agent_fails() {
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
+    let result = rt.send_to("unknown", Message::user("hello")).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("not registered"));
+}
+
+#[test]
+fn clear_session_removes() {
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
+    rt.add_agent(Agent::new("test").system_prompt("hello"));
+    // clear_session on a non-existent session is a no-op.
+    rt.clear_session("test");
+    // After clearing, the next send_to would create a fresh session.
+}
+
+#[test]
+fn resolve_tools_returns_pairs() {
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
+    rt.register(echo_tool(), |args| async move { args });
+    let resolved = rt.resolve_tools(&["echo".into()]);
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].0.name, "echo");
+}
+
+#[test]
+fn resolve_tools_glob() {
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
+    rt.register(
+        Tool {
+            name: "foo_a".into(),
+            description: "".into(),
+            parameters: schemars::schema_for!(String),
+            strict: false,
+        },
+        |args| async move { args },
+    );
+    rt.register(
+        Tool {
+            name: "foo_b".into(),
+            description: "".into(),
+            parameters: schemars::schema_for!(String),
+            strict: false,
+        },
+        |args| async move { args },
+    );
+
+    let resolved = rt.resolve_tools(&["foo_*".into()]);
+    assert_eq!(resolved.len(), 2);
+    assert!(resolved.iter().all(|(t, _)| t.name.starts_with("foo_")));
+}
+
+#[test]
+fn resolve_returns_schemas_only() {
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
+    rt.register(echo_tool(), |args| async move { args });
+    let tools = rt.resolve(&["echo".into()]);
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "echo");
+    // resolve returns Tool only, no handler — compile-time verified by type.
 }

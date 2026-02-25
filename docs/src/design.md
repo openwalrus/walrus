@@ -134,12 +134,13 @@ AFTER INSERT/UPDATE/DELETE triggers for sync.
 read. `set()` uses `ON CONFLICT(key) DO UPDATE` to preserve `created_at`.
 `store_with_metadata()` for metadata + embedding storage.
 
-**Recall pipeline** — BM25 via FTS5 MATCH, temporal decay (30-day half-life
-from `accessed_at`), time_range and relevance_threshold filtering, MMR
-re-ranking (Jaccard similarity, lambda 0.7), top-k truncation (default 10).
-Planned: hybrid BM25 + cosine vector scoring via Reciprocal Rank Fusion,
-auto-embed on store when embedder attached, cosine MMR when embeddings
-available (P2-11).
+**Recall pipeline** — Hybrid BM25 + cosine vector scoring fused via Reciprocal
+Rank Fusion (k=60). BM25 path: FTS5 MATCH with temporal decay (30-day
+half-life from `accessed_at`), time_range and relevance_threshold filtering.
+Vector path: cosine similarity against all stored embeddings. RRF merges
+both ranked lists. MMR re-ranking with cosine similarity when embeddings
+available, Jaccard fallback otherwise (lambda 0.7). Top-k truncation
+(default 10). Auto-embeds on `store()` when embedder attached.
 
 **compile_relevant** — recall(limit 5), format as `<memory>` XML blocks.
 
@@ -156,11 +157,11 @@ InMemory` provides defaults. Defined in walrus-runtime. Default prompts
 embedded from `crates/runtime/prompts/` via `include_str!`. Exported
 constants `DEFAULT_COMPACT_PROMPT` / `DEFAULT_FLUSH_PROMPT` for reuse.
 
-**Chat** — Session state: agent_name (`CompactString`), message history,
-compaction_count. Helpers: `len()`, `is_empty()`, `last_message()`.
-`send_to()` convenience method manages sessions internally by agent name.
-Planned: replace Chat with private Session struct, `send_to`/`stream_to`
-as primary API (P2-09).
+**Session management** — Private `Session` struct (message history,
+compaction_count) managed internally by agent name. `send_to(agent, msg)`
+sends a message and returns the response. `stream_to(agent, msg)` returns
+a `Stream<Item = Result<StreamChunk>>`. `clear_session(agent)` resets.
+No public session type — callers address agents by name.
 
 **Provider** — Enum dispatch over LLM implementations (DeepSeek).
 `Provider::deepseek(key)` convenience factory.
@@ -168,7 +169,8 @@ as primary API (P2-09).
 **Tool dispatch** — BTreeMap registry. `register()` + `dispatch()`. Auto-loops
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
 Glob prefix resolution (DD#21): names ending in `*` match by prefix.
-Planned: unify `resolve()` and `resolve_handlers()` into `resolve_tools()` (P2-09).
+`resolve_tools(names)` returns `Vec<(Tool, Handler)>`. `resolve(names)` is a
+thin wrapper returning schemas only.
 
 **SkillRegistry** — Loads SKILL.md files (YAML frontmatter, agentskills.io
 format) from skill directories. Indexes by metadata tags and triggers. Ranks
@@ -356,15 +358,15 @@ Update JSON into ChannelMessage.
     holds `Arc<H::Memory>`. `impl Hook for InMemory` provides defaults.
     SqliteMemory Hook deferred (orphan rule).
 
-37. **Session internalization (P2-09).** Replace public Chat with private
-    Session. `send_to` / `stream_to` as primary API. Gateway (P3) manages
-    its own sessions externally.
+37. **Session internalization.** Private Session struct replaces public Chat.
+    `send_to` / `stream_to` as primary API. Gateway (P3) manages its own
+    sessions externally.
 
-38. **Unified tool resolution (P2-09).** Merge `resolve()` and
-    `resolve_handlers()` into `resolve_tools()` returning
-    `Vec<(Tool, Handler)>`. `resolve()` becomes thin wrapper.
+38. **Unified tool resolution.** `resolve_tools()` returns
+    `Vec<(Tool, Handler)>`. `resolve()` is a thin wrapper returning schemas
+    only.
 
-39. **Hybrid recall (P2-11).** BM25 + cosine vector scoring fused via
-    Reciprocal Rank Fusion (k=60). Auto-embed on `store()` when embedder
-    attached. MMR uses cosine when embeddings available, Jaccard fallback.
-    Concrete embedder impl (MiniLM via ort/fastembed) deferred.
+39. **Hybrid recall.** BM25 + cosine vector scoring fused via Reciprocal
+    Rank Fusion (k=60). Auto-embed on `store()` when embedder attached. MMR
+    uses cosine when embeddings available, Jaccard fallback. Concrete
+    embedder impl (MiniLM via ort/fastembed) deferred.

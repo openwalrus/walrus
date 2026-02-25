@@ -54,19 +54,22 @@ Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
 - **tokio as runtime dep**: Moved tokio from dev-dependencies to dependencies
   in walrus-runtime since McpBridge needs `tokio::process::Command` and
   `tokio::sync::Mutex` at runtime.
+- **P2-09 stream_to ownership**: `stream_to()` destructures Session into raw
+  `Vec<Message>` and `compaction_count` to avoid move-in-loop issues with
+  `async_stream::try_stream!`. Session is reconstructed on return.
 
 ## Completion Checklist
 
 - [x] P2-01 through P2-08 complete
 - [x] `cargo check --workspace` and `cargo clippy --workspace` pass
-- [x] `cargo test --workspace` passes (87 tests)
+- [x] `cargo test --workspace` passes (97 tests)
 - [x] Runtime with memory/skills injects into system prompts correctly
 - [x] Runtime without memory/skills behaves identically to before
 - [x] Team delegation uses real LLM send loops (no stubs)
 - [x] Hook trait replaces old Compactor, automatic compaction wired in
 - [x] Re-exports and prelude module available
 - [x] `docs/src/design.md` updated
-- [ ] P2-09: Chat removed, `send_to`/`stream_to` primary API, resolve unified
-- [ ] P2-10: Runtime examples compile and run
-- [ ] P2-11: Hybrid BM25 + vector recall wired in walrus-sqlite
-- [ ] All 11 units complete
+- [x] P2-09: Chat removed, `send_to`/`stream_to` primary API, resolve unified
+- [x] P2-10: Runtime examples compile and run
+- [x] P2-11: Hybrid BM25 + vector recall wired in walrus-sqlite
+- [x] All 11 units complete

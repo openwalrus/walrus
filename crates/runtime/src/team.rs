@@ -40,29 +40,34 @@ pub fn build_team<H: Hook + 'static>(
 
     for worker in workers {
         let tool_def = worker_tool(worker.name.clone(), worker.description.to_string());
-        let worker_tools = runtime.resolve(&worker.tools);
-        let worker_handlers = runtime.resolve_handlers(&worker.tools);
+        let resolved = runtime.resolve_tools(&worker.tools);
+        let (worker_tools, worker_handlers) = {
+            let mut t = Vec::with_capacity(resolved.len());
+            let mut h = BTreeMap::new();
+            for (tool, handler) in resolved {
+                h.insert(tool.name.clone(), handler);
+                t.push(tool);
+            }
+            (t, h)
+        };
 
-        let p = provider.clone();
-        let c = config.clone();
-        let m = Arc::clone(&memory);
-        let agent = worker.clone();
-        let tools = worker_tools;
-        let handlers = worker_handlers;
+        let ctx = Arc::new(WorkerCtx {
+            provider: provider.clone(),
+            config: config.clone(),
+            memory: Arc::clone(&memory),
+            agent: worker.clone(),
+            tools: worker_tools,
+            handlers: worker_handlers,
+        });
 
         runtime.register(tool_def, move |args| {
-            let p = p.clone();
-            let c = c.clone();
-            let m = Arc::clone(&m);
-            let agent = agent.clone();
-            let tools = tools.clone();
-            let handlers = handlers.clone();
+            let ctx = Arc::clone(&ctx);
             async move {
                 let input = match extract_input(&args) {
                     Ok(input) => input,
                     Err(e) => return format!("invalid arguments: {e}"),
                 };
-                worker_send(p, c, m, agent, tools, handlers, input).await
+                worker_send(&ctx, input).await
             }
         });
 
@@ -72,34 +77,35 @@ pub fn build_team<H: Hook + 'static>(
     leader
 }
 
-/// Run a self-contained LLM send loop for a worker agent.
-///
-/// Builds the system prompt (base + memory context), sends the input as a
-/// user message, and loops through tool calls up to [`MAX_TOOL_CALLS`].
-async fn worker_send<M: Memory>(
+/// Shared immutable state for a worker handler, wrapped in Arc
+/// to avoid cloning Provider, Agent, Vec<Tool>, and BTreeMap per call.
+struct WorkerCtx<M: Memory> {
     provider: Provider,
     config: General,
     memory: Arc<M>,
     agent: Agent,
     tools: Vec<Tool>,
     handlers: BTreeMap<CompactString, Handler>,
-    input: String,
-) -> String {
-    let mut system_prompt = agent.system_prompt.clone();
-    let memory_context = memory.compile_relevant(&input).await;
+}
+
+/// Run a self-contained LLM send loop for a worker agent.
+///
+/// Builds the system prompt (base + memory context), sends the input as a
+/// user message, and loops through tool calls up to [`MAX_TOOL_CALLS`].
+async fn worker_send<M: Memory>(ctx: &WorkerCtx<M>, input: String) -> String {
+    let mut system_prompt = ctx.agent.system_prompt.clone();
+    let memory_context = ctx.memory.compile_relevant(&input).await;
     if !memory_context.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{memory_context}");
     }
 
     let mut messages = vec![Message::system(&system_prompt), Message::user(&input)];
     let mut tool_choice = ToolChoice::Auto;
+    let base_cfg = ctx.config.clone().with_tools(ctx.tools.to_vec());
 
     for _ in 0..MAX_TOOL_CALLS {
-        let cfg = config
-            .clone()
-            .with_tools(tools.clone())
-            .with_tool_choice(tool_choice.clone());
-        let response = match provider.send(&cfg, &messages).await {
+        let cfg = base_cfg.clone().with_tool_choice(tool_choice.clone());
+        let response = match ctx.provider.send(&cfg, &messages).await {
             Ok(r) => r,
             Err(e) => return format!("worker error: {e}"),
         };
@@ -115,7 +121,7 @@ async fn worker_send<M: Memory>(
         let mut tool_results = Vec::with_capacity(message.tool_calls.len());
         for call in &message.tool_calls {
             let output =
-                if let Some(handler) = handlers.get(call.function.name.as_str()) {
+                if let Some(handler) = ctx.handlers.get(call.function.name.as_str()) {
                     handler(call.function.arguments.clone()).await
                 } else {
                     format!("function {} not available", call.function.name)
