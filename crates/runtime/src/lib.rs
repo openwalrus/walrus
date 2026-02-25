@@ -12,17 +12,19 @@
 //! use llm::{General, Message};
 //!
 //! let provider = Provider::new("deepseek-chat", Client::new(), &key)?;
-//! let mut runtime = Runtime::new(General::default(), provider);
+//! let mut runtime = Runtime::new(General::default(), provider, InMemory::new());
 //! runtime.add_agent(Agent::new("assistant").system_prompt("You are helpful."));
 //! let mut chat = runtime.chat("assistant")?;
 //! let response = runtime.send(&mut chat, Message::user("hello")).await?;
 //! ```
 
 pub use chat::Chat;
+pub use mcp::McpBridge;
 pub use provider::Provider;
+pub use skills::{SkillRegistry, parse_skill_md};
 pub use team::{build_team, extract_input, worker_tool};
 
-use agent::Agent;
+use agent::{Agent, InMemory, Memory};
 use anyhow::Result;
 use compact_str::CompactString;
 use futures_core::Stream;
@@ -32,9 +34,10 @@ use llm::{
     ToolChoice, estimate_tokens,
 };
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
-
 mod chat;
+pub mod mcp;
 mod provider;
+pub mod skills;
 pub mod team;
 
 const MAX_TOOL_CALLS: usize = 16;
@@ -48,28 +51,73 @@ pub type Compactor = Arc<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
 
 /// The walrus runtime — top-level orchestrator.
 ///
-/// Holds the LLM provider, agent configurations, tool handlers,
-/// compactors, and internal chat sessions.
-pub struct Runtime {
+/// Generic over `M: Memory` for structured knowledge injection.
+/// Defaults to [`InMemory`] when no persistence is needed.
+pub struct Runtime<M: Memory = InMemory> {
     provider: Provider,
     config: General,
+    memory: Arc<M>,
+    skills: Option<SkillRegistry>,
     tools: BTreeMap<CompactString, (Tool, Handler)>,
     compactors: BTreeMap<CompactString, Compactor>,
     agents: BTreeMap<CompactString, Agent>,
     sessions: BTreeMap<CompactString, Chat>,
 }
 
-impl Runtime {
-    /// Create a new runtime with the given config and provider.
-    pub fn new(config: General, provider: Provider) -> Self {
-        Self {
+impl<M: Memory + 'static> Runtime<M> {
+    /// Create a new runtime with the given config, provider, and memory.
+    pub fn new(config: General, provider: Provider, memory: M) -> Self {
+        let memory = Arc::new(memory);
+        let mut rt = Self {
             provider,
             config,
+            memory: Arc::clone(&memory),
+            skills: None,
             tools: BTreeMap::new(),
             compactors: BTreeMap::new(),
             agents: BTreeMap::new(),
             sessions: BTreeMap::new(),
-        }
+        };
+
+        // Auto-register the "remember" tool (DD#23).
+        let mem = memory;
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "key": { "type": "string", "description": "Memory key" },
+                "value": { "type": "string", "description": "Value to remember" }
+            },
+            "required": ["key", "value"]
+        });
+        let tool = Tool {
+            name: "remember".into(),
+            description: "Store a key-value pair in memory.".into(),
+            parameters: serde_json::from_value(schema).unwrap(),
+            strict: false,
+        };
+        rt.register(tool, move |args| {
+            let mem = Arc::clone(&mem);
+            async move {
+                let parsed: serde_json::Value = match serde_json::from_str(&args) {
+                    Ok(v) => v,
+                    Err(e) => return format!("invalid arguments: {e}"),
+                };
+                let key = parsed["key"].as_str().unwrap_or("");
+                let value = parsed["value"].as_str().unwrap_or("");
+                match mem.store(key.to_owned(), value.to_owned()).await {
+                    Ok(()) => format!("remembered: {key}"),
+                    Err(e) => format!("failed to store: {e}"),
+                }
+            }
+        });
+
+        rt
+    }
+
+    /// Set the skill registry for this runtime.
+    pub fn with_skills(mut self, registry: SkillRegistry) -> Self {
+        self.skills = Some(registry);
+        self
     }
 
     /// Register an agent.
@@ -133,11 +181,28 @@ impl Runtime {
     }
 
     /// Resolve tool schemas for the given tool names.
+    ///
+    /// Supports glob prefixes (DD#21): a name ending in `*` expands against
+    /// all registered tool names by prefix match. No-match globs are logged.
     pub fn resolve(&self, names: &[CompactString]) -> Vec<Tool> {
-        names
-            .iter()
-            .filter_map(|name| self.tools.get(name.as_str()).map(|(tool, _)| tool.clone()))
-            .collect()
+        let mut resolved = Vec::new();
+        for name in names {
+            if let Some(prefix) = name.strip_suffix('*') {
+                let mut matched = false;
+                for (tool_name, (tool, _)) in &self.tools {
+                    if tool_name.starts_with(prefix) {
+                        resolved.push(tool.clone());
+                        matched = true;
+                    }
+                }
+                if !matched {
+                    tracing::warn!("glob pattern '{name}' matched no registered tools");
+                }
+            } else if let Some((tool, _)) = self.tools.get(name.as_str()) {
+                resolved.push(tool.clone());
+            }
+        }
+        resolved
     }
 
     /// Dispatch tool calls and collect results as tool messages.
@@ -163,7 +228,10 @@ impl Runtime {
     }
 
     /// Build the message list for an API request.
-    fn api_messages(&self, chat: &Chat) -> Vec<Message> {
+    ///
+    /// Injects the agent system prompt (enriched with memory) if not already present,
+    /// then applies compaction.
+    async fn api_messages(&self, chat: &Chat) -> Vec<Message> {
         let agent = match self.agents.get(chat.agent_name()) {
             Some(a) => a,
             None => return chat.messages.clone(),
@@ -171,8 +239,31 @@ impl Runtime {
 
         let mut messages = chat.messages.clone();
 
+        // Build system prompt: base + memory context + skill bodies.
+        let mut system_prompt = agent.system_prompt.clone();
+        let last_user_msg = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == Role::User)
+            .map(|m| m.content.as_str())
+            .unwrap_or("");
+        let memory_context = self.memory.compile_relevant(last_user_msg).await;
+        if !memory_context.is_empty() {
+            system_prompt = format!("{system_prompt}\n\n{memory_context}");
+        }
+
+        // Inject matched skill bodies.
+        if let Some(registry) = &self.skills {
+            let matched = registry.find_by_tags(&agent.skill_tags);
+            for skill in matched {
+                if !skill.body.is_empty() {
+                    system_prompt = format!("{system_prompt}\n\n{}", skill.body);
+                }
+            }
+        }
+
         if messages.first().map(|m| m.role) != Some(Role::System) {
-            messages.insert(0, Message::system(&agent.system_prompt));
+            messages.insert(0, Message::system(&system_prompt));
         }
 
         self.compact(&agent.name, messages)
@@ -205,7 +296,7 @@ impl Runtime {
         chat.messages.push(message);
 
         for _ in 0..MAX_TOOL_CALLS {
-            let messages = self.api_messages(chat);
+            let messages = self.api_messages(chat).await;
             let cfg = self.build_config(tools.clone(), tool_choice.clone());
             let response = self.provider.send(&cfg, &messages).await?;
             let Some(message) = response.message() else {
@@ -247,7 +338,7 @@ impl Runtime {
             let mut tool_choice = ToolChoice::Auto;
 
             for _ in 0..MAX_TOOL_CALLS {
-                let messages = self.api_messages(chat);
+                let messages = self.api_messages(chat).await;
                 let cfg = self.build_config(tools.clone(), tool_choice.clone());
                 let mut builder = Message::builder(Role::Assistant);
 
@@ -302,5 +393,10 @@ impl Runtime {
         let result = self.send(&mut chat, message).await;
         self.sessions.insert(key, chat);
         result
+    }
+
+    /// Get a reference to the memory backend.
+    pub fn memory(&self) -> &M {
+        &self.memory
     }
 }

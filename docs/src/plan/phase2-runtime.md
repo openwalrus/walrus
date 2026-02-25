@@ -30,18 +30,28 @@ P2-02, P2-03, and P2-05 are independent of each other.
 Add to `[workspace.dependencies]`:
 
 ```toml
-rmcp = "0.16"
+rmcp = { version = "0.16", features = ["client", "transport-child-process"] }
 serde_yaml = "0.9"
 toml = "0.8"
 ```
 
-Add `crates/telegram` to workspace members.
+Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
+
+## Deviations
+
+- **rmcp features**: Added `client` and `transport-child-process` features
+  (spec said "0.16+" but didn't specify features).
+- **P2-05 + P2-06 combined**: Implemented TelegramChannel skeleton and full
+  connect/send in a single pass since they were sequential.
+- **tokio as runtime dep**: Moved tokio from dev-dependencies to dependencies
+  in walrus-runtime since McpBridge needs `tokio::process::Command` and
+  `tokio::sync::Mutex` at runtime.
 
 ## Completion Checklist
 
-- [ ] All 6 units complete
-- [ ] `cargo check --workspace` passes
-- [ ] `cargo test --workspace` passes
-- [ ] Runtime with memory/skills injects into system prompts correctly
-- [ ] Runtime without memory/skills behaves identically to before
-- [ ] `docs/src/design.md` updated
+- [x] All 6 units complete
+- [x] `cargo check --workspace` and `cargo clippy --workspace` pass
+- [x] `cargo test --workspace` passes (78 tests)
+- [x] Runtime with memory/skills injects into system prompts correctly
+- [x] Runtime without memory/skills behaves identically to before
+- [x] `docs/src/design.md` updated

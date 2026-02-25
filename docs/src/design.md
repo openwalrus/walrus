@@ -42,16 +42,16 @@ surface that solves the problem.
 | Crate | Path | Depends On | Purpose |
 |-------|------|------------|---------|
 | walrus-llm | crates/llm | — | LLM trait, Message, Tool, Config, StreamChunk |
-| walrus-core | crates/core | walrus-llm | Agent, Chat, Memory, Embedder, Channel, Skill |
+| walrus-core | crates/core | walrus-llm | Agent, Memory, Embedder, Channel, Skill |
 | walrus-deepseek | crates/llm/deepseek | walrus-llm | DeepSeek LLM provider |
-| walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek | Runtime, Provider, Handler, team composition |
+| walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek, rmcp | Runtime, Chat, Provider, SkillRegistry, McpBridge, Handler, team composition |
 | walrus-sqlite | crates/sqlite | walrus-core | SqliteMemory via SQLite + FTS5 |
+| walrus-telegram | crates/telegram | walrus-core, reqwest | Telegram channel adapter via Bot API |
 
 ### Planned Crates
 
 | Crate | Path | Purpose | Phase |
 |-------|------|---------|-------|
-| walrus-telegram | crates/telegram | Telegram channel adapter | 2 |
 | walrus-protocol | app/protocol | Wire types (ClientMessage, ServerMessage) | 3 |
 | walrus-gateway | app/gateway | WebSocket server, sessions, auth, crons | 3 |
 | walrus-client | app/client | WebSocket client library | 4 |
@@ -91,8 +91,6 @@ Shared vocabulary. Depends only on walrus-llm.
 **Agent** — Config struct: name, description, system_prompt, tools
 (`SmallVec<[CompactString; 8]>`), skill_tags (`SmallVec<[CompactString; 4]>`).
 Builder-style API.
-
-**Chat** — Session state: agent_name (`CompactString`) + message history.
 
 **Memory trait** — Structured knowledge store. `get`, `set`, `remove`,
 `entries`, `compile` (sync). `store`, `recall`, `compile_relevant` (async,
@@ -146,26 +144,54 @@ re-ranking (Jaccard similarity, lambda 0.7), top-k truncation (default 10).
 
 ## walrus-runtime
 
-Central composition point. `Runtime<M: Memory = InMemory>`.
+Central composition point. `Runtime<M: Memory = InMemory>`. Generic over
+Memory backend with `Arc<M>` for shared access from tool handlers.
+
+**Chat** — Session state: agent_name (`CompactString`) + message history.
 
 **Provider** — Enum dispatch over LLM implementations (DeepSeek).
 
 **Tool dispatch** — BTreeMap registry. `register()` + `dispatch()`. Auto-loops
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
+Glob prefix resolution (DD#21): names ending in `*` match by prefix.
 
 **SkillRegistry** — Loads SKILL.md files (YAML frontmatter, agentskills.io
-format) from skill directories. Indexes by metadata tags/triggers. Ranks
-by tier then priority (from metadata).
+format) from skill directories. Indexes by metadata tags and triggers. Ranks
+by tier then priority (from metadata). `find_by_tags()` and
+`find_by_trigger()` for matching. `parse_skill_md()` public helper.
 
-**McpBridge** — Connects to MCP servers via rmcp. Converts tool definitions,
-dispatches calls through the protocol.
+**McpBridge** — Connects to MCP servers via rmcp SDK. `connect_stdio()` spawns
+child processes. Converts `rmcp::model::Tool` to `walrus_llm::Tool`. `call()`
+routes to the peer that owns the tool. `tools()` lists all available tools.
+Async-safe with `tokio::sync::Mutex`.
 
-**Memory integration** — `compile_relevant()` injects memories into system
-prompts. Memory flush before compaction (DD#7). Tool glob resolution (DD#21).
+**Memory integration** — Runtime constructor takes `M: Memory`. `api_messages()`
+is async: calls `compile_relevant()` on the last user message and injects
+the result into the system prompt. Matched skill bodies appended after memory
+context.
 
 **Compaction** — Per-agent functions trimming message history at 80% context.
 
 **Team composition** — `build_team()` registers workers as tools on a leader.
+
+---
+
+## walrus-telegram
+
+Telegram Bot API channel adapter. Implements the Channel trait from walrus-core.
+
+**TelegramChannel** — Fields: bot_token (`CompactString`), client
+(`reqwest::Client`), poll_timeout (u64, default 30s), last_update_id
+(`AtomicI64`). Uses reqwest directly (DD#2), no teloxide.
+
+**connect()** — Long-polls `getUpdates` API with offset tracking. Yields
+`ChannelMessage` events. Converts Update JSON: chat.id → channel_id,
+from.id → sender_id, text → content, photo/document → attachments.
+
+**send()** — Posts to `sendMessage` API with chat_id and text.
+
+**channel_message_from_update()** — Public helper for parsing Telegram
+Update JSON into ChannelMessage.
 
 ---
 
