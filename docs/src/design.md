@@ -107,10 +107,12 @@ access_count, optional embedding.
 **Channel trait** — `platform()`, `connect() -> impl Stream`, `send()`.
 Platform enum (Telegram). ChannelMessage, Attachment types.
 
-**Skill** — name, description, version, tier (SkillTier), tags, triggers,
-tools, priority, body. Pure data struct.
+**Skill** — agentskills.io format: name, description, license, compatibility,
+metadata (`BTreeMap`), allowed_tools, body. Pure data struct — no tier or
+priority (those are runtime concerns).
 
-**SkillTier** — Bundled < Managed < Workspace.
+**SkillTier** — Bundled < Managed < Workspace. Runtime-only; assigned by
+SkillRegistry at load time based on source directory.
 
 **Embedder trait** — `async fn embed(&self, text: &str) -> Vec<f32>`.
 
@@ -151,8 +153,9 @@ Central composition point. `Runtime<M: Memory = InMemory>`.
 **Tool dispatch** — BTreeMap registry. `register()` + `dispatch()`. Auto-loops
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
 
-**SkillRegistry** — Loads TOML-frontmatter skill files from a directory
-(`load_dir`). Indexes by tag/trigger. Ranks by tier then priority.
+**SkillRegistry** — Loads SKILL.md files (YAML frontmatter, agentskills.io
+format) from skill directories. Indexes by metadata tags/triggers. Ranks
+by tier then priority (from metadata).
 
 **McpBridge** — Connects to MCP servers via rmcp. Converts tool definitions,
 dispatches calls through the protocol.
@@ -216,7 +219,8 @@ prompts. Memory flush before compaction (DD#7). Tool glob resolution (DD#21).
 11. **No dyn dispatch for core traits.** RPITIT + generics. Enum dispatch
     (Provider, MemoryBackend) for multiple concrete types.
 
-12. **Skill config format.** TOML frontmatter (+++delimited).
+12. **Skill config format.** YAML frontmatter (---delimited) per
+    agentskills.io specification.
 
 13. **`CompactString` for identity strings.** Up to 24 bytes inline.
 
@@ -248,7 +252,7 @@ prompts. Memory flush before compaction (DD#7). Tool glob resolution (DD#21).
 
 24. **Workspace directory layout.** A walrus project is a directory with
     `walrus.toml` at the root. Subdirectories: `agents/` (per-agent TOML),
-    `skills/` (Markdown with TOML frontmatter), `mcp/` (per-server TOML),
+    `skills/` (skill directories with SKILL.md, agentskills.io format), `mcp/` (per-server TOML),
     `cron/` (per-job TOML), `data/` (runtime state, gitignored). Single-file
     mode (`walrus.toml` with inline `[[agents]]`) still supported.
 

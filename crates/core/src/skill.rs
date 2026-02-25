@@ -1,14 +1,17 @@
-//! Skill data types.
+//! Skill data types following the [agentskills.io](https://agentskills.io/specification) specification.
 //!
-//! A [`Skill`] is a named, self-contained unit of agent behavior.
-//! Skills are loaded and managed by the SkillRegistry in walrus-runtime.
+//! A [`Skill`] is a named, self-contained unit of agent behavior loaded from
+//! a `SKILL.md` file with YAML frontmatter. [`SkillTier`] is a runtime
+//! concept for resolution priority — not part of the file format.
 
 use compact_str::CompactString;
+use std::collections::BTreeMap;
 
 /// Priority tier for skill resolution.
 ///
 /// Variant order defines precedence: Workspace overrides Managed, which
-/// overrides Bundled.
+/// overrides Bundled. Assigned by the registry at load time based on
+/// source directory — not stored in the skill file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SkillTier {
     /// Ships with the binary.
@@ -19,27 +22,25 @@ pub enum SkillTier {
     Workspace,
 }
 
-/// A named unit of agent behavior.
+/// A named unit of agent behavior (agentskills.io format).
 ///
 /// Pure data struct — parsing and registry logic live in walrus-runtime.
+/// Fields mirror the agentskills.io specification. Runtime-only concepts
+/// like tier and priority live in the registry, not here.
 #[derive(Debug, Clone)]
 pub struct Skill {
-    /// Skill identifier.
+    /// Skill identifier (lowercase, hyphens, 1-64 chars).
     pub name: CompactString,
-    /// Human-readable description.
+    /// Human-readable description (1-1024 chars).
     pub description: String,
-    /// Semantic version string.
-    pub version: String,
-    /// Priority tier (Bundled < Managed < Workspace).
-    pub tier: SkillTier,
-    /// Tags for matching skills to agents.
-    pub tags: Vec<CompactString>,
-    /// Trigger patterns that activate this skill.
-    pub triggers: Vec<CompactString>,
-    /// Tool names this skill provides or requires.
-    pub tools: Vec<CompactString>,
-    /// Priority within the same tier (0-255, higher wins).
-    pub priority: u8,
-    /// Skill body (prompt template or executable content).
+    /// SPDX license identifier.
+    pub license: Option<CompactString>,
+    /// Compatibility constraints (e.g. "walrus>=0.1").
+    pub compatibility: Option<CompactString>,
+    /// Arbitrary key-value metadata map.
+    pub metadata: BTreeMap<CompactString, String>,
+    /// Tool names this skill is allowed to use.
+    pub allowed_tools: Vec<CompactString>,
+    /// Skill body (Markdown instructions).
     pub body: String,
 }

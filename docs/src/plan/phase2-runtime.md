@@ -31,6 +31,7 @@ Add to `[workspace.dependencies]`:
 
 ```toml
 rmcp = "0.16"
+serde_yaml = "0.9"
 toml = "0.8"
 ```
 

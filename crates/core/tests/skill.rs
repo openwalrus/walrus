@@ -10,18 +10,26 @@ fn skill_tier_ordering() {
 }
 
 #[test]
-fn skill_has_tier_field() {
+fn skill_fields_match_spec() {
+    let mut metadata = std::collections::BTreeMap::new();
+    metadata.insert("tags".into(), "coding,rust".into());
+    metadata.insert("triggers".into(), "help me code".into());
+
     let skill = Skill {
-        name: "test".into(),
-        description: String::new(),
-        version: "0.1.0".into(),
-        tier: SkillTier::Workspace,
-        tags: vec![],
-        triggers: vec![],
-        tools: vec![],
-        priority: 10,
-        body: String::new(),
+        name: "code-assistant".into(),
+        description: "Helps write Rust code.".into(),
+        license: Some("MIT".into()),
+        compatibility: Some("walrus>=0.1".into()),
+        metadata,
+        allowed_tools: vec!["bash".into(), "read_file".into()],
+        body: "You are a coding assistant.".into(),
     };
-    assert_eq!(skill.tier, SkillTier::Workspace);
-    assert_eq!(skill.priority, 10);
+
+    assert_eq!(skill.name.as_str(), "code-assistant");
+    assert_eq!(skill.license.as_deref(), Some("MIT"));
+    assert_eq!(skill.compatibility.as_deref(), Some("walrus>=0.1"));
+    assert_eq!(skill.metadata.len(), 2);
+    assert_eq!(skill.metadata.get("tags").unwrap(), "coding,rust");
+    assert_eq!(skill.allowed_tools.len(), 2);
+    assert!(!skill.body.is_empty());
 }
