@@ -1,10 +1,10 @@
 //! Turbofish LLM message
 
-use std::collections::BTreeMap;
-use compact_str::CompactString;
 use crate::{StreamChunk, ToolCall};
+use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use std::collections::BTreeMap;
 
 /// A message in the chat
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]

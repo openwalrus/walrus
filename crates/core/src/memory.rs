@@ -16,11 +16,10 @@
 //! let agent = with_memory(agent, &memory);
 //! ```
 
-use std::future::Future;
-use std::sync::Mutex;
+use crate::Agent;
 use compact_str::CompactString;
 use serde_json::Value;
-use crate::Agent;
+use std::{future::Future, sync::Mutex};
 
 /// A structured memory entry with metadata and optional embedding.
 #[derive(Debug, Clone, Default)]

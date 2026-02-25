@@ -7,14 +7,12 @@
 //! - [`Channel`]: Messaging platform integration trait.
 //! - [`Skill`] / [`SkillTier`]: Skill data types.
 
-pub use {
-    agent::Agent,
-    channel::{Attachment, AttachmentKind, Channel, ChannelMessage, Platform},
-    chat::Chat,
-    embedder::Embedder,
-    memory::{InMemory, Memory, MemoryEntry, RecallOptions, with_memory},
-    skill::{Skill, SkillTier},
-};
+pub use agent::Agent;
+pub use channel::{Attachment, AttachmentKind, Channel, ChannelMessage, Platform};
+pub use chat::Chat;
+pub use embedder::Embedder;
+pub use memory::{InMemory, Memory, MemoryEntry, RecallOptions, with_memory};
+pub use skill::{Skill, SkillTier};
 
 mod agent;
 mod channel;

@@ -3,9 +3,9 @@
 //! Channels connect agents to messaging platforms (Telegram, etc.).
 //! Each channel provides a stream of events and a way to send messages.
 
-use std::future::Future;
 use compact_str::CompactString;
 use futures_core::Stream;
+use std::future::Future;
 
 /// Messaging platform identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

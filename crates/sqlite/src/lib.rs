@@ -2,15 +2,25 @@
 //!
 //! Provides [`SqliteMemory`], a persistent [`Memory`](agent::Memory) implementation
 //! using SQLite with FTS5 full-text search.
+//!
+//! All SQL lives in `sql/*.sql` files, loaded via `include_str!`.
 
-use std::future::Future;
-use std::path::Path;
-use std::sync::Mutex;
 use agent::{Embedder, Memory, MemoryEntry, RecallOptions};
 use anyhow::Result;
 use compact_str::CompactString;
 use rusqlite::Connection;
 use serde_json::Value;
+use std::{future::Future, path::Path, sync::Mutex};
+
+const SQL_SCHEMA: &str = include_str!("../sql/schema.sql");
+const SQL_TOUCH_ACCESS: &str = include_str!("../sql/touch_access.sql");
+const SQL_SELECT_VALUE: &str = include_str!("../sql/select_value.sql");
+const SQL_SELECT_ENTRIES: &str = include_str!("../sql/select_entries.sql");
+const SQL_UPSERT: &str = include_str!("../sql/upsert.sql");
+const SQL_DELETE: &str = include_str!("../sql/delete.sql");
+const SQL_UPSERT_FULL: &str = include_str!("../sql/upsert_full.sql");
+const SQL_SELECT_ENTRY: &str = include_str!("../sql/select_entry.sql");
+const SQL_RECALL_FTS: &str = include_str!("../sql/recall_fts.sql");
 
 /// SQLite-backed memory store with optional embedding support.
 ///
@@ -53,38 +63,7 @@ impl<E: Embedder> SqliteMemory<E> {
     /// Initialize the database schema.
     fn init_schema(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS memories (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                metadata TEXT,
-                created_at INTEGER NOT NULL,
-                accessed_at INTEGER NOT NULL,
-                access_count INTEGER NOT NULL DEFAULT 0,
-                embedding BLOB
-            );
-
-            CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-                key, value, content=memories, content_rowid=rowid
-            );
-
-            CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-                INSERT INTO memories_fts(rowid, key, value)
-                VALUES (new.rowid, new.key, new.value);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-                INSERT INTO memories_fts(memories_fts, rowid, key, value)
-                VALUES ('delete', old.rowid, old.key, old.value);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-                INSERT INTO memories_fts(memories_fts, rowid, key, value)
-                VALUES ('delete', old.rowid, old.key, old.value);
-                INSERT INTO memories_fts(rowid, key, value)
-                VALUES (new.rowid, new.key, new.value);
-            END;",
-        )?;
+        conn.execute_batch(SQL_SCHEMA)?;
         Ok(())
     }
 }
@@ -93,25 +72,15 @@ impl<E: Embedder> Memory for SqliteMemory<E> {
     fn get(&self, key: &str) -> Option<String> {
         let conn = self.conn.lock().unwrap();
         let now = now_unix();
-        // Update access tracking.
-        conn.execute(
-            "UPDATE memories SET accessed_at = ?1, access_count = access_count + 1 WHERE key = ?2",
-            rusqlite::params![now as i64, key],
-        )
-        .ok();
-        conn.query_row(
-            "SELECT value FROM memories WHERE key = ?1",
-            [key],
-            |row| row.get(0),
-        )
-        .ok()
+        conn.execute(SQL_TOUCH_ACCESS, rusqlite::params![now as i64, key])
+            .ok();
+        conn.query_row(SQL_SELECT_VALUE, [key], |row| row.get(0))
+            .ok()
     }
 
     fn entries(&self) -> Vec<(String, String)> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn
-            .prepare("SELECT key, value FROM memories ORDER BY key")
-            .unwrap();
+        let mut stmt = conn.prepare(SQL_SELECT_ENTRIES).unwrap();
         stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .unwrap()
             .filter_map(|r| r.ok())
@@ -124,24 +93,12 @@ impl<E: Embedder> Memory for SqliteMemory<E> {
         let conn = self.conn.lock().unwrap();
         let now = now_unix() as i64;
 
-        // Get the old value before upserting.
         let old: Option<String> = conn
-            .query_row(
-                "SELECT value FROM memories WHERE key = ?1",
-                [&key],
-                |row| row.get(0),
-            )
+            .query_row(SQL_SELECT_VALUE, [&key], |row| row.get(0))
             .ok();
 
-        conn.execute(
-            "INSERT INTO memories (key, value, created_at, accessed_at, access_count)
-             VALUES (?1, ?2, ?3, ?3, 0)
-             ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                accessed_at = excluded.accessed_at",
-            rusqlite::params![key, value, now],
-        )
-        .ok();
+        conn.execute(SQL_UPSERT, rusqlite::params![key, value, now])
+            .ok();
 
         old
     }
@@ -149,15 +106,10 @@ impl<E: Embedder> Memory for SqliteMemory<E> {
     fn remove(&self, key: &str) -> Option<String> {
         let conn = self.conn.lock().unwrap();
         let old: Option<String> = conn
-            .query_row(
-                "SELECT value FROM memories WHERE key = ?1",
-                [key],
-                |row| row.get(0),
-            )
+            .query_row(SQL_SELECT_VALUE, [key], |row| row.get(0))
             .ok();
         if old.is_some() {
-            conn.execute("DELETE FROM memories WHERE key = ?1", [key])
-                .ok();
+            conn.execute(SQL_DELETE, [key]).ok();
         }
         old
     }
@@ -173,15 +125,8 @@ impl<E: Embedder> Memory for SqliteMemory<E> {
         let conn = self.conn.lock().unwrap();
         let now = now_unix() as i64;
 
-        conn.execute(
-            "INSERT INTO memories (key, value, created_at, accessed_at, access_count)
-             VALUES (?1, ?2, ?3, ?3, 0)
-             ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                accessed_at = excluded.accessed_at",
-            rusqlite::params![key, value, now],
-        )
-        .ok();
+        conn.execute(SQL_UPSERT, rusqlite::params![key, value, now])
+            .ok();
 
         async { Ok(()) }
     }
@@ -231,17 +176,13 @@ impl<E: Embedder> SqliteMemory<E> {
     fn recall_sync(&self, query: &str, options: &RecallOptions) -> Result<Vec<MemoryEntry>> {
         let conn = self.conn.lock().unwrap();
         let now = now_unix();
-        let limit = if options.limit == 0 { 10 } else { options.limit };
+        let limit = if options.limit == 0 {
+            10
+        } else {
+            options.limit
+        };
 
-        // Fetch candidates via FTS5 BM25.
-        let mut stmt = conn.prepare(
-            "SELECT m.key, m.value, m.metadata, m.created_at, m.accessed_at,
-                    m.access_count, m.embedding, bm25(memories_fts) AS rank
-             FROM memories_fts f
-             JOIN memories m ON m.rowid = f.rowid
-             WHERE memories_fts MATCH ?1
-             ORDER BY rank",
-        )?;
+        let mut stmt = conn.prepare(SQL_RECALL_FTS)?;
 
         let candidates: Vec<(MemoryEntry, f64)> = stmt
             .query_map([query], |row| {
@@ -280,7 +221,7 @@ impl<E: Embedder> SqliteMemory<E> {
         }
 
         // Apply temporal decay: score * e^(-lambda * age_days).
-        // Half-life = 30 days → lambda = ln(2) / 30.
+        // Half-life = 30 days -> lambda = ln(2) / 30.
         let lambda = std::f64::consts::LN_2 / 30.0;
         let mut scored: Vec<(MemoryEntry, f64)> = candidates
             .into_iter()
@@ -288,8 +229,7 @@ impl<E: Embedder> SqliteMemory<E> {
                 // bm25() returns negative values (more negative = more relevant).
                 // Negate to get positive relevance score.
                 let bm25_score = -bm25_rank;
-                let age_days =
-                    now.saturating_sub(entry.accessed_at) as f64 / 86400.0;
+                let age_days = now.saturating_sub(entry.accessed_at) as f64 / 86400.0;
                 let decay = (-lambda * age_days).exp();
                 let score = bm25_score * decay;
                 (entry, score)
@@ -298,9 +238,7 @@ impl<E: Embedder> SqliteMemory<E> {
 
         // Apply time_range filter on created_at.
         if let Some((start, end)) = options.time_range {
-            scored.retain(|(entry, _)| {
-                entry.created_at >= start && entry.created_at <= end
-            });
+            scored.retain(|(entry, _)| entry.created_at >= start && entry.created_at <= end);
         }
 
         // Apply relevance threshold filter.
@@ -328,18 +266,11 @@ impl<E: Embedder> SqliteMemory<E> {
         let conn = self.conn.lock().unwrap();
         let now = now_unix() as i64;
         let meta_json = metadata.map(|m| serde_json::to_string(m).unwrap());
-        let emb_blob: Option<Vec<u8>> = embedding.map(|e| {
-            e.iter().flat_map(|f| f.to_le_bytes()).collect()
-        });
+        let emb_blob: Option<Vec<u8>> =
+            embedding.map(|e| e.iter().flat_map(|f| f.to_le_bytes()).collect());
 
         conn.execute(
-            "INSERT INTO memories (key, value, metadata, created_at, accessed_at, access_count, embedding)
-             VALUES (?1, ?2, ?3, ?4, ?4, 0, ?5)
-             ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                metadata = excluded.metadata,
-                accessed_at = excluded.accessed_at,
-                embedding = excluded.embedding",
+            SQL_UPSERT_FULL,
             rusqlite::params![key, value, meta_json, now, emb_blob],
         )?;
         Ok(())
@@ -348,37 +279,32 @@ impl<E: Embedder> SqliteMemory<E> {
     /// Get a full MemoryEntry for a key.
     pub fn get_entry(&self, key: &str) -> Option<MemoryEntry> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            "SELECT key, value, metadata, created_at, accessed_at, access_count, embedding
-             FROM memories WHERE key = ?1",
-            [key],
-            |row| {
-                let key_str: String = row.get(0)?;
-                let value: String = row.get(1)?;
-                let meta_str: Option<String> = row.get(2)?;
-                let created_at: i64 = row.get(3)?;
-                let accessed_at: i64 = row.get(4)?;
-                let access_count: i32 = row.get(5)?;
-                let emb_blob: Option<Vec<u8>> = row.get(6)?;
+        conn.query_row(SQL_SELECT_ENTRY, [key], |row| {
+            let key_str: String = row.get(0)?;
+            let value: String = row.get(1)?;
+            let meta_str: Option<String> = row.get(2)?;
+            let created_at: i64 = row.get(3)?;
+            let accessed_at: i64 = row.get(4)?;
+            let access_count: i32 = row.get(5)?;
+            let emb_blob: Option<Vec<u8>> = row.get(6)?;
 
-                let metadata = meta_str.and_then(|s| serde_json::from_str(&s).ok());
-                let embedding = emb_blob.map(|b| {
-                    b.chunks_exact(4)
-                        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                        .collect()
-                });
+            let metadata = meta_str.and_then(|s| serde_json::from_str(&s).ok());
+            let embedding = emb_blob.map(|b| {
+                b.chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect()
+            });
 
-                Ok(MemoryEntry {
-                    key: CompactString::new(key_str),
-                    value,
-                    metadata,
-                    created_at: created_at as u64,
-                    accessed_at: accessed_at as u64,
-                    access_count: access_count as u32,
-                    embedding,
-                })
-            },
-        )
+            Ok(MemoryEntry {
+                key: CompactString::new(key_str),
+                value,
+                metadata,
+                created_at: created_at as u64,
+                accessed_at: accessed_at as u64,
+                access_count: access_count as u32,
+                embedding,
+            })
+        })
         .ok()
     }
 }
@@ -442,17 +368,14 @@ fn now_unix() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use agent::Memory;
     use crate::SqliteMemory;
+    use agent::Memory;
 
     /// Noop embedder for tests that don't need vector search.
     struct NoopEmbedder;
 
     impl agent::Embedder for NoopEmbedder {
-        fn embed(
-            &self,
-            _text: &str,
-        ) -> impl std::future::Future<Output = Vec<f32>> + Send {
+        fn embed(&self, _text: &str) -> impl std::future::Future<Output = Vec<f32>> + Send {
             async { vec![] }
         }
     }

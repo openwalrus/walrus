@@ -18,10 +18,8 @@
 //! let response = runtime.send(&mut chat, Message::user("hello")).await?;
 //! ```
 
-pub use {
-    provider::Provider,
-    team::{build_team, extract_input, worker_tool},
-};
+pub use provider::Provider;
+pub use team::{build_team, extract_input, worker_tool};
 
 use agent::{Agent, Chat};
 use anyhow::Result;
@@ -144,12 +142,11 @@ impl Runtime {
     async fn dispatch(&self, calls: &[ToolCall]) -> Vec<Message> {
         let mut results = Vec::with_capacity(calls.len());
         for call in calls {
-            let output =
-                if let Some((_, handler)) = self.tools.get(call.function.name.as_str()) {
-                    handler(call.function.arguments.clone()).await
-                } else {
-                    format!("function {} not available", call.function.name)
-                };
+            let output = if let Some((_, handler)) = self.tools.get(call.function.name.as_str()) {
+                handler(call.function.arguments.clone()).await
+            } else {
+                format!("function {} not available", call.function.name)
+            };
             results.push(Message::tool(output, call.id.clone()));
         }
         results
