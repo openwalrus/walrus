@@ -93,61 +93,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
-name = "cydonia-agent"
-version = "0.0.9"
-dependencies = [
- "cydonia-llm",
-]
-
-[[package]]
-name = "cydonia-deepseek"
-version = "0.0.9"
-dependencies = [
- "anyhow",
- "async-stream",
- "cydonia-llm",
- "futures-core",
- "futures-util",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "cydonia-llm"
-version = "0.0.9"
-dependencies = [
- "anyhow",
- "async-stream",
- "futures-core",
- "futures-util",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "cydonia-runtime"
-version = "0.0.9"
-dependencies = [
- "anyhow",
- "async-stream",
- "cydonia-agent",
- "cydonia-deepseek",
- "cydonia-llm",
- "futures-core",
- "futures-util",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1323,6 +1268,77 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "walrus-cli"
+version = "0.0.9"
+
+[[package]]
+name = "walrus-client"
+version = "0.0.9"
+
+[[package]]
+name = "walrus-core"
+version = "0.0.9"
+dependencies = [
+ "walrus-llm",
+]
+
+[[package]]
+name = "walrus-deepseek"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tracing",
+ "walrus-llm",
+]
+
+[[package]]
+name = "walrus-gateway"
+version = "0.0.9"
+
+[[package]]
+name = "walrus-hub"
+version = "0.0.9"
+
+[[package]]
+name = "walrus-llm"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures-core",
+ "futures-util",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "walrus-runtime"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures-core",
+ "futures-util",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "walrus-core",
+ "walrus-deepseek",
+ "walrus-llm",
+]
 
 [[package]]
 name = "want"

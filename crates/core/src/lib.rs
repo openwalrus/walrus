@@ -1,4 +1,4 @@
-//! Cydonia agent library.
+//! Walrus agent library.
 //!
 //! - [`Agent`]: Pure config struct (name, system prompt, tool names).
 //! - [`Chat`]: Chat session (agent name + message history).

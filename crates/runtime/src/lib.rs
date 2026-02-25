@@ -1,4 +1,4 @@
-//! Cydonia runtime: the top-level orchestrator.
+//! Walrus runtime: the top-level orchestrator.
 //!
 //! The [`Runtime`] is the entry point for the agent framework. It holds
 //! the LLM provider, agent configurations, tool handlers, and manages
@@ -7,8 +7,8 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use cydonia_agent::Agent;
-//! use cydonia_runtime::{Runtime, Provider};
+//! use walrus_core::Agent;
+//! use walrus_runtime::{Runtime, Provider};
 //! use llm::{General, Message};
 //!
 //! let provider = Provider::new("deepseek-chat", Client::new(), &key)?;
@@ -45,7 +45,7 @@ pub type Handler =
 /// A compaction function that trims message history.
 pub type Compactor = Arc<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
 
-/// The cydonia runtime — top-level orchestrator.
+/// The walrus runtime — top-level orchestrator.
 ///
 /// Holds the LLM provider, agent configurations, tool handlers,
 /// compactors, and internal chat sessions.

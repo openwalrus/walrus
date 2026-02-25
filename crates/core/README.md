@@ -1,4 +1,4 @@
-# cydonia-core
+# walrus-core
 
 Core abstractions for the Unified LLM Interface.
 

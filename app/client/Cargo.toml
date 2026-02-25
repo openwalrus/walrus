@@ -1,7 +1,5 @@
 [package]
-name = "cydonia-agent"
-description = "Cydonia agent library"
-documentation = "https://docs.rs/cydonia-agent"
+name = "walrus-client"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,4 +8,3 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
-llm.workspace = true

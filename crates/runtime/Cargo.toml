@@ -1,7 +1,7 @@
 [package]
-name = "cydonia-runtime"
-description = "Cydonia runtime"
-documentation = "https://docs.rs/cydonia-runtime"
+name = "walrus-runtime"
+description = "Walrus runtime"
+documentation = "https://docs.rs/walrus-runtime"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

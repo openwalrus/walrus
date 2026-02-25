@@ -1,0 +1,13 @@
+[package]
+name = "walrus-core"
+description = "Walrus agent library"
+documentation = "https://docs.rs/walrus-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+llm.workspace = true
