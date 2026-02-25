@@ -80,7 +80,8 @@ surface that solves the problem.
 Unified LLM interface. `LLM` trait with `send` and `stream` methods.
 Provider-agnostic types: Message, Role, Response, StreamChunk, Tool,
 ToolCall, ToolChoice, Config, General, Usage, FinishReason.
-`estimate_tokens` for rough token counting.
+`estimate_tokens` for rough token counting. `StreamChunk::separator()`
+emits a newline content chunk between tool-call rounds in streaming.
 
 ---
 
@@ -170,7 +171,8 @@ No public session type — callers address agents by name.
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
 Glob prefix resolution (DD#21): names ending in `*` match by prefix.
 `resolve_tools(names)` returns `Vec<(Tool, Handler)>`. `resolve(names)` is a
-thin wrapper returning schemas only.
+thin wrapper returning schemas only. `StreamChunk::separator()` yielded between
+tool-call rounds in `stream_to()` to prevent text concatenation.
 
 **SkillRegistry** — Loads SKILL.md files (YAML frontmatter, agentskills.io
 format) from skill directories. Indexes by metadata tags and triggers. Ranks
@@ -182,7 +184,8 @@ by tier then priority (from metadata). `find_by_tags()` and
 child processes. Converts `rmcp::model::Tool` to `walrus_llm::Tool`. `call()`
 routes to the peer that owns the tool. `tools()` lists all available tools.
 Async-safe with `tokio::sync::Mutex`. `connect_mcp()` / `mcp_bridge()` on
-Runtime.
+Runtime. `register_mcp_tools()` reads bridge tool schemas and registers each
+as a Handler wrapping `bridge.call()`, wiring MCP tools into resolve/dispatch.
 
 **Memory integration** — Runtime holds `Arc<H::Memory>`. `api_messages()` is
 async: calls `compile_relevant()` on the last user message and injects the
@@ -205,9 +208,15 @@ also registered in the runtime.
 **Ergonomic API** — Re-exports from llm and core (`Agent`, `InMemory`, `Memory`,
 `General`, `Message`, etc.). `prelude` module for glob imports.
 
-**Examples** — Runnable examples in `crates/runtime/examples/` covering chat,
-tools, memory, teams, MCP, skills, and streaming. Run via
-`cargo run -p walrus-runtime --example <name>`.
+**Examples** — Interactive REPL-based examples in `crates/runtime/examples/`.
+Run via `cargo run -p walrus-runtime --example <name>`. Requires
+DEEPSEEK_API_KEY.
+- `agent` — minimal streaming REPL
+- `tools` — `current_time` tool (chrono) + REPL
+- `memory` — pre-seeded memory context + remember tool + REPL
+- `skills` — side-by-side comparison (default vs concise agent)
+- `mcp` — Playwright MCP server connection + REPL
+- `everything` — tools + skills + memory + team delegation
 
 ---
 
@@ -370,3 +379,8 @@ Update JSON into ChannelMessage.
     Rank Fusion (k=60). Auto-embed on `store()` when embedder attached. MMR
     uses cosine when embeddings available, Jaccard fallback. Concrete
     embedder impl (MiniLM via ort/fastembed) deferred.
+
+40. **MCP tool registration.** `register_mcp_tools()` bridges MCP tools
+    into runtime's tool registry via Handler closures wrapping
+    `McpBridge::call()`. Agents reference MCP tools by name like any
+    other tool.

@@ -41,6 +41,7 @@ serde_yaml = "0.9"
 toml = "0.8"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
+chrono = "0.4"
 ```
 
 Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
@@ -57,6 +58,17 @@ Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
 - **P2-09 stream_to ownership**: `stream_to()` destructures Session into raw
   `Vec<Message>` and `compaction_count` to avoid move-in-loop issues with
   `async_stream::try_stream!`. Session is reconstructed on return.
+- **P2-10 examples redesigned**: All examples are REPL-based with API key.
+  MCP example connects to Playwright (`@playwright/mcp`). `tools.rs` uses
+  chrono instead of hand-rolled date math. `skills.rs` shows side-by-side
+  comparison (default vs concise agent). `memory.rs` pre-seeds context and
+  prints memory state after each exchange.
+- **`register_mcp_tools()` added**: Not in original P2-10 spec. Bridges MCP
+  tools into runtime's tool registry via Handler closures wrapping
+  `McpBridge::call()`.
+- **`StreamChunk::separator()` added**: Not in original spec. Emits newline
+  content chunk between tool-call rounds in `stream_to()` to prevent text
+  concatenation after tool dispatch.
 
 ## Completion Checklist
 
