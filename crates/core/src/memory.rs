@@ -7,7 +7,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use cydonia_agent::{Agent, InMemory, Memory, with_memory};
+//! use walrus_core::{Agent, InMemory, Memory, with_memory};
 //!
 //! let mut memory = InMemory::new();
 //! memory.set("user", "Prefers short answers.");

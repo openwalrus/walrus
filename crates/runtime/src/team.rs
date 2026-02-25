@@ -3,8 +3,8 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use cydonia_agent::Agent;
-//! use cydonia_runtime::{Runtime, build_team};
+//! use walrus_core::Agent;
+//! use walrus_runtime::{Runtime, build_team};
 //!
 //! let leader = Agent::new("leader").system_prompt("You coordinate.");
 //! let analyst = Agent::new("analyst").description("Market analysis");
