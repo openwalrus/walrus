@@ -18,10 +18,11 @@
 //! let response = runtime.send(&mut chat, Message::user("hello")).await?;
 //! ```
 
+pub use chat::Chat;
 pub use provider::Provider;
 pub use team::{build_team, extract_input, worker_tool};
 
-use agent::{Agent, Chat};
+use agent::Agent;
 use anyhow::Result;
 use compact_str::CompactString;
 use futures_core::Stream;
@@ -32,6 +33,7 @@ use llm::{
 };
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
+mod chat;
 mod provider;
 pub mod team;
 
