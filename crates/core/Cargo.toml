@@ -10,4 +10,12 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+compact_str.workspace = true
+futures-core.workspace = true
 llm.workspace = true
+serde_json.workspace = true
+smallvec.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

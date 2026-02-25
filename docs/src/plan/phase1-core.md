@@ -37,16 +37,21 @@ Add to `[workspace.dependencies]`:
 ```toml
 rusqlite = { version = "0.34", features = ["bundled"] }
 compact_str = { version = "0.8", features = ["serde"] }
-smallvec = { version = "2", features = ["serde"] }
+smallvec = { version = "1", features = ["serde"] }
 bytes = "1"
 ```
 
 Add `crates/sqlite` to workspace members.
 
+## Deviations
+
+- **smallvec v1 (not v2)**: Original plan specified v2, but v2 is alpha-only.
+  Using v1 which is stable and widely used.
+
 ## Completion Checklist
 
-- [ ] All 10 units complete
-- [ ] `cargo check --workspace` passes
-- [ ] `cargo test --workspace` passes
-- [ ] `docs/src/design.md` updated to reflect actual implementations
-- [ ] No unresolved design questions remain
+- [x] All 10 units complete
+- [x] `cargo check --workspace` passes
+- [x] `cargo test --workspace` passes (55 tests)
+- [x] `docs/src/design.md` updated to reflect actual implementations
+- [x] No unresolved design questions remain

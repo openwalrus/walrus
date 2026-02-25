@@ -1,5 +1,6 @@
 //! Tool abstractions for the unified LLM Interfaces
 
+use compact_str::CompactString;
 use schemars::Schema;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Tool {
     /// The name of the tool
-    pub name: String,
+    pub name: CompactString,
 
     /// The description of the tool
     pub description: String,
@@ -23,8 +24,8 @@ pub struct Tool {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ToolCall {
     /// The ID of the tool call
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub id: String,
+    #[serde(default, skip_serializing_if = "CompactString::is_empty")]
+    pub id: CompactString,
 
     /// The index of the tool call (used in streaming)
     #[serde(default, skip_serializing)]
@@ -32,7 +33,7 @@ pub struct ToolCall {
 
     /// The type of tool (currently only "function")
     #[serde(default, rename = "type")]
-    pub call_type: String,
+    pub call_type: CompactString,
 
     /// The function to call
     pub function: FunctionCall,
@@ -42,13 +43,13 @@ impl ToolCall {
     /// Merge two tool calls into one
     pub fn merge(&mut self, call: &Self) {
         if !call.id.is_empty() {
-            self.id.clone_from(&call.id);
+            self.id = call.id.clone();
         }
         if !call.call_type.is_empty() {
-            self.call_type.clone_from(&call.call_type);
+            self.call_type = call.call_type.clone();
         }
         if !call.function.name.is_empty() {
-            self.function.name.clone_from(&call.function.name);
+            self.function.name = call.function.name.clone();
         }
         self.function.arguments.push_str(&call.function.arguments);
     }
@@ -58,8 +59,8 @@ impl ToolCall {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct FunctionCall {
     /// The name of the function to call
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
+    #[serde(default, skip_serializing_if = "CompactString::is_empty")]
+    pub name: CompactString,
 
     /// The arguments to pass to the function (JSON string)
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -83,7 +84,7 @@ pub enum ToolChoice {
     Required,
 
     /// Model must call the specified function
-    Function(String),
+    Function(CompactString),
 }
 
 impl From<&str> for ToolChoice {

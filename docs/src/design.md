@@ -42,15 +42,15 @@ surface that solves the problem.
 | Crate | Path | Depends On | Purpose |
 |-------|------|------------|---------|
 | walrus-llm | crates/llm | — | LLM trait, Message, Tool, Config, StreamChunk |
-| walrus-core | crates/core | walrus-llm | Agent, Chat, Memory, InMemory |
+| walrus-core | crates/core | walrus-llm | Agent, Chat, Memory, Embedder, Channel, Skill |
 | walrus-deepseek | crates/llm/deepseek | walrus-llm | DeepSeek LLM provider |
 | walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek | Runtime, Provider, Handler, team composition |
+| walrus-sqlite | crates/sqlite | walrus-core | SqliteMemory via SQLite + FTS5 |
 
 ### Planned Crates
 
 | Crate | Path | Purpose | Phase |
 |-------|------|---------|-------|
-| walrus-sqlite | crates/sqlite | SqliteMemory via SQLite + FTS5 | 1 |
 | walrus-telegram | crates/telegram | Telegram channel adapter | 2 |
 | walrus-protocol | app/protocol | Wire types (ClientMessage, ServerMessage) | 3 |
 | walrus-gateway | app/gateway | WebSocket server, sessions, auth, crons | 3 |
@@ -107,14 +107,40 @@ access_count, optional embedding.
 **Channel trait** — `platform()`, `connect() -> impl Stream`, `send()`.
 Platform enum (Telegram). ChannelMessage, Attachment types.
 
-**Skill** — name, description, version, tier (SkillTier), tags, triggers,
-tools, priority, body. Pure data struct.
+**Skill** — agentskills.io format: name, description, license, compatibility,
+metadata (`BTreeMap`), allowed_tools, body. Pure data struct — no tier or
+priority (those are runtime concerns).
 
-**SkillTier** — Bundled < Managed < Workspace.
+**SkillTier** — Bundled < Managed < Workspace. Runtime-only; assigned by
+SkillRegistry at load time based on source directory.
 
 **Embedder trait** — `async fn embed(&self, text: &str) -> Vec<f32>`.
 
 **with_memory** — Helper appending `memory.compile()` to system prompt.
+
+---
+
+## walrus-sqlite
+
+Persistent Memory backend using SQLite with FTS5 full-text search.
+
+**`SqliteMemory<E: Embedder>`** — Generic over Embedder for optional vector
+search. Wraps `rusqlite::Connection` in `Mutex`. Uses `bundled` feature
+(no system SQLite dependency).
+
+**Schema** — `memories` table (key TEXT PK, value, metadata JSON, timestamps,
+access_count, embedding BLOB). `memories_fts` FTS5 virtual table with
+AFTER INSERT/UPDATE/DELETE triggers for sync.
+
+**CRUD** — Implements Memory trait. `get()` updates access tracking on each
+read. `set()` uses `ON CONFLICT(key) DO UPDATE` to preserve `created_at`.
+`store_with_metadata()` for metadata + embedding storage.
+
+**Recall pipeline** — BM25 via FTS5 MATCH, temporal decay (30-day half-life
+from `accessed_at`), time_range and relevance_threshold filtering, MMR
+re-ranking (Jaccard similarity, lambda 0.7), top-k truncation (default 10).
+
+**compile_relevant** — recall(limit 5), format as `<memory>` XML blocks.
 
 ---
 
@@ -127,8 +153,9 @@ Central composition point. `Runtime<M: Memory = InMemory>`.
 **Tool dispatch** — BTreeMap registry. `register()` + `dispatch()`. Auto-loops
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
 
-**SkillRegistry** — Loads TOML-frontmatter skill files from a directory
-(`load_dir`). Indexes by tag/trigger. Ranks by tier then priority.
+**SkillRegistry** — Loads SKILL.md files (YAML frontmatter, agentskills.io
+format) from skill directories. Indexes by metadata tags/triggers. Ranks
+by tier then priority (from metadata).
 
 **McpBridge** — Connects to MCP servers via rmcp. Converts tool definitions,
 dispatches calls through the protocol.
@@ -192,7 +219,8 @@ prompts. Memory flush before compaction (DD#7). Tool glob resolution (DD#21).
 11. **No dyn dispatch for core traits.** RPITIT + generics. Enum dispatch
     (Provider, MemoryBackend) for multiple concrete types.
 
-12. **Skill config format.** TOML frontmatter (+++delimited).
+12. **Skill config format.** YAML frontmatter (---delimited) per
+    agentskills.io specification.
 
 13. **`CompactString` for identity strings.** Up to 24 bytes inline.
 
@@ -224,7 +252,7 @@ prompts. Memory flush before compaction (DD#7). Tool glob resolution (DD#21).
 
 24. **Workspace directory layout.** A walrus project is a directory with
     `walrus.toml` at the root. Subdirectories: `agents/` (per-agent TOML),
-    `skills/` (Markdown with TOML frontmatter), `mcp/` (per-server TOML),
+    `skills/` (skill directories with SKILL.md, agentskills.io format), `mcp/` (per-server TOML),
     `cron/` (per-job TOML), `data/` (runtime state, gitignored). Single-file
     mode (`walrus.toml` with inline `[[agents]]`) still supported.
 

@@ -15,15 +15,20 @@ deepseek = { path = "crates/llm/deepseek", package = "walrus-deepseek", version 
 llm = { path = "crates/llm", package = "walrus-llm", version = "0.0.9" }
 agent = { path = "crates/core", package = "walrus-core", version = "0.0.9" }
 runtime = { path = "crates/runtime", package = "walrus-runtime", version = "0.0.9" }
+sqlite = { path = "crates/sqlite", package = "walrus-sqlite", version = "0.0.9" }
 
 # crates.io
 anyhow = "1"
 async-stream = "0.3"
+bytes = "1"
+compact_str = { version = "0.8", features = ["serde"] }
 futures-core = "0.3"
 futures-util = "0.3"
 reqwest = { version = "0.12", features = ["json", "stream"] }
+rusqlite = { version = "0.34", features = ["bundled"] }
 schemars = "1.1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+smallvec = { version = "1", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"

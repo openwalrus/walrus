@@ -16,6 +16,7 @@ agent.workspace = true
 
 # crates-io dependencies
 anyhow.workspace = true
+compact_str.workspace = true
 async-stream.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true

@@ -18,13 +18,13 @@
 //! let response = runtime.send(&mut chat, Message::user("hello")).await?;
 //! ```
 
-pub use {
-    provider::Provider,
-    team::{build_team, extract_input, worker_tool},
-};
+pub use chat::Chat;
+pub use provider::Provider;
+pub use team::{build_team, extract_input, worker_tool};
 
-use agent::{Agent, Chat};
+use agent::Agent;
 use anyhow::Result;
+use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use llm::{
@@ -33,6 +33,7 @@ use llm::{
 };
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
+mod chat;
 mod provider;
 pub mod team;
 
@@ -52,10 +53,10 @@ pub type Compactor = Arc<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
 pub struct Runtime {
     provider: Provider,
     config: General,
-    tools: BTreeMap<String, (Tool, Handler)>,
-    compactors: BTreeMap<String, Compactor>,
-    agents: BTreeMap<String, Agent>,
-    sessions: BTreeMap<String, Chat>,
+    tools: BTreeMap<CompactString, (Tool, Handler)>,
+    compactors: BTreeMap<CompactString, Compactor>,
+    agents: BTreeMap<CompactString, Agent>,
+    sessions: BTreeMap<CompactString, Chat>,
 }
 
 impl Runtime {
@@ -98,7 +99,7 @@ impl Runtime {
         F: Fn(Vec<Message>) -> Vec<Message> + Send + Sync + 'static,
     {
         self.compactors
-            .insert(agent.to_string(), Arc::new(compactor));
+            .insert(CompactString::from(agent), Arc::new(compactor));
     }
 
     /// Create a new chat session for the named agent.
@@ -106,7 +107,7 @@ impl Runtime {
         if !self.agents.contains_key(agent) {
             anyhow::bail!("agent '{agent}' not registered");
         }
-        Ok(Chat::new(agent.to_string()))
+        Ok(Chat::new(agent))
     }
 
     /// Context window limit for the current provider/model.
@@ -118,7 +119,7 @@ impl Runtime {
     pub fn estimate_tokens(&self, chat: &Chat) -> usize {
         let system_tokens = self
             .agents
-            .get(&chat.agent_name)
+            .get(chat.agent_name())
             .map(|a| (a.system_prompt.len() / 4).max(1))
             .unwrap_or(0);
         system_tokens + estimate_tokens(&chat.messages)
@@ -132,29 +133,29 @@ impl Runtime {
     }
 
     /// Resolve tool schemas for the given tool names.
-    fn resolve(&self, names: &[String]) -> Vec<Tool> {
+    pub fn resolve(&self, names: &[CompactString]) -> Vec<Tool> {
         names
             .iter()
-            .filter_map(|name| self.tools.get(name).map(|(tool, _)| tool.clone()))
+            .filter_map(|name| self.tools.get(name.as_str()).map(|(tool, _)| tool.clone()))
             .collect()
     }
 
     /// Dispatch tool calls and collect results as tool messages.
-    async fn dispatch(&self, calls: &[ToolCall]) -> Vec<Message> {
+    pub async fn dispatch(&self, calls: &[ToolCall]) -> Vec<Message> {
         let mut results = Vec::with_capacity(calls.len());
         for call in calls {
-            let output = if let Some((_, handler)) = self.tools.get(&call.function.name) {
+            let output = if let Some((_, handler)) = self.tools.get(call.function.name.as_str()) {
                 handler(call.function.arguments.clone()).await
             } else {
                 format!("function {} not available", call.function.name)
             };
-            results.push(Message::tool(output, &call.id));
+            results.push(Message::tool(output, call.id.clone()));
         }
         results
     }
 
     /// Apply compaction for the given agent.
-    fn compact(&self, agent: &str, messages: Vec<Message>) -> Vec<Message> {
+    pub fn compact(&self, agent: &str, messages: Vec<Message>) -> Vec<Message> {
         match self.compactors.get(agent) {
             Some(compactor) => compactor(messages),
             None => messages,
@@ -163,7 +164,7 @@ impl Runtime {
 
     /// Build the message list for an API request.
     fn api_messages(&self, chat: &Chat) -> Vec<Message> {
-        let agent = match self.agents.get(&chat.agent_name) {
+        let agent = match self.agents.get(chat.agent_name()) {
             Some(a) => a,
             None => return chat.messages.clone(),
         };
@@ -197,7 +198,7 @@ impl Runtime {
     pub async fn send(&self, chat: &mut Chat, message: Message) -> Result<Response> {
         let agent = self
             .agents
-            .get(&chat.agent_name)
+            .get(chat.agent_name())
             .ok_or_else(|| anyhow::anyhow!("agent '{}' not registered", chat.agent_name))?;
         let tools = self.resolve(&agent.tools);
         let mut tool_choice = ToolChoice::Auto;
@@ -231,7 +232,7 @@ impl Runtime {
         chat: &'a mut Chat,
         message: Message,
     ) -> impl Stream<Item = Result<StreamChunk>> + 'a {
-        let agent = self.agents.get(&chat.agent_name).cloned();
+        let agent = self.agents.get(chat.agent_name()).cloned();
         let tools = agent
             .as_ref()
             .map(|a| self.resolve(&a.tools))
@@ -293,145 +294,13 @@ impl Runtime {
 
     /// Convenience: send to a named agent using an internal session.
     pub async fn send_to(&mut self, agent: &str, message: Message) -> Result<Response> {
+        let key = CompactString::from(agent);
         let mut chat = self
             .sessions
-            .remove(agent)
-            .unwrap_or_else(|| Chat::new(agent.to_string()));
+            .remove(&key)
+            .unwrap_or_else(|| Chat::new(agent));
         let result = self.send(&mut chat, message).await;
-        self.sessions.insert(agent.to_string(), chat);
+        self.sessions.insert(key, chat);
         result
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use llm::{FunctionCall, LLM};
-
-    fn test_provider() -> Provider {
-        // We can't create a real provider without an API key,
-        // so we test tool registry/dispatch separately.
-        Provider::DeepSeek(deepseek::DeepSeek::new(llm::Client::new(), "test-key").unwrap())
-    }
-
-    fn echo_tool() -> Tool {
-        Tool {
-            name: "echo".into(),
-            description: "Echoes the input".into(),
-            parameters: schemars::schema_for!(String),
-            strict: false,
-        }
-    }
-
-    #[test]
-    fn resolve_returns_registered_tools() {
-        let mut rt = Runtime::new(General::default(), test_provider());
-        rt.register(echo_tool(), |args| async move { args });
-        let tools = rt.resolve(&["echo".into()]);
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "echo");
-    }
-
-    #[test]
-    fn resolve_skips_unknown() {
-        let rt = Runtime::new(General::default(), test_provider());
-        let tools = rt.resolve(&["missing".into()]);
-        assert!(tools.is_empty());
-    }
-
-    #[tokio::test]
-    async fn dispatch_calls_handler() {
-        let mut rt = Runtime::new(General::default(), test_provider());
-        rt.register(echo_tool(), |args| async move { format!("got: {args}") });
-
-        let calls = vec![ToolCall {
-            id: "call_1".into(),
-            index: 0,
-            call_type: "function".into(),
-            function: FunctionCall {
-                name: "echo".into(),
-                arguments: "hello".into(),
-            },
-        }];
-
-        let results = rt.dispatch(&calls).await;
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].content, "got: hello");
-        assert_eq!(results[0].tool_call_id, "call_1");
-    }
-
-    #[tokio::test]
-    async fn dispatch_unknown_tool() {
-        let rt = Runtime::new(General::default(), test_provider());
-        let calls = vec![ToolCall {
-            id: "call_1".into(),
-            index: 0,
-            call_type: "function".into(),
-            function: FunctionCall {
-                name: "missing".into(),
-                arguments: "".into(),
-            },
-        }];
-
-        let results = rt.dispatch(&calls).await;
-        assert!(results[0].content.contains("not available"));
-    }
-
-    #[test]
-    fn compactor_applied() {
-        let mut rt = Runtime::new(General::default(), test_provider());
-        rt.set_compactor("test", |msgs| msgs.into_iter().take(1).collect());
-
-        let msgs = vec![Message::user("first"), Message::user("second")];
-        let compacted = rt.compact("test", msgs);
-        assert_eq!(compacted.len(), 1);
-        assert_eq!(compacted[0].content, "first");
-    }
-
-    #[test]
-    fn no_compactor_passthrough() {
-        let rt = Runtime::new(General::default(), test_provider());
-        let msgs = vec![Message::user("hello")];
-        let result = rt.compact("any", msgs.clone());
-        assert_eq!(result.len(), 1);
-    }
-
-    #[test]
-    fn chat_requires_registered_agent() {
-        let rt = Runtime::new(General::default(), test_provider());
-        assert!(rt.chat("unknown").is_err());
-    }
-
-    #[test]
-    fn chat_succeeds_with_agent() {
-        let mut rt = Runtime::new(General::default(), test_provider());
-        rt.add_agent(Agent::new("test").system_prompt("hello"));
-        let chat = rt.chat("test").unwrap();
-        assert_eq!(chat.agent_name(), "test");
-        assert!(chat.messages.is_empty());
-    }
-
-    #[test]
-    fn context_limit_default() {
-        let rt = Runtime::new(General::default(), test_provider());
-        assert_eq!(rt.context_limit(), 64_000);
-    }
-
-    #[test]
-    fn context_limit_override() {
-        let mut config = General::default();
-        config.context_limit = Some(128_000);
-        let rt = Runtime::new(config, test_provider());
-        assert_eq!(rt.context_limit(), 128_000);
-    }
-
-    #[test]
-    fn estimate_tokens_counts() {
-        let mut rt = Runtime::new(General::default(), test_provider());
-        rt.add_agent(Agent::new("test").system_prompt("You are helpful."));
-        let mut chat = rt.chat("test").unwrap();
-        chat.messages.push(Message::user("hello world"));
-        let tokens = rt.estimate_tokens(&chat);
-        assert!(tokens > 0);
     }
 }

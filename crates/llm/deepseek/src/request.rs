@@ -96,7 +96,7 @@ impl From<General> for Request {
     fn from(config: General) -> Self {
         let mut req = Self {
             messages: Vec::new(),
-            model: config.model.clone(),
+            model: config.model.to_string(),
             frequency_penalty: None,
             logprobs: None,
             max_tokens: None,
