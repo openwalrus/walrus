@@ -399,4 +399,42 @@ impl<M: Memory + 'static> Runtime<M> {
     pub fn memory(&self) -> &M {
         &self.memory
     }
+
+    /// Get a clone of the memory Arc (for team delegation).
+    pub fn memory_arc(&self) -> Arc<M> {
+        Arc::clone(&self.memory)
+    }
+
+    /// Get a reference to the provider.
+    pub fn provider(&self) -> &Provider {
+        &self.provider
+    }
+
+    /// Get a reference to the general config.
+    pub fn config(&self) -> &General {
+        &self.config
+    }
+
+    /// Resolve tool handlers for the given tool names.
+    ///
+    /// Like [`resolve`] but returns both tool schemas and handlers.
+    /// Supports glob prefixes (names ending in `*`).
+    pub fn resolve_handlers(
+        &self,
+        names: &[CompactString],
+    ) -> BTreeMap<CompactString, Handler> {
+        let mut resolved = BTreeMap::new();
+        for name in names {
+            if let Some(prefix) = name.strip_suffix('*') {
+                for (tool_name, (_, handler)) in &self.tools {
+                    if tool_name.starts_with(prefix) {
+                        resolved.insert(tool_name.clone(), Arc::clone(handler));
+                    }
+                }
+            } else if let Some((_, handler)) = self.tools.get(name.as_str()) {
+                resolved.insert(name.clone(), Arc::clone(handler));
+            }
+        }
+        resolved
+    }
 }

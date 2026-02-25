@@ -13,13 +13,14 @@ channel adapter.
 | [P2-04](./units/P2-04.md) | Integrate skills into Runtime | P2-01 |
 | [P2-05](./units/P2-05.md) | Create walrus-telegram crate | Phase 1 (P1-03) |
 | [P2-06](./units/P2-06.md) | Implement Telegram Channel (connect + send) | P2-05 |
+| [P2-07](./units/P2-07.md) | Team delegation (worker agents call LLM) | P2-03, P2-04 |
 
 ## Dependency Graph
 
 ```text
-P1-04 ─→ P2-01 ─→ P2-04
+P1-04 ─→ P2-01 ─→ P2-04 ─→ P2-07
                           P2-02 (independent)
-P1-01, P1-02 ─→ P2-03
+P1-01, P1-02 ─→ P2-03 ─→ P2-07
 P1-03 ─→ P2-05 ─→ P2-06
 ```
 
@@ -49,9 +50,10 @@ Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
 
 ## Completion Checklist
 
-- [x] All 6 units complete
+- [x] All 7 units complete
 - [x] `cargo check --workspace` and `cargo clippy --workspace` pass
-- [x] `cargo test --workspace` passes (78 tests)
+- [x] `cargo test --workspace` passes (82 tests)
 - [x] Runtime with memory/skills injects into system prompts correctly
 - [x] Runtime without memory/skills behaves identically to before
+- [x] Team delegation uses real LLM send loops (no stubs)
 - [x] `docs/src/design.md` updated

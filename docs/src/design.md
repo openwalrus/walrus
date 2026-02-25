@@ -173,6 +173,10 @@ context.
 **Compaction** — Per-agent functions trimming message history at 80% context.
 
 **Team composition** — `build_team()` registers workers as tools on a leader.
+Each worker handler captures Provider, config, `Arc<M>` memory, agent config,
+resolved tool schemas, and resolved handlers. Worker runs a self-contained LLM
+send loop (up to 16 rounds) with memory-enriched system prompt and tool dispatch,
+without referencing the Runtime. Worker agents are also registered in the runtime.
 
 ---
 
