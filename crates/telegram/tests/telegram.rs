@@ -11,11 +11,7 @@ fn telegram_channel_platform() {
 
 #[test]
 fn telegram_channel_construction() {
-    let channel = TelegramChannel::with_config(
-        "bot123:ABC",
-        reqwest::Client::new(),
-        60,
-    );
+    let channel = TelegramChannel::with_config("bot123:ABC", reqwest::Client::new(), 60);
     assert_eq!(channel.platform(), Platform::Telegram);
 }
 

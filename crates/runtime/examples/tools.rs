@@ -29,9 +29,10 @@ async fn main() {
         .unwrap(),
         strict: false,
     };
-    runtime.register(time_tool, |_| async move {
-        chrono::Utc::now().to_rfc3339()
-    });
+    runtime.register(
+        time_tool,
+        |_| async move { chrono::Utc::now().to_rfc3339() },
+    );
 
     runtime.add_agent(
         Agent::new("assistant")

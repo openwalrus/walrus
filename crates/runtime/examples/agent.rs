@@ -23,8 +23,7 @@ async fn main() {
     let mut runtime = common::build_runtime();
 
     runtime.add_agent(
-        Agent::new("assistant")
-            .system_prompt("You are a helpful assistant. Be concise."),
+        Agent::new("assistant").system_prompt("You are a helpful assistant. Be concise."),
     );
 
     println!("Agent REPL (type 'exit' to quit)");

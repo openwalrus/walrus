@@ -277,13 +277,19 @@ fn cosine_similarity_unit() {
 #[tokio::test]
 async fn store_auto_embeds_when_embedder_present() {
     let m = mem_with_embedder();
-    m.store("test_key", "some value for embedding").await.unwrap();
+    m.store("test_key", "some value for embedding")
+        .await
+        .unwrap();
     let entry = m.get_entry("test_key").unwrap();
     assert!(entry.embedding.is_some(), "embedding should be stored");
     let emb = entry.embedding.unwrap();
     assert_eq!(emb.len(), 8);
     // Embedding should be normalized.
-    let norm: f64 = emb.iter().map(|x| (*x as f64) * (*x as f64)).sum::<f64>().sqrt();
+    let norm: f64 = emb
+        .iter()
+        .map(|x| (*x as f64) * (*x as f64))
+        .sum::<f64>()
+        .sqrt();
     assert!((norm - 1.0).abs() < 1e-4, "embedding should be normalized");
 }
 

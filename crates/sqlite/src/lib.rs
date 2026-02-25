@@ -75,7 +75,11 @@ impl<E: Embedder> SqliteMemory<E> {
         query_embedding: Option<&[f32]>,
     ) -> Result<Vec<MemoryEntry>> {
         let now = now_unix();
-        let limit = if options.limit == 0 { 10 } else { options.limit };
+        let limit = if options.limit == 0 {
+            10
+        } else {
+            options.limit
+        };
 
         // Phase 1: DB queries under lock. Collect raw rows, release lock.
         let (bm25_candidates, vec_candidates) = {

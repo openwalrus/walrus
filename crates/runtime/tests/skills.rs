@@ -3,8 +3,8 @@
 use agent::{Skill, SkillTier};
 use compact_str::CompactString;
 use std::collections::BTreeMap;
-use walrus_runtime::skills::SkillRegistry;
 use walrus_runtime::parse_skill_md;
+use walrus_runtime::skills::SkillRegistry;
 
 #[test]
 fn parse_skill_frontmatter() {
@@ -84,7 +84,10 @@ fn load_dir_discovers_skills() {
 fn find_by_tags_returns_matches() {
     let mut registry = SkillRegistry::new();
     registry.add(make_skill("coding", "code,rust", "", 0), SkillTier::Bundled);
-    registry.add(make_skill("writing", "writing,blog", "", 0), SkillTier::Bundled);
+    registry.add(
+        make_skill("writing", "writing,blog", "", 0),
+        SkillTier::Bundled,
+    );
 
     let results = registry.find_by_tags(&["code".into()]);
     assert_eq!(results.len(), 1);
@@ -122,10 +125,22 @@ fn find_by_trigger_case_insensitive() {
 #[test]
 fn ranking_by_tier_then_priority() {
     let mut registry = SkillRegistry::new();
-    registry.add(make_skill("bundled-low", "shared", "", 10), SkillTier::Bundled);
-    registry.add(make_skill("managed-mid", "shared", "", 50), SkillTier::Managed);
-    registry.add(make_skill("workspace-high", "shared", "", 5), SkillTier::Workspace);
-    registry.add(make_skill("workspace-low", "shared", "", 1), SkillTier::Workspace);
+    registry.add(
+        make_skill("bundled-low", "shared", "", 10),
+        SkillTier::Bundled,
+    );
+    registry.add(
+        make_skill("managed-mid", "shared", "", 50),
+        SkillTier::Managed,
+    );
+    registry.add(
+        make_skill("workspace-high", "shared", "", 5),
+        SkillTier::Workspace,
+    );
+    registry.add(
+        make_skill("workspace-low", "shared", "", 1),
+        SkillTier::Workspace,
+    );
 
     let results = registry.find_by_tags(&["shared".into()]);
     assert_eq!(results.len(), 4);

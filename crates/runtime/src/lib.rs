@@ -39,8 +39,8 @@ pub mod team;
 /// Re-exports of the most commonly used types.
 pub mod prelude {
     pub use crate::{
-        Agent, General, Hook, InMemory, Message, Provider, Response, Role, Runtime,
-        SkillRegistry, StreamChunk, Tool,
+        Agent, General, Hook, InMemory, Message, Provider, Response, Role, Runtime, SkillRegistry,
+        StreamChunk, Tool,
     };
 }
 
@@ -477,7 +477,9 @@ impl<H: Hook + 'static> Runtime<H> {
                 Ok(response) => {
                     let summary = response.content().cloned().unwrap_or_default();
                     session.messages.clear();
-                    session.messages.push(Message::assistant(&summary, None, None));
+                    session
+                        .messages
+                        .push(Message::assistant(&summary, None, None));
                     session.compaction_count += 1;
                 }
                 Err(e) => tracing::warn!("compaction summarization failed: {e}"),

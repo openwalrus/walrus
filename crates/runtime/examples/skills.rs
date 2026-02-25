@@ -35,10 +35,8 @@ async fn main() {
     runtime.set_skills(registry);
 
     // Two agents: same base prompt, different skill tags.
-    runtime.add_agent(
-        Agent::new("default")
-            .system_prompt("You are a helpful programming assistant."),
-    );
+    runtime
+        .add_agent(Agent::new("default").system_prompt("You are a helpful programming assistant."));
     runtime.add_agent(
         Agent::new("concise")
             .system_prompt("You are a helpful programming assistant.")

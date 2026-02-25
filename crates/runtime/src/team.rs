@@ -18,8 +18,8 @@
 //! runtime.add_agent(leader);
 //! ```
 
+use crate::{Handler, Hook, MAX_TOOL_CALLS, Provider};
 use agent::{Agent, Memory};
-use crate::{Handler, Hook, Provider, MAX_TOOL_CALLS};
 use compact_str::CompactString;
 use llm::{Config, General, LLM, Message, Tool, ToolChoice};
 use std::{collections::BTreeMap, sync::Arc};
@@ -120,12 +120,11 @@ async fn worker_send<M: Memory>(ctx: &WorkerCtx<M>, input: String) -> String {
         // Dispatch tool calls using captured handlers.
         let mut tool_results = Vec::with_capacity(message.tool_calls.len());
         for call in &message.tool_calls {
-            let output =
-                if let Some(handler) = ctx.handlers.get(call.function.name.as_str()) {
-                    handler(call.function.arguments.clone()).await
-                } else {
-                    format!("function {} not available", call.function.name)
-                };
+            let output = if let Some(handler) = ctx.handlers.get(call.function.name.as_str()) {
+                handler(call.function.arguments.clone()).await
+            } else {
+                format!("function {} not available", call.function.name)
+            };
             tool_results.push(Message::tool(output, call.id.clone()));
         }
 

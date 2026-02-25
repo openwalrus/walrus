@@ -236,7 +236,10 @@ impl Channel for TelegramChannel {
         }
     }
 
-    fn send(&self, message: ChannelMessage) -> impl std::future::Future<Output = Result<()>> + Send {
+    fn send(
+        &self,
+        message: ChannelMessage,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
         let client = self.client.clone();
         let url = self.api_url("sendMessage");
         let chat_id = message.channel_id.to_string();

@@ -64,8 +64,9 @@ impl SkillRegistry {
         let path = path.as_ref();
         let mut registry = Self::new();
 
-        let entries = std::fs::read_dir(path)
-            .map_err(|e| anyhow::anyhow!("failed to read skill directory {}: {e}", path.display()))?;
+        let entries = std::fs::read_dir(path).map_err(|e| {
+            anyhow::anyhow!("failed to read skill directory {}: {e}", path.display())
+        })?;
 
         for entry in entries {
             let entry = entry?;
