@@ -17,14 +17,14 @@
 //! ```
 
 pub use embedder::Embedder;
-pub use memory::InMemory;
+pub use mem::InMemory;
 
 use crate::Agent;
 use compact_str::CompactString;
 use serde_json::Value;
 use std::future::Future;
 mod embedder;
-mod memory;
+mod mem;
 
 /// A structured memory entry with metadata and optional embedding.
 #[derive(Debug, Clone, Default)]
