@@ -23,7 +23,7 @@ async fn main() {
     // 1. Register a custom tool — something the LLM can't do natively.
     let time_tool = Tool {
         name: "current_time".into(),
-        description: "Returns the current UTC time as a unix timestamp.".into(),
+        description: "Returns the current UTC date and time.".into(),
         parameters: serde_json::from_value(serde_json::json!({
             "type": "object",
             "properties": {}
@@ -32,11 +32,7 @@ async fn main() {
         strict: false,
     };
     runtime.register(time_tool, |_| async move {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        format!("Current unix timestamp: {now}")
+        chrono::Utc::now().to_rfc3339()
     });
 
     // 2. Load a skill — modifies system prompt to constrain response style.

@@ -34,4 +34,4 @@ tokio.workspace = true
 tempfile.workspace = true
 tracing-subscriber.workspace = true
 dotenvy.workspace = true
-rand.workspace = true
+chrono.workspace = true

@@ -325,6 +325,10 @@ impl<H: Hook + 'static> Runtime<H> {
                 messages.push(message);
                 messages.extend(result);
                 tool_choice = ToolChoice::None;
+
+                // Emit a newline so consumers see a break between
+                // pre-tool-call text and the next response.
+                yield StreamChunk::separator();
             }
 
             self.sessions.insert(key, Session { messages, compaction_count });
