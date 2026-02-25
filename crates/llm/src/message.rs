@@ -1,9 +1,10 @@
 //! Turbofish LLM message
 
 use std::collections::BTreeMap;
-
+use compact_str::CompactString;
 use crate::{StreamChunk, ToolCall};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 /// A message in the chat
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -20,12 +21,12 @@ pub struct Message {
     pub reasoning_content: String,
 
     /// The tool call id
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub tool_call_id: String,
+    #[serde(skip_serializing_if = "CompactString::is_empty")]
+    pub tool_call_id: CompactString,
 
     /// The tool calls
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tool_calls: Vec<ToolCall>,
+    #[serde(skip_serializing_if = "SmallVec::is_empty")]
+    pub tool_calls: SmallVec<[ToolCall; 4]>,
 }
 
 impl Message {
@@ -57,13 +58,15 @@ impl Message {
             role: Role::Assistant,
             content: content.into(),
             reasoning_content: reasoning.unwrap_or_default(),
-            tool_calls: tool_calls.unwrap_or_default().to_vec(),
+            tool_calls: tool_calls
+                .map(|tc| tc.iter().cloned().collect())
+                .unwrap_or_default(),
             ..Default::default()
         }
     }
 
     /// Create a new tool message
-    pub fn tool(content: impl Into<String>, call: impl Into<String>) -> Self {
+    pub fn tool(content: impl Into<String>, call: impl Into<CompactString>) -> Self {
         Self {
             role: Role::Tool,
             content: content.into(),
@@ -102,7 +105,6 @@ pub fn estimate_tokens(messages: &[Message]) -> usize {
 pub struct MessageBuilder {
     /// The message
     message: Message,
-
     /// The tool calls
     calls: BTreeMap<u32, ToolCall>,
 }

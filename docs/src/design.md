@@ -42,15 +42,15 @@ surface that solves the problem.
 | Crate | Path | Depends On | Purpose |
 |-------|------|------------|---------|
 | walrus-llm | crates/llm | — | LLM trait, Message, Tool, Config, StreamChunk |
-| walrus-core | crates/core | walrus-llm | Agent, Chat, Memory, InMemory |
+| walrus-core | crates/core | walrus-llm | Agent, Chat, Memory, Embedder, Channel, Skill |
 | walrus-deepseek | crates/llm/deepseek | walrus-llm | DeepSeek LLM provider |
 | walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek | Runtime, Provider, Handler, team composition |
+| walrus-sqlite | crates/sqlite | walrus-core | SqliteMemory via SQLite + FTS5 |
 
 ### Planned Crates
 
 | Crate | Path | Purpose | Phase |
 |-------|------|---------|-------|
-| walrus-sqlite | crates/sqlite | SqliteMemory via SQLite + FTS5 | 1 |
 | walrus-telegram | crates/telegram | Telegram channel adapter | 2 |
 | walrus-protocol | app/protocol | Wire types (ClientMessage, ServerMessage) | 3 |
 | walrus-gateway | app/gateway | WebSocket server, sessions, auth, crons | 3 |
@@ -115,6 +115,30 @@ tools, priority, body. Pure data struct.
 **Embedder trait** — `async fn embed(&self, text: &str) -> Vec<f32>`.
 
 **with_memory** — Helper appending `memory.compile()` to system prompt.
+
+---
+
+## walrus-sqlite
+
+Persistent Memory backend using SQLite with FTS5 full-text search.
+
+**`SqliteMemory<E: Embedder>`** — Generic over Embedder for optional vector
+search. Wraps `rusqlite::Connection` in `Mutex`. Uses `bundled` feature
+(no system SQLite dependency).
+
+**Schema** — `memories` table (key TEXT PK, value, metadata JSON, timestamps,
+access_count, embedding BLOB). `memories_fts` FTS5 virtual table with
+AFTER INSERT/UPDATE/DELETE triggers for sync.
+
+**CRUD** — Implements Memory trait. `get()` updates access tracking on each
+read. `set()` uses `ON CONFLICT(key) DO UPDATE` to preserve `created_at`.
+`store_with_metadata()` for metadata + embedding storage.
+
+**Recall pipeline** — BM25 via FTS5 MATCH, temporal decay (30-day half-life
+from `accessed_at`), time_range and relevance_threshold filtering, MMR
+re-ranking (Jaccard similarity, lambda 0.7), top-k truncation (default 10).
+
+**compile_relevant** — recall(limit 5), format as `<memory>` XML blocks.
 
 ---
 

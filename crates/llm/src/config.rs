@@ -1,6 +1,7 @@
 //! Configuration for a chat
 
 use crate::{Tool, ToolChoice};
+use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 /// LLM configuration
@@ -18,7 +19,7 @@ pub trait Config: From<General> + Sized + Clone {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct General {
     /// The model to use
-    pub model: String,
+    pub model: CompactString,
 
     /// Whether to enable thinking
     pub think: bool,
@@ -42,7 +43,7 @@ pub struct General {
 
 impl General {
     /// Create a new configuration
-    pub fn new(model: impl Into<String>) -> Self {
+    pub fn new(model: impl Into<CompactString>) -> Self {
         Self {
             model: model.into(),
             think: false,

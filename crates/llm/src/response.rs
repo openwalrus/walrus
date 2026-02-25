@@ -1,25 +1,26 @@
 //! Chat response abstractions for the unified LLM Interfaces
 
 use crate::{Message, Role, tool::ToolCall};
+use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 /// Common metadata shared between streaming and non-streaming completions
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct CompletionMeta {
     /// A unique identifier for the chat completion
-    pub id: String,
+    pub id: CompactString,
 
     /// The object type
-    pub object: String,
+    pub object: CompactString,
 
     /// Unix timestamp (in seconds) of when the response was created
     pub created: u64,
 
     /// The model used for the completion
-    pub model: String,
+    pub model: CompactString,
 
     /// Backend configuration identifier
-    pub system_fingerprint: Option<String>,
+    pub system_fingerprint: Option<CompactString>,
 }
 
 /// Message content in a completion response

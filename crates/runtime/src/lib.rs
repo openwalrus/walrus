@@ -25,6 +25,7 @@ pub use {
 
 use agent::{Agent, Chat};
 use anyhow::Result;
+use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use llm::{
@@ -52,10 +53,10 @@ pub type Compactor = Arc<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
 pub struct Runtime {
     provider: Provider,
     config: General,
-    tools: BTreeMap<String, (Tool, Handler)>,
-    compactors: BTreeMap<String, Compactor>,
-    agents: BTreeMap<String, Agent>,
-    sessions: BTreeMap<String, Chat>,
+    tools: BTreeMap<CompactString, (Tool, Handler)>,
+    compactors: BTreeMap<CompactString, Compactor>,
+    agents: BTreeMap<CompactString, Agent>,
+    sessions: BTreeMap<CompactString, Chat>,
 }
 
 impl Runtime {
@@ -98,7 +99,7 @@ impl Runtime {
         F: Fn(Vec<Message>) -> Vec<Message> + Send + Sync + 'static,
     {
         self.compactors
-            .insert(agent.to_string(), Arc::new(compactor));
+            .insert(CompactString::from(agent), Arc::new(compactor));
     }
 
     /// Create a new chat session for the named agent.
@@ -106,7 +107,7 @@ impl Runtime {
         if !self.agents.contains_key(agent) {
             anyhow::bail!("agent '{agent}' not registered");
         }
-        Ok(Chat::new(agent.to_string()))
+        Ok(Chat::new(agent))
     }
 
     /// Context window limit for the current provider/model.
@@ -118,7 +119,7 @@ impl Runtime {
     pub fn estimate_tokens(&self, chat: &Chat) -> usize {
         let system_tokens = self
             .agents
-            .get(&chat.agent_name)
+            .get(chat.agent_name())
             .map(|a| (a.system_prompt.len() / 4).max(1))
             .unwrap_or(0);
         system_tokens + estimate_tokens(&chat.messages)
@@ -132,10 +133,10 @@ impl Runtime {
     }
 
     /// Resolve tool schemas for the given tool names.
-    fn resolve(&self, names: &[String]) -> Vec<Tool> {
+    fn resolve(&self, names: &[CompactString]) -> Vec<Tool> {
         names
             .iter()
-            .filter_map(|name| self.tools.get(name).map(|(tool, _)| tool.clone()))
+            .filter_map(|name| self.tools.get(name.as_str()).map(|(tool, _)| tool.clone()))
             .collect()
     }
 
@@ -143,12 +144,13 @@ impl Runtime {
     async fn dispatch(&self, calls: &[ToolCall]) -> Vec<Message> {
         let mut results = Vec::with_capacity(calls.len());
         for call in calls {
-            let output = if let Some((_, handler)) = self.tools.get(&call.function.name) {
-                handler(call.function.arguments.clone()).await
-            } else {
-                format!("function {} not available", call.function.name)
-            };
-            results.push(Message::tool(output, &call.id));
+            let output =
+                if let Some((_, handler)) = self.tools.get(call.function.name.as_str()) {
+                    handler(call.function.arguments.clone()).await
+                } else {
+                    format!("function {} not available", call.function.name)
+                };
+            results.push(Message::tool(output, call.id.clone()));
         }
         results
     }
@@ -163,7 +165,7 @@ impl Runtime {
 
     /// Build the message list for an API request.
     fn api_messages(&self, chat: &Chat) -> Vec<Message> {
-        let agent = match self.agents.get(&chat.agent_name) {
+        let agent = match self.agents.get(chat.agent_name()) {
             Some(a) => a,
             None => return chat.messages.clone(),
         };
@@ -197,7 +199,7 @@ impl Runtime {
     pub async fn send(&self, chat: &mut Chat, message: Message) -> Result<Response> {
         let agent = self
             .agents
-            .get(&chat.agent_name)
+            .get(chat.agent_name())
             .ok_or_else(|| anyhow::anyhow!("agent '{}' not registered", chat.agent_name))?;
         let tools = self.resolve(&agent.tools);
         let mut tool_choice = ToolChoice::Auto;
@@ -231,7 +233,7 @@ impl Runtime {
         chat: &'a mut Chat,
         message: Message,
     ) -> impl Stream<Item = Result<StreamChunk>> + 'a {
-        let agent = self.agents.get(&chat.agent_name).cloned();
+        let agent = self.agents.get(chat.agent_name()).cloned();
         let tools = agent
             .as_ref()
             .map(|a| self.resolve(&a.tools))
@@ -293,12 +295,13 @@ impl Runtime {
 
     /// Convenience: send to a named agent using an internal session.
     pub async fn send_to(&mut self, agent: &str, message: Message) -> Result<Response> {
+        let key = CompactString::from(agent);
         let mut chat = self
             .sessions
-            .remove(agent)
-            .unwrap_or_else(|| Chat::new(agent.to_string()));
+            .remove(&key)
+            .unwrap_or_else(|| Chat::new(agent));
         let result = self.send(&mut chat, message).await;
-        self.sessions.insert(agent.to_string(), chat);
+        self.sessions.insert(key, chat);
         result
     }
 }
