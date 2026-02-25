@@ -1270,6 +1270,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
+name = "walrus-cli"
+version = "0.0.9"
+
+[[package]]
+name = "walrus-client"
+version = "0.0.9"
+
+[[package]]
 name = "walrus-core"
 version = "0.0.9"
 dependencies = [
@@ -1289,6 +1297,10 @@ dependencies = [
  "tracing",
  "walrus-llm",
 ]
+
+[[package]]
+name = "walrus-gateway"
+version = "0.0.9"
 
 [[package]]
 name = "walrus-llm"

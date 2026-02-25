@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "crates/llm/deepseek"]
+members = ["app/cli", "app/client","app/gateway","crates/*", "crates/llm/deepseek"]
 
 [workspace.package]
 version = "0.0.9"
