@@ -144,12 +144,20 @@ re-ranking (Jaccard similarity, lambda 0.7), top-k truncation (default 10).
 
 ## walrus-runtime
 
-Central composition point. `Runtime<M: Memory = InMemory>`. Generic over
-Memory backend with `Arc<M>` for shared access from tool handlers.
+Central composition point. `Runtime<H: Hook = InMemory>`. Generic over Hook
+for type-level configuration of memory backend and compaction prompts.
 
-**Chat** — Session state: agent_name (`CompactString`) + message history.
+**Hook trait** — Pure trait (no `&self`): associated `Memory` type, static
+`compact()` and `flush()` methods returning prompt strings. `impl Hook for
+InMemory` provides defaults. Defined in walrus-runtime. Default prompts
+embedded from `crates/runtime/prompts/` via `include_str!`. Exported
+constants `DEFAULT_COMPACT_PROMPT` / `DEFAULT_FLUSH_PROMPT` for reuse.
+
+**Chat** — Session state: agent_name (`CompactString`), message history,
+compaction_count. Helpers: `len()`, `is_empty()`, `last_message()`.
 
 **Provider** — Enum dispatch over LLM implementations (DeepSeek).
+`Provider::deepseek(key)` convenience factory.
 
 **Tool dispatch** — BTreeMap registry. `register()` + `dispatch()`. Auto-loops
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
@@ -159,24 +167,33 @@ Glob prefix resolution (DD#21): names ending in `*` match by prefix.
 format) from skill directories. Indexes by metadata tags and triggers. Ranks
 by tier then priority (from metadata). `find_by_tags()` and
 `find_by_trigger()` for matching. `parse_skill_md()` public helper.
+`set_skills()` mutable setter alongside `with_skills()` builder.
 
 **McpBridge** — Connects to MCP servers via rmcp SDK. `connect_stdio()` spawns
 child processes. Converts `rmcp::model::Tool` to `walrus_llm::Tool`. `call()`
 routes to the peer that owns the tool. `tools()` lists all available tools.
-Async-safe with `tokio::sync::Mutex`.
+Async-safe with `tokio::sync::Mutex`. `connect_mcp()` / `mcp_bridge()` on
+Runtime.
 
-**Memory integration** — Runtime constructor takes `M: Memory`. `api_messages()`
-is async: calls `compile_relevant()` on the last user message and injects
-the result into the system prompt. Matched skill bodies appended after memory
+**Memory integration** — Runtime holds `Arc<H::Memory>`. `api_messages()` is
+async: calls `compile_relevant()` on the last user message and injects the
+result into the system prompt. Matched skill bodies appended after memory
 context.
 
-**Compaction** — Per-agent functions trimming message history at 80% context.
+**Compaction** — Automatic via `maybe_compact()`: triggered at 80% context.
+First sends a silent LLM turn with `H::flush()` prompt and "remember" tool
+to extract durable facts into memory. Then sends `H::compact()` prompt to
+produce a summary that replaces the conversation history. Increments
+`chat.compaction_count`.
 
 **Team composition** — `build_team()` registers workers as tools on a leader.
-Each worker handler captures Provider, config, `Arc<M>` memory, agent config,
+Each worker handler captures Provider, config, `Arc<H::Memory>`, agent config,
 resolved tool schemas, and resolved handlers. Worker runs a self-contained LLM
 send loop (up to 16 rounds) with memory-enriched system prompt and tool dispatch,
 without referencing the Runtime. Worker agents are also registered in the runtime.
+
+**Ergonomic API** — Re-exports from llm and core (`Agent`, `InMemory`, `Memory`,
+`General`, `Message`, etc.). `prelude` module for glob imports.
 
 ---
 
@@ -321,3 +338,8 @@ Update JSON into ChannelMessage.
 
 35. **Shell out to git.** Like Homebrew — reuses SSH keys and credential
     helpers. No `git2` crate dependency.
+
+36. **Hook trait in walrus-runtime.** Pure trait (no `&self`) composing Memory
+    type with compaction/flush prompt strings. Runtime generic over `H: Hook`,
+    holds `Arc<H::Memory>`. `impl Hook for InMemory` provides defaults.
+    SqliteMemory Hook deferred (orphan rule).

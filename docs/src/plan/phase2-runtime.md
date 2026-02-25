@@ -14,11 +14,12 @@ channel adapter.
 | [P2-05](./units/P2-05.md) | Create walrus-telegram crate | Phase 1 (P1-03) |
 | [P2-06](./units/P2-06.md) | Implement Telegram Channel (connect + send) | P2-05 |
 | [P2-07](./units/P2-07.md) | Team delegation (worker agents call LLM) | P2-03, P2-04 |
+| [P2-08](./units/P2-08.md) | Hook trait, compaction, ergonomic API | P2-07 |
 
 ## Dependency Graph
 
 ```text
-P1-04 ─→ P2-01 ─→ P2-04 ─→ P2-07
+P1-04 ─→ P2-01 ─→ P2-04 ─→ P2-07 ─→ P2-08
                           P2-02 (independent)
 P1-01, P1-02 ─→ P2-03 ─→ P2-07
 P1-03 ─→ P2-05 ─→ P2-06
@@ -50,10 +51,12 @@ Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
 
 ## Completion Checklist
 
-- [x] All 7 units complete
+- [x] All 8 units complete
 - [x] `cargo check --workspace` and `cargo clippy --workspace` pass
-- [x] `cargo test --workspace` passes (82 tests)
+- [x] `cargo test --workspace` passes (87 tests)
 - [x] Runtime with memory/skills injects into system prompts correctly
 - [x] Runtime without memory/skills behaves identically to before
 - [x] Team delegation uses real LLM send loops (no stubs)
+- [x] Hook trait replaces old Compactor, automatic compaction wired in
+- [x] Re-exports and prelude module available
 - [x] `docs/src/design.md` updated

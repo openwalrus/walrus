@@ -37,7 +37,7 @@ fn worker_tool_builds_tool() {
 
 #[test]
 fn build_team_registers_workers_as_tools() {
-    let mut rt = Runtime::new(General::default(), test_provider(), InMemory::new());
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
     let leader = Agent::new("leader")
         .system_prompt("You coordinate.")
         .description("coordinator");
@@ -64,7 +64,7 @@ fn build_team_registers_workers_as_tools() {
 
 #[test]
 fn build_team_adds_worker_agents() {
-    let mut rt = Runtime::new(General::default(), test_provider(), InMemory::new());
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
     let leader = Agent::new("leader")
         .system_prompt("You coordinate.")
         .description("coordinator");
@@ -82,7 +82,7 @@ fn build_team_adds_worker_agents() {
 
 #[tokio::test]
 async fn worker_handler_parses_input() {
-    let mut rt = Runtime::new(General::default(), test_provider(), InMemory::new());
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
     let leader = Agent::new("leader")
         .system_prompt("You coordinate.")
         .description("coordinator");
@@ -110,7 +110,7 @@ async fn worker_handler_parses_input() {
 
 #[test]
 fn build_team_worker_tool_descriptions() {
-    let mut rt = Runtime::new(General::default(), test_provider(), InMemory::new());
+    let mut rt = Runtime::<()>::new(General::default(), test_provider(), InMemory::new());
     let leader = Agent::new("leader")
         .system_prompt("You coordinate.")
         .description("coordinator");

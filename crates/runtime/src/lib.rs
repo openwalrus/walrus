@@ -7,38 +7,45 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use walrus_core::Agent;
-//! use walrus_runtime::{Runtime, Provider};
-//! use llm::{General, Message};
+//! use walrus_runtime::prelude::*;
 //!
-//! let provider = Provider::new("deepseek-chat", Client::new(), &key)?;
+//! let provider = Provider::deepseek(&key)?;
 //! let mut runtime = Runtime::new(General::default(), provider, InMemory::new());
 //! runtime.add_agent(Agent::new("assistant").system_prompt("You are helpful."));
 //! let mut chat = runtime.chat("assistant")?;
 //! let response = runtime.send(&mut chat, Message::user("hello")).await?;
 //! ```
 
+pub use agent::{Agent, InMemory, Memory, Skill, SkillTier};
 pub use chat::Chat;
+pub use hook::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook};
+pub use llm::{Client, General, Message, Response, Role, StreamChunk, Tool};
 pub use mcp::McpBridge;
 pub use provider::Provider;
 pub use skills::{SkillRegistry, parse_skill_md};
 pub use team::{build_team, extract_input, worker_tool};
 
-use agent::{Agent, InMemory, Memory};
 use anyhow::Result;
 use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use llm::{
-    Config, FinishReason, General, LLM, Message, Response, Role, StreamChunk, Tool, ToolCall,
-    ToolChoice, estimate_tokens,
-};
+use llm::{Config, FinishReason, LLM, ToolCall, ToolChoice, estimate_tokens};
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
+
 mod chat;
+pub mod hook;
 pub mod mcp;
 mod provider;
 pub mod skills;
 pub mod team;
+
+/// Re-exports of the most commonly used types.
+pub mod prelude {
+    pub use crate::{
+        Agent, Chat, General, Hook, InMemory, Message, Provider, Response, Role, Runtime,
+        SkillRegistry, StreamChunk, Tool,
+    };
+}
 
 const MAX_TOOL_CALLS: usize = 16;
 
@@ -46,35 +53,32 @@ const MAX_TOOL_CALLS: usize = 16;
 pub type Handler =
     Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = String> + Send>> + Send + Sync>;
 
-/// A compaction function that trims message history.
-pub type Compactor = Arc<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
-
 /// The walrus runtime — top-level orchestrator.
 ///
-/// Generic over `M: Memory` for structured knowledge injection.
-/// Defaults to [`InMemory`] when no persistence is needed.
-pub struct Runtime<M: Memory = InMemory> {
+/// Generic over `H: Hook` for type-level configuration of memory and
+/// compaction prompts. Defaults to [`InMemory`] when no persistence is needed.
+pub struct Runtime<H: Hook> {
     provider: Provider,
     config: General,
-    memory: Arc<M>,
+    memory: Arc<H::Memory>,
     skills: Option<SkillRegistry>,
+    mcp: Option<Arc<McpBridge>>,
     tools: BTreeMap<CompactString, (Tool, Handler)>,
-    compactors: BTreeMap<CompactString, Compactor>,
     agents: BTreeMap<CompactString, Agent>,
     sessions: BTreeMap<CompactString, Chat>,
 }
 
-impl<M: Memory + 'static> Runtime<M> {
+impl<H: Hook + 'static> Runtime<H> {
     /// Create a new runtime with the given config, provider, and memory.
-    pub fn new(config: General, provider: Provider, memory: M) -> Self {
+    pub fn new(config: General, provider: Provider, memory: H::Memory) -> Self {
         let memory = Arc::new(memory);
         let mut rt = Self {
             provider,
             config,
             memory: Arc::clone(&memory),
             skills: None,
+            mcp: None,
             tools: BTreeMap::new(),
-            compactors: BTreeMap::new(),
             agents: BTreeMap::new(),
             sessions: BTreeMap::new(),
         };
@@ -114,10 +118,25 @@ impl<M: Memory + 'static> Runtime<M> {
         rt
     }
 
-    /// Set the skill registry for this runtime.
+    /// Set the skill registry for this runtime (builder-style).
     pub fn with_skills(mut self, registry: SkillRegistry) -> Self {
         self.skills = Some(registry);
         self
+    }
+
+    /// Set the skill registry for this runtime (mutable setter).
+    pub fn set_skills(&mut self, registry: SkillRegistry) {
+        self.skills = Some(registry);
+    }
+
+    /// Connect an MCP bridge to this runtime.
+    pub fn connect_mcp(&mut self, bridge: McpBridge) {
+        self.mcp = Some(Arc::new(bridge));
+    }
+
+    /// Get a reference to the MCP bridge, if connected.
+    pub fn mcp_bridge(&self) -> Option<&McpBridge> {
+        self.mcp.as_deref()
     }
 
     /// Register an agent.
@@ -139,15 +158,6 @@ impl<M: Memory + 'static> Runtime<M> {
         let name = tool.name.clone();
         let handler: Handler = Arc::new(move |args| Box::pin(handler(args)));
         self.tools.insert(name, (tool, handler));
-    }
-
-    /// Set a compaction function for a specific agent.
-    pub fn set_compactor<F>(&mut self, agent: &str, compactor: F)
-    where
-        F: Fn(Vec<Message>) -> Vec<Message> + Send + Sync + 'static,
-    {
-        self.compactors
-            .insert(CompactString::from(agent), Arc::new(compactor));
     }
 
     /// Create a new chat session for the named agent.
@@ -219,18 +229,9 @@ impl<M: Memory + 'static> Runtime<M> {
         results
     }
 
-    /// Apply compaction for the given agent.
-    pub fn compact(&self, agent: &str, messages: Vec<Message>) -> Vec<Message> {
-        match self.compactors.get(agent) {
-            Some(compactor) => compactor(messages),
-            None => messages,
-        }
-    }
-
     /// Build the message list for an API request.
     ///
-    /// Injects the agent system prompt (enriched with memory) if not already present,
-    /// then applies compaction.
+    /// Injects the agent system prompt (enriched with memory) if not already present.
     async fn api_messages(&self, chat: &Chat) -> Vec<Message> {
         let agent = match self.agents.get(chat.agent_name()) {
             Some(a) => a,
@@ -266,7 +267,7 @@ impl<M: Memory + 'static> Runtime<M> {
             messages.insert(0, Message::system(&system_prompt));
         }
 
-        self.compact(&agent.name, messages)
+        messages
             .into_iter()
             .map(|mut m| {
                 if m.tool_calls.is_empty() {
@@ -275,6 +276,60 @@ impl<M: Memory + 'static> Runtime<M> {
                 m
             })
             .collect()
+    }
+
+    /// Automatic compaction: flush memory then summarize conversation.
+    ///
+    /// Called at the start of `send()` and each loop iteration in `stream()`.
+    /// Uses `H::flush()` and `H::compact()` as static calls (no Hook instance).
+    async fn maybe_compact(&self, chat: &mut Chat) {
+        if !self.needs_compaction(chat) {
+            return;
+        }
+
+        // 1. Memory flush: extract durable facts via "remember" tool.
+        let flush_prompt = H::flush();
+        if !flush_prompt.is_empty() {
+            let remember_tool = self.resolve(&["remember".into()]);
+            let mut flush_messages = chat.messages.clone();
+            flush_messages.insert(0, Message::system(flush_prompt));
+            let cfg = self
+                .config
+                .clone()
+                .with_tools(remember_tool)
+                .with_tool_choice(ToolChoice::Auto);
+            match self.provider.send(&cfg, &flush_messages).await {
+                Ok(response) => {
+                    if let Some(msg) = response.message()
+                        && !msg.tool_calls.is_empty()
+                    {
+                        self.dispatch(&msg.tool_calls).await;
+                    }
+                }
+                Err(e) => tracing::warn!("memory flush failed during compaction: {e}"),
+            }
+        }
+
+        // 2. Summarize conversation history.
+        let compact_prompt = H::compact();
+        if !compact_prompt.is_empty() {
+            let mut summary_messages = chat.messages.clone();
+            summary_messages.insert(0, Message::system(compact_prompt));
+            let cfg = self
+                .config
+                .clone()
+                .with_tools(vec![])
+                .with_tool_choice(ToolChoice::None);
+            match self.provider.send(&cfg, &summary_messages).await {
+                Ok(response) => {
+                    let summary = response.content().cloned().unwrap_or_default();
+                    chat.messages.clear();
+                    chat.messages.push(Message::assistant(&summary, None, None));
+                    chat.compaction_count += 1;
+                }
+                Err(e) => tracing::warn!("compaction summarization failed: {e}"),
+            }
+        }
     }
 
     /// Build a config with the given tools and tool choice.
@@ -294,6 +349,7 @@ impl<M: Memory + 'static> Runtime<M> {
         let tools = self.resolve(&agent.tools);
         let mut tool_choice = ToolChoice::Auto;
         chat.messages.push(message);
+        self.maybe_compact(chat).await;
 
         for _ in 0..MAX_TOOL_CALLS {
             let messages = self.api_messages(chat).await;
@@ -335,6 +391,7 @@ impl<M: Memory + 'static> Runtime<M> {
             }
 
             chat.messages.push(message);
+            self.maybe_compact(chat).await;
             let mut tool_choice = ToolChoice::Auto;
 
             for _ in 0..MAX_TOOL_CALLS {
@@ -396,12 +453,12 @@ impl<M: Memory + 'static> Runtime<M> {
     }
 
     /// Get a reference to the memory backend.
-    pub fn memory(&self) -> &M {
+    pub fn memory(&self) -> &H::Memory {
         &self.memory
     }
 
     /// Get a clone of the memory Arc (for team delegation).
-    pub fn memory_arc(&self) -> Arc<M> {
+    pub fn memory_arc(&self) -> Arc<H::Memory> {
         Arc::clone(&self.memory)
     }
 
@@ -419,10 +476,7 @@ impl<M: Memory + 'static> Runtime<M> {
     ///
     /// Like [`resolve`] but returns both tool schemas and handlers.
     /// Supports glob prefixes (names ending in `*`).
-    pub fn resolve_handlers(
-        &self,
-        names: &[CompactString],
-    ) -> BTreeMap<CompactString, Handler> {
+    pub fn resolve_handlers(&self, names: &[CompactString]) -> BTreeMap<CompactString, Handler> {
         let mut resolved = BTreeMap::new();
         for name in names {
             if let Some(prefix) = name.strip_suffix('*') {

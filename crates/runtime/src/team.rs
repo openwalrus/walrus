@@ -19,7 +19,7 @@
 //! ```
 
 use agent::{Agent, Memory};
-use crate::{Handler, Provider, MAX_TOOL_CALLS};
+use crate::{Handler, Hook, Provider, MAX_TOOL_CALLS};
 use compact_str::CompactString;
 use llm::{Config, General, LLM, Message, Tool, ToolChoice};
 use std::{collections::BTreeMap, sync::Arc};
@@ -29,10 +29,10 @@ use std::{collections::BTreeMap, sync::Arc};
 /// Each worker's handler captures everything it needs to independently run
 /// an LLM conversation: provider, config, memory, agent config, resolved
 /// tool schemas, and resolved tool handlers.
-pub fn build_team<M: Memory + 'static>(
+pub fn build_team<H: Hook + 'static>(
     mut leader: Agent,
     workers: Vec<Agent>,
-    runtime: &mut crate::Runtime<M>,
+    runtime: &mut crate::Runtime<H>,
 ) -> Agent {
     let provider = runtime.provider().clone();
     let config = runtime.config().clone();
