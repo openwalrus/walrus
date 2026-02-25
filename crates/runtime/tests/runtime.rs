@@ -1,7 +1,7 @@
 //! Tests for the Runtime orchestrator.
 
-use llm::{FunctionCall, General, LLM, Message, Tool, ToolCall};
 use agent::Agent;
+use llm::{FunctionCall, General, LLM, Message, Tool, ToolCall};
 use walrus_runtime::{Provider, Runtime};
 
 fn test_provider() -> Provider {

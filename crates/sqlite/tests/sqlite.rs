@@ -1,7 +1,7 @@
 //! Tests for SqliteMemory.
 
-use agent::{Embedder, Memory, RecallOptions};
 use agent::MemoryEntry;
+use agent::{Embedder, Memory, RecallOptions};
 use walrus_sqlite::SqliteMemory;
 
 /// Noop embedder for tests that don't need vector search.

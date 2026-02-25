@@ -1,10 +1,10 @@
 //! Memory trait implementation for SqliteMemory.
 
-use agent::{Embedder, Memory, MemoryEntry, RecallOptions};
-use anyhow::Result;
+use crate::SqliteMemory;
 use crate::sql;
 use crate::utils::now_unix;
-use crate::SqliteMemory;
+use agent::{Embedder, Memory, MemoryEntry, RecallOptions};
+use anyhow::Result;
 use std::future::Future;
 
 impl<E: Embedder> Memory for SqliteMemory<E> {
