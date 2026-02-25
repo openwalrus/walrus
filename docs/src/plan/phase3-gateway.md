@@ -37,7 +37,10 @@ axum = "0.8"
 uuid = { version = "1", features = ["v4"] }
 cron = "0.15"
 jsonwebtoken = "9"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
+
+Update `tokio` workspace dep to include `signal` feature.
 
 Add `app/gateway` and `app/protocol` to workspace members.
 

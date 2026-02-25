@@ -30,7 +30,7 @@ P2-02, P2-03, and P2-05 are independent of each other.
 Add to `[workspace.dependencies]`:
 
 ```toml
-rmcp = "0.8"
+rmcp = "0.16"
 toml = "0.8"
 ```
 

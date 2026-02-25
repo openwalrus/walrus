@@ -1303,6 +1303,10 @@ name = "walrus-gateway"
 version = "0.0.9"
 
 [[package]]
+name = "walrus-hub"
+version = "0.0.9"
+
+[[package]]
 name = "walrus-llm"
 version = "0.0.9"
 dependencies = [
