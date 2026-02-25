@@ -44,7 +44,7 @@ surface that solves the problem.
 | walrus-llm | crates/llm | — | LLM trait, Message, Tool, Config, StreamChunk |
 | walrus-core | crates/core | walrus-llm | Agent, Memory, Embedder, Channel, Skill |
 | walrus-deepseek | crates/llm/deepseek | walrus-llm | DeepSeek LLM provider |
-| walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek, rmcp | Runtime, Chat, Provider, SkillRegistry, McpBridge, Handler, team composition |
+| walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek, rmcp | Runtime, Provider, SkillRegistry, McpBridge, Handler, team composition |
 | walrus-sqlite | crates/sqlite | walrus-core | SqliteMemory via SQLite + FTS5 |
 | walrus-telegram | crates/telegram | walrus-core, reqwest | Telegram channel adapter via Bot API |
 
@@ -137,6 +137,9 @@ read. `set()` uses `ON CONFLICT(key) DO UPDATE` to preserve `created_at`.
 **Recall pipeline** — BM25 via FTS5 MATCH, temporal decay (30-day half-life
 from `accessed_at`), time_range and relevance_threshold filtering, MMR
 re-ranking (Jaccard similarity, lambda 0.7), top-k truncation (default 10).
+Planned: hybrid BM25 + cosine vector scoring via Reciprocal Rank Fusion,
+auto-embed on store when embedder attached, cosine MMR when embeddings
+available (P2-11).
 
 **compile_relevant** — recall(limit 5), format as `<memory>` XML blocks.
 
@@ -155,6 +158,9 @@ constants `DEFAULT_COMPACT_PROMPT` / `DEFAULT_FLUSH_PROMPT` for reuse.
 
 **Chat** — Session state: agent_name (`CompactString`), message history,
 compaction_count. Helpers: `len()`, `is_empty()`, `last_message()`.
+`send_to()` convenience method manages sessions internally by agent name.
+Planned: replace Chat with private Session struct, `send_to`/`stream_to`
+as primary API (P2-09).
 
 **Provider** — Enum dispatch over LLM implementations (DeepSeek).
 `Provider::deepseek(key)` convenience factory.
@@ -162,6 +168,7 @@ compaction_count. Helpers: `len()`, `is_empty()`, `last_message()`.
 **Tool dispatch** — BTreeMap registry. `register()` + `dispatch()`. Auto-loops
 up to 16 rounds. Auto-registers "remember" tool when memory is present (DD#23).
 Glob prefix resolution (DD#21): names ending in `*` match by prefix.
+Planned: unify `resolve()` and `resolve_handlers()` into `resolve_tools()` (P2-09).
 
 **SkillRegistry** — Loads SKILL.md files (YAML frontmatter, agentskills.io
 format) from skill directories. Indexes by metadata tags and triggers. Ranks
@@ -184,16 +191,21 @@ context.
 First sends a silent LLM turn with `H::flush()` prompt and "remember" tool
 to extract durable facts into memory. Then sends `H::compact()` prompt to
 produce a summary that replaces the conversation history. Increments
-`chat.compaction_count`.
+session compaction_count.
 
 **Team composition** — `build_team()` registers workers as tools on a leader.
 Each worker handler captures Provider, config, `Arc<H::Memory>`, agent config,
-resolved tool schemas, and resolved handlers. Worker runs a self-contained LLM
-send loop (up to 16 rounds) with memory-enriched system prompt and tool dispatch,
-without referencing the Runtime. Worker agents are also registered in the runtime.
+resolved tool schemas, and resolved handlers. Worker runs a
+self-contained LLM send loop (up to 16 rounds) with memory-enriched system
+prompt and tool dispatch, without referencing the Runtime. Worker agents are
+also registered in the runtime.
 
 **Ergonomic API** — Re-exports from llm and core (`Agent`, `InMemory`, `Memory`,
 `General`, `Message`, etc.). `prelude` module for glob imports.
+
+**Examples** — Runnable examples in `crates/runtime/examples/` covering chat,
+tools, memory, teams, MCP, skills, and streaming. Run via
+`cargo run -p walrus-runtime --example <name>`.
 
 ---
 
@@ -221,7 +233,7 @@ Update JSON into ChannelMessage.
 - **[Phase 1: Core](./plan/phase1-core.md)** — Performance primitives, Memory
   trait revision, Channel/Skill/Embedder traits, walrus-sqlite.
 - **[Phase 2: Runtime](./plan/phase2-runtime.md)** — SkillRegistry, McpBridge,
-  memory/skills integration, Telegram adapter.
+  memory/skills integration, Telegram adapter, API simplification, examples.
 - **[Phase 3: Gateway](./plan/phase3-gateway.md)** — Protocol types, sessions,
   auth, WebSocket server, channel routing, cron, binary entry point.
 - **[Phase 4: CLI & Client](./plan/phase4-cli.md)** — Client library, CLI with
@@ -343,3 +355,16 @@ Update JSON into ChannelMessage.
     type with compaction/flush prompt strings. Runtime generic over `H: Hook`,
     holds `Arc<H::Memory>`. `impl Hook for InMemory` provides defaults.
     SqliteMemory Hook deferred (orphan rule).
+
+37. **Session internalization (P2-09).** Replace public Chat with private
+    Session. `send_to` / `stream_to` as primary API. Gateway (P3) manages
+    its own sessions externally.
+
+38. **Unified tool resolution (P2-09).** Merge `resolve()` and
+    `resolve_handlers()` into `resolve_tools()` returning
+    `Vec<(Tool, Handler)>`. `resolve()` becomes thin wrapper.
+
+39. **Hybrid recall (P2-11).** BM25 + cosine vector scoring fused via
+    Reciprocal Rank Fusion (k=60). Auto-embed on `store()` when embedder
+    attached. MMR uses cosine when embeddings available, Jaccard fallback.
+    Concrete embedder impl (MiniLM via ort/fastembed) deferred.

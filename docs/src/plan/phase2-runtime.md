@@ -1,7 +1,7 @@
 # Phase 2: Runtime
 
-Integrate memory, skills, and MCP into the Runtime, and implement the Telegram
-channel adapter.
+Integrate memory, skills, and MCP into the Runtime, implement the Telegram
+channel adapter, simplify runtime interfaces, and add examples.
 
 ## Unit Index
 
@@ -15,17 +15,21 @@ channel adapter.
 | [P2-06](./units/P2-06.md) | Implement Telegram Channel (connect + send) | P2-05 |
 | [P2-07](./units/P2-07.md) | Team delegation (worker agents call LLM) | P2-03, P2-04 |
 | [P2-08](./units/P2-08.md) | Hook trait, compaction, ergonomic API | P2-07 |
+| [P2-09](./units/P2-09.md) | Simplify Runtime API (remove Chat, unify resolve) | P2-08 |
+| [P2-10](./units/P2-10.md) | Runtime examples | P2-09 |
+| [P2-11](./units/P2-11.md) | Wire hybrid BM25 + vector recall in walrus-sqlite | P2-09 |
 
 ## Dependency Graph
 
 ```text
-P1-04 ─→ P2-01 ─→ P2-04 ─→ P2-07 ─→ P2-08
-                          P2-02 (independent)
+P1-04 ─→ P2-01 ─→ P2-04 ─→ P2-07 ─→ P2-08 ─→ P2-09 ─→ P2-10
+                          P2-02 (independent)      └──→ P2-11
 P1-01, P1-02 ─→ P2-03 ─→ P2-07
 P1-03 ─→ P2-05 ─→ P2-06
 ```
 
 P2-02, P2-03, and P2-05 are independent of each other.
+P2-10 and P2-11 are independent of each other (both depend on P2-09).
 
 ## Workspace Changes
 
@@ -35,6 +39,8 @@ Add to `[workspace.dependencies]`:
 rmcp = { version = "0.16", features = ["client", "transport-child-process"] }
 serde_yaml = "0.9"
 toml = "0.8"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
 ```
 
 Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
@@ -51,7 +57,7 @@ Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
 
 ## Completion Checklist
 
-- [x] All 8 units complete
+- [x] P2-01 through P2-08 complete
 - [x] `cargo check --workspace` and `cargo clippy --workspace` pass
 - [x] `cargo test --workspace` passes (87 tests)
 - [x] Runtime with memory/skills injects into system prompts correctly
@@ -60,3 +66,7 @@ Add `crates/telegram` to workspace members (auto-included via `crates/*` glob).
 - [x] Hook trait replaces old Compactor, automatic compaction wired in
 - [x] Re-exports and prelude module available
 - [x] `docs/src/design.md` updated
+- [ ] P2-09: Chat removed, `send_to`/`stream_to` primary API, resolve unified
+- [ ] P2-10: Runtime examples compile and run
+- [ ] P2-11: Hybrid BM25 + vector recall wired in walrus-sqlite
+- [ ] All 11 units complete
