@@ -1,7 +1,7 @@
 //! Session management tests.
 
 use walrus_gateway::{
-    SessionManager, protocol::session::SessionScope, protocol::session::TrustLevel,
+    SessionManager, gateway::session::SessionScope, gateway::session::TrustLevel,
 };
 
 #[test]

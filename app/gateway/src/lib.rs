@@ -4,7 +4,7 @@
 pub mod channel;
 pub mod config;
 mod feature;
-pub mod protocol;
+pub mod gateway;
 pub mod utils;
 
 pub use channel::{
@@ -17,4 +17,4 @@ pub use feature::{
     cron::{CronJob, CronScheduler},
     memory::MemoryBackend,
 };
-pub use protocol::{Gateway, GatewayHook, builder::build_runtime, session::SessionManager};
+pub use gateway::{Gateway, GatewayHook, builder::build_runtime, session::SessionManager};

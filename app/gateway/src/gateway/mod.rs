@@ -1,7 +1,7 @@
 //! Protocol impls for the gateway.
 
 use crate::MemoryBackend;
-use crate::{channel::auth::Authenticator, protocol::session::SessionManager};
+use crate::{channel::auth::Authenticator, gateway::session::SessionManager};
 use deepseek::DeepSeek;
 use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
 use std::sync::Arc;

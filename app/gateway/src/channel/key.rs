@@ -5,7 +5,7 @@
 use crate::{
     channel::auth::{AuthContext, AuthError, Authenticator},
     config::AuthConfig,
-    protocol::session::TrustLevel,
+    gateway::session::TrustLevel,
 };
 use compact_str::CompactString;
 use std::collections::BTreeMap;

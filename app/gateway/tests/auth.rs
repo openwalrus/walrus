@@ -2,7 +2,7 @@
 
 use walrus_gateway::{
     ApiKeyAuthenticator, AuthError, Authenticator, config::AuthConfig,
-    protocol::session::TrustLevel,
+    gateway::session::TrustLevel,
 };
 
 #[tokio::test]

@@ -3,7 +3,7 @@
 //! Defines the `Authenticator` trait and `AuthContext` for verifying
 //! client credentials. Concrete implementations live in separate files.
 
-use crate::protocol::session::TrustLevel;
+use crate::gateway::session::TrustLevel;
 use compact_str::CompactString;
 use std::future::Future;
 

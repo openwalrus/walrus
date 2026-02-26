@@ -2,7 +2,7 @@
 
 use crate::MemoryBackend;
 use crate::config::MemoryBackendKind;
-use crate::protocol::GatewayHook;
+use crate::gateway::GatewayHook;
 use anyhow::Result;
 use deepseek::DeepSeek;
 use llm::LLM;

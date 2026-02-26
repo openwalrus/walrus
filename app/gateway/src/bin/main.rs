@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     };
 
     // Build axum router.
-    let app = walrus_gateway::protocol::ws::router(state);
+    let app = walrus_gateway::gateway::ws::router(state);
 
     // Bind and serve.
     let listener = tokio::net::TcpListener::bind(&bind_address).await?;
