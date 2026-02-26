@@ -1,77 +1,67 @@
 //! Configuration resolution for the CLI.
 //!
-//! Resolves gateway.toml in priority order:
-//! 1. `--config <path>` flag (explicit override)
-//! 2. `{cwd}/.walrus/gateway.toml` (workspace config)
-//! 3. `~/.config/walrus/gateway.toml` (global default)
-//!
-//! If the global default doesn't exist, it is generated automatically.
+//! Loads gateway.toml from `~/.config/walrus/gateway.toml`. On first run,
+//! scaffolds the config directory with default config and agent files.
 
 use anyhow::{Context, Result};
-use gateway::GatewayConfig;
-use std::path::PathBuf;
+use gateway::{GatewayConfig, config as gw_config};
+use std::path::{Path, PathBuf};
 
-/// Resolve gateway config following the priority chain.
-pub fn resolve_config(config_flag: Option<&str>) -> Result<GatewayConfig> {
-    // 1. Explicit --config flag.
-    if let Some(path) = config_flag {
-        return GatewayConfig::load(path)
-            .with_context(|| format!("failed to load config from {path}"));
-    }
+/// Default agent markdown content for first-run scaffold.
+const DEFAULT_AGENT_MD: &str = r#"---
+name: assistant
+description: A helpful assistant
+tools:
+  - remember
+---
 
-    // 2. Workspace config: {cwd}/.walrus/gateway.toml
-    let workspace_path = PathBuf::from(".walrus/gateway.toml");
-    if workspace_path.exists() {
-        return GatewayConfig::load(&workspace_path.to_string_lossy())
-            .context("failed to load workspace config from .walrus/gateway.toml");
-    }
+You are a helpful assistant. Be concise.
+"#;
 
-    // 3. Global default: ~/.config/walrus/gateway.toml
-    let global_path = global_config_path();
-    if global_path.exists() {
-        return GatewayConfig::load(&global_path.to_string_lossy())
-            .context("failed to load global config");
-    }
-
-    // Generate default global config.
-    generate_default_config(&global_path)?;
-    tracing::info!("generated default config at {}", global_path.display());
-    GatewayConfig::load(&global_path.to_string_lossy())
-        .context("failed to load generated default config")
-}
-
-/// Resolve the config file path (without loading it).
+/// Resolve gateway config from the global config directory.
 ///
-/// Same priority chain as [`resolve_config`] but returns just the path.
-pub fn resolve_config_path(config_flag: Option<&str>) -> PathBuf {
-    if let Some(path) = config_flag {
-        return PathBuf::from(path);
+/// If the config directory doesn't exist, scaffolds it with default files.
+pub fn resolve_config() -> Result<GatewayConfig> {
+    let config_dir = gw_config::global_config_dir();
+    let config_path = config_dir.join("gateway.toml");
+
+    if !config_dir.exists() {
+        scaffold_config_dir(&config_dir)?;
+        tracing::info!("created config directory at {}", config_dir.display());
     }
-    let workspace_path = PathBuf::from(".walrus/gateway.toml");
-    if workspace_path.exists() {
-        return workspace_path;
-    }
-    global_config_path()
+
+    GatewayConfig::load(&config_path)
+        .with_context(|| format!("failed to load config from {}", config_path.display()))
 }
 
-/// Path to the global default config.
-fn global_config_path() -> PathBuf {
-    dirs::config_dir()
-        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
-        .unwrap_or_else(|| PathBuf::from(".config"))
-        .join("walrus")
-        .join("gateway.toml")
+/// Resolve the config file path.
+pub fn resolve_config_path() -> PathBuf {
+    gw_config::global_config_dir().join("gateway.toml")
 }
 
-/// Generate a default gateway.toml at the given path.
-fn generate_default_config(path: &PathBuf) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create config directory {}", parent.display()))?;
-    }
+/// Scaffold the full config directory structure on first run.
+fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
+    // Create directory structure.
+    std::fs::create_dir_all(config_dir.join(gw_config::AGENTS_DIR))
+        .context("failed to create agents directory")?;
+    std::fs::create_dir_all(config_dir.join(gw_config::SKILLS_DIR))
+        .context("failed to create skills directory")?;
+    std::fs::create_dir_all(config_dir.join(gw_config::CRON_DIR))
+        .context("failed to create cron directory")?;
+    std::fs::create_dir_all(config_dir.join(gw_config::DATA_DIR))
+        .context("failed to create data directory")?;
+
+    // Write default gateway.toml.
+    let gateway_toml = config_dir.join("gateway.toml");
     let contents = toml::to_string_pretty(&GatewayConfig::default())
         .context("failed to serialize default config")?;
-    std::fs::write(path, contents)
-        .with_context(|| format!("failed to write default config to {}", path.display()))?;
+    std::fs::write(&gateway_toml, contents)
+        .with_context(|| format!("failed to write {}", gateway_toml.display()))?;
+
+    // Write default agent.
+    let agent_path = config_dir.join(gw_config::AGENTS_DIR).join("assistant.md");
+    std::fs::write(&agent_path, DEFAULT_AGENT_MD)
+        .with_context(|| format!("failed to write {}", agent_path.display()))?;
+
     Ok(())
 }

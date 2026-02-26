@@ -2569,6 +2569,7 @@ version = "0.0.9"
 dependencies = [
  "anyhow",
  "async-stream",
+ "axum",
  "clap",
  "compact_str",
  "crossterm",
@@ -2634,6 +2635,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "walrus-flutter"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "tracing",
+ "walrus-gateway",
+]
+
+[[package]]
 name = "walrus-gateway"
 version = "0.0.9"
 dependencies = [
@@ -2644,6 +2655,7 @@ dependencies = [
  "chrono",
  "compact_str",
  "cron",
+ "dirs",
  "futures-core",
  "futures-util",
  "rmcp",

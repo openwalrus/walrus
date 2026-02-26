@@ -5,7 +5,6 @@
 //! it produces events (fires jobs), and the Gateway wires them to
 //! agent dispatch.
 
-use crate::config::CronConfig;
 use chrono::Utc;
 use compact_str::CompactString;
 use cron::Schedule;
@@ -26,16 +25,31 @@ pub struct CronJob {
 }
 
 impl CronJob {
-    /// Parse a [`CronJob`] from configuration.
-    pub fn from_config(config: &CronConfig) -> anyhow::Result<Self> {
-        let schedule = Schedule::from_str(&config.schedule)
-            .map_err(|e| anyhow::anyhow!("invalid cron expression '{}': {e}", config.schedule))?;
+    /// Parse a [`CronJob`] from its fields.
+    pub fn new(
+        name: CompactString,
+        schedule_expr: &str,
+        agent: CompactString,
+        message: String,
+    ) -> anyhow::Result<Self> {
+        let schedule = Schedule::from_str(schedule_expr)
+            .map_err(|e| anyhow::anyhow!("invalid cron expression '{schedule_expr}': {e}"))?;
         Ok(Self {
-            name: config.name.clone(),
+            name,
             schedule,
-            agent: config.agent.clone(),
-            message: config.message.clone(),
+            agent,
+            message,
         })
+    }
+
+    /// Create a [`CronJob`] from a [`runtime::CronEntry`].
+    pub fn from_entry(entry: &runtime::CronEntry) -> anyhow::Result<Self> {
+        Self::new(
+            entry.name.clone(),
+            &entry.schedule,
+            entry.agent.clone(),
+            entry.message.clone(),
+        )
     }
 }
 
@@ -48,15 +62,6 @@ impl CronScheduler {
     /// Create a scheduler from a list of cron jobs.
     pub fn new(jobs: Vec<CronJob>) -> Self {
         Self { jobs }
-    }
-
-    /// Parse all cron configs into a scheduler.
-    pub fn from_configs(configs: &[CronConfig]) -> anyhow::Result<Self> {
-        let jobs = configs
-            .iter()
-            .map(CronJob::from_config)
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(Self { jobs })
     }
 
     /// Start the scheduler. Calls `on_fire` for each job when it fires.
