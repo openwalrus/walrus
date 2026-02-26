@@ -5,8 +5,6 @@ pub use cmd::{Cli, Command};
 
 pub mod cmd;
 pub mod config;
-pub mod direct;
-pub mod gateway;
 pub mod prefs;
 pub mod repl;
 pub mod runner;

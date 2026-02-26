@@ -1,7 +1,7 @@
 //! Agent management commands: list, info.
 
 use crate::cmd::AgentCommand;
-use crate::direct::DirectRunner;
+use crate::runner::direct::DirectRunner;
 use anyhow::Result;
 
 /// Dispatch agent management subcommands.

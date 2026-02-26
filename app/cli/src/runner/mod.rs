@@ -8,6 +8,9 @@ use anyhow::Result;
 use futures_core::Stream;
 use std::future::Future;
 
+pub mod direct;
+pub mod gateway;
+
 /// Unified interface for sending messages and streaming responses.
 pub trait Runner {
     /// Send a one-shot message and return the response content.

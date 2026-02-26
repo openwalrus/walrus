@@ -7,6 +7,6 @@ use walrus_cli::runner::Runner;
 #[test]
 fn runner_trait_bounds() {
     fn assert_runner<R: Runner + Send>() {}
-    assert_runner::<walrus_cli::direct::DirectRunner>();
-    assert_runner::<walrus_cli::gateway::GatewayRunner>();
+    assert_runner::<walrus_cli::runner::direct::DirectRunner>();
+    assert_runner::<walrus_cli::runner::gateway::GatewayRunner>();
 }

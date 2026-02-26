@@ -1,7 +1,7 @@
 //! Memory management commands: list, get.
 
 use crate::cmd::MemoryCommand;
-use crate::direct::DirectRunner;
+use crate::runner::direct::DirectRunner;
 use anyhow::Result;
 use runtime::Memory;
 

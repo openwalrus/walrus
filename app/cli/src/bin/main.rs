@@ -4,7 +4,8 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 use walrus_cli::{
-    Cli, Command, cmd, direct::DirectRunner, gateway::GatewayRunner, repl::ChatRepl, runner::Runner,
+    Cli, Command, cmd, repl::ChatRepl,
+    runner::{Runner, direct::DirectRunner, gateway::GatewayRunner},
 };
 
 #[tokio::main]
