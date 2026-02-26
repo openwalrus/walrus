@@ -1,12 +1,15 @@
 //! Runner trait abstracting the execution mode.
 //!
-//! Uses RPITIT (DD#11) — no dyn dispatch. Direct mode only.
+//! Uses RPITIT (DD#11) — no dyn dispatch. Direct mode embeds the full
+//! gateway stack locally; gateway mode connects to a remote gateway via
+//! WebSocket.
 
 use anyhow::Result;
 use futures_core::Stream;
 use std::future::Future;
 
 pub mod direct;
+pub mod gateway;
 
 /// Unified interface for sending messages and streaming responses.
 pub trait Runner {

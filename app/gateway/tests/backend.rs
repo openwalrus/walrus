@@ -130,5 +130,5 @@ api_key = "test-key"
 "#,
     )
     .unwrap();
-    assert_eq!(config.bind_address(), "127.0.0.1:3000");
+    assert_eq!(config.bind_address(), "127.0.0.1:6688");
 }

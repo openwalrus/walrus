@@ -2582,9 +2582,11 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "walrus-client",
  "walrus-core",
  "walrus-gateway",
  "walrus-llm",
+ "walrus-protocol",
  "walrus-runtime",
 ]
 

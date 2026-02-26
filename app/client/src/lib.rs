@@ -18,7 +18,7 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            gateway_url: CompactString::from("ws://127.0.0.1:3000/ws"),
+            gateway_url: CompactString::from("ws://127.0.0.1:6688/ws"),
             auth_token: None,
         }
     }

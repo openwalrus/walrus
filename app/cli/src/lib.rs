@@ -1,5 +1,5 @@
 //! Walrus CLI application — command-line interface for interacting with
-//! walrus agents in direct mode.
+//! walrus agents in direct mode or attached to a remote gateway.
 
 pub use cmd::{Cli, Command};
 

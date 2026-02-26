@@ -59,7 +59,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".to_owned(),
-            port: 3000,
+            port: 6688,
         }
     }
 }
@@ -69,7 +69,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    3000
+    6688
 }
 
 /// LLM provider configuration.

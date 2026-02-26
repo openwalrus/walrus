@@ -68,7 +68,7 @@ api_key = "key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     assert_eq!(config.server.host, "127.0.0.1");
-    assert_eq!(config.server.port, 3000);
+    assert_eq!(config.server.port, 6688);
 }
 
 #[test]

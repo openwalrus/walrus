@@ -6,7 +6,7 @@ use tracing_subscriber::EnvFilter;
 use walrus_cli::{
     Cli, Command, cmd,
     repl::ChatRepl,
-    runner::{Runner, direct::DirectRunner},
+    runner::{Runner, direct::DirectRunner, gateway::GatewayRunner},
 };
 
 #[tokio::main]
@@ -16,6 +16,12 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+
+    // Attach mode: connect to a running gateway via WebSocket.
+    if let Command::Attach { ref url, ref auth_token } = cli.command {
+        let runner = GatewayRunner::connect(url, auth_token.as_deref()).await?;
+        return run_with_runner(runner, &cli).await;
+    }
 
     // Direct mode: embed the full gateway stack locally.
     let runner = DirectRunner::new(&cli).await?;
@@ -34,7 +40,7 @@ async fn main() -> Result<()> {
 /// Dispatch chat/send subcommands using a concrete runner.
 async fn run_with_runner<R: Runner>(mut runner: R, cli: &Cli) -> Result<()> {
     match cli.command {
-        Command::Chat => {
+        Command::Chat | Command::Attach { .. } => {
             let agent = cli
                 .agent
                 .as_deref()

@@ -52,6 +52,15 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigCommand,
     },
+    /// Attach to a running walrus-gateway via WebSocket.
+    Attach {
+        /// Gateway WebSocket URL.
+        #[arg(long, default_value = "ws://127.0.0.1:6688/ws")]
+        url: String,
+        /// Authentication token.
+        #[arg(long)]
+        auth_token: Option<String>,
+    },
 }
 
 /// Agent management subcommands.
