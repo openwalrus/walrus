@@ -8,4 +8,3 @@ pub mod config;
 pub mod prefs;
 pub mod repl;
 pub mod runner;
-pub mod terminal;

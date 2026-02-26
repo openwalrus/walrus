@@ -1,11 +1,12 @@
 //! Interactive chat REPL with streaming output and persistent history.
 
 use crate::runner::Runner;
-use crate::terminal::stream_to_terminal;
 use anyhow::Result;
 use compact_str::CompactString;
+use futures_core::Stream;
+use futures_util::StreamExt;
 use rustyline::error::ReadlineError;
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf, pin::pin};
 
 /// Interactive chat REPL, generic over the execution backend.
 pub struct ChatRepl<R: Runner> {
@@ -44,7 +45,8 @@ impl<R: Runner> ChatRepl<R> {
                         continue;
                     }
                     let _ = self.editor.add_history_entry(&line);
-                    self.stream_response(&line).await?;
+                    let stream = self.runner.stream(&self.agent, &line);
+                    stream_to_terminal(stream).await?;
                 }
                 Err(ReadlineError::Interrupted) => continue,
                 Err(ReadlineError::Eof) => break,
@@ -54,12 +56,6 @@ impl<R: Runner> ChatRepl<R> {
 
         self.save_history();
         Ok(())
-    }
-
-    /// Stream a response from the agent and print to terminal.
-    async fn stream_response(&mut self, content: &str) -> Result<()> {
-        let stream = self.runner.stream(&self.agent, content);
-        stream_to_terminal(stream).await
     }
 
     /// Save readline history to disk.
@@ -76,4 +72,36 @@ impl<R: Runner> ChatRepl<R> {
 /// Resolve the history file path at `~/.config/walrus/history`.
 fn history_file_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("walrus").join("history"))
+}
+
+/// Consume a stream of content chunks and print them to stdout in real time.
+///
+/// Handles Ctrl+C cancellation via `tokio::signal::ctrl_c()`.
+async fn stream_to_terminal(stream: impl Stream<Item = Result<String>>) -> Result<()> {
+    let mut stream = pin!(stream);
+
+    loop {
+        tokio::select! {
+            chunk = stream.next() => {
+                match chunk {
+                    Some(Ok(text)) => {
+                        print!("{text}");
+                        std::io::stdout().flush().ok();
+                    }
+                    Some(Err(e)) => {
+                        eprintln!("\nError: {e}");
+                        break;
+                    }
+                    None => break,
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!();
+                break;
+            }
+        }
+    }
+
+    println!();
+    Ok(())
 }
