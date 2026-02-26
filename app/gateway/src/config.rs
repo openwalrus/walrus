@@ -1,11 +1,11 @@
 //! Gateway configuration loaded from TOML.
 
 use compact_str::CompactString;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 /// Top-level gateway configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GatewayConfig {
     /// Server bind configuration.
     pub server: ServerConfig,
@@ -34,7 +34,7 @@ pub struct GatewayConfig {
 }
 
 /// Server bind configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Host address to bind to.
     #[serde(default = "default_host")]
@@ -42,6 +42,15 @@ pub struct ServerConfig {
     /// Port to listen on.
     #[serde(default = "default_port")]
     pub port: u16,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_owned(),
+            port: 3000,
+        }
+    }
 }
 
 fn default_host() -> String {
@@ -53,7 +62,7 @@ fn default_port() -> u16 {
 }
 
 /// LLM provider configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LlmConfig {
     /// Model identifier.
     pub model: CompactString,
@@ -61,8 +70,17 @@ pub struct LlmConfig {
     pub api_key: String,
 }
 
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            model: "deepseek-chat".into(),
+            api_key: "${DEEPSEEK_API_KEY}".to_owned(),
+        }
+    }
+}
+
 /// Memory backend configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryConfig {
     /// Backend type: "in_memory" or "sqlite".
@@ -81,7 +99,7 @@ impl Default for MemoryConfig {
 }
 
 /// Memory backend kind.
-#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryBackendKind {
     /// In-memory backend (no persistence).
@@ -92,7 +110,7 @@ pub enum MemoryBackendKind {
 }
 
 /// Agent configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AgentConfig {
     /// Agent name.
     pub name: CompactString,
@@ -111,7 +129,7 @@ pub struct AgentConfig {
 }
 
 /// Authentication configuration.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AuthConfig {
     /// API keys that grant access.
@@ -119,7 +137,7 @@ pub struct AuthConfig {
 }
 
 /// Channel configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChannelConfig {
     /// Platform name.
     pub platform: CompactString,
@@ -132,7 +150,7 @@ pub struct ChannelConfig {
 }
 
 /// Cron job configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CronConfig {
     /// Job name.
     pub name: CompactString,
@@ -145,14 +163,14 @@ pub struct CronConfig {
 }
 
 /// Skills directory configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SkillsConfig {
     /// Path to the skills directory.
     pub directory: String,
 }
 
 /// MCP server configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct McpServerConfig {
     /// Server name.
     pub name: CompactString,
@@ -171,6 +189,28 @@ pub struct McpServerConfig {
 
 fn default_true() -> bool {
     true
+}
+
+impl Default for GatewayConfig {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig::default(),
+            llm: LlmConfig::default(),
+            memory: MemoryConfig::default(),
+            agents: vec![AgentConfig {
+                name: "assistant".into(),
+                description: "A helpful assistant".into(),
+                system_prompt: "You are a helpful assistant. Be concise.".to_owned(),
+                tools: SmallVec::new(),
+                skill_tags: SmallVec::new(),
+            }],
+            auth: AuthConfig::default(),
+            channels: Vec::new(),
+            cron: Vec::new(),
+            skills: None,
+            mcp_servers: Vec::new(),
+        }
+    }
 }
 
 impl GatewayConfig {

@@ -11,24 +11,6 @@ use anyhow::{Context, Result};
 use gateway::GatewayConfig;
 use std::path::PathBuf;
 
-/// Default gateway config template generated when no config exists.
-const DEFAULT_CONFIG: &str = r#"[server]
-host = "127.0.0.1"
-port = 3000
-
-[llm]
-model = "deepseek-chat"
-api_key = "${DEEPSEEK_API_KEY}"
-
-[memory]
-backend = "in_memory"
-
-[[agents]]
-name = "assistant"
-description = "A helpful assistant"
-system_prompt = "You are a helpful assistant. Be concise."
-"#;
-
 /// Resolve gateway config following the priority chain.
 pub fn resolve_config(config_flag: Option<&str>) -> Result<GatewayConfig> {
     // 1. Explicit --config flag.
@@ -87,7 +69,9 @@ fn generate_default_config(path: &PathBuf) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create config directory {}", parent.display()))?;
     }
-    std::fs::write(path, DEFAULT_CONFIG)
+    let contents = toml::to_string_pretty(&GatewayConfig::default())
+        .context("failed to serialize default config")?;
+    std::fs::write(path, contents)
         .with_context(|| format!("failed to write default config to {}", path.display()))?;
     Ok(())
 }
