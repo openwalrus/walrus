@@ -47,13 +47,13 @@ surface that solves the problem.
 | walrus-runtime | crates/runtime | walrus-core, walrus-llm, walrus-deepseek, rmcp | Runtime, Provider, SkillRegistry, McpBridge, Handler, team composition |
 | walrus-sqlite | crates/sqlite | walrus-core | SqliteMemory via SQLite + FTS5 |
 | walrus-telegram | crates/telegram | walrus-core, reqwest | Telegram channel adapter via Bot API |
+| walrus-protocol | app/protocol | walrus-core | Wire types (ClientMessage, ServerMessage) |
+| walrus-gateway | app/gateway | walrus-runtime, walrus-sqlite, walrus-protocol, axum, rmcp | Gateway: WebSocket server, sessions, auth, cron, channel routing |
 
 ### Planned Crates
 
 | Crate | Path | Purpose | Phase |
 |-------|------|---------|-------|
-| walrus-protocol | app/protocol | Wire types (ClientMessage, ServerMessage) | 3 |
-| walrus-gateway | app/gateway | WebSocket server, sessions, auth, crons | 3 |
 | walrus-client | app/client | WebSocket client library | 4 |
 | walrus-cli | app/cli | CLI (direct + gateway modes) | 4 |
 | walrus-hub | app/hub | Hub manifest types, registry, install/update | 6 |
@@ -236,6 +236,70 @@ from.id → sender_id, text → content, photo/document → attachments.
 
 **channel_message_from_update()** — Public helper for parsing Telegram
 Update JSON into ChannelMessage.
+
+---
+
+## walrus-protocol
+
+Wire protocol types shared between gateway and client. Tagged JSON enums.
+
+**ClientMessage** (`#[serde(tag = "type", rename_all = "snake_case")]`):
+Authenticate, Send, Stream, ClearSession, Ping.
+
+**ServerMessage** (same tag pattern): Authenticated, Response, StreamStart,
+StreamChunk, StreamEnd, SessionCleared, Error, Pong.
+
+Protocol version constant: `PROTOCOL_VERSION = "0.1"`.
+
+---
+
+## walrus-gateway
+
+Application shell composing Runtime over WebSocket. `Gateway<H: Hook>` struct
+holds config and `Arc<Runtime<H>>`. Monomorphized via `GatewayHook` in the
+binary entry point.
+
+**MemoryBackend** — Enum dispatch over InMemory and `SqliteMemory<NoEmbedder>`.
+Implements Memory trait via delegation. `NoEmbedder` is a zero-op Embedder
+returning empty vectors. Constructed from `MemoryConfig` (backend kind + path).
+
+**GatewayHook** — `impl Hook` with `type Memory = MemoryBackend`. Reuses
+`DEFAULT_COMPACT_PROMPT` / `DEFAULT_FLUSH_PROMPT`. Defined in `bin/main.rs`.
+
+**GatewayConfig** — TOML-driven: `[server]` (host, port), `[llm]` (model,
+api_key), `[memory]` (backend, path), `[[agents]]`, `[auth]` (api_keys),
+`[[channels]]`, `[[cron]]`, `[skills]` (directory), `[[mcp_servers]]`.
+`expand_env_vars()` for `${VAR}` substitution.
+
+**Session management** — SessionScope (Main, Dm, Group, Cron), TrustLevel
+(Untrusted, Trusted, Admin), Session (id, scope, trust, timestamps).
+SessionManager with `Mutex<BTreeMap>`. Gateway manages sessions externally
+from Runtime (DD#37).
+
+**Auth** — `Authenticator` trait (RPITIT), `AuthContext`, `AuthError`.
+`ApiKeyAuthenticator`: `BTreeMap<CompactString, TrustLevel>` lookup.
+
+**Dispatch** — Standalone LLM send loop (`agent_send`) using only `&Runtime`
+(no mutation). Replicates `api_messages_from` pattern: system prompt +
+memory context + reasoning stripping + tool call loop (max 16 rounds).
+Gateway manages its own message histories externally.
+
+**WebSocket** — Axum `/ws` endpoint. `AppState<H, A>` holds
+`Arc<Runtime<H>>`, `Arc<SessionManager>`, `Arc<A: Authenticator>`.
+Message loop: authenticate → dispatch Send/Stream/ClearSession/Ping.
+Stream currently wraps non-streaming send (full streaming is follow-up).
+
+**Channel routing** — 3-tier fallback (DD#3): exact (platform + channel_id),
+platform catch-all, default agent. `ChannelRouter` with `RoutingRule`.
+
+**Cron** — `CronJob` (parsed `cron::Schedule`), `CronScheduler` with timer
+loop, shutdown receiver. Fresh session per run (DD#6).
+
+**Binary** — `src/bin/main.rs`. Startup: load TOML config → create
+MemoryBackend → create Provider → build Runtime → register skills/MCP/agents
+→ build Gateway → init auth/sessions → bind axum server → graceful shutdown
+via `tokio::signal::ctrl_c()`. MCP connection and tool registration failures
+are non-fatal (log and continue).
 
 ---
 

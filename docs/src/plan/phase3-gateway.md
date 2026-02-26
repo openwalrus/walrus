@@ -46,10 +46,19 @@ Add `app/gateway` and `app/protocol` to workspace members.
 
 ## Completion Checklist
 
-- [ ] All 8 units complete
-- [ ] `cargo check --workspace` passes
-- [ ] `cargo test --workspace` passes
-- [ ] WebSocket connects, authenticates, sends/receives messages
-- [ ] Channel routing maps events to correct agents
-- [ ] Cron scheduler fires jobs on schedule
-- [ ] `docs/src/design.md` updated
+- [x] All 8 units complete
+- [x] `cargo check --workspace` passes
+- [x] `cargo test --workspace` passes (178 tests)
+- [x] WebSocket connects, authenticates, sends/receives messages
+- [x] Channel routing maps events to correct agents
+- [x] Cron scheduler fires jobs on schedule
+- [x] `docs/src/design.md` updated
+
+## Deviations
+
+- `GatewayHook` defined in `bin/main.rs` rather than a separate `hook.rs`
+  file — the hook is zero-sized and only used at the monomorphization site.
+- `jsonwebtoken` dep not added (JWT auth deferred; API key auth sufficient).
+- Streaming wraps non-streaming `agent_send` for now (full `provider.stream()`
+  integration is a follow-up).
+- `SkillTier::Workspace` used instead of `Standard` (which doesn't exist).

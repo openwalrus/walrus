@@ -44,7 +44,7 @@ pub mod prelude {
     };
 }
 
-const MAX_TOOL_CALLS: usize = 16;
+pub const MAX_TOOL_CALLS: usize = 16;
 
 /// A type-erased async tool handler.
 pub type Handler =
