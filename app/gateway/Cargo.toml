@@ -36,6 +36,7 @@ futures-core = { workspace = true }
 futures-util = { workspace = true }
 async-stream = { workspace = true }
 bytes = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

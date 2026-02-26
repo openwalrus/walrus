@@ -1,14 +1,28 @@
 //! Agent management commands: list, info.
 
-use crate::cmd::AgentCommand;
 use crate::runner::direct::DirectRunner;
 use anyhow::Result;
+use clap::Subcommand;
 
-/// Dispatch agent management subcommands.
-pub fn run(runner: &DirectRunner, action: &AgentCommand) -> Result<()> {
-    match action {
-        AgentCommand::List => list(runner),
-        AgentCommand::Info { name } => info(runner, name),
+/// Agent management subcommands.
+#[derive(Subcommand, Debug)]
+pub enum AgentCommand {
+    /// List registered agents.
+    List,
+    /// Show agent details.
+    Info {
+        /// Agent name.
+        name: String,
+    },
+}
+
+impl AgentCommand {
+    /// Dispatch agent management subcommands.
+    pub fn run(&self, runner: &DirectRunner) -> Result<()> {
+        match self {
+            Self::List => list(runner),
+            Self::Info { name } => info(runner, name),
+        }
     }
 }
 

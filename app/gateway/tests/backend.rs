@@ -98,7 +98,6 @@ fn memory_backend_from_config_inmemory() {
     use walrus_gateway::config::{MemoryBackendKind, MemoryConfig};
     let config = MemoryConfig {
         backend: MemoryBackendKind::InMemory,
-        path: None,
     };
     assert_eq!(config.backend, MemoryBackendKind::InMemory);
     // Constructing in-memory should always succeed.
@@ -112,10 +111,9 @@ fn memory_backend_from_config_sqlite() {
     let path = dir.path().join("cfg.db");
     let config = MemoryConfig {
         backend: MemoryBackendKind::Sqlite,
-        path: Some(path.to_str().unwrap().to_string()),
     };
     assert_eq!(config.backend, MemoryBackendKind::Sqlite);
-    let backend = MemoryBackend::sqlite(config.path.as_deref().unwrap()).unwrap();
+    let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
     use agent::Memory;
     backend.set("test", "ok");
     assert_eq!(backend.get("test").unwrap(), "ok");
@@ -132,5 +130,5 @@ api_key = "test-key"
 "#,
     )
     .unwrap();
-    assert_eq!(config.bind_address(), "127.0.0.1:3000");
+    assert_eq!(config.bind_address(), "127.0.0.1:6688");
 }

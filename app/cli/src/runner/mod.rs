@@ -1,8 +1,8 @@
-//! Runner trait abstracting direct and gateway execution modes.
+//! Runner trait abstracting the execution mode.
 //!
-//! Uses RPITIT (DD#11) — no dyn dispatch. The CLI binary dispatches
-//! statically to either DirectRunner or GatewayRunner based on the
-//! `--gateway` flag.
+//! Uses RPITIT (DD#11) — no dyn dispatch. Direct mode embeds the full
+//! gateway stack locally; gateway mode connects to a remote gateway via
+//! WebSocket.
 
 use anyhow::Result;
 use futures_core::Stream;

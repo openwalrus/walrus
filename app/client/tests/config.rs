@@ -5,7 +5,7 @@ use walrus_client::{ClientConfig, WalrusClient};
 #[test]
 fn client_config_defaults() {
     let config = ClientConfig::default();
-    assert_eq!(config.gateway_url.as_str(), "ws://127.0.0.1:3000/ws");
+    assert_eq!(config.gateway_url.as_str(), "ws://127.0.0.1:6688/ws");
     assert!(config.auth_token.is_none());
 }
 

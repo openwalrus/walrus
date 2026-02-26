@@ -1,19 +1,35 @@
 //! Config management commands: show, set.
 
-use crate::cmd::ConfigCommand;
 use crate::config::resolve_config_path;
 use anyhow::{Context, Result};
+use clap::Subcommand;
 
-/// Dispatch config management subcommands.
-pub fn run(config_flag: Option<&str>, action: &ConfigCommand) -> Result<()> {
-    match action {
-        ConfigCommand::Show => show(config_flag),
-        ConfigCommand::Set { key, value } => set(config_flag, key, value),
+/// Config management subcommands.
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommand {
+    /// Show current configuration.
+    Show,
+    /// Set a configuration value.
+    Set {
+        /// Configuration key.
+        key: String,
+        /// Configuration value.
+        value: String,
+    },
+}
+
+impl ConfigCommand {
+    /// Dispatch config management subcommands.
+    pub fn run(&self) -> Result<()> {
+        match self {
+            Self::Show => show(),
+            Self::Set { key, value } => set(key, value),
+        }
     }
 }
 
-fn show(config_flag: Option<&str>) -> Result<()> {
-    let path = resolve_config_path(config_flag);
+fn show() -> Result<()> {
+    let path = resolve_config_path();
     if !path.exists() {
         println!("No config file at {}", path.display());
         return Ok(());
@@ -24,8 +40,8 @@ fn show(config_flag: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn set(config_flag: Option<&str>, key: &str, value: &str) -> Result<()> {
-    let path = resolve_config_path(config_flag);
+fn set(key: &str, value: &str) -> Result<()> {
+    let path = resolve_config_path();
     let contents = if path.exists() {
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?
     } else {
@@ -36,7 +52,7 @@ fn set(config_flag: Option<&str>, key: &str, value: &str) -> Result<()> {
         .parse()
         .with_context(|| format!("parsing {}", path.display()))?;
 
-    // Support dotted keys: "llm.model" → doc["llm"]["model"].
+    // Support dotted keys: "llm.model" -> doc["llm"]["model"].
     let parts: Vec<&str> = key.split('.').collect();
     match parts.as_slice() {
         [section, field] => {

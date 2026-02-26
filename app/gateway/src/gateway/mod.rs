@@ -7,6 +7,7 @@ use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
 use std::sync::Arc;
 
 pub mod builder;
+pub mod serve;
 pub mod session;
 pub mod ws;
 

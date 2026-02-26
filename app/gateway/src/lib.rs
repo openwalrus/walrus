@@ -17,4 +17,9 @@ pub use feature::{
     cron::{CronJob, CronScheduler},
     memory::MemoryBackend,
 };
-pub use gateway::{Gateway, GatewayHook, builder::build_runtime, session::SessionManager};
+pub use gateway::{
+    Gateway, GatewayHook,
+    builder::build_runtime,
+    serve::{ServeHandle, serve, serve_with_config},
+    session::SessionManager,
+};

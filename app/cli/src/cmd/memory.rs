@@ -1,15 +1,29 @@
 //! Memory management commands: list, get.
 
-use crate::cmd::MemoryCommand;
 use crate::runner::direct::DirectRunner;
 use anyhow::Result;
+use clap::Subcommand;
 use runtime::Memory;
 
-/// Dispatch memory management subcommands.
-pub fn run(runner: &DirectRunner, action: &MemoryCommand) -> Result<()> {
-    match action {
-        MemoryCommand::List => list(runner),
-        MemoryCommand::Get { key } => get(runner, key),
+/// Memory management subcommands.
+#[derive(Subcommand, Debug)]
+pub enum MemoryCommand {
+    /// List all memory entries.
+    List,
+    /// Get a specific memory entry.
+    Get {
+        /// Memory key.
+        key: String,
+    },
+}
+
+impl MemoryCommand {
+    /// Dispatch memory management subcommands.
+    pub fn run(&self, runner: &DirectRunner) -> Result<()> {
+        match self {
+            Self::List => list(runner),
+            Self::Get { key } => get(runner, key),
+        }
     }
 }
 

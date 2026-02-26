@@ -4,11 +4,9 @@
 //! giving CLI users access to all gateway features (SQLite memory, skills,
 //! MCP servers, multiple agents).
 
-use crate::cmd::Cli;
 use crate::config::resolve_config;
 use crate::runner::Runner;
 use anyhow::Result;
-use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use gateway::GatewayHook;
@@ -19,32 +17,18 @@ use runtime::Runtime;
 pub struct DirectRunner {
     /// The fully-configured runtime.
     pub runtime: Runtime<GatewayHook>,
-    /// Default agent name for commands that don't specify one.
-    pub default_agent: CompactString,
 }
 
 impl DirectRunner {
-    /// Build a DirectRunner from CLI arguments and resolved configuration.
+    /// Build a DirectRunner from resolved configuration.
     ///
     /// Loads `gateway.toml` (see [`resolve_config`]), constructs the full
-    /// runtime (memory backend, provider, skills, MCP, agents), and applies
-    /// CLI flag overrides for model and agent.
-    pub async fn new(cli: &Cli) -> Result<Self> {
-        let config = resolve_config(cli.config.as_deref())?;
-
-        // Determine default agent: CLI flag > first agent in config > "assistant".
-        let default_agent = cli
-            .agent
-            .clone()
-            .or_else(|| config.agents.first().map(|a| a.name.clone()))
-            .unwrap_or_else(|| CompactString::from("assistant"));
-
-        let runtime = gateway::build_runtime(&config).await?;
-
-        Ok(Self {
-            runtime,
-            default_agent,
-        })
+    /// runtime (memory backend, provider, skills, MCP, agents).
+    pub async fn new() -> Result<Self> {
+        let config = resolve_config()?;
+        let config_dir = gateway::config::global_config_dir();
+        let runtime = gateway::build_runtime(&config, &config_dir).await?;
+        Ok(Self { runtime })
     }
 }
 

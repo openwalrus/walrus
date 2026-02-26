@@ -1,19 +1,23 @@
 //! Runtime builder — constructs a fully-configured Runtime from GatewayConfig.
 
 use crate::MemoryBackend;
-use crate::config::MemoryBackendKind;
+use crate::config::{self, MemoryBackendKind};
 use crate::gateway::GatewayHook;
 use anyhow::Result;
 use deepseek::DeepSeek;
 use llm::LLM;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
+use std::path::Path;
 
-/// Build a fully-configured `Runtime<GatewayHook>` from a `GatewayConfig`.
+/// Build a fully-configured `Runtime<GatewayHook>` from config and directory.
 ///
-/// Constructs memory backend, LLM provider, skills registry, MCP bridges,
-/// and registers all agents from config. Async because MCP server connection
-/// requires spawning child processes.
-pub async fn build_runtime(config: &crate::GatewayConfig) -> Result<Runtime<GatewayHook>> {
+/// Loads agents from `config_dir/agents/*.md`, skills from `config_dir/skills/`,
+/// memory from `config_dir/data/memory.db` (when sqlite), and MCP servers
+/// from TOML config.
+pub async fn build_runtime(
+    config: &crate::GatewayConfig,
+    config_dir: &Path,
+) -> Result<Runtime<GatewayHook>> {
     // Construct memory backend.
     let memory = match config.memory.backend {
         MemoryBackendKind::InMemory => {
@@ -21,7 +25,10 @@ pub async fn build_runtime(config: &crate::GatewayConfig) -> Result<Runtime<Gate
             MemoryBackend::in_memory()
         }
         MemoryBackendKind::Sqlite => {
-            let path = config.memory.path.as_deref().unwrap_or("walrus-gateway.db");
+            let data_dir = config_dir.join(config::DATA_DIR);
+            std::fs::create_dir_all(&data_dir)?;
+            let db_path = data_dir.join(config::MEMORY_DB);
+            let path = db_path.to_str().expect("non-UTF-8 config path");
             tracing::info!("using sqlite backend at {path}");
             MemoryBackend::sqlite(path)?
         }
@@ -40,12 +47,23 @@ pub async fn build_runtime(config: &crate::GatewayConfig) -> Result<Runtime<Gate
     // Build runtime.
     let mut runtime = Runtime::<GatewayHook>::new(general, provider, memory);
 
-    // Load skills if configured.
-    if let Some(ref skills_config) = config.skills {
-        let registry =
-            SkillRegistry::load_dir(&skills_config.directory, agent::SkillTier::Workspace)?;
-        runtime.set_skills(registry);
-        tracing::info!("loaded skills from {}", skills_config.directory);
+    // Load agents from markdown files.
+    let agents = runtime::load_agents_dir(&config_dir.join(config::AGENTS_DIR))?;
+    for agent in agents {
+        tracing::info!("registered agent '{}'", agent.name);
+        runtime.add_agent(agent);
+    }
+
+    // Load skills if directory exists.
+    let skills_dir = config_dir.join(config::SKILLS_DIR);
+    match SkillRegistry::load_dir(&skills_dir, agent::SkillTier::Workspace) {
+        Ok(registry) => {
+            tracing::info!("loaded {} skill(s)", registry.len());
+            runtime.set_skills(registry);
+        }
+        Err(e) => {
+            tracing::warn!("could not load skills from {}: {e}", skills_dir.display());
+        }
     }
 
     // Connect MCP servers if configured.
@@ -67,19 +85,6 @@ pub async fn build_runtime(config: &crate::GatewayConfig) -> Result<Runtime<Gate
         if let Err(e) = runtime.register_mcp_tools().await {
             tracing::warn!("failed to register MCP tools: {e}");
         }
-    }
-
-    // Register agents from config.
-    for agent_config in &config.agents {
-        let agent = agent::Agent {
-            name: agent_config.name.clone(),
-            description: agent_config.description.clone(),
-            system_prompt: agent_config.system_prompt.clone(),
-            tools: agent_config.tools.clone(),
-            skill_tags: agent_config.skill_tags.clone(),
-        };
-        tracing::info!("registered agent '{}'", agent.name);
-        runtime.add_agent(agent);
     }
 
     Ok(runtime)
