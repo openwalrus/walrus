@@ -77,11 +77,7 @@ pub fn load_agents_dir(path: &Path) -> anyhow::Result<Vec<Agent>> {
 
     let mut entries: Vec<_> = std::fs::read_dir(path)?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "md")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         .collect();
     entries.sort_by_key(|e| e.file_name());
 
@@ -123,11 +119,7 @@ pub fn load_cron_dir(path: &Path) -> anyhow::Result<Vec<CronEntry>> {
 
     let mut entries: Vec<_> = std::fs::read_dir(path)?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "md")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         .collect();
     entries.sort_by_key(|e| e.file_name());
 

@@ -7,7 +7,9 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
-use walrus_gateway::{ApiKeyAuthenticator, Gateway, GatewayConfig, SessionManager, build_runtime, config};
+use walrus_gateway::{
+    ApiKeyAuthenticator, Gateway, GatewayConfig, SessionManager, build_runtime, config,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {

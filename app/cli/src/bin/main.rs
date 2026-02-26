@@ -3,7 +3,11 @@
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
-use walrus_cli::{Cli, Command, cmd, repl::ChatRepl, runner::{Runner, direct::DirectRunner}};
+use walrus_cli::{
+    Cli, Command, cmd,
+    repl::ChatRepl,
+    runner::{Runner, direct::DirectRunner},
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
