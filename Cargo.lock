@@ -2569,6 +2569,7 @@ version = "0.0.9"
 dependencies = [
  "anyhow",
  "async-stream",
+ "axum",
  "clap",
  "compact_str",
  "crossterm",

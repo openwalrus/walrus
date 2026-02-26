@@ -1,14 +1,30 @@
 //! Config management commands: show, set.
 
-use crate::cmd::ConfigCommand;
 use crate::config::resolve_config_path;
 use anyhow::{Context, Result};
+use clap::Subcommand;
 
-/// Dispatch config management subcommands.
-pub fn run(action: &ConfigCommand) -> Result<()> {
-    match action {
-        ConfigCommand::Show => show(),
-        ConfigCommand::Set { key, value } => set(key, value),
+/// Config management subcommands.
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommand {
+    /// Show current configuration.
+    Show,
+    /// Set a configuration value.
+    Set {
+        /// Configuration key.
+        key: String,
+        /// Configuration value.
+        value: String,
+    },
+}
+
+impl ConfigCommand {
+    /// Dispatch config management subcommands.
+    pub fn run(&self) -> Result<()> {
+        match self {
+            Self::Show => show(),
+            Self::Set { key, value } => set(key, value),
+        }
     }
 }
 
