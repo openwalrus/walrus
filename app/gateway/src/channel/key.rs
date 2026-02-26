@@ -4,7 +4,7 @@
 
 use crate::{
     TrustLevel,
-    auth::{AuthContext, AuthError, Authenticator},
+    channel::auth::{AuthContext, AuthError, Authenticator},
     config::AuthConfig,
 };
 use compact_str::CompactString;

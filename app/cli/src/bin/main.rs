@@ -4,7 +4,8 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 use walrus_cli::{
-    Cli, Command, cmd, repl::ChatRepl,
+    Cli, Command, cmd,
+    repl::ChatRepl,
     runner::{Runner, direct::DirectRunner, gateway::GatewayRunner},
 };
 

@@ -1,7 +1,6 @@
 //! Shared application state for the gateway server.
 
-use crate::auth::Authenticator;
-use crate::session::SessionManager;
+use crate::{channel::auth::Authenticator, session::SessionManager};
 use runtime::{Hook, Runtime};
 use std::sync::Arc;
 

@@ -18,8 +18,8 @@ fn show(config_flag: Option<&str>) -> Result<()> {
         println!("No config file at {}", path.display());
         return Ok(());
     }
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let contents =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     print!("{contents}");
     Ok(())
 }
@@ -27,13 +27,13 @@ fn show(config_flag: Option<&str>) -> Result<()> {
 fn set(config_flag: Option<&str>, key: &str, value: &str) -> Result<()> {
     let path = resolve_config_path(config_flag);
     let contents = if path.exists() {
-        std::fs::read_to_string(&path)
-            .with_context(|| format!("reading {}", path.display()))?
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?
     } else {
         String::new()
     };
 
-    let mut doc: toml::Table = contents.parse()
+    let mut doc: toml::Table = contents
+        .parse()
         .with_context(|| format!("parsing {}", path.display()))?;
 
     // Support dotted keys: "llm.model" → doc["llm"]["model"].

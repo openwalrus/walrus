@@ -1,6 +1,6 @@
 //! WebSocket server -- axum upgrade handler and message loop.
 
-use crate::auth::{AuthContext, Authenticator};
+use crate::channel::auth::{AuthContext, Authenticator};
 use crate::session::SessionScope;
 use crate::state::AppState;
 use axum::{
