@@ -15,10 +15,6 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Gateway WebSocket URL (enables gateway mode).
-    #[arg(long, global = true)]
-    pub gateway: Option<CompactString>,
-
     /// Model name override.
     #[arg(long, global = true)]
     pub model: Option<CompactString>,
@@ -26,10 +22,6 @@ pub struct Cli {
     /// Agent name override.
     #[arg(long, global = true)]
     pub agent: Option<CompactString>,
-
-    /// Configuration file path override.
-    #[arg(long, global = true)]
-    pub config: Option<String>,
 }
 
 /// Top-level subcommands.
@@ -60,12 +52,6 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigCommand,
     },
-    /// Initialize a workspace.
-    Init,
-    /// Attach to a running gateway session.
-    Attach,
-    /// Hub commands (search, install, update).
-    Hub,
 }
 
 /// Agent management subcommands.

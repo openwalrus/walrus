@@ -3,11 +3,7 @@
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
-use walrus_cli::{
-    Cli, Command, cmd,
-    repl::ChatRepl,
-    runner::{Runner, direct::DirectRunner, gateway::GatewayRunner},
-};
+use walrus_cli::{Cli, Command, cmd, repl::ChatRepl, runner::{Runner, direct::DirectRunner}};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,21 +13,14 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Gateway mode: connect to a remote gateway via WebSocket.
-    if let Some(ref gateway_url) = cli.gateway {
-        let auth_token = None; // TODO: read from config or --token flag
-        let runner = GatewayRunner::connect(gateway_url, auth_token).await?;
-        return run_with_runner(runner, &cli).await;
-    }
-
     // Direct mode: embed the full gateway stack locally.
     let runner = DirectRunner::new(&cli).await?;
 
-    // Management commands (direct-mode only).
+    // Management commands.
     match &cli.command {
         Command::Agent { action } => return cmd::agent::run(&runner, action),
         Command::Memory { action } => return cmd::memory::run(&runner, action),
-        Command::Config { action } => return cmd::config::run(cli.config.as_deref(), action),
+        Command::Config { action } => return cmd::config::run(action),
         _ => {}
     }
 
@@ -55,12 +44,9 @@ async fn run_with_runner<R: Runner>(mut runner: R, cli: &Cli) -> Result<()> {
             let response = runner.send(agent, content).await?;
             println!("{response}");
         }
-        Command::Init => todo!("P5: workspace init"),
-        Command::Attach => todo!("future: attach to gateway session"),
-        Command::Hub => todo!("P6: hub commands"),
-        // Management commands handled above in direct mode.
+        // Management commands handled above.
         Command::Agent { .. } | Command::Memory { .. } | Command::Config { .. } => {
-            anyhow::bail!("management commands require direct mode (remove --gateway flag)")
+            unreachable!()
         }
     }
 

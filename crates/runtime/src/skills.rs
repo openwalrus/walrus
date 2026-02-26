@@ -232,7 +232,7 @@ pub fn parse_skill_md(content: &str) -> anyhow::Result<Skill> {
 /// Split YAML frontmatter from the body. Frontmatter is delimited by `---`.
 ///
 /// Handles CRLF line endings and trailing whitespace on delimiter lines.
-fn split_yaml_frontmatter(content: &str) -> anyhow::Result<(&str, &str)> {
+pub fn split_yaml_frontmatter(content: &str) -> anyhow::Result<(&str, &str)> {
     let content = content.trim_start();
     if !content.starts_with("---") {
         anyhow::bail!("missing YAML frontmatter delimiter (---)");

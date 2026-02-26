@@ -2582,11 +2582,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "walrus-client",
  "walrus-core",
  "walrus-gateway",
  "walrus-llm",
- "walrus-protocol",
  "walrus-runtime",
 ]
 
@@ -2644,6 +2642,7 @@ dependencies = [
  "chrono",
  "compact_str",
  "cron",
+ "dirs",
  "futures-core",
  "futures-util",
  "rmcp",

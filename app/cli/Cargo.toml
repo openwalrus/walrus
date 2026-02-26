@@ -16,8 +16,6 @@ gateway = { workspace = true }
 runtime = { workspace = true }
 agent = { workspace = true }
 llm = { workspace = true }
-protocol = { workspace = true }
-client = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
 tokio = { workspace = true }

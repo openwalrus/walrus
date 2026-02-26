@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
-use walrus_gateway::{ApiKeyAuthenticator, Gateway, GatewayConfig, SessionManager, build_runtime};
+use walrus_gateway::{ApiKeyAuthenticator, Gateway, GatewayConfig, SessionManager, build_runtime, config};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -16,15 +16,14 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    // Load configuration.
-    let config_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "gateway.toml".to_string());
+    // Resolve global config directory.
+    let config_dir = config::global_config_dir();
+    let config_path = config_dir.join("gateway.toml");
     let config = GatewayConfig::load(&config_path)?;
-    tracing::info!("loaded configuration from {config_path}");
+    tracing::info!("loaded configuration from {}", config_path.display());
 
     // Build runtime with full config (memory, provider, skills, MCP, agents).
-    let runtime = build_runtime(&config).await?;
+    let runtime = build_runtime(&config, &config_dir).await?;
     let bind_address = config.bind_address();
 
     // Initialize authenticator from config api keys.

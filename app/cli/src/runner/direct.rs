@@ -30,16 +30,16 @@ impl DirectRunner {
     /// runtime (memory backend, provider, skills, MCP, agents), and applies
     /// CLI flag overrides for model and agent.
     pub async fn new(cli: &Cli) -> Result<Self> {
-        let config = resolve_config(cli.config.as_deref())?;
+        let config = resolve_config()?;
 
-        // Determine default agent: CLI flag > first agent in config > "assistant".
+        // Determine default agent: CLI flag > "assistant".
         let default_agent = cli
             .agent
             .clone()
-            .or_else(|| config.agents.first().map(|a| a.name.clone()))
             .unwrap_or_else(|| CompactString::from("assistant"));
 
-        let runtime = gateway::build_runtime(&config).await?;
+        let config_dir = gateway::config::global_config_dir();
+        let runtime = gateway::build_runtime(&config, &config_dir).await?;
 
         Ok(Self {
             runtime,

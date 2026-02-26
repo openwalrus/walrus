@@ -1,17 +1,16 @@
 //! Cron scheduler tests.
 
-use walrus_gateway::config::CronConfig;
 use walrus_gateway::{CronJob, CronScheduler};
 
 #[test]
 fn parse_valid_cron_expression() {
-    let config = CronConfig {
-        name: "test".into(),
-        schedule: "0 0 9 * * *".to_string(),
-        agent: "assistant".into(),
-        message: "hello".to_string(),
-    };
-    let job = CronJob::from_config(&config).unwrap();
+    let job = CronJob::new(
+        "test".into(),
+        "0 0 9 * * *",
+        "assistant".into(),
+        "hello".to_string(),
+    )
+    .unwrap();
     assert_eq!(job.name.as_str(), "test");
     assert_eq!(job.agent.as_str(), "assistant");
     assert_eq!(job.message, "hello");
@@ -19,32 +18,34 @@ fn parse_valid_cron_expression() {
 
 #[test]
 fn invalid_cron_expression() {
-    let config = CronConfig {
-        name: "bad".into(),
-        schedule: "not a cron".to_string(),
-        agent: "assistant".into(),
-        message: "hello".to_string(),
-    };
-    assert!(CronJob::from_config(&config).is_err());
+    assert!(CronJob::new(
+        "bad".into(),
+        "not a cron",
+        "assistant".into(),
+        "hello".to_string(),
+    )
+    .is_err());
 }
 
 #[test]
-fn scheduler_from_configs() {
-    let configs = vec![
-        CronConfig {
-            name: "job1".into(),
-            schedule: "0 0 * * * *".to_string(),
-            agent: "a".into(),
-            message: "m1".to_string(),
-        },
-        CronConfig {
-            name: "job2".into(),
-            schedule: "0 30 * * * *".to_string(),
-            agent: "b".into(),
-            message: "m2".to_string(),
-        },
+fn scheduler_from_jobs() {
+    let jobs = vec![
+        CronJob::new(
+            "job1".into(),
+            "0 0 * * * *",
+            "a".into(),
+            "m1".to_string(),
+        )
+        .unwrap(),
+        CronJob::new(
+            "job2".into(),
+            "0 30 * * * *",
+            "b".into(),
+            "m2".to_string(),
+        )
+        .unwrap(),
     ];
-    let scheduler = CronScheduler::from_configs(&configs).unwrap();
+    let scheduler = CronScheduler::new(jobs);
     assert_eq!(scheduler.jobs().len(), 2);
 }
 
@@ -55,12 +56,12 @@ fn scheduler_empty_jobs() {
 }
 
 #[test]
-fn scheduler_invalid_config_fails() {
-    let configs = vec![CronConfig {
-        name: "bad".into(),
-        schedule: "invalid".to_string(),
-        agent: "a".into(),
-        message: "m".to_string(),
-    }];
-    assert!(CronScheduler::from_configs(&configs).is_err());
+fn scheduler_invalid_expression_fails() {
+    assert!(CronJob::new(
+        "bad".into(),
+        "invalid",
+        "a".into(),
+        "m".to_string(),
+    )
+    .is_err());
 }

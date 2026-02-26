@@ -18,9 +18,7 @@ api_key = "test-key"
     assert_eq!(config.server.port, 8080);
     assert_eq!(config.llm.model.as_str(), "deepseek-chat");
     assert_eq!(config.llm.api_key, "test-key");
-    assert!(config.agents.is_empty());
     assert!(config.channels.is_empty());
-    assert!(config.cron.is_empty());
 }
 
 #[test]
@@ -36,14 +34,6 @@ api_key = "sk-test"
 
 [memory]
 backend = "sqlite"
-path = "data/memory.db"
-
-[[agents]]
-name = "assistant"
-description = "A helpful assistant"
-system_prompt = "You are helpful."
-tools = ["remember"]
-skill_tags = ["default"]
 
 [auth]
 api_keys = ["key-1", "key-2"]
@@ -53,15 +43,6 @@ platform = "telegram"
 bot_token = "bot-token-123"
 agent = "assistant"
 
-[[cron]]
-name = "daily"
-schedule = "0 0 9 * * *"
-agent = "assistant"
-message = "Good morning"
-
-[skills]
-directory = "skills/"
-
 [[mcp_servers]]
 name = "playwright"
 command = "npx"
@@ -69,15 +50,8 @@ args = ["playwright-mcp"]
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     assert_eq!(config.memory.backend, MemoryBackendKind::Sqlite);
-    assert_eq!(config.memory.path.as_deref(), Some("data/memory.db"));
-    assert_eq!(config.agents.len(), 1);
-    assert_eq!(config.agents[0].name.as_str(), "assistant");
-    assert_eq!(config.agents[0].tools.len(), 1);
     assert_eq!(config.auth.api_keys.len(), 2);
     assert_eq!(config.channels.len(), 1);
-    assert_eq!(config.cron.len(), 1);
-    assert_eq!(config.cron[0].schedule, "0 0 9 * * *");
-    assert!(config.skills.is_some());
     assert_eq!(config.mcp_servers.len(), 1);
     assert_eq!(config.mcp_servers[0].name.as_str(), "playwright");
     assert!(config.mcp_servers[0].auto_restart);
@@ -108,7 +82,6 @@ api_key = "key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     assert_eq!(config.memory.backend, MemoryBackendKind::InMemory);
-    assert!(config.memory.path.is_none());
 }
 
 #[test]
@@ -167,4 +140,11 @@ KEY = "value"
     assert_eq!(mcp.args, vec!["--flag"]);
     assert!(!mcp.auto_restart);
     assert_eq!(mcp.env.get("KEY").unwrap(), "value");
+}
+
+#[test]
+fn global_config_dir_is_under_platform_config() {
+    let dir = walrus_gateway::config::global_config_dir();
+    // Should end with "walrus"
+    assert_eq!(dir.file_name().unwrap(), "walrus");
 }
