@@ -211,8 +211,8 @@ fn skill_body_injected() {
         SkillTier::Bundled,
     );
 
-    let mut rt = Runtime::<()>::new(General::default(), NoopProvider, InMemory::new())
-        .with_skills(registry);
+    let mut rt =
+        Runtime::<()>::new(General::default(), NoopProvider, InMemory::new()).with_skills(registry);
     rt.add_agent(
         Agent::new("dev")
             .system_prompt("Base prompt.")

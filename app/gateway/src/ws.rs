@@ -110,7 +110,11 @@ async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
                 }
 
                 let history = session_histories.entry(agent.clone()).or_default();
-                match state.runtime.send_stateless(&agent, history, &content).await {
+                match state
+                    .runtime
+                    .send_stateless(&agent, history, &content)
+                    .await
+                {
                     Ok(response) => {
                         let _ = tx.send(ServerMessage::Response {
                             agent,
@@ -142,7 +146,11 @@ async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
                 });
 
                 let history = session_histories.entry(agent.clone()).or_default();
-                match state.runtime.send_stateless(&agent, history, &content).await {
+                match state
+                    .runtime
+                    .send_stateless(&agent, history, &content)
+                    .await
+                {
                     Ok(response) => {
                         let _ = tx.send(ServerMessage::StreamChunk { content: response });
                         let _ = tx.send(ServerMessage::StreamEnd { agent });

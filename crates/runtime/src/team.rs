@@ -117,7 +117,10 @@ async fn worker_send<P: LLM, M: Memory>(ctx: &WorkerCtx<P, M>, input: String) ->
     let base_cfg = ctx.config.clone().with_tools(ctx.tools.to_vec());
 
     for _ in 0..MAX_TOOL_CALLS {
-        let cfg: P::ChatConfig = base_cfg.clone().with_tool_choice(tool_choice.clone()).into();
+        let cfg: P::ChatConfig = base_cfg
+            .clone()
+            .with_tool_choice(tool_choice.clone())
+            .into();
         let response = match ctx.provider.send(&cfg, &messages).await {
             Ok(r) => r,
             Err(e) => return format!("worker error: {e}"),
