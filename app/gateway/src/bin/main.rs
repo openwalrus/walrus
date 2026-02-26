@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
 use walrus_gateway::{
-    ApiKeyAuthenticator, AppState, Gateway, GatewayConfig, SessionManager, build_runtime,
+    ApiKeyAuthenticator, AppState, GatewayConfig, SessionManager, build_runtime,
 };
 
 #[tokio::main]
@@ -27,17 +27,14 @@ async fn main() -> Result<()> {
 
     // Build runtime with full config (memory, provider, skills, MCP, agents).
     let runtime = build_runtime(&config).await?;
-
-    // Build the gateway.
-    let gateway = Gateway::new(config, runtime);
-    let bind_address = gateway.config.bind_address();
+    let bind_address = config.bind_address();
 
     // Initialize authenticator from config api keys.
-    let authenticator = ApiKeyAuthenticator::from_config(&gateway.config.auth);
+    let authenticator = ApiKeyAuthenticator::from_config(&config.auth);
 
     // Build app state.
     let state = AppState {
-        runtime: Arc::clone(&gateway.runtime),
+        runtime: Arc::new(runtime),
         sessions: Arc::new(SessionManager::new()),
         authenticator: Arc::new(authenticator),
     };
