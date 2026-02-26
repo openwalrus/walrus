@@ -1,9 +1,8 @@
 //! Walrus CLI application — command-line interface with direct and gateway
 //! modes for interacting with walrus agents.
 
-pub use cli::{Cli, Command};
+pub use cmd::{Cli, Command};
 
-pub mod cli;
 pub mod cmd;
 pub mod config;
 pub mod direct;

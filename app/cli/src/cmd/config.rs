@@ -1,6 +1,6 @@
 //! Config management commands: show, set.
 
-use crate::cli::ConfigCommand;
+use crate::cmd::ConfigCommand;
 use crate::prefs::CliPrefs;
 use anyhow::Result;
 

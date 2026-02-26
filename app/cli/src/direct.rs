@@ -4,7 +4,7 @@
 //! giving CLI users access to all gateway features (SQLite memory, skills,
 //! MCP servers, multiple agents).
 
-use crate::cli::Cli;
+use crate::cmd::Cli;
 use crate::config::resolve_config;
 use crate::runner::Runner;
 use anyhow::Result;

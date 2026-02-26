@@ -1,6 +1,6 @@
 //! Agent management commands: list, info.
 
-use crate::cli::AgentCommand;
+use crate::cmd::AgentCommand;
 use crate::direct::DirectRunner;
 use anyhow::Result;
 
