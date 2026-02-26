@@ -1,7 +1,6 @@
 //! WebSocket server -- axum upgrade handler and message loop.
 
 use crate::auth::{AuthContext, Authenticator};
-use crate::dispatch;
 use crate::session::SessionScope;
 use crate::state::AppState;
 use axum::{
@@ -111,7 +110,7 @@ async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
                 }
 
                 let history = session_histories.entry(agent.clone()).or_default();
-                match dispatch::agent_send(&state.runtime, history, &agent, &content).await {
+                match state.runtime.send_stateless(&agent, history, &content).await {
                     Ok(response) => {
                         let _ = tx.send(ServerMessage::Response {
                             agent,
@@ -143,7 +142,7 @@ async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
                 });
 
                 let history = session_histories.entry(agent.clone()).or_default();
-                match dispatch::agent_send(&state.runtime, history, &agent, &content).await {
+                match state.runtime.send_stateless(&agent, history, &content).await {
                     Ok(response) => {
                         let _ = tx.send(ServerMessage::StreamChunk { content: response });
                         let _ = tx.send(ServerMessage::StreamEnd { agent });

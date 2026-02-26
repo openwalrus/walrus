@@ -9,7 +9,6 @@ pub mod auth;
 pub mod backend;
 pub mod config;
 pub mod cron;
-pub mod dispatch;
 pub mod router;
 pub mod session;
 pub mod state;

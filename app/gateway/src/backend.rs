@@ -3,23 +3,12 @@
 //! Wraps [`InMemory`] and [`SqliteMemory<NoEmbedder>`] with Memory trait
 //! delegation, following the Provider enum pattern (DD#22).
 
-use agent::{Embedder, InMemory, Memory, MemoryEntry, RecallOptions};
+use agent::{InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions};
 use anyhow::Result;
 use sqlite::SqliteMemory;
 use std::future::Future;
 
-/// A no-op embedder that returns empty vectors.
-///
-/// Used with [`SqliteMemory`] when no embedding model is configured.
-pub struct NoEmbedder;
-
-impl Embedder for NoEmbedder {
-    async fn embed(&self, _text: &str) -> Vec<f32> {
-        Vec::new()
-    }
-}
-
-/// Memory backend selected from gateway configuration.
+/// Memory backend selected from configuration.
 ///
 /// Delegates all [`Memory`] trait methods to the inner variant.
 pub enum MemoryBackend {
@@ -30,12 +19,12 @@ pub enum MemoryBackend {
 }
 
 impl MemoryBackend {
-    /// Create from config: in-memory variant.
+    /// Create an in-memory backend.
     pub fn in_memory() -> Self {
         Self::InMemory(InMemory::new())
     }
 
-    /// Create from config: sqlite variant at the given path.
+    /// Create a SQLite backend at the given path.
     pub fn sqlite(path: &str) -> Result<Self> {
         Ok(Self::Sqlite(SqliteMemory::open(path)?))
     }
@@ -75,7 +64,6 @@ impl Memory for MemoryBackend {
         key: impl Into<String> + Send,
         value: impl Into<String> + Send,
     ) -> impl Future<Output = Result<()>> + Send {
-        // Must eagerly convert to avoid borrow issues across await.
         let key = key.into();
         let value = value.into();
         async move {

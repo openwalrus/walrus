@@ -18,7 +18,7 @@
 //! runtime.add_agent(leader);
 //! ```
 
-use crate::{Handler, Hook, MAX_TOOL_CALLS, Provider};
+use crate::{Handler, Hook, MAX_TOOL_CALLS, Provider, SkillRegistry};
 use agent::{Agent, Memory};
 use compact_str::CompactString;
 use llm::{Config, General, LLM, Message, Tool, ToolChoice};
@@ -37,6 +37,7 @@ pub fn build_team<H: Hook + 'static>(
     let provider = runtime.provider().clone();
     let config = runtime.config().clone();
     let memory = runtime.memory_arc();
+    let skills = runtime.skills().map(Arc::clone);
 
     for worker in workers {
         let tool_def = worker_tool(worker.name.clone(), worker.description.to_string());
@@ -55,6 +56,7 @@ pub fn build_team<H: Hook + 'static>(
             provider: provider.clone(),
             config: config.clone(),
             memory: Arc::clone(&memory),
+            skills: skills.clone(),
             agent: worker.clone(),
             tools: worker_tools,
             handlers: worker_handlers,
@@ -83,6 +85,7 @@ struct WorkerCtx<M: Memory> {
     provider: Provider,
     config: General,
     memory: Arc<M>,
+    skills: Option<Arc<SkillRegistry>>,
     agent: Agent,
     tools: Vec<Tool>,
     handlers: BTreeMap<CompactString, Handler>,
@@ -97,6 +100,16 @@ async fn worker_send<M: Memory>(ctx: &WorkerCtx<M>, input: String) -> String {
     let memory_context = ctx.memory.compile_relevant(&input).await;
     if !memory_context.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{memory_context}");
+    }
+
+    // Inject skill bodies matching the agent's skill tags.
+    if let Some(registry) = &ctx.skills {
+        for skill in registry.find_by_tags(&ctx.agent.skill_tags) {
+            if !skill.body.is_empty() {
+                system_prompt.push_str("\n\n");
+                system_prompt.push_str(&skill.body);
+            }
+        }
     }
 
     let mut messages = vec![Message::system(&system_prompt), Message::user(&input)];

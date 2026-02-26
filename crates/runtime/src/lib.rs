@@ -15,7 +15,7 @@
 //! let response = runtime.send_to("assistant", Message::user("hello")).await?;
 //! ```
 
-pub use agent::{Agent, InMemory, Memory, Skill, SkillTier};
+pub use agent::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
 pub use hook::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook};
 pub use llm::{Client, General, Message, Response, Role, StreamChunk, Tool};
 pub use mcp::McpBridge;
@@ -73,7 +73,7 @@ pub struct Runtime<H: Hook> {
     provider: Provider,
     config: General,
     memory: Arc<H::Memory>,
-    skills: Option<SkillRegistry>,
+    skills: Option<Arc<SkillRegistry>>,
     mcp: Option<Arc<McpBridge>>,
     tools: BTreeMap<CompactString, (Tool, Handler)>,
     agents: BTreeMap<CompactString, Agent>,
@@ -132,13 +132,13 @@ impl<H: Hook + 'static> Runtime<H> {
 
     /// Set the skill registry for this runtime (builder-style).
     pub fn with_skills(mut self, registry: SkillRegistry) -> Self {
-        self.skills = Some(registry);
+        self.skills = Some(Arc::new(registry));
         self
     }
 
     /// Set the skill registry for this runtime (mutable setter).
     pub fn set_skills(&mut self, registry: SkillRegistry) {
-        self.skills = Some(registry);
+        self.skills = Some(Arc::new(registry));
     }
 
     /// Connect an MCP bridge to this runtime.
@@ -355,6 +355,11 @@ impl<H: Hook + 'static> Runtime<H> {
         &self.config
     }
 
+    /// Get a shared reference to the skill registry, if one is set.
+    pub fn skills(&self) -> Option<&Arc<SkillRegistry>> {
+        self.skills.as_ref()
+    }
+
     // --- Private helpers ---
 
     /// Estimate current token usage for a session.
@@ -385,7 +390,7 @@ impl<H: Hook + 'static> Runtime<H> {
     ///
     /// Constructs the system prompt (base + memory + skills) and prepends it,
     /// then clones source messages in a single pass stripping reasoning_content.
-    async fn api_messages_from(&self, agent: &str, source: &[Message]) -> Vec<Message> {
+    pub async fn api_messages_from(&self, agent: &str, source: &[Message]) -> Vec<Message> {
         let agent_config = match self.agents.get(agent) {
             Some(a) => a,
             None => return source.to_vec(),
@@ -407,7 +412,8 @@ impl<H: Hook + 'static> Runtime<H> {
         if let Some(registry) = &self.skills {
             for skill in registry.find_by_tags(&agent_config.skill_tags) {
                 if !skill.body.is_empty() {
-                    system_prompt = format!("{system_prompt}\n\n{}", skill.body);
+                    system_prompt.push_str("\n\n");
+                    system_prompt.push_str(&skill.body);
                 }
             }
         }
@@ -527,6 +533,48 @@ impl<H: Hook + 'static> Runtime<H> {
             let result = self.dispatch(&message.tool_calls).await;
             session.messages.push(message);
             session.messages.extend(result);
+            tool_choice = ToolChoice::None;
+        }
+
+        anyhow::bail!("max tool calls reached");
+    }
+
+    /// Stateless send: run the LLM send loop with externally managed history.
+    ///
+    /// Unlike [`send_to`](Self::send_to), this takes `&self` (no mutation) and
+    /// accepts the caller's message history directly. No session management or
+    /// compaction — the caller owns the history.
+    pub async fn send_stateless(
+        &self,
+        agent: &str,
+        messages: &mut Vec<Message>,
+        content: &str,
+    ) -> Result<String> {
+        let agent_config = self
+            .agents
+            .get(agent)
+            .ok_or_else(|| anyhow::anyhow!("agent '{agent}' not registered"))?;
+        let tools = self.resolve(&agent_config.tools);
+        let mut tool_choice = ToolChoice::Auto;
+        messages.push(Message::user(content));
+
+        for _ in 0..MAX_TOOL_CALLS {
+            let api_msgs = self.api_messages_from(agent, messages).await;
+            let cfg = self.build_config(&tools, tool_choice.clone());
+            let response = self.provider.send(&cfg, &api_msgs).await?;
+            let Some(message) = response.message() else {
+                return Ok(response.content().cloned().unwrap_or_default());
+            };
+
+            if message.tool_calls.is_empty() {
+                let result = message.content.clone();
+                messages.push(message);
+                return Ok(result);
+            }
+
+            let result = self.dispatch(&message.tool_calls).await;
+            messages.push(message);
+            messages.extend(result);
             tool_choice = ToolChoice::None;
         }
 

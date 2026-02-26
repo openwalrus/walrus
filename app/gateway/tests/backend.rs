@@ -1,6 +1,6 @@
-//! Tests for the MemoryBackend enum dispatch.
+//! Tests for the MemoryBackend enum dispatch and configuration integration.
 
-use walrus_gateway::backend::MemoryBackend;
+use walrus_gateway::MemoryBackend;
 
 #[test]
 fn in_memory_backend_set_and_get() {

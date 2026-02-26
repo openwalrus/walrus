@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
 use walrus_gateway::{
-    ApiKeyAuthenticator, AppState, Gateway, GatewayConfig, SessionManager, backend::MemoryBackend,
+    ApiKeyAuthenticator, AppState, Gateway, GatewayConfig, MemoryBackend, SessionManager,
     config::MemoryBackendKind,
 };
 
