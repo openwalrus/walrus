@@ -186,6 +186,11 @@ impl<H: Hook + 'static> Runtime<H> {
         self.agents.get(name)
     }
 
+    /// Iterate over all registered agents in alphabetical order by name.
+    pub fn agents(&self) -> impl Iterator<Item = &Agent> {
+        self.agents.values()
+    }
+
     /// Register a tool with its handler.
     pub fn register<F, Fut>(&mut self, tool: Tool, handler: F)
     where
