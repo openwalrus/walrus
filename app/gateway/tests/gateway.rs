@@ -1,14 +1,14 @@
 //! Gateway integration tests.
 
+use llm::NoopProvider;
 use runtime::{InMemory, Runtime};
 use walrus_gateway::Gateway;
 
 /// Verify that `Gateway::new` constructs with the unit hook `()`.
 #[test]
 fn gateway_new_with_unit_hook() {
-    let provider = runtime::Provider::deepseek("fake-key").unwrap();
     let config = llm::General::default();
-    let rt = Runtime::<()>::new(config, provider, InMemory::new());
+    let rt = Runtime::<()>::new(config, NoopProvider, InMemory::new());
     let gw_config = walrus_gateway::GatewayConfig::from_toml(
         r#"
 [server]

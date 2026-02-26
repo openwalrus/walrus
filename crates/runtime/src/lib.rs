@@ -1,16 +1,16 @@
 //! Walrus runtime: the top-level orchestrator.
 //!
 //! The [`Runtime`] is the entry point for the agent framework. It holds
-//! the LLM provider, agent configurations, tool handlers, and manages
-//! sessions internally.
+//! the LLM provider (configured via [`Hook`]), agent configurations,
+//! tool handlers, and manages sessions internally.
 //!
 //! # Example
 //!
 //! ```rust,ignore
 //! use walrus_runtime::prelude::*;
 //!
-//! let provider = Provider::deepseek(&key)?;
-//! let mut runtime = Runtime::new(General::default(), provider, InMemory::new());
+//! let provider = MyProvider::new(client, &key)?;
+//! let mut runtime = Runtime::<MyHook>::new(General::default(), provider, InMemory::new());
 //! runtime.add_agent(Agent::new("assistant").system_prompt("You are helpful."));
 //! let response = runtime.send_to("assistant", Message::user("hello")).await?;
 //! ```
@@ -19,7 +19,6 @@ pub use agent::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
 pub use hook::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook};
 pub use llm::{Client, General, Message, Response, Role, StreamChunk, Tool};
 pub use mcp::McpBridge;
-pub use provider::Provider;
 pub use skills::{SkillRegistry, parse_skill_md};
 pub use team::{build_team, extract_input, worker_tool};
 
@@ -32,14 +31,13 @@ use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
 pub mod hook;
 pub mod mcp;
-mod provider;
 pub mod skills;
 pub mod team;
 
 /// Re-exports of the most commonly used types.
 pub mod prelude {
     pub use crate::{
-        Agent, General, Hook, InMemory, Message, Provider, Response, Role, Runtime, SkillRegistry,
+        Agent, General, Hook, InMemory, Message, Response, Role, Runtime, SkillRegistry,
         StreamChunk, Tool,
     };
 }
@@ -67,10 +65,10 @@ impl Session {
 
 /// The walrus runtime — top-level orchestrator.
 ///
-/// Generic over `H: Hook` for type-level configuration of memory and
-/// compaction prompts. Defaults to [`InMemory`] when no persistence is needed.
+/// Generic over `H: Hook` for type-level configuration of the LLM provider,
+/// memory backend, and compaction prompts.
 pub struct Runtime<H: Hook> {
-    provider: Provider,
+    provider: H::Provider,
     config: General,
     memory: Arc<H::Memory>,
     skills: Option<Arc<SkillRegistry>>,
@@ -82,7 +80,7 @@ pub struct Runtime<H: Hook> {
 
 impl<H: Hook + 'static> Runtime<H> {
     /// Create a new runtime with the given config, provider, and memory.
-    pub fn new(config: General, provider: Provider, memory: H::Memory) -> Self {
+    pub fn new(config: General, provider: H::Provider, memory: H::Memory) -> Self {
         let memory = Arc::new(memory);
         let mut rt = Self {
             provider,
@@ -201,7 +199,7 @@ impl<H: Hook + 'static> Runtime<H> {
 
     /// Context window limit for the current provider/model.
     pub fn context_limit(&self) -> usize {
-        self.provider.context_limit(&self.config)
+        H::context_limit(&self.config)
     }
 
     /// Clear the session for a named agent, resetting conversation history.
@@ -295,7 +293,7 @@ impl<H: Hook + 'static> Runtime<H> {
                 let cfg = self.build_config(&tools, tool_choice.clone());
                 let mut builder = Message::builder(Role::Assistant);
 
-                let inner = self.provider.stream(cfg, &api_msgs, self.config.usage);
+                let inner = self.provider.stream(self.provider_cfg(cfg), &api_msgs, self.config.usage);
                 futures_util::pin_mut!(inner);
 
                 while let Some(result) = inner.next().await {
@@ -346,7 +344,7 @@ impl<H: Hook + 'static> Runtime<H> {
     }
 
     /// Get a reference to the provider.
-    pub fn provider(&self) -> &Provider {
+    pub fn provider(&self) -> &H::Provider {
         &self.provider
     }
 
@@ -457,7 +455,8 @@ impl<H: Hook + 'static> Runtime<H> {
                 .clone()
                 .with_tools(remember_tool)
                 .with_tool_choice(ToolChoice::Auto);
-            match self.provider.send(&cfg, &flush_messages).await {
+            let pcfg = self.provider_cfg(cfg);
+            match self.provider.send(&pcfg, &flush_messages).await {
                 Ok(response) => {
                     if let Some(msg) = response.message()
                         && !msg.tool_calls.is_empty()
@@ -479,7 +478,8 @@ impl<H: Hook + 'static> Runtime<H> {
                 .clone()
                 .with_tools(vec![])
                 .with_tool_choice(ToolChoice::None);
-            match self.provider.send(&cfg, &summary_messages).await {
+            let pcfg = self.provider_cfg(cfg);
+            match self.provider.send(&pcfg, &summary_messages).await {
                 Ok(response) => {
                     let summary = response.content().cloned().unwrap_or_default();
                     session.messages.clear();
@@ -501,6 +501,11 @@ impl<H: Hook + 'static> Runtime<H> {
             .with_tool_choice(tool_choice)
     }
 
+    /// Convert a [`General`] config to the provider's [`ChatConfig`](LLM::ChatConfig).
+    fn provider_cfg(&self, general: General) -> <H::Provider as LLM>::ChatConfig {
+        general.into()
+    }
+
     /// Internal send loop (non-streaming).
     async fn send_inner(
         &self,
@@ -520,7 +525,8 @@ impl<H: Hook + 'static> Runtime<H> {
         for _ in 0..MAX_TOOL_CALLS {
             let messages = self.api_messages(agent, session).await;
             let cfg = self.build_config(&tools, tool_choice.clone());
-            let response = self.provider.send(&cfg, &messages).await?;
+            let pcfg = self.provider_cfg(cfg);
+            let response = self.provider.send(&pcfg, &messages).await?;
             let Some(message) = response.message() else {
                 return Ok(response);
             };
@@ -561,7 +567,8 @@ impl<H: Hook + 'static> Runtime<H> {
         for _ in 0..MAX_TOOL_CALLS {
             let api_msgs = self.api_messages_from(agent, messages).await;
             let cfg = self.build_config(&tools, tool_choice.clone());
-            let response = self.provider.send(&cfg, &api_msgs).await?;
+            let pcfg = self.provider_cfg(cfg);
+            let response = self.provider.send(&pcfg, &api_msgs).await?;
             let Some(message) = response.message() else {
                 return Ok(response.content().cloned().unwrap_or_default());
             };

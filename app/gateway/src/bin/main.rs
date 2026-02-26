@@ -5,9 +5,10 @@
 //! graceful shutdown on ctrl-c.
 
 use anyhow::Result;
+use deepseek::DeepSeek;
+use llm::LLM;
 use runtime::{
-    DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, General, Hook, McpBridge, Provider, Runtime,
-    SkillRegistry,
+    DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, General, Hook, McpBridge, Runtime, SkillRegistry,
 };
 use std::sync::Arc;
 use tokio::signal;
@@ -21,6 +22,7 @@ use walrus_gateway::{
 pub struct GatewayHook;
 
 impl Hook for GatewayHook {
+    type Provider = DeepSeek;
     type Memory = MemoryBackend;
 
     fn compact() -> &'static str {
@@ -60,7 +62,7 @@ async fn main() -> Result<()> {
     };
 
     // Construct provider.
-    let provider = Provider::new(&config.llm.model, llm::Client::new(), &config.llm.api_key)?;
+    let provider = DeepSeek::new(llm::Client::new(), &config.llm.api_key)?;
     tracing::info!("provider initialized for model {}", config.llm.model);
 
     // Build general config.

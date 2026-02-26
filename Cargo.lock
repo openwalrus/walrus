@@ -2174,6 +2174,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "walrus-core",
+ "walrus-deepseek",
  "walrus-llm",
  "walrus-protocol",
  "walrus-runtime",
