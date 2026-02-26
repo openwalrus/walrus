@@ -1,5 +1,9 @@
-//! Walrus CLI application.
+//! Walrus CLI application — command-line interface with direct and gateway
+//! modes for interacting with walrus agents.
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub use cmd::{Cli, Command};
+
+pub mod cmd;
+pub mod config;
+pub mod repl;
+pub mod runner;

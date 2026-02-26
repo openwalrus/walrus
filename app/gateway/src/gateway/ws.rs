@@ -1,8 +1,7 @@
 //! WebSocket server -- axum upgrade handler and message loop.
 
-use crate::auth::{AuthContext, Authenticator};
-use crate::session::SessionScope;
-use crate::state::AppState;
+use crate::channel::auth::{AuthContext, Authenticator};
+use crate::gateway::{Gateway, session::SessionScope};
 use axum::{
     Router,
     extract::{
@@ -21,7 +20,7 @@ use std::collections::BTreeMap;
 use tokio::sync::mpsc;
 
 /// Build the axum router with the `/ws` endpoint.
-pub fn router<H: Hook + 'static, A: Authenticator + 'static>(state: AppState<H, A>) -> Router {
+pub fn router<H: Hook + 'static, A: Authenticator + 'static>(state: Gateway<H, A>) -> Router {
     Router::new()
         .route("/ws", get(ws_handler::<H, A>))
         .with_state(state)
@@ -29,7 +28,7 @@ pub fn router<H: Hook + 'static, A: Authenticator + 'static>(state: AppState<H, 
 
 /// WebSocket upgrade handler.
 async fn ws_handler<H: Hook + 'static, A: Authenticator + 'static>(
-    State(state): State<AppState<H, A>>,
+    State(state): State<Gateway<H, A>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
@@ -38,7 +37,7 @@ async fn ws_handler<H: Hook + 'static, A: Authenticator + 'static>(
 /// Handle an established WebSocket connection.
 async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
     socket: WebSocket,
-    state: AppState<H, A>,
+    state: Gateway<H, A>,
 ) {
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();

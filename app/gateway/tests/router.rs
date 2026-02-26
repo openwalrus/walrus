@@ -73,7 +73,7 @@ fn exact_beats_catchall() {
 
 #[test]
 fn parse_platform_valid() {
-    use walrus_gateway::router::parse_platform;
+    use walrus_gateway::channel::router::parse_platform;
     let p = parse_platform("telegram").unwrap();
     assert_eq!(p, Platform::Telegram);
     let p = parse_platform("Telegram").unwrap();
@@ -82,6 +82,6 @@ fn parse_platform_valid() {
 
 #[test]
 fn parse_platform_invalid() {
-    use walrus_gateway::router::parse_platform;
+    use walrus_gateway::channel::router::parse_platform;
     assert!(parse_platform("unknown").is_err());
 }

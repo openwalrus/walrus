@@ -19,6 +19,7 @@ sqlite = { path = "crates/sqlite", package = "walrus-sqlite", version = "0.0.9" 
 telegram = { path = "crates/telegram", package = "walrus-telegram", version = "0.0.9" }
 protocol = { path = "app/protocol", package = "walrus-protocol", version = "0.0.9" }
 gateway = { path = "app/gateway", package = "walrus-gateway", version = "0.0.9" }
+client = { path = "app/client", package = "walrus-client", version = "0.0.9" }
 
 # crates.io
 anyhow = "1"
@@ -45,3 +46,8 @@ axum = { version = "0.8", features = ["ws"] }
 uuid = { version = "1", features = ["v4"] }
 cron = "0.15"
 toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+tokio-tungstenite = "0.26"
+rustyline = "15"
+crossterm = "0.29"
+dirs = "6"

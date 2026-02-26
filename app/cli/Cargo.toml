@@ -7,4 +7,29 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[[bin]]
+name = "walrus"
+path = "src/bin/main.rs"
+
 [dependencies]
+gateway = { workspace = true }
+runtime = { workspace = true }
+agent = { workspace = true }
+llm = { workspace = true }
+protocol = { workspace = true }
+client = { workspace = true }
+clap = { workspace = true }
+compact_str = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dirs = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rustyline = { workspace = true }
+crossterm = { workspace = true }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+async-stream = { workspace = true }

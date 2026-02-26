@@ -3,9 +3,9 @@
 //! Simple lookup-based authentication mapping API keys to trust levels.
 
 use crate::{
-    TrustLevel,
-    auth::{AuthContext, AuthError, Authenticator},
+    channel::auth::{AuthContext, AuthError, Authenticator},
     config::AuthConfig,
+    gateway::session::TrustLevel,
 };
 use compact_str::CompactString;
 use std::collections::BTreeMap;
