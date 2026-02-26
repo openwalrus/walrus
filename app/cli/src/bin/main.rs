@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     match &cli.command {
         Command::Agent { action } => return cmd::agent::run(&runner, action),
         Command::Memory { action } => return cmd::memory::run(&runner, action),
-        Command::Config { action } => return cmd::config::run(action),
+        Command::Config { action } => return cmd::config::run(cli.config.as_deref(), action),
         _ => {}
     }
 

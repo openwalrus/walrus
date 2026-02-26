@@ -58,6 +58,20 @@ pub fn resolve_config(config_flag: Option<&str>) -> Result<GatewayConfig> {
         .context("failed to load generated default config")
 }
 
+/// Resolve the config file path (without loading it).
+///
+/// Same priority chain as [`resolve_config`] but returns just the path.
+pub fn resolve_config_path(config_flag: Option<&str>) -> PathBuf {
+    if let Some(path) = config_flag {
+        return PathBuf::from(path);
+    }
+    let workspace_path = PathBuf::from(".walrus/gateway.toml");
+    if workspace_path.exists() {
+        return workspace_path;
+    }
+    global_config_path()
+}
+
 /// Path to the global default config.
 fn global_config_path() -> PathBuf {
     dirs::config_dir()
