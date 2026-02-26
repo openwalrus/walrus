@@ -1,7 +1,8 @@
 //! Authentication tests.
 
 use walrus_gateway::{
-    ApiKeyAuthenticator, AuthError, Authenticator, TrustLevel, config::AuthConfig,
+    ApiKeyAuthenticator, AuthError, Authenticator, config::AuthConfig,
+    protocol::session::TrustLevel,
 };
 
 #[tokio::test]

@@ -7,9 +7,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
-use walrus_gateway::{
-    ApiKeyAuthenticator, AppState, GatewayConfig, SessionManager, build_runtime,
-};
+use walrus_gateway::{ApiKeyAuthenticator, Gateway, GatewayConfig, SessionManager, build_runtime};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,14 +31,14 @@ async fn main() -> Result<()> {
     let authenticator = ApiKeyAuthenticator::from_config(&config.auth);
 
     // Build app state.
-    let state = AppState {
+    let state = Gateway {
         runtime: Arc::new(runtime),
         sessions: Arc::new(SessionManager::new()),
         authenticator: Arc::new(authenticator),
     };
 
     // Build axum router.
-    let app = walrus_gateway::ws::router(state);
+    let app = walrus_gateway::protocol::ws::router(state);
 
     // Bind and serve.
     let listener = tokio::net::TcpListener::bind(&bind_address).await?;

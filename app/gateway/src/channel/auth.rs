@@ -3,6 +3,7 @@
 //! Defines the `Authenticator` trait and `AuthContext` for verifying
 //! client credentials. Concrete implementations live in separate files.
 
+use crate::protocol::session::TrustLevel;
 use compact_str::CompactString;
 use std::future::Future;
 
@@ -12,7 +13,7 @@ pub struct AuthContext {
     /// Identifier for the authenticated entity (e.g. key name).
     pub identity: CompactString,
     /// Trust level granted to this entity.
-    pub trust_level: crate::TrustLevel,
+    pub trust_level: TrustLevel,
 }
 
 /// Authentication error.

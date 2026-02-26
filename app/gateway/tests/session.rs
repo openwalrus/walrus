@@ -1,6 +1,8 @@
 //! Session management tests.
 
-use walrus_gateway::{SessionManager, SessionScope, TrustLevel};
+use walrus_gateway::{
+    SessionManager, protocol::session::SessionScope, protocol::session::TrustLevel,
+};
 
 #[test]
 fn create_and_get_session() {
