@@ -2635,6 +2635,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "walrus-flutter"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "tracing",
+ "walrus-gateway",
+]
+
+[[package]]
 name = "walrus-gateway"
 version = "0.0.9"
 dependencies = [
