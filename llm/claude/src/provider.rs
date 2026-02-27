@@ -3,9 +3,9 @@
 use crate::{Claude, Request, stream::Event};
 use anyhow::Result;
 use async_stream::try_stream;
+use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use compact_str::CompactString;
 use llm::{
     Choice, Client, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, LLM, Message,
     Response, StreamChunk, Usage,

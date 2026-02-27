@@ -36,7 +36,10 @@ pub enum Event {
     ContentBlockStop {},
     /// Final message delta (stop reason + usage).
     #[serde(rename = "message_delta")]
-    MessageDelta { delta: MessageDeltaBody, usage: MessageDeltaUsage },
+    MessageDelta {
+        delta: MessageDeltaBody,
+        usage: MessageDeltaUsage,
+    },
     /// End of message.
     #[serde(rename = "message_stop")]
     MessageStop,
@@ -60,7 +63,10 @@ pub enum ContentBlock {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
-    ToolUse { id: CompactString, name: CompactString },
+    ToolUse {
+        id: CompactString,
+        name: CompactString,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -194,10 +200,7 @@ impl Event {
                     ..Default::default()
                 })
             }
-            Self::ContentBlockStop {}
-            | Self::MessageStop
-            | Self::Ping
-            | Self::Unknown => None,
+            Self::ContentBlockStop {} | Self::MessageStop | Self::Ping | Self::Unknown => None,
         }
     }
 }

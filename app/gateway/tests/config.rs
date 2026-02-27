@@ -1,6 +1,9 @@
 //! Gateway configuration tests.
 
-use walrus_gateway::{GatewayConfig, config::MemoryBackendKind};
+use walrus_gateway::{
+    GatewayConfig,
+    config::{MemoryBackendKind, ProviderKind},
+};
 
 #[test]
 fn parse_minimal_config() {
@@ -64,6 +67,7 @@ api_key = "key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     assert!(config.server.socket_path.is_none());
+    assert_eq!(config.llm.provider, ProviderKind::DeepSeek);
 }
 
 #[test]
@@ -156,4 +160,47 @@ fn global_config_dir_is_under_platform_config() {
     let dir = walrus_gateway::config::global_config_dir();
     // Should end with "walrus"
     assert_eq!(dir.file_name().unwrap(), "walrus");
+}
+
+#[test]
+fn parse_mistral_provider() {
+    let toml = r#"
+[server]
+
+[llm]
+provider = "mistral"
+model = "mistral-small-latest"
+api_key = "test-key"
+"#;
+    let config = GatewayConfig::from_toml(toml).unwrap();
+    assert_eq!(config.llm.provider, ProviderKind::Mistral);
+    assert_eq!(config.llm.model.as_str(), "mistral-small-latest");
+}
+
+#[test]
+fn parse_mistral_with_base_url() {
+    let toml = r#"
+[server]
+
+[llm]
+provider = "mistral"
+model = "mistral-small-latest"
+api_key = "test-key"
+base_url = "http://localhost:8080/v1/chat/completions"
+"#;
+    let config = GatewayConfig::from_toml(toml).unwrap();
+    assert_eq!(config.llm.provider, ProviderKind::Mistral);
+    assert_eq!(
+        config.llm.base_url.as_deref(),
+        Some("http://localhost:8080/v1/chat/completions")
+    );
+}
+
+#[test]
+fn provider_kind_mistral_roundtrip() {
+    let kind = ProviderKind::Mistral;
+    let serialized = serde_json::to_string(&kind).unwrap();
+    assert_eq!(serialized, "\"mistral\"");
+    let parsed: ProviderKind = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(parsed, ProviderKind::Mistral);
 }

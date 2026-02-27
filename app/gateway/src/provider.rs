@@ -12,6 +12,7 @@ use deepseek::DeepSeek;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use llm::{Client, General, LLM, Message, Response, StreamChunk};
+use mistral::Mistral;
 use openai::OpenAI;
 
 /// Unified LLM provider enum.
@@ -26,6 +27,8 @@ pub enum Provider {
     OpenAI(OpenAI),
     /// Anthropic Messages API.
     Claude(Claude),
+    /// Mistral chat completions API.
+    Mistral(Mistral),
 }
 
 impl LLM for Provider {
@@ -47,6 +50,10 @@ impl LLM for Provider {
             }
             Self::Claude(p) => {
                 let req = claude::Request::from(config.clone());
+                p.send(&req, messages).await
+            }
+            Self::Mistral(p) => {
+                let req = mistral::Request::from(config.clone());
                 p.send(&req, messages).await
             }
         }
@@ -78,6 +85,13 @@ impl LLM for Provider {
                 }
                 Provider::Claude(p) => {
                     let req = claude::Request::from(config);
+                    let mut stream = std::pin::pin!(p.stream(req, &messages, usage));
+                    while let Some(chunk) = stream.next().await {
+                        yield chunk?;
+                    }
+                }
+                Provider::Mistral(p) => {
+                    let req = mistral::Request::from(config);
                     let mut stream = std::pin::pin!(p.stream(req, &messages, usage));
                     while let Some(chunk) = stream.next().await {
                         yield chunk?;

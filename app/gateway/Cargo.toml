@@ -17,6 +17,7 @@ agent = { workspace = true }
 deepseek = { workspace = true }
 openai = { workspace = true }
 claude = { workspace = true }
+mistral = { workspace = true }
 sqlite = { workspace = true }
 llm = { workspace = true }
 protocol = { workspace = true }

@@ -98,6 +98,8 @@ pub enum ProviderKind {
     Ollama,
     /// Claude (Anthropic) Messages API.
     Claude,
+    /// Mistral chat completions API.
+    Mistral,
 }
 
 /// Memory backend configuration.

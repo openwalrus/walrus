@@ -2191,6 +2191,7 @@ dependencies = [
  "walrus-core",
  "walrus-deepseek",
  "walrus-llm",
+ "walrus-mistral",
  "walrus-openai",
  "walrus-protocol",
  "walrus-runtime",
@@ -2216,6 +2217,21 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tracing",
+]
+
+[[package]]
+name = "walrus-mistral"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures-core",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tracing",
+ "walrus-llm",
 ]
 
 [[package]]

@@ -8,9 +8,49 @@ use anyhow::Result;
 use claude::Claude;
 use deepseek::DeepSeek;
 use llm::LLM;
+use mistral::Mistral;
 use openai::OpenAI;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
 use std::path::Path;
+
+fn build_provider(config: &crate::config::LlmConfig, client: llm::Client) -> Result<Provider> {
+    let key = &config.api_key;
+    let provider = match config.provider {
+        ProviderKind::DeepSeek => match &config.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::DeepSeek(DeepSeek::new(client, key)?),
+        },
+        ProviderKind::OpenAI => match &config.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::api(client, key)?),
+        },
+        ProviderKind::Grok => match &config.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::grok(client, key)?),
+        },
+        ProviderKind::Qwen => match &config.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::qwen(client, key)?),
+        },
+        ProviderKind::Kimi => match &config.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::kimi(client, key)?),
+        },
+        ProviderKind::Ollama => match &config.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::ollama(client)?),
+        },
+        ProviderKind::Claude => match &config.base_url {
+            Some(url) => Provider::Claude(Claude::custom(client, key, url)?),
+            None => Provider::Claude(Claude::anthropic(client, key)?),
+        },
+        ProviderKind::Mistral => match &config.base_url {
+            Some(url) => Provider::Mistral(Mistral::custom(client, key, url)?),
+            None => Provider::Mistral(Mistral::api(client, key)?),
+        },
+    };
+    Ok(provider)
+}
 
 /// Build a fully-configured `Runtime<GatewayHook>` from config and directory.
 ///
@@ -39,37 +79,7 @@ pub async fn build_runtime(
 
     // Construct provider.
     let client = llm::Client::new();
-    let key = &config.llm.api_key;
-    let provider = match config.llm.provider {
-        ProviderKind::DeepSeek => match &config.llm.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::DeepSeek(DeepSeek::new(client, key)?),
-        },
-        ProviderKind::OpenAI => match &config.llm.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::api(client, key)?),
-        },
-        ProviderKind::Grok => match &config.llm.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::grok(client, key)?),
-        },
-        ProviderKind::Qwen => match &config.llm.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::qwen(client, key)?),
-        },
-        ProviderKind::Kimi => match &config.llm.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::kimi(client, key)?),
-        },
-        ProviderKind::Ollama => match &config.llm.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::ollama(client)?),
-        },
-        ProviderKind::Claude => match &config.llm.base_url {
-            Some(url) => Provider::Claude(Claude::custom(client, key, url)?),
-            None => Provider::Claude(Claude::anthropic(client, key)?),
-        },
-    };
+    let provider = build_provider(&config.llm, client)?;
     tracing::info!(
         "provider {:?} initialized for model {}",
         config.llm.provider,
@@ -126,4 +136,34 @@ pub async fn build_runtime(
     }
 
     Ok(runtime)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_provider;
+    use crate::config::{LlmConfig, ProviderKind};
+
+    #[test]
+    fn build_provider_mistral_default_endpoint() {
+        let config = LlmConfig {
+            provider: ProviderKind::Mistral,
+            model: "mistral-small-latest".into(),
+            api_key: "test-key".to_string(),
+            base_url: None,
+        };
+        let provider = build_provider(&config, llm::Client::new()).expect("provider");
+        assert!(matches!(provider, crate::provider::Provider::Mistral(_)));
+    }
+
+    #[test]
+    fn build_provider_mistral_custom_endpoint() {
+        let config = LlmConfig {
+            provider: ProviderKind::Mistral,
+            model: "mistral-small-latest".into(),
+            api_key: "test-key".to_string(),
+            base_url: Some("http://localhost:8080/v1/chat/completions".to_string()),
+        };
+        let provider = build_provider(&config, llm::Client::new()).expect("provider");
+        assert!(matches!(provider, crate::provider::Provider::Mistral(_)));
+    }
 }
