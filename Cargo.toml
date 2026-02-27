@@ -1,14 +1,6 @@
 [workspace]
 resolver = "3"
-members = [
-    "app/*",
-    "crates/*",
-    "llm",
-    "llm/deepseek",
-    "llm/openai",
-    "llm/claude",
-    "llm/mistral",
-]
+members = ["app/*", "crates/*", "llm/*"]
 
 [workspace.package]
 version = "0.0.9"
@@ -23,13 +15,13 @@ deepseek = { path = "llm/deepseek", package = "walrus-deepseek", version = "0.0.
 openai = { path = "llm/openai", package = "walrus-openai", version = "0.0.9" }
 claude = { path = "llm/claude", package = "walrus-claude", version = "0.0.9" }
 mistral = { path = "llm/mistral", package = "walrus-mistral", version = "0.0.9" }
-llm = { path = "llm", package = "walrus-llm", version = "0.0.9" }
+llm = { path = "crates/llm", package = "walrus-llm", version = "0.0.9" }
 wcore = { path = "crates/core", package = "walrus-core", version = "0.0.9" }
 runtime = { path = "crates/runtime", package = "walrus-runtime", version = "0.0.9" }
 sqlite = { path = "crates/sqlite", package = "walrus-sqlite", version = "0.0.9" }
 telegram = { path = "crates/telegram", package = "walrus-telegram", version = "0.0.9" }
 protocol = { path = "app/protocol", package = "walrus-protocol", version = "0.0.9" }
-gateway = { path = "app/gateway", package = "walrus-gateway", version = "0.0.9" }
+daemon = { path = "app/daemon", package = "walrus-daemon", version = "0.0.9" }
 client = { path = "app/client", package = "walrus-client", version = "0.0.9" }
 
 # crates.io
