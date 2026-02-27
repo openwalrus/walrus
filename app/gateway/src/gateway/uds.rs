@@ -1,14 +1,15 @@
 //! Unix domain socket server — accept loop and per-connection message handler.
 
 use crate::gateway::Gateway;
+use agent::Memory;
 use compact_str::CompactString;
 use llm::Message;
 use protocol::codec::{self, FrameError};
-use protocol::{ClientMessage, ServerMessage};
+use protocol::{AgentSummary, ClientMessage, ServerMessage};
 use runtime::Hook;
 use std::collections::BTreeMap;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::UnixListener;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot};
 
 /// Accept connections on the given `UnixListener` until shutdown is signalled.
@@ -41,10 +42,7 @@ pub async fn accept_loop<H: Hook + 'static>(
 }
 
 /// Handle an established Unix domain socket connection.
-async fn handle_connection<H: Hook + 'static>(
-    stream: tokio::net::UnixStream,
-    state: Gateway<H>,
-) {
+async fn handle_connection<H: Hook + 'static>(stream: tokio::net::UnixStream, state: Gateway<H>) {
     let (reader, writer) = stream.into_split();
     let (tx, rx) = mpsc::unbounded_channel::<ServerMessage>();
 
@@ -137,6 +135,46 @@ async fn receiver_loop<H: Hook + 'static>(
             ClientMessage::ClearSession { agent } => {
                 session_histories.remove(&agent);
                 let _ = tx.send(ServerMessage::SessionCleared { agent });
+            }
+
+            ClientMessage::ListAgents => {
+                let agents = state
+                    .runtime
+                    .agents()
+                    .map(|a| AgentSummary {
+                        name: a.name.clone(),
+                        description: a.description.clone(),
+                    })
+                    .collect();
+                let _ = tx.send(ServerMessage::AgentList { agents });
+            }
+
+            ClientMessage::AgentInfo { agent } => match state.runtime.agent(&agent) {
+                Some(a) => {
+                    let _ = tx.send(ServerMessage::AgentDetail {
+                        name: a.name.clone(),
+                        description: a.description.clone(),
+                        tools: a.tools.to_vec(),
+                        skill_tags: a.skill_tags.to_vec(),
+                        system_prompt: a.system_prompt.clone(),
+                    });
+                }
+                None => {
+                    let _ = tx.send(ServerMessage::Error {
+                        code: 404,
+                        message: format!("agent not found: {agent}"),
+                    });
+                }
+            },
+
+            ClientMessage::ListMemory => {
+                let entries = state.runtime.memory().entries();
+                let _ = tx.send(ServerMessage::MemoryList { entries });
+            }
+
+            ClientMessage::GetMemory { key } => {
+                let value = state.runtime.memory().get(&key);
+                let _ = tx.send(ServerMessage::MemoryEntry { key, value });
             }
 
             ClientMessage::Ping => {

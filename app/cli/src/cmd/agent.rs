@@ -1,8 +1,9 @@
 //! Agent management commands: list, info.
 
-use crate::runner::direct::DirectRunner;
+use crate::runner::gateway::GatewayRunner;
 use anyhow::Result;
 use clap::Subcommand;
+use protocol::ServerMessage;
 
 /// Agent management subcommands.
 #[derive(Subcommand, Debug)]
@@ -18,16 +19,16 @@ pub enum AgentCommand {
 
 impl AgentCommand {
     /// Dispatch agent management subcommands.
-    pub fn run(&self, runner: &DirectRunner) -> Result<()> {
+    pub async fn run(&self, runner: &mut GatewayRunner) -> Result<()> {
         match self {
-            Self::List => list(runner),
-            Self::Info { name } => info(runner, name),
+            Self::List => list(runner).await,
+            Self::Info { name } => info(runner, name).await,
         }
     }
 }
 
-fn list(runner: &DirectRunner) -> Result<()> {
-    let agents: Vec<_> = runner.runtime.agents().collect();
+async fn list(runner: &mut GatewayRunner) -> Result<()> {
+    let agents = runner.list_agents().await?;
     if agents.is_empty() {
         println!("No agents registered.");
         return Ok(());
@@ -43,28 +44,45 @@ fn list(runner: &DirectRunner) -> Result<()> {
     Ok(())
 }
 
-fn info(runner: &DirectRunner, name: &str) -> Result<()> {
-    let agent = runner
-        .runtime
-        .agent(name)
-        .ok_or_else(|| anyhow::anyhow!("agent '{}' not found", name))?;
-
-    println!("Name:        {}", agent.name);
-    println!("Description: {}", agent.description);
-    let tools = if agent.tools.is_empty() {
-        "(none)".to_owned()
-    } else {
-        agent.tools.join(", ")
-    };
-    let tags = if agent.skill_tags.is_empty() {
-        "(none)".to_owned()
-    } else {
-        agent.skill_tags.join(", ")
-    };
-    println!("Tools:       {tools}");
-    println!("Skill tags:  {tags}");
-    if !agent.system_prompt.is_empty() {
-        println!("\nSystem prompt:\n{}", agent.system_prompt);
+async fn info(runner: &mut GatewayRunner, name: &str) -> Result<()> {
+    match runner.agent_info(name).await? {
+        ServerMessage::AgentDetail {
+            name,
+            description,
+            tools,
+            skill_tags,
+            system_prompt,
+        } => {
+            println!("Name:        {name}");
+            println!("Description: {description}");
+            let tools_str = if tools.is_empty() {
+                "(none)".to_owned()
+            } else {
+                tools
+                    .iter()
+                    .map(|t| t.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let tags_str = if skill_tags.is_empty() {
+                "(none)".to_owned()
+            } else {
+                skill_tags
+                    .iter()
+                    .map(|t| t.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            println!("Tools:       {tools_str}");
+            println!("Skill tags:  {tags_str}");
+            if !system_prompt.is_empty() {
+                println!("\nSystem prompt:\n{system_prompt}");
+            }
+        }
+        ServerMessage::Error { code, message } => {
+            anyhow::bail!("error ({code}): {message}");
+        }
+        other => anyhow::bail!("unexpected response: {other:?}"),
     }
     Ok(())
 }

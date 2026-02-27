@@ -8,7 +8,7 @@ repository.workspace = true
 keywords.workspace = true
 
 [[bin]]
-name = "walrus-gateway"
+name = "walrusd"
 path = "src/bin/main.rs"
 
 [dependencies]

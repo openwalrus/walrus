@@ -10,8 +10,7 @@ fn client_config_defaults() {
 
 #[test]
 fn client_builder() {
-    let client = WalrusClient::new(ClientConfig::default())
-        .socket_path("/tmp/test.sock");
+    let client = WalrusClient::new(ClientConfig::default()).socket_path("/tmp/test.sock");
 
     assert_eq!(
         client.config().socket_path,

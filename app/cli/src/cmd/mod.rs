@@ -1,33 +1,32 @@
 //! CLI argument parsing and command dispatch.
 
-use crate::runner::direct::DirectRunner;
-use anyhow::Result;
+use crate::runner::gateway::GatewayRunner;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use compact_str::CompactString;
+use std::path::PathBuf;
 
 pub mod agent;
-pub mod attach;
 pub mod chat;
 pub mod config;
 pub mod memory;
 pub mod send;
-pub mod serve;
 
-/// Walrus AI agent platform.
+/// Walrus CLI client — connects to walrusd via Unix domain socket.
 #[derive(Parser, Debug)]
-#[command(name = "walrus", about = "Walrus AI agent platform")]
+#[command(name = "walrus", about = "Walrus CLI client")]
 pub struct Cli {
     /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Command,
 
-    /// Model name override.
-    #[arg(long, global = true)]
-    pub model: Option<CompactString>,
-
     /// Agent name override.
     #[arg(long, global = true)]
     pub agent: Option<CompactString>,
+
+    /// Path to the walrusd socket.
+    #[arg(long, global = true)]
+    pub socket: Option<PathBuf>,
 }
 
 impl Cli {
@@ -36,28 +35,37 @@ impl Cli {
         self.agent.clone().unwrap_or_else(|| "assistant".into())
     }
 
+    /// Resolve the socket path from CLI flag or default.
+    fn resolve_socket(&self) -> PathBuf {
+        self.socket.clone().unwrap_or_else(|| {
+            dirs::config_dir()
+                .expect("no platform config directory")
+                .join("walrus")
+                .join("walrus.sock")
+        })
+    }
+
     /// Parse and dispatch the CLI command.
     pub async fn run(self) -> Result<()> {
         let agent = self.resolve_agent();
+        let socket_path = self.resolve_socket();
         match self.command {
-            Command::Serve(cmd) => cmd.run().await,
-            Command::Attach(cmd) => cmd.run(agent).await,
             Command::Config(cmd) => cmd.run(),
             Command::Chat(cmd) => {
-                let runner = DirectRunner::new().await?;
+                let runner = connect(&socket_path).await?;
                 cmd.run(runner, agent).await
             }
             Command::Send(cmd) => {
-                let mut runner = DirectRunner::new().await?;
+                let mut runner = connect(&socket_path).await?;
                 cmd.run(&mut runner, &agent).await
             }
             Command::Agent(cmd) => {
-                let runner = DirectRunner::new().await?;
-                cmd.run(&runner)
+                let mut runner = connect(&socket_path).await?;
+                cmd.run(&mut runner).await
             }
             Command::Memory(cmd) => {
-                let runner = DirectRunner::new().await?;
-                cmd.run(&runner)
+                let mut runner = connect(&socket_path).await?;
+                cmd.run(&mut runner).await
             }
         }
     }
@@ -76,11 +84,17 @@ pub enum Command {
     /// Manage memory entries.
     #[command(subcommand)]
     Memory(memory::MemoryCommand),
-    /// Manage CLI configuration.
+    /// Manage configuration.
     #[command(subcommand)]
     Config(config::ConfigCommand),
-    /// Start the gateway server.
-    Serve(serve::Serve),
-    /// Attach to a running walrus-gateway via WebSocket.
-    Attach(attach::Attach),
+}
+
+/// Connect to walrusd, returning a helpful error if not running.
+async fn connect(socket_path: &std::path::Path) -> Result<GatewayRunner> {
+    GatewayRunner::connect(socket_path).await.with_context(|| {
+        format!(
+            "failed to connect to walrusd at {}. Is walrusd running?",
+            socket_path.display()
+        )
+    })
 }

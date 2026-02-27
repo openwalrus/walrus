@@ -1,9 +1,8 @@
 //! Memory management commands: list, get.
 
-use crate::runner::direct::DirectRunner;
+use crate::runner::gateway::GatewayRunner;
 use anyhow::Result;
 use clap::Subcommand;
-use runtime::Memory;
 
 /// Memory management subcommands.
 #[derive(Subcommand, Debug)]
@@ -19,16 +18,16 @@ pub enum MemoryCommand {
 
 impl MemoryCommand {
     /// Dispatch memory management subcommands.
-    pub fn run(&self, runner: &DirectRunner) -> Result<()> {
+    pub async fn run(&self, runner: &mut GatewayRunner) -> Result<()> {
         match self {
-            Self::List => list(runner),
-            Self::Get { key } => get(runner, key),
+            Self::List => list(runner).await,
+            Self::Get { key } => get(runner, key).await,
         }
     }
 }
 
-fn list(runner: &DirectRunner) -> Result<()> {
-    let entries = runner.runtime.memory().entries();
+async fn list(runner: &mut GatewayRunner) -> Result<()> {
+    let entries = runner.list_memory().await?;
     if entries.is_empty() {
         println!("No memory entries.");
         return Ok(());
@@ -49,8 +48,8 @@ fn list(runner: &DirectRunner) -> Result<()> {
     Ok(())
 }
 
-fn get(runner: &DirectRunner, key: &str) -> Result<()> {
-    match runner.runtime.memory().get(key) {
+async fn get(runner: &mut GatewayRunner, key: &str) -> Result<()> {
+    match runner.get_memory(key).await? {
         Some(value) => println!("{value}"),
         None => println!("No entry for key '{key}'."),
     }

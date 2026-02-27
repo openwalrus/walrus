@@ -105,10 +105,7 @@ api_key = "key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     let path = config.socket_path(std::path::Path::new("/tmp/walrus"));
-    assert_eq!(
-        path,
-        std::path::PathBuf::from("/run/walrus/custom.sock")
-    );
+    assert_eq!(path, std::path::PathBuf::from("/run/walrus/custom.sock"));
 }
 
 #[test]
