@@ -19,7 +19,7 @@
 //! ```
 
 use crate::{Handler, Hook, MAX_TOOL_CALLS, SkillRegistry};
-use agent::{Agent, Memory};
+use wcore::{Agent, Memory};
 use compact_str::CompactString;
 use llm::{Config, General, LLM, Message, Tool, ToolChoice};
 use std::{collections::BTreeMap, sync::Arc};

@@ -13,7 +13,7 @@ path = "src/bin/main.rs"
 
 [dependencies]
 runtime = { workspace = true }
-agent = { workspace = true }
+wcore = { workspace = true }
 deepseek = { workspace = true }
 openai = { workspace = true }
 claude = { workspace = true }

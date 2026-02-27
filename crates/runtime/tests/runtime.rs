@@ -1,6 +1,6 @@
 //! Tests for the Runtime orchestrator.
 
-use agent::{Agent, InMemory, Memory, Skill, SkillTier};
+use wcore::{Agent, InMemory, Memory, Skill, SkillTier};
 use compact_str::CompactString;
 use llm::{FunctionCall, General, Message, NoopProvider, Tool, ToolCall};
 use std::collections::BTreeMap;

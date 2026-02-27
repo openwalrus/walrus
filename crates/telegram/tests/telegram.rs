@@ -1,6 +1,6 @@
 //! Tests for the Telegram channel adapter.
 
-use agent::{Channel, Platform};
+use wcore::{Channel, Platform};
 use walrus_telegram::{TelegramChannel, channel_message_from_update, send_message_url};
 
 #[test]

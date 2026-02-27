@@ -4,7 +4,7 @@ use walrus_daemon::MemoryBackend;
 
 #[test]
 fn in_memory_backend_set_and_get() {
-    use agent::Memory;
+    use wcore::Memory;
     let backend = MemoryBackend::in_memory();
     assert!(backend.get("key").is_none());
     backend.set("key", "value");
@@ -13,7 +13,7 @@ fn in_memory_backend_set_and_get() {
 
 #[test]
 fn in_memory_backend_entries() {
-    use agent::Memory;
+    use wcore::Memory;
     let backend = MemoryBackend::in_memory();
     backend.set("a", "1");
     backend.set("b", "2");
@@ -23,7 +23,7 @@ fn in_memory_backend_entries() {
 
 #[test]
 fn in_memory_backend_remove() {
-    use agent::Memory;
+    use wcore::Memory;
     let backend = MemoryBackend::in_memory();
     backend.set("key", "value");
     let old = backend.remove("key");
@@ -33,7 +33,7 @@ fn in_memory_backend_remove() {
 
 #[test]
 fn sqlite_backend_set_and_get() {
-    use agent::Memory;
+    use wcore::Memory;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.db");
     let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
@@ -44,7 +44,7 @@ fn sqlite_backend_set_and_get() {
 
 #[test]
 fn sqlite_backend_entries() {
-    use agent::Memory;
+    use wcore::Memory;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.db");
     let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
@@ -56,7 +56,7 @@ fn sqlite_backend_entries() {
 
 #[test]
 fn sqlite_backend_remove() {
-    use agent::Memory;
+    use wcore::Memory;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.db");
     let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
@@ -68,7 +68,7 @@ fn sqlite_backend_remove() {
 
 #[tokio::test]
 async fn in_memory_backend_store() {
-    use agent::Memory;
+    use wcore::Memory;
     let backend = MemoryBackend::in_memory();
     backend.store("key", "value").await.unwrap();
     assert_eq!(backend.get("key").unwrap(), "value");
@@ -76,7 +76,7 @@ async fn in_memory_backend_store() {
 
 #[tokio::test]
 async fn sqlite_backend_store() {
-    use agent::Memory;
+    use wcore::Memory;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.db");
     let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
@@ -86,7 +86,7 @@ async fn sqlite_backend_store() {
 
 #[tokio::test]
 async fn in_memory_backend_compile_relevant() {
-    use agent::Memory;
+    use wcore::Memory;
     let backend = MemoryBackend::in_memory();
     backend.set("fact", "the sky is blue");
     let compiled = backend.compile_relevant("sky color").await;
@@ -114,7 +114,7 @@ fn memory_backend_from_config_sqlite() {
     };
     assert_eq!(config.backend, MemoryBackendKind::Sqlite);
     let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
-    use agent::Memory;
+    use wcore::Memory;
     backend.set("test", "ok");
     assert_eq!(backend.get("test").unwrap(), "ok");
 }

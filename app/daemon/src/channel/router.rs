@@ -4,7 +4,7 @@
 //! and channel ID with three-tier fallback: exact match, platform
 //! catch-all, default agent (DD#3).
 
-use agent::Platform;
+use wcore::Platform;
 use compact_str::CompactString;
 
 /// A routing rule mapping platform/channel to an agent.

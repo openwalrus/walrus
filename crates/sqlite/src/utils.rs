@@ -1,6 +1,6 @@
 //! Utility functions for memory recall scoring and ranking.
 
-use agent::MemoryEntry;
+use wcore::MemoryEntry;
 use std::collections::HashSet;
 
 /// Cosine similarity between two float vectors.

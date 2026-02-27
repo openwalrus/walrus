@@ -15,7 +15,7 @@
 //! let response = runtime.send_to("assistant", Message::user("hello")).await?;
 //! ```
 
-pub use agent::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
+pub use wcore::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
 pub use hook::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook};
 pub use llm::{Client, General, Message, Response, Role, StreamChunk, Tool};
 pub use loader::{CronEntry, load_agents_dir, load_cron_dir, parse_agent_md, parse_cron_md};

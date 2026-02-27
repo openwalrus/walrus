@@ -3,7 +3,7 @@
 //! Connects agents to Telegram via the Bot API using reqwest directly (DD#2).
 //! Implements the [`Channel`] trait from walrus-core.
 
-use agent::{Attachment, AttachmentKind, Channel, ChannelMessage, Platform};
+use wcore::{Attachment, AttachmentKind, Channel, ChannelMessage, Platform};
 use anyhow::Result;
 use compact_str::CompactString;
 use futures_core::Stream;

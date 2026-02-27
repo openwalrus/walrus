@@ -1,6 +1,6 @@
 //! Tests for SkillRegistry.
 
-use agent::{Skill, SkillTier};
+use wcore::{Skill, SkillTier};
 use compact_str::CompactString;
 use std::collections::BTreeMap;
 use walrus_runtime::parse_skill_md;

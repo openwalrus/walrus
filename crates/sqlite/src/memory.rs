@@ -3,7 +3,7 @@
 use crate::SqliteMemory;
 use crate::sql;
 use crate::utils::now_unix;
-use agent::{Embedder, Memory, MemoryEntry, RecallOptions};
+use wcore::{Embedder, Memory, MemoryEntry, RecallOptions};
 use anyhow::Result;
 use std::future::Future;
 

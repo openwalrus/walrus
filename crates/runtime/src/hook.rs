@@ -4,7 +4,7 @@
 //! which [`Memory`] backend and LLM provider to use, and what prompts
 //! to send for automatic compaction and memory flush.
 
-use agent::{InMemory, Memory};
+use wcore::{InMemory, Memory};
 use llm::{General, LLM, NoopProvider};
 
 /// Type-level runtime configuration.

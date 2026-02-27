@@ -1,7 +1,7 @@
 //! Unix domain socket server — accept loop and per-connection message handler.
 
 use crate::gateway::Gateway;
-use agent::Memory;
+use wcore::Memory;
 use compact_str::CompactString;
 use llm::Message;
 use protocol::codec::{self, FrameError};

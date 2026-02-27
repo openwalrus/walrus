@@ -11,7 +11,7 @@ keywords.workspace = true
 
 [dependencies]
 llm.workspace = true
-agent.workspace = true
+wcore.workspace = true
 
 # crates-io dependencies
 anyhow.workspace = true

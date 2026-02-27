@@ -1,6 +1,14 @@
 [workspace]
 resolver = "3"
-members = ["app/*", "crates/*", "llm", "llm/deepseek", "llm/openai", "llm/claude", "llm/mistral"]
+members = [
+    "app/*",
+    "crates/*",
+    "llm",
+    "llm/deepseek",
+    "llm/openai",
+    "llm/claude",
+    "llm/mistral",
+]
 
 [workspace.package]
 version = "0.0.9"
@@ -16,7 +24,7 @@ openai = { path = "llm/openai", package = "walrus-openai", version = "0.0.9" }
 claude = { path = "llm/claude", package = "walrus-claude", version = "0.0.9" }
 mistral = { path = "llm/mistral", package = "walrus-mistral", version = "0.0.9" }
 llm = { path = "llm", package = "walrus-llm", version = "0.0.9" }
-agent = { path = "crates/core", package = "walrus-core", version = "0.0.9" }
+wcore = { path = "crates/core", package = "walrus-core", version = "0.0.9" }
 runtime = { path = "crates/runtime", package = "walrus-runtime", version = "0.0.9" }
 sqlite = { path = "crates/sqlite", package = "walrus-sqlite", version = "0.0.9" }
 telegram = { path = "crates/telegram", package = "walrus-telegram", version = "0.0.9" }
@@ -39,7 +47,13 @@ serde_json = "1"
 serde_yaml = "0.9"
 smallvec = { version = "1", features = ["serde"] }
 tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "io-util", "net"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "signal",
+    "io-util",
+    "net",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"

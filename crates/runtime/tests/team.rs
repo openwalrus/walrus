@@ -1,6 +1,6 @@
 //! Tests for team composition.
 
-use agent::{Agent, InMemory};
+use wcore::{Agent, InMemory};
 use llm::{General, NoopProvider};
 use walrus_runtime::{Runtime, build_team, extract_input, worker_tool};
 

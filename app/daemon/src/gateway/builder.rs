@@ -104,7 +104,7 @@ pub async fn build_runtime(
 
     // Load skills if directory exists.
     let skills_dir = config_dir.join(config::SKILLS_DIR);
-    match SkillRegistry::load_dir(&skills_dir, agent::SkillTier::Workspace) {
+    match SkillRegistry::load_dir(&skills_dir, wcore::SkillTier::Workspace) {
         Ok(registry) => {
             tracing::info!("loaded {} skill(s)", registry.len());
             runtime.set_skills(registry);

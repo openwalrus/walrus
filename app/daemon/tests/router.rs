@@ -1,6 +1,6 @@
 //! Channel routing tests.
 
-use agent::Platform;
+use wcore::Platform;
 use compact_str::CompactString;
 use walrus_daemon::{ChannelRouter, RoutingRule};
 
