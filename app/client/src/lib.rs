@@ -11,15 +11,12 @@ pub mod connection;
 pub struct ClientConfig {
     /// Gateway Unix domain socket path.
     pub socket_path: PathBuf,
-    /// Optional authentication token.
-    pub auth_token: Option<compact_str::CompactString>,
 }
 
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             socket_path: default_socket_path(),
-            auth_token: None,
         }
     }
 }
@@ -54,12 +51,6 @@ impl WalrusClient {
     /// Set the gateway socket path.
     pub fn socket_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.config.socket_path = path.into();
-        self
-    }
-
-    /// Set the authentication token.
-    pub fn auth_token(mut self, token: impl Into<compact_str::CompactString>) -> Self {
-        self.config.auth_token = Some(token.into());
         self
     }
 

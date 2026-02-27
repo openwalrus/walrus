@@ -14,19 +14,13 @@ pub struct GatewayRunner {
 }
 
 impl GatewayRunner {
-    /// Connect to a gateway and optionally authenticate.
-    pub async fn connect(socket_path: &Path, auth_token: Option<&str>) -> Result<Self> {
+    /// Connect to a gateway.
+    pub async fn connect(socket_path: &Path) -> Result<Self> {
         let config = ClientConfig {
             socket_path: socket_path.to_path_buf(),
-            auth_token: auth_token.map(CompactString::from),
         };
         let client = WalrusClient::new(config);
-        let mut connection = client.connect().await?;
-
-        if let Some(token) = auth_token {
-            connection.authenticate(token).await?;
-        }
-
+        let connection = client.connect().await?;
         Ok(Self { connection })
     }
 }

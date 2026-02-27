@@ -31,9 +31,6 @@ api_key = "sk-test"
 [memory]
 backend = "sqlite"
 
-[auth]
-api_keys = ["key-1", "key-2"]
-
 [[channels]]
 platform = "telegram"
 bot_token = "bot-token-123"
@@ -50,7 +47,6 @@ args = ["playwright-mcp"]
         Some("/tmp/walrus.sock")
     );
     assert_eq!(config.memory.backend, MemoryBackendKind::Sqlite);
-    assert_eq!(config.auth.api_keys.len(), 2);
     assert_eq!(config.channels.len(), 1);
     assert_eq!(config.mcp_servers.len(), 1);
     assert_eq!(config.mcp_servers[0].name.as_str(), "playwright");

@@ -1,7 +1,6 @@
 //! Unix domain socket connection to the walrus-gateway.
 
-use anyhow::{Result, bail};
-use compact_str::CompactString;
+use anyhow::Result;
 use futures_core::Stream;
 use protocol::codec;
 use protocol::{ClientMessage, ServerMessage};
@@ -24,20 +23,6 @@ impl Connection {
         tracing::debug!("connected to {}", socket_path.display());
         let (reader, writer) = stream.into_split();
         Ok(Self { reader, writer })
-    }
-
-    /// Authenticate with the gateway. Returns the session ID.
-    pub async fn authenticate(&mut self, token: &str) -> Result<CompactString> {
-        let msg = ClientMessage::Authenticate {
-            token: token.to_string(),
-        };
-        match self.send(msg).await? {
-            ServerMessage::Authenticated { session_id } => Ok(session_id),
-            ServerMessage::Error { code, message } => {
-                bail!("authentication failed ({code}): {message}")
-            }
-            other => bail!("unexpected response to authenticate: {other:?}"),
-        }
     }
 
     /// Send a message and wait for a single response.

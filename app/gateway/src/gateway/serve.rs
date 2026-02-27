@@ -1,6 +1,6 @@
-//! Shared gateway serve entrypoint — used by the binary, CLI, and FFI crate.
+//! Shared gateway serve entrypoint — used by the binary and CLI.
 
-use crate::{ApiKeyAuthenticator, GatewayConfig, SessionManager, gateway::Gateway};
+use crate::{GatewayConfig, gateway::Gateway};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
@@ -52,12 +52,9 @@ pub async fn serve_with_config(
     use std::sync::Arc;
 
     let runtime = crate::build_runtime(config, config_dir).await?;
-    let authenticator = ApiKeyAuthenticator::from_config(&config.auth);
 
     let state = Gateway {
         runtime: Arc::new(runtime),
-        sessions: Arc::new(SessionManager::new()),
-        authenticator: Arc::new(authenticator),
     };
 
     let resolved_path = socket_path

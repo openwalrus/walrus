@@ -9,7 +9,6 @@ keywords.workspace = true
 
 [dependencies]
 protocol = { workspace = true }
-compact_str = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 futures-core = { workspace = true }

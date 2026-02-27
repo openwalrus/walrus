@@ -71,7 +71,6 @@ fn cli_parse_attach_default_socket() {
     match cli.command {
         Command::Attach(cmd) => {
             assert!(cmd.socket.is_none());
-            assert!(cmd.auth_token.is_none());
         }
         _ => panic!("expected Attach command"),
     }
@@ -91,11 +90,3 @@ fn cli_parse_attach_custom_socket() {
     }
 }
 
-#[test]
-fn cli_parse_attach_auth_token() {
-    let cli = Cli::parse_from(["walrus", "attach", "--auth-token", "my-secret"]);
-    match cli.command {
-        Command::Attach(cmd) => assert_eq!(cmd.auth_token.as_deref(), Some("my-secret")),
-        _ => panic!("expected Attach command"),
-    }
-}

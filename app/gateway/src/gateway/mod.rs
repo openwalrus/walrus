@@ -1,32 +1,24 @@
 //! Protocol impls for the gateway.
 
 use crate::MemoryBackend;
-use crate::{channel::auth::Authenticator, gateway::session::SessionManager};
 use deepseek::DeepSeek;
 use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
 use std::sync::Arc;
 
 pub mod builder;
 pub mod serve;
-pub mod session;
 pub mod uds;
 
 /// Shared state available to all request handlers.
-pub struct Gateway<H: Hook + 'static, A: Authenticator> {
+pub struct Gateway<H: Hook + 'static> {
     /// The walrus runtime (immutable after init).
     pub runtime: Arc<Runtime<H>>,
-    /// Session manager.
-    pub sessions: Arc<SessionManager>,
-    /// Authenticator.
-    pub authenticator: Arc<A>,
 }
 
-impl<H: Hook + 'static, A: Authenticator> Clone for Gateway<H, A> {
+impl<H: Hook + 'static> Clone for Gateway<H> {
     fn clone(&self) -> Self {
         Self {
             runtime: Arc::clone(&self.runtime),
-            sessions: Arc::clone(&self.sessions),
-            authenticator: Arc::clone(&self.authenticator),
         }
     }
 }

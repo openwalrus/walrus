@@ -12,11 +12,6 @@ pub const PROTOCOL_VERSION: &str = "0.1";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
-    /// Authenticate with the gateway.
-    Authenticate {
-        /// Authentication token.
-        token: String,
-    },
     /// Send a message to an agent and receive a complete response.
     Send {
         /// Target agent identifier.
@@ -44,11 +39,6 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
-    /// Authentication succeeded.
-    Authenticated {
-        /// Unique session identifier.
-        session_id: CompactString,
-    },
     /// Complete response from an agent.
     Response {
         /// Source agent identifier.

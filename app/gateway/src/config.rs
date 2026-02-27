@@ -33,9 +33,6 @@ pub struct GatewayConfig {
     /// Memory backend configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
-    /// Authentication configuration.
-    #[serde(default)]
-    pub auth: AuthConfig,
     /// Channel configurations.
     #[serde(default)]
     pub channels: Vec<ChannelConfig>,
@@ -88,14 +85,6 @@ pub enum MemoryBackendKind {
     InMemory,
     /// SQLite-backed persistent memory.
     Sqlite,
-}
-
-/// Authentication configuration.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AuthConfig {
-    /// API keys that grant access.
-    pub api_keys: Vec<String>,
 }
 
 /// Channel configuration.

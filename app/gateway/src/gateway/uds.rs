@@ -1,7 +1,6 @@
 //! Unix domain socket server — accept loop and per-connection message handler.
 
-use crate::channel::auth::{AuthContext, Authenticator};
-use crate::gateway::{Gateway, session::SessionScope};
+use crate::gateway::Gateway;
 use compact_str::CompactString;
 use llm::Message;
 use protocol::codec::{self, FrameError};
@@ -13,9 +12,9 @@ use tokio::net::UnixListener;
 use tokio::sync::{mpsc, oneshot};
 
 /// Accept connections on the given `UnixListener` until shutdown is signalled.
-pub async fn accept_loop<H: Hook + 'static, A: Authenticator + 'static>(
+pub async fn accept_loop<H: Hook + 'static>(
     listener: UnixListener,
-    state: Gateway<H, A>,
+    state: Gateway<H>,
     mut shutdown: oneshot::Receiver<()>,
 ) {
     loop {
@@ -42,9 +41,9 @@ pub async fn accept_loop<H: Hook + 'static, A: Authenticator + 'static>(
 }
 
 /// Handle an established Unix domain socket connection.
-async fn handle_connection<H: Hook + 'static, A: Authenticator + 'static>(
+async fn handle_connection<H: Hook + 'static>(
     stream: tokio::net::UnixStream,
-    state: Gateway<H, A>,
+    state: Gateway<H>,
 ) {
     let (reader, writer) = stream.into_split();
     let (tx, rx) = mpsc::unbounded_channel::<ServerMessage>();
@@ -71,12 +70,11 @@ async fn sender_loop(mut writer: OwnedWriteHalf, mut rx: mpsc::UnboundedReceiver
 }
 
 /// Reads client messages from the socket and dispatches them.
-async fn receiver_loop<H: Hook + 'static, A: Authenticator + 'static>(
+async fn receiver_loop<H: Hook + 'static>(
     mut reader: OwnedReadHalf,
     tx: mpsc::UnboundedSender<ServerMessage>,
-    state: Gateway<H, A>,
+    state: Gateway<H>,
 ) {
-    let mut auth_context: Option<AuthContext> = None;
     let mut session_histories: BTreeMap<CompactString, Vec<Message>> = BTreeMap::new();
 
     loop {
@@ -90,33 +88,7 @@ async fn receiver_loop<H: Hook + 'static, A: Authenticator + 'static>(
         };
 
         match client_msg {
-            ClientMessage::Authenticate { token } => {
-                match state.authenticator.authenticate(&token).await {
-                    Ok(ctx) => {
-                        let session = state.sessions.create(SessionScope::Main, ctx.trust_level);
-                        auth_context = Some(ctx);
-                        let _ = tx.send(ServerMessage::Authenticated {
-                            session_id: session.id,
-                        });
-                    }
-                    Err(_) => {
-                        let _ = tx.send(ServerMessage::Error {
-                            code: 401,
-                            message: "authentication failed".to_string(),
-                        });
-                    }
-                }
-            }
-
             ClientMessage::Send { agent, content } => {
-                if auth_context.is_none() {
-                    let _ = tx.send(ServerMessage::Error {
-                        code: 401,
-                        message: "not authenticated".to_string(),
-                    });
-                    continue;
-                }
-
                 let history = session_histories.entry(agent.clone()).or_default();
                 match state
                     .runtime
@@ -139,14 +111,6 @@ async fn receiver_loop<H: Hook + 'static, A: Authenticator + 'static>(
             }
 
             ClientMessage::Stream { agent, content } => {
-                if auth_context.is_none() {
-                    let _ = tx.send(ServerMessage::Error {
-                        code: 401,
-                        message: "not authenticated".to_string(),
-                    });
-                    continue;
-                }
-
                 let _ = tx.send(ServerMessage::StreamStart {
                     agent: agent.clone(),
                 });

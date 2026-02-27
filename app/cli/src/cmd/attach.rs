@@ -13,9 +13,6 @@ pub struct Attach {
     /// Gateway socket path.
     #[arg(long)]
     pub socket: Option<PathBuf>,
-    /// Authentication token.
-    #[arg(long)]
-    pub auth_token: Option<String>,
 }
 
 impl Attach {
@@ -24,8 +21,7 @@ impl Attach {
         let socket_path = self
             .socket
             .unwrap_or_else(|| gateway::config::global_config_dir().join("walrus.sock"));
-        let runner =
-            GatewayRunner::connect(&socket_path, self.auth_token.as_deref()).await?;
+        let runner = GatewayRunner::connect(&socket_path).await?;
         let mut repl = ChatRepl::new(runner, agent)?;
         repl.run().await
     }

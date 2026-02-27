@@ -27,7 +27,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 smallvec = { workspace = true }
-uuid = { workspace = true }
 cron = { workspace = true }
 chrono = { workspace = true }
 rmcp = { workspace = true }
