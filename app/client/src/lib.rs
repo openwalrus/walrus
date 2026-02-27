@@ -1,7 +1,7 @@
-//! Walrus client library — shared WebSocket client for connecting to a
+//! Walrus client library — Unix domain socket client for connecting to a
 //! walrus-gateway. Used by walrus-cli and other platform clients.
 
-use compact_str::CompactString;
+use std::path::PathBuf;
 pub use connection::Connection;
 
 pub mod connection;
@@ -9,25 +9,33 @@ pub mod connection;
 /// Client configuration for connecting to a walrus-gateway.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    /// Gateway WebSocket URL.
-    pub gateway_url: CompactString,
+    /// Gateway Unix domain socket path.
+    pub socket_path: PathBuf,
     /// Optional authentication token.
-    pub auth_token: Option<CompactString>,
+    pub auth_token: Option<compact_str::CompactString>,
 }
 
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            gateway_url: CompactString::from("ws://127.0.0.1:6688/ws"),
+            socket_path: default_socket_path(),
             auth_token: None,
         }
     }
 }
 
-/// WebSocket client for the walrus-gateway.
+/// Default socket path: `~/.config/walrus/walrus.sock`.
+fn default_socket_path() -> PathBuf {
+    dirs::config_dir()
+        .expect("no platform config directory")
+        .join("walrus")
+        .join("walrus.sock")
+}
+
+/// Unix domain socket client for the walrus-gateway.
 ///
 /// Holds configuration. Call [`WalrusClient::connect`] to establish a
-/// WebSocket connection (requires the connection module).
+/// connection.
 pub struct WalrusClient {
     config: ClientConfig,
 }
@@ -43,20 +51,20 @@ impl WalrusClient {
         &self.config
     }
 
-    /// Set the gateway URL.
-    pub fn gateway_url(mut self, url: impl Into<CompactString>) -> Self {
-        self.config.gateway_url = url.into();
+    /// Set the gateway socket path.
+    pub fn socket_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.config.socket_path = path.into();
         self
     }
 
     /// Set the authentication token.
-    pub fn auth_token(mut self, token: impl Into<CompactString>) -> Self {
+    pub fn auth_token(mut self, token: impl Into<compact_str::CompactString>) -> Self {
         self.config.auth_token = Some(token.into());
         self
     }
 
     /// Connect to the gateway and return a [`Connection`].
     pub async fn connect(&self) -> anyhow::Result<Connection> {
-        Connection::connect(&self.config).await
+        Connection::connect(&self.config.socket_path).await
     }
 }

@@ -46,28 +46,31 @@ fn cli_parse_config_set() {
 fn cli_parse_serve_default() {
     let cli = Cli::parse_from(["walrus", "serve"]);
     match cli.command {
-        Command::Serve(cmd) => assert!(cmd.url.is_none()),
+        Command::Serve(cmd) => assert!(cmd.socket.is_none()),
         _ => panic!("expected Serve command"),
     }
 }
 
 #[test]
-fn cli_parse_serve_custom_url() {
-    let cli = Cli::parse_from(["walrus", "serve", "--url", "0.0.0.0:9999"]);
+fn cli_parse_serve_custom_socket() {
+    let cli = Cli::parse_from(["walrus", "serve", "--socket", "/tmp/walrus.sock"]);
     match cli.command {
         Command::Serve(cmd) => {
-            assert_eq!(cmd.url.unwrap(), "0.0.0.0:9999".parse().unwrap());
+            assert_eq!(
+                cmd.socket.unwrap(),
+                std::path::PathBuf::from("/tmp/walrus.sock")
+            );
         }
         _ => panic!("expected Serve command"),
     }
 }
 
 #[test]
-fn cli_parse_attach_default_url() {
+fn cli_parse_attach_default_socket() {
     let cli = Cli::parse_from(["walrus", "attach"]);
     match cli.command {
         Command::Attach(cmd) => {
-            assert_eq!(cmd.url, "ws://127.0.0.1:6688/ws");
+            assert!(cmd.socket.is_none());
             assert!(cmd.auth_token.is_none());
         }
         _ => panic!("expected Attach command"),
@@ -75,10 +78,15 @@ fn cli_parse_attach_default_url() {
 }
 
 #[test]
-fn cli_parse_attach_custom_url() {
-    let cli = Cli::parse_from(["walrus", "attach", "--url", "ws://remote:9999/ws"]);
+fn cli_parse_attach_custom_socket() {
+    let cli = Cli::parse_from(["walrus", "attach", "--socket", "/tmp/test.sock"]);
     match cli.command {
-        Command::Attach(cmd) => assert_eq!(cmd.url, "ws://remote:9999/ws"),
+        Command::Attach(cmd) => {
+            assert_eq!(
+                cmd.socket.unwrap(),
+                std::path::PathBuf::from("/tmp/test.sock")
+            );
+        }
         _ => panic!("expected Attach command"),
     }
 }

@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 use gateway::ServeHandle;
-use std::path::Path;
+use std::ffi::CString;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// Global gateway state. `None` when stopped, `Some` when running.
@@ -12,13 +13,13 @@ static SERVER: Mutex<Option<GatewayServer>> = Mutex::new(None);
 struct GatewayServer {
     runtime: tokio::runtime::Runtime,
     handle: ServeHandle,
-    port: u16,
+    socket_path: PathBuf,
 }
 
-/// Start the embedded gateway on `127.0.0.1:0` (OS-assigned port).
+/// Start the embedded gateway on a Unix domain socket in the config directory.
 ///
-/// Returns the bound port on success.
-pub fn start(config_dir: &Path) -> Result<u16> {
+/// Returns the socket path on success.
+pub fn start(config_dir: &Path) -> Result<PathBuf> {
     let mut guard = SERVER
         .lock()
         .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
@@ -30,16 +31,16 @@ pub fn start(config_dir: &Path) -> Result<u16> {
         .enable_all()
         .build()?;
 
-    let handle = runtime.block_on(gateway::serve(config_dir, "127.0.0.1:0"))?;
-    let port = handle.port;
+    let handle = runtime.block_on(gateway::serve(config_dir, None))?;
+    let socket_path = handle.socket_path.clone();
 
     *guard = Some(GatewayServer {
         runtime,
         handle,
-        port,
+        socket_path: socket_path.clone(),
     });
 
-    Ok(port)
+    Ok(socket_path)
 }
 
 /// Stop the embedded gateway and drop the tokio runtime.
@@ -59,11 +60,13 @@ pub fn stop() -> Result<()> {
     Ok(())
 }
 
-/// Query the current gateway port. Returns 0 if not running.
-pub fn port() -> u16 {
+/// Query the current gateway socket path. Returns `None` if not running.
+pub fn socket_path() -> Option<CString> {
     SERVER
         .lock()
         .ok()
-        .and_then(|g| g.as_ref().map(|s| s.port))
-        .unwrap_or(0)
+        .and_then(|g| {
+            g.as_ref()
+                .and_then(|s| CString::new(s.socket_path.to_string_lossy().as_ref()).ok())
+        })
 }

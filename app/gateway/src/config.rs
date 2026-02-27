@@ -44,32 +44,13 @@ pub struct GatewayConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
 
-/// Server bind configuration.
-#[derive(Debug, Serialize, Deserialize)]
+/// Server configuration.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ServerConfig {
-    /// Host address to bind to.
-    #[serde(default = "default_host")]
-    pub host: String,
-    /// Port to listen on.
-    #[serde(default = "default_port")]
-    pub port: u16,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            host: "127.0.0.1".to_owned(),
-            port: 6688,
-        }
-    }
-}
-
-fn default_host() -> String {
-    "127.0.0.1".to_string()
-}
-
-fn default_port() -> u16 {
-    6688
+    /// Custom Unix domain socket path. When `None`, defaults to
+    /// `<config_dir>/walrus.sock`.
+    pub socket_path: Option<String>,
 }
 
 /// LLM provider configuration.
@@ -167,8 +148,13 @@ impl GatewayConfig {
         Self::from_toml(&content)
     }
 
-    /// Get the bind address as "host:port".
-    pub fn bind_address(&self) -> String {
-        format!("{}:{}", self.server.host, self.server.port)
+    /// Resolve the socket path. Uses the explicit config value if set,
+    /// otherwise defaults to `<config_dir>/walrus.sock`.
+    pub fn socket_path(&self, config_dir: &std::path::Path) -> std::path::PathBuf {
+        self.server
+            .socket_path
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| config_dir.join("walrus.sock"))
     }
 }

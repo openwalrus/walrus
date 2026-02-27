@@ -3,27 +3,25 @@
 use crate::config::resolve_config;
 use anyhow::Result;
 use clap::Args;
+use std::path::PathBuf;
 
 /// Start the gateway server.
 #[derive(Args, Debug)]
 pub struct Serve {
-    /// Bind address (host:port). Defaults to gateway.toml server config.
+    /// Custom socket path. Defaults to gateway.toml server config.
     #[arg(long)]
-    pub url: Option<std::net::SocketAddr>,
+    pub socket: Option<PathBuf>,
 }
 
 impl Serve {
-    /// Load config, build runtime, and start the axum server.
+    /// Load config, build runtime, and start the gateway server.
     pub async fn run(self) -> Result<()> {
         let config = resolve_config()?;
         let config_dir = gateway::config::global_config_dir();
 
-        let bind = self
-            .url
-            .map(|a| a.to_string())
-            .unwrap_or_else(|| config.bind_address());
-
-        let handle = gateway::serve_with_config(&config, &config_dir, &bind).await?;
+        let socket_path = self.socket.as_deref();
+        let handle =
+            gateway::serve_with_config(&config, &config_dir, socket_path).await?;
 
         tokio::signal::ctrl_c().await?;
         tracing::info!("received ctrl-c, shutting down");

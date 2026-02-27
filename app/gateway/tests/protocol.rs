@@ -1,4 +1,4 @@
-//! WebSocket protocol tests.
+//! Protocol serialization tests.
 
 use protocol::{ClientMessage, ServerMessage};
 

@@ -6,16 +6,13 @@ use walrus_gateway::{GatewayConfig, config::MemoryBackendKind};
 fn parse_minimal_config() {
     let toml = r#"
 [server]
-host = "0.0.0.0"
-port = 8080
 
 [llm]
 model = "deepseek-chat"
 api_key = "test-key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.server.host, "0.0.0.0");
-    assert_eq!(config.server.port, 8080);
+    assert!(config.server.socket_path.is_none());
     assert_eq!(config.llm.model.as_str(), "deepseek-chat");
     assert_eq!(config.llm.api_key, "test-key");
     assert!(config.channels.is_empty());
@@ -25,8 +22,7 @@ api_key = "test-key"
 fn parse_full_config() {
     let toml = r#"
 [server]
-host = "0.0.0.0"
-port = 3000
+socket_path = "/tmp/walrus.sock"
 
 [llm]
 model = "deepseek-chat"
@@ -49,6 +45,10 @@ command = "npx"
 args = ["playwright-mcp"]
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
+    assert_eq!(
+        config.server.socket_path.as_deref(),
+        Some("/tmp/walrus.sock")
+    );
     assert_eq!(config.memory.backend, MemoryBackendKind::Sqlite);
     assert_eq!(config.auth.api_keys.len(), 2);
     assert_eq!(config.channels.len(), 1);
@@ -67,8 +67,7 @@ model = "deepseek-chat"
 api_key = "key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.server.host, "127.0.0.1");
-    assert_eq!(config.server.port, 6688);
+    assert!(config.server.socket_path.is_none());
 }
 
 #[test]
@@ -85,18 +84,35 @@ api_key = "key"
 }
 
 #[test]
-fn bind_address() {
+fn default_socket_path() {
     let toml = r#"
 [server]
-host = "0.0.0.0"
-port = 8080
 
 [llm]
 model = "deepseek-chat"
 api_key = "key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.bind_address(), "0.0.0.0:8080");
+    let path = config.socket_path(std::path::Path::new("/tmp/walrus"));
+    assert_eq!(path, std::path::PathBuf::from("/tmp/walrus/walrus.sock"));
+}
+
+#[test]
+fn custom_socket_path() {
+    let toml = r#"
+[server]
+socket_path = "/run/walrus/custom.sock"
+
+[llm]
+model = "deepseek-chat"
+api_key = "key"
+"#;
+    let config = GatewayConfig::from_toml(toml).unwrap();
+    let path = config.socket_path(std::path::Path::new("/tmp/walrus"));
+    assert_eq!(
+        path,
+        std::path::PathBuf::from("/run/walrus/custom.sock")
+    );
 }
 
 #[test]

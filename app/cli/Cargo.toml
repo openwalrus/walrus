@@ -18,7 +18,6 @@ agent = { workspace = true }
 client = { workspace = true }
 protocol = { workspace = true }
 llm = { workspace = true }
-axum = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
 tokio = { workspace = true }

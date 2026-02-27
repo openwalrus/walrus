@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub mod builder;
 pub mod serve;
 pub mod session;
-pub mod ws;
+pub mod uds;
 
 /// Shared state available to all request handlers.
 pub struct Gateway<H: Hook + 'static, A: Authenticator> {

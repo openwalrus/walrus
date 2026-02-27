@@ -1,6 +1,6 @@
 //! C-ABI FFI functions for embedding the walrus-gateway in Flutter apps.
 //!
-//! 5 exported functions: `walrus_start`, `walrus_stop`, `walrus_port`,
+//! 5 exported functions: `walrus_start`, `walrus_stop`, `walrus_socket_path`,
 //! `walrus_last_error`, `walrus_free_string`.
 
 use crate::server;
@@ -20,8 +20,9 @@ fn set_last_error(msg: &str) {
     });
 }
 
-/// Start the embedded gateway. Returns the bound port (> 0) on success,
-/// or a negative error code on failure. Call `walrus_last_error` for details.
+/// Start the embedded gateway. Returns 0 on success, -1 on failure.
+/// Call `walrus_socket_path` to get the socket path after a successful start.
+/// Call `walrus_last_error` for error details on failure.
 ///
 /// # Safety
 ///
@@ -45,7 +46,7 @@ pub unsafe extern "C" fn walrus_start(config_dir: *const c_char) -> c_int {
     };
 
     match server::start(Path::new(config_dir)) {
-        Ok(port) => port as c_int,
+        Ok(_) => 0,
         Err(e) => {
             set_last_error(&format!("failed to start gateway: {e}"));
             -1
@@ -65,10 +66,24 @@ pub extern "C" fn walrus_stop() -> c_int {
     }
 }
 
-/// Query the current gateway port. Returns 0 if not running.
+/// Query the current gateway socket path. Returns null if not running.
+///
+/// The returned pointer is valid until the next FFI call on the same thread.
+/// Do **not** free it — it is owned by the thread-local storage.
 #[unsafe(no_mangle)]
-pub extern "C" fn walrus_port() -> c_int {
-    server::port() as c_int
+pub extern "C" fn walrus_socket_path() -> *const c_char {
+    thread_local! {
+        static CACHED_PATH: RefCell<Option<CString>> = const { RefCell::new(None) };
+    }
+
+    CACHED_PATH.with(|cached| {
+        *cached.borrow_mut() = server::socket_path();
+        cached
+            .borrow()
+            .as_ref()
+            .map(|s| s.as_ptr())
+            .unwrap_or(std::ptr::null())
+    })
 }
 
 /// Get the last error message. Returns null if no error.

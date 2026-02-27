@@ -1,82 +1,91 @@
-//! WebSocket server -- axum upgrade handler and message loop.
+//! Unix domain socket server — accept loop and per-connection message handler.
 
 use crate::channel::auth::{AuthContext, Authenticator};
 use crate::gateway::{Gateway, session::SessionScope};
-use axum::{
-    Router,
-    extract::{
-        State, WebSocketUpgrade,
-        ws::{Message as WsMessage, WebSocket},
-    },
-    response::IntoResponse,
-    routing::get,
-};
 use compact_str::CompactString;
-use futures_util::{SinkExt, StreamExt};
 use llm::Message;
+use protocol::codec::{self, FrameError};
 use protocol::{ClientMessage, ServerMessage};
 use runtime::Hook;
 use std::collections::BTreeMap;
-use tokio::sync::mpsc;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::UnixListener;
+use tokio::sync::{mpsc, oneshot};
 
-/// Build the axum router with the `/ws` endpoint.
-pub fn router<H: Hook + 'static, A: Authenticator + 'static>(state: Gateway<H, A>) -> Router {
-    Router::new()
-        .route("/ws", get(ws_handler::<H, A>))
-        .with_state(state)
-}
-
-/// WebSocket upgrade handler.
-async fn ws_handler<H: Hook + 'static, A: Authenticator + 'static>(
-    State(state): State<Gateway<H, A>>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
-}
-
-/// Handle an established WebSocket connection.
-async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
-    socket: WebSocket,
+/// Accept connections on the given `UnixListener` until shutdown is signalled.
+pub async fn accept_loop<H: Hook + 'static, A: Authenticator + 'static>(
+    listener: UnixListener,
     state: Gateway<H, A>,
+    mut shutdown: oneshot::Receiver<()>,
 ) {
-    let (mut sender, mut receiver) = socket.split();
-    let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
-
-    // Sender task: forward ServerMessages to the WebSocket.
-    let send_task = tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            let json = match serde_json::to_string(&msg) {
-                Ok(j) => j,
-                Err(e) => {
-                    tracing::error!("failed to serialize server message: {e}");
-                    continue;
+    loop {
+        tokio::select! {
+            result = listener.accept() => {
+                match result {
+                    Ok((stream, _addr)) => {
+                        let state = state.clone();
+                        tokio::spawn(async move {
+                            handle_connection(stream, state).await;
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("failed to accept connection: {e}");
+                    }
                 }
-            };
-            if sender.send(WsMessage::Text(json.into())).await.is_err() {
+            }
+            _ = &mut shutdown => {
+                tracing::info!("accept loop shutting down");
                 break;
             }
         }
-    });
+    }
+}
 
+/// Handle an established Unix domain socket connection.
+async fn handle_connection<H: Hook + 'static, A: Authenticator + 'static>(
+    stream: tokio::net::UnixStream,
+    state: Gateway<H, A>,
+) {
+    let (reader, writer) = stream.into_split();
+    let (tx, rx) = mpsc::unbounded_channel::<ServerMessage>();
+
+    // Sender task: forward ServerMessages to the socket.
+    let send_task = tokio::spawn(sender_loop(writer, rx));
+
+    // Receiver loop: process incoming ClientMessages.
+    receiver_loop(reader, tx, state).await;
+
+    // Clean up — dropping tx already happened in receiver_loop on exit,
+    // which causes sender_loop to end.
+    let _ = send_task.await;
+}
+
+/// Reads messages from the mpsc channel and writes them to the socket.
+async fn sender_loop(mut writer: OwnedWriteHalf, mut rx: mpsc::UnboundedReceiver<ServerMessage>) {
+    while let Some(msg) = rx.recv().await {
+        if let Err(e) = codec::write_message(&mut writer, &msg).await {
+            tracing::error!("failed to write message: {e}");
+            break;
+        }
+    }
+}
+
+/// Reads client messages from the socket and dispatches them.
+async fn receiver_loop<H: Hook + 'static, A: Authenticator + 'static>(
+    mut reader: OwnedReadHalf,
+    tx: mpsc::UnboundedSender<ServerMessage>,
+    state: Gateway<H, A>,
+) {
     let mut auth_context: Option<AuthContext> = None;
     let mut session_histories: BTreeMap<CompactString, Vec<Message>> = BTreeMap::new();
 
-    // Receiver loop: process incoming ClientMessages.
-    while let Some(Ok(ws_msg)) = receiver.next().await {
-        let text = match ws_msg {
-            WsMessage::Text(t) => t,
-            WsMessage::Close(_) => break,
-            _ => continue,
-        };
-
-        let client_msg: ClientMessage = match serde_json::from_str(&text) {
-            Ok(m) => m,
+    loop {
+        let client_msg: ClientMessage = match codec::read_message(&mut reader).await {
+            Ok(msg) => msg,
+            Err(FrameError::ConnectionClosed) => break,
             Err(e) => {
-                let _ = tx.send(ServerMessage::Error {
-                    code: 400,
-                    message: format!("invalid message: {e}"),
-                });
-                continue;
+                tracing::debug!("read error: {e}");
+                break;
             }
         };
 
@@ -138,8 +147,6 @@ async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
                     continue;
                 }
 
-                // For now, use non-streaming send and wrap in stream messages.
-                // Full streaming (using provider.stream()) is a follow-up.
                 let _ = tx.send(ServerMessage::StreamStart {
                     agent: agent.clone(),
                 });
@@ -173,8 +180,4 @@ async fn handle_socket<H: Hook + 'static, A: Authenticator + 'static>(
             }
         }
     }
-
-    // Clean up.
-    drop(tx);
-    let _ = send_task.await;
 }

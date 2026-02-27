@@ -1,4 +1,4 @@
-//! Gateway mode — connect to a running walrus-gateway via WebSocket.
+//! Gateway mode — connect to a running walrus-gateway via Unix domain socket.
 
 use crate::runner::Runner;
 use anyhow::{Result, bail};
@@ -6,17 +6,18 @@ use client::{ClientConfig, Connection, WalrusClient};
 use compact_str::CompactString;
 use futures_core::Stream;
 use protocol::{ClientMessage, ServerMessage};
+use std::path::Path;
 
-/// Runs agents via a remote walrus-gateway WebSocket connection.
+/// Runs agents via a remote walrus-gateway Unix domain socket connection.
 pub struct GatewayRunner {
     connection: Connection,
 }
 
 impl GatewayRunner {
     /// Connect to a gateway and optionally authenticate.
-    pub async fn connect(url: &str, auth_token: Option<&str>) -> Result<Self> {
+    pub async fn connect(socket_path: &Path, auth_token: Option<&str>) -> Result<Self> {
         let config = ClientConfig {
-            gateway_url: CompactString::from(url),
+            socket_path: socket_path.to_path_buf(),
             auth_token: auth_token.map(CompactString::from),
         };
         let client = WalrusClient::new(config);

@@ -5,7 +5,7 @@
 use anyhow::Result;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
-use walrus_gateway::{GatewayConfig, config};
+use walrus_gateway::config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -14,8 +14,7 @@ async fn main() -> Result<()> {
         .init();
 
     let config_dir = config::global_config_dir();
-    let bind = GatewayConfig::load(&config_dir.join("gateway.toml"))?.bind_address();
-    let handle = walrus_gateway::serve(&config_dir, &bind).await?;
+    let handle = walrus_gateway::serve(&config_dir, None).await?;
 
     signal::ctrl_c().await?;
     tracing::info!("received ctrl-c, shutting down");

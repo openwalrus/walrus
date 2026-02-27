@@ -30,12 +30,10 @@ smallvec = { workspace = true }
 uuid = { workspace = true }
 cron = { workspace = true }
 chrono = { workspace = true }
-axum = { workspace = true }
 rmcp = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
 async-stream = { workspace = true }
-bytes = { workspace = true }
 dirs = { workspace = true }
 
 [dev-dependencies]

@@ -3,6 +3,8 @@
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+pub mod codec;
+
 /// Current protocol version.
 pub const PROTOCOL_VERSION: &str = "0.1";
 
