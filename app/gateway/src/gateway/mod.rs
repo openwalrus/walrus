@@ -1,7 +1,6 @@
 //! Protocol impls for the gateway.
 
-use crate::MemoryBackend;
-use deepseek::DeepSeek;
+use crate::{MemoryBackend, provider::Provider};
 use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
 use std::sync::Arc;
 
@@ -27,7 +26,7 @@ impl<H: Hook + 'static> Clone for Gateway<H> {
 pub struct GatewayHook;
 
 impl Hook for GatewayHook {
-    type Provider = DeepSeek;
+    type Provider = Provider;
     type Memory = MemoryBackend;
 
     fn compact() -> &'static str {

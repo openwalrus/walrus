@@ -55,19 +55,49 @@ pub struct ServerConfig {
 /// LLM provider configuration.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LlmConfig {
+    /// Which LLM provider to use.
+    #[serde(default)]
+    pub provider: ProviderKind,
     /// Model identifier.
     pub model: CompactString,
     /// API key (supports `${ENV_VAR}` expansion).
+    #[serde(default)]
     pub api_key: String,
+    /// Optional base URL override for the provider endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
 }
 
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
+            provider: ProviderKind::DeepSeek,
             model: "deepseek-chat".into(),
             api_key: "${DEEPSEEK_API_KEY}".to_owned(),
+            base_url: None,
         }
     }
+}
+
+/// Supported LLM provider kinds.
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderKind {
+    /// DeepSeek API (default).
+    #[default]
+    DeepSeek,
+    /// OpenAI API.
+    OpenAI,
+    /// Grok (xAI) API — OpenAI-compatible.
+    Grok,
+    /// Qwen (Alibaba DashScope) API — OpenAI-compatible.
+    Qwen,
+    /// Kimi (Moonshot) API — OpenAI-compatible.
+    Kimi,
+    /// Ollama local API — OpenAI-compatible, no key required.
+    Ollama,
+    /// Claude (Anthropic) Messages API.
+    Claude,
 }
 
 /// Memory backend configuration.

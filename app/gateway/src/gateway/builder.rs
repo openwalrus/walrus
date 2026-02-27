@@ -1,11 +1,14 @@
 //! Runtime builder — constructs a fully-configured Runtime from GatewayConfig.
 
 use crate::MemoryBackend;
-use crate::config::{self, MemoryBackendKind};
+use crate::config::{self, MemoryBackendKind, ProviderKind};
 use crate::gateway::GatewayHook;
+use crate::provider::Provider;
 use anyhow::Result;
+use claude::Claude;
 use deepseek::DeepSeek;
 use llm::LLM;
+use openai::OpenAI;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
 use std::path::Path;
 
@@ -35,8 +38,43 @@ pub async fn build_runtime(
     };
 
     // Construct provider.
-    let provider = DeepSeek::new(llm::Client::new(), &config.llm.api_key)?;
-    tracing::info!("provider initialized for model {}", config.llm.model);
+    let client = llm::Client::new();
+    let key = &config.llm.api_key;
+    let provider = match config.llm.provider {
+        ProviderKind::DeepSeek => match &config.llm.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::DeepSeek(DeepSeek::new(client, key)?),
+        },
+        ProviderKind::OpenAI => match &config.llm.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::api(client, key)?),
+        },
+        ProviderKind::Grok => match &config.llm.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::grok(client, key)?),
+        },
+        ProviderKind::Qwen => match &config.llm.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::qwen(client, key)?),
+        },
+        ProviderKind::Kimi => match &config.llm.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::kimi(client, key)?),
+        },
+        ProviderKind::Ollama => match &config.llm.base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
+            None => Provider::OpenAI(OpenAI::ollama(client)?),
+        },
+        ProviderKind::Claude => match &config.llm.base_url {
+            Some(url) => Provider::Claude(Claude::custom(client, key, url)?),
+            None => Provider::Claude(Claude::anthropic(client, key)?),
+        },
+    };
+    tracing::info!(
+        "provider {:?} initialized for model {}",
+        config.llm.provider,
+        config.llm.model
+    );
 
     // Build general config.
     let general = General {
