@@ -2153,21 +2153,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "walrus-deepseek"
-version = "0.0.9"
-dependencies = [
- "anyhow",
- "async-stream",
- "futures-core",
- "futures-util",
- "serde",
- "serde_json",
- "tracing",
- "walrus-llm",
-]
-
-[[package]]
-name = "walrus-gateway"
+name = "walrus-daemon"
 version = "0.0.9"
 dependencies = [
  "anyhow",
@@ -2196,6 +2182,20 @@ dependencies = [
  "walrus-protocol",
  "walrus-runtime",
  "walrus-sqlite",
+]
+
+[[package]]
+name = "walrus-deepseek"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tracing",
+ "walrus-llm",
 ]
 
 [[package]]

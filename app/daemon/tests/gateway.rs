@@ -1,6 +1,6 @@
 //! Gateway integration tests.
 
-use walrus_gateway::GatewayConfig;
+use walrus_daemon::GatewayConfig;
 
 /// Verify that GatewayConfig default socket path resolves correctly.
 #[test]

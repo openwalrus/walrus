@@ -1,6 +1,6 @@
 //! Cron scheduler tests.
 
-use walrus_gateway::{CronJob, CronScheduler};
+use walrus_daemon::{CronJob, CronScheduler};
 
 #[test]
 fn parse_valid_cron_expression() {

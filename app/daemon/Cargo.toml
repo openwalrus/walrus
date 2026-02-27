@@ -1,5 +1,5 @@
 [package]
-name = "walrus-gateway"
+name = "walrus-daemon"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

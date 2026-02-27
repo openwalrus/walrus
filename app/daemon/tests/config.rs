@@ -1,6 +1,6 @@
 //! Gateway configuration tests.
 
-use walrus_gateway::{
+use walrus_daemon::{
     GatewayConfig,
     config::{MemoryBackendKind, ProviderKind},
 };
@@ -157,7 +157,7 @@ KEY = "value"
 
 #[test]
 fn global_config_dir_is_under_platform_config() {
-    let dir = walrus_gateway::config::global_config_dir();
+    let dir = walrus_daemon::config::global_config_dir();
     // Should end with "walrus"
     assert_eq!(dir.file_name().unwrap(), "walrus");
 }

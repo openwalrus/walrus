@@ -1,6 +1,6 @@
 //! Tests for the MemoryBackend enum dispatch and configuration integration.
 
-use walrus_gateway::MemoryBackend;
+use walrus_daemon::MemoryBackend;
 
 #[test]
 fn in_memory_backend_set_and_get() {
@@ -95,7 +95,7 @@ async fn in_memory_backend_compile_relevant() {
 
 #[test]
 fn memory_backend_from_config_inmemory() {
-    use walrus_gateway::config::{MemoryBackendKind, MemoryConfig};
+    use walrus_daemon::config::{MemoryBackendKind, MemoryConfig};
     let config = MemoryConfig {
         backend: MemoryBackendKind::InMemory,
     };
@@ -106,7 +106,7 @@ fn memory_backend_from_config_inmemory() {
 
 #[test]
 fn memory_backend_from_config_sqlite() {
-    use walrus_gateway::config::{MemoryBackendKind, MemoryConfig};
+    use walrus_daemon::config::{MemoryBackendKind, MemoryConfig};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("cfg.db");
     let config = MemoryConfig {
@@ -121,7 +121,7 @@ fn memory_backend_from_config_sqlite() {
 
 #[test]
 fn default_bind_address() {
-    let config = walrus_gateway::GatewayConfig::from_toml(
+    let config = walrus_daemon::GatewayConfig::from_toml(
         r#"
 [server]
 [llm]
