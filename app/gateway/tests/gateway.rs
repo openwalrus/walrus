@@ -2,9 +2,13 @@
 
 use walrus_gateway::GatewayConfig;
 
-/// Verify that GatewayConfig default bind address is correct.
+/// Verify that GatewayConfig default socket path resolves correctly.
 #[test]
-fn default_bind_address() {
+fn default_socket_path() {
     let config = GatewayConfig::default();
-    assert_eq!(config.bind_address(), "127.0.0.1:6688");
+    let path = config.socket_path(std::path::Path::new("/home/user/.config/walrus"));
+    assert_eq!(
+        path,
+        std::path::PathBuf::from("/home/user/.config/walrus/walrus.sock")
+    );
 }

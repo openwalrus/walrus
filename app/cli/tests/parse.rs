@@ -19,12 +19,6 @@ fn cli_parse_send() {
 }
 
 #[test]
-fn cli_parse_model_flag() {
-    let cli = Cli::parse_from(["walrus", "--model", "gpt-4", "chat"]);
-    assert_eq!(cli.model.as_deref(), Some("gpt-4"));
-}
-
-#[test]
 fn cli_parse_agent_flag() {
     let cli = Cli::parse_from(["walrus", "--agent", "helper", "send", "hi"]);
     assert_eq!(cli.agent.as_deref(), Some("helper"));
@@ -43,51 +37,10 @@ fn cli_parse_config_set() {
 }
 
 #[test]
-fn cli_parse_serve_default() {
-    let cli = Cli::parse_from(["walrus", "serve"]);
-    match cli.command {
-        Command::Serve(cmd) => assert!(cmd.url.is_none()),
-        _ => panic!("expected Serve command"),
-    }
-}
-
-#[test]
-fn cli_parse_serve_custom_url() {
-    let cli = Cli::parse_from(["walrus", "serve", "--url", "0.0.0.0:9999"]);
-    match cli.command {
-        Command::Serve(cmd) => {
-            assert_eq!(cmd.url.unwrap(), "0.0.0.0:9999".parse().unwrap());
-        }
-        _ => panic!("expected Serve command"),
-    }
-}
-
-#[test]
-fn cli_parse_attach_default_url() {
-    let cli = Cli::parse_from(["walrus", "attach"]);
-    match cli.command {
-        Command::Attach(cmd) => {
-            assert_eq!(cmd.url, "ws://127.0.0.1:6688/ws");
-            assert!(cmd.auth_token.is_none());
-        }
-        _ => panic!("expected Attach command"),
-    }
-}
-
-#[test]
-fn cli_parse_attach_custom_url() {
-    let cli = Cli::parse_from(["walrus", "attach", "--url", "ws://remote:9999/ws"]);
-    match cli.command {
-        Command::Attach(cmd) => assert_eq!(cmd.url, "ws://remote:9999/ws"),
-        _ => panic!("expected Attach command"),
-    }
-}
-
-#[test]
-fn cli_parse_attach_auth_token() {
-    let cli = Cli::parse_from(["walrus", "attach", "--auth-token", "my-secret"]);
-    match cli.command {
-        Command::Attach(cmd) => assert_eq!(cmd.auth_token.as_deref(), Some("my-secret")),
-        _ => panic!("expected Attach command"),
-    }
+fn cli_parse_socket_flag() {
+    let cli = Cli::parse_from(["walrus", "--socket", "/tmp/walrus.sock", "chat"]);
+    assert_eq!(
+        cli.socket.unwrap(),
+        std::path::PathBuf::from("/tmp/walrus.sock")
+    );
 }

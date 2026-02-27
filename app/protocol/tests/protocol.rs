@@ -8,16 +8,6 @@ fn protocol_version() {
 }
 
 #[test]
-fn client_authenticate_roundtrip() {
-    let msg = ClientMessage::Authenticate {
-        token: "secret".into(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ClientMessage = serde_json::from_str(&json).unwrap();
-    assert!(matches!(back, ClientMessage::Authenticate { token } if token == "secret"));
-}
-
-#[test]
 fn client_send_roundtrip() {
     let msg = ClientMessage::Send {
         agent: "alpha".into(),
@@ -59,18 +49,6 @@ fn client_ping_roundtrip() {
     let json = serde_json::to_string(&msg).unwrap();
     let back: ClientMessage = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, ClientMessage::Ping));
-}
-
-#[test]
-fn server_authenticated_roundtrip() {
-    let msg = ServerMessage::Authenticated {
-        session_id: "sess-123".into(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerMessage = serde_json::from_str(&json).unwrap();
-    assert!(
-        matches!(back, ServerMessage::Authenticated { session_id } if session_id == "sess-123")
-    );
 }
 
 #[test]

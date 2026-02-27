@@ -8,7 +8,7 @@ repository.workspace = true
 keywords.workspace = true
 
 [[bin]]
-name = "walrus-gateway"
+name = "walrusd"
 path = "src/bin/main.rs"
 
 [dependencies]
@@ -27,15 +27,12 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 smallvec = { workspace = true }
-uuid = { workspace = true }
 cron = { workspace = true }
 chrono = { workspace = true }
-axum = { workspace = true }
 rmcp = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
 async-stream = { workspace = true }
-bytes = { workspace = true }
 dirs = { workspace = true }
 
 [dev-dependencies]

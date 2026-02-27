@@ -1,11 +1,12 @@
-//! Walrus gateway binary entry point.
+//! walrusd — the walrus daemon.
 //!
-//! Resolves the global config directory and delegates to `gateway::serve()`.
+//! Resolves the global config directory, scaffolds on first run, and serves
+//! the Unix domain socket.
 
 use anyhow::Result;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
-use walrus_gateway::{GatewayConfig, config};
+use walrus_gateway::config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -14,12 +15,17 @@ async fn main() -> Result<()> {
         .init();
 
     let config_dir = config::global_config_dir();
-    let bind = GatewayConfig::load(&config_dir.join("gateway.toml"))?.bind_address();
-    let handle = walrus_gateway::serve(&config_dir, &bind).await?;
+    if !config_dir.exists() {
+        config::scaffold_config_dir(&config_dir)?;
+        tracing::info!("created config directory at {}", config_dir.display());
+    }
+
+    let handle = walrus_gateway::serve(&config_dir, None).await?;
+    tracing::info!("walrusd listening on {}", handle.socket_path.display());
 
     signal::ctrl_c().await?;
     tracing::info!("received ctrl-c, shutting down");
     handle.shutdown().await?;
-    tracing::info!("gateway shut down");
+    tracing::info!("walrusd shut down");
     Ok(())
 }

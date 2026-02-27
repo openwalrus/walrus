@@ -3,6 +3,8 @@
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+pub mod codec;
+
 /// Current protocol version.
 pub const PROTOCOL_VERSION: &str = "0.1";
 
@@ -10,11 +12,6 @@ pub const PROTOCOL_VERSION: &str = "0.1";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
-    /// Authenticate with the gateway.
-    Authenticate {
-        /// Authentication token.
-        token: String,
-    },
     /// Send a message to an agent and receive a complete response.
     Send {
         /// Target agent identifier.
@@ -34,6 +31,20 @@ pub enum ClientMessage {
         /// Target agent identifier.
         agent: CompactString,
     },
+    /// List all registered agents.
+    ListAgents,
+    /// Get detailed info for a specific agent.
+    AgentInfo {
+        /// Agent name.
+        agent: CompactString,
+    },
+    /// List all memory entries.
+    ListMemory,
+    /// Get a specific memory entry by key.
+    GetMemory {
+        /// Memory key.
+        key: String,
+    },
     /// Ping the server (keepalive).
     Ping,
 }
@@ -42,11 +53,6 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
-    /// Authentication succeeded.
-    Authenticated {
-        /// Unique session identifier.
-        session_id: CompactString,
-    },
     /// Complete response from an agent.
     Response {
         /// Source agent identifier.
@@ -74,6 +80,36 @@ pub enum ServerMessage {
         /// Agent whose session was cleared.
         agent: CompactString,
     },
+    /// List of registered agents.
+    AgentList {
+        /// Agent summaries.
+        agents: Vec<AgentSummary>,
+    },
+    /// Detailed agent information.
+    AgentDetail {
+        /// Agent name.
+        name: CompactString,
+        /// Agent description.
+        description: CompactString,
+        /// Registered tool names.
+        tools: Vec<CompactString>,
+        /// Skill tags.
+        skill_tags: Vec<CompactString>,
+        /// System prompt.
+        system_prompt: String,
+    },
+    /// List of memory entries.
+    MemoryList {
+        /// Key-value pairs.
+        entries: Vec<(String, String)>,
+    },
+    /// A single memory entry.
+    MemoryEntry {
+        /// Memory key.
+        key: String,
+        /// Memory value (None if not found).
+        value: Option<String>,
+    },
     /// Error response.
     Error {
         /// Error code.
@@ -83,4 +119,13 @@ pub enum ServerMessage {
     },
     /// Pong response to client ping.
     Pong,
+}
+
+/// Summary of a registered agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSummary {
+    /// Agent name.
+    pub name: CompactString,
+    /// Agent description.
+    pub description: CompactString,
 }

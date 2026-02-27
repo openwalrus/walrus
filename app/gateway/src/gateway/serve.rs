@@ -1,18 +1,18 @@
-//! Shared gateway serve entrypoint — used by the binary, CLI, and FFI crate.
+//! Shared gateway serve entrypoint — used by the binary and CLI.
 
-use crate::{ApiKeyAuthenticator, GatewayConfig, SessionManager, gateway::Gateway};
+use crate::{GatewayConfig, gateway::Gateway};
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
 
-/// Handle returned by [`serve`] — holds the bound port and shutdown trigger.
+/// Handle returned by [`serve`] — holds the socket path and shutdown trigger.
 pub struct ServeHandle {
-    /// The port the gateway is listening on.
-    pub port: u16,
+    /// The Unix domain socket path the gateway is listening on.
+    pub socket_path: PathBuf,
     /// Send a value to trigger graceful shutdown.
     shutdown_tx: Option<oneshot::Sender<()>>,
     /// Join handle for the server task.
-    join: Option<tokio::task::JoinHandle<Result<(), std::io::Error>>>,
+    join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ServeHandle {
@@ -22,21 +22,23 @@ impl ServeHandle {
             let _ = tx.send(());
         }
         if let Some(join) = self.join.take() {
-            join.await??;
+            join.await?;
         }
+        // Clean up the socket file.
+        let _ = std::fs::remove_file(&self.socket_path);
         Ok(())
     }
 }
 
-/// Load config, build runtime, bind the axum server, and start serving.
+/// Load config, build runtime, bind the Unix domain socket, and start serving.
 ///
-/// Returns a [`ServeHandle`] with the bound port and a shutdown trigger.
-/// The server runs in a spawned task — call `handle.shutdown()` to stop it.
-pub async fn serve(config_dir: &Path, bind: &str) -> Result<ServeHandle> {
+/// `socket_path` overrides the config value when `Some`.
+/// Returns a [`ServeHandle`] with the socket path and a shutdown trigger.
+pub async fn serve(config_dir: &Path, socket_path: Option<&Path>) -> Result<ServeHandle> {
     let config_path = config_dir.join("gateway.toml");
     let config = GatewayConfig::load(&config_path)?;
     tracing::info!("loaded configuration from {}", config_path.display());
-    serve_with_config(&config, config_dir, bind).await
+    serve_with_config(&config, config_dir, socket_path).await
 }
 
 /// Serve with an already-loaded config. Useful when the caller resolves
@@ -44,37 +46,39 @@ pub async fn serve(config_dir: &Path, bind: &str) -> Result<ServeHandle> {
 pub async fn serve_with_config(
     config: &GatewayConfig,
     config_dir: &Path,
-    bind: &str,
+    socket_path: Option<&Path>,
 ) -> Result<ServeHandle> {
-    use crate::gateway::ws;
+    use crate::gateway::uds;
     use std::sync::Arc;
 
     let runtime = crate::build_runtime(config, config_dir).await?;
-    let authenticator = ApiKeyAuthenticator::from_config(&config.auth);
 
     let state = Gateway {
         runtime: Arc::new(runtime),
-        sessions: Arc::new(SessionManager::new()),
-        authenticator: Arc::new(authenticator),
     };
 
-    let app = ws::router(state);
-    let listener = tokio::net::TcpListener::bind(bind).await?;
-    let port = listener.local_addr()?.port();
-    tracing::info!("gateway listening on {bind} (port {port})");
+    let resolved_path = socket_path
+        .map(PathBuf::from)
+        .unwrap_or_else(|| config.socket_path(config_dir));
+
+    // Ensure the parent directory exists.
+    if let Some(parent) = resolved_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Remove stale socket file if present.
+    if resolved_path.exists() {
+        std::fs::remove_file(&resolved_path)?;
+    }
+
+    let listener = tokio::net::UnixListener::bind(&resolved_path)?;
+    tracing::info!("gateway listening on {}", resolved_path.display());
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let join = tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
-                tracing::info!("received shutdown signal");
-            })
-            .await
-    });
+    let join = tokio::spawn(uds::accept_loop(listener, state, shutdown_rx));
 
     Ok(ServeHandle {
-        port,
+        socket_path: resolved_path,
         shutdown_tx: Some(shutdown_tx),
         join: Some(join),
     })

@@ -1,32 +1,65 @@
-//! Gateway mode — connect to a running walrus-gateway via WebSocket.
+//! Gateway mode — connect to walrusd via Unix domain socket.
 
 use crate::runner::Runner;
 use anyhow::{Result, bail};
 use client::{ClientConfig, Connection, WalrusClient};
 use compact_str::CompactString;
 use futures_core::Stream;
-use protocol::{ClientMessage, ServerMessage};
+use protocol::{AgentSummary, ClientMessage, ServerMessage};
+use std::path::Path;
 
-/// Runs agents via a remote walrus-gateway WebSocket connection.
+/// Runs agents via a walrusd Unix domain socket connection.
 pub struct GatewayRunner {
     connection: Connection,
 }
 
 impl GatewayRunner {
-    /// Connect to a gateway and optionally authenticate.
-    pub async fn connect(url: &str, auth_token: Option<&str>) -> Result<Self> {
+    /// Connect to walrusd.
+    pub async fn connect(socket_path: &Path) -> Result<Self> {
         let config = ClientConfig {
-            gateway_url: CompactString::from(url),
-            auth_token: auth_token.map(CompactString::from),
+            socket_path: socket_path.to_path_buf(),
         };
         let client = WalrusClient::new(config);
-        let mut connection = client.connect().await?;
-
-        if let Some(token) = auth_token {
-            connection.authenticate(token).await?;
-        }
-
+        let connection = client.connect().await?;
         Ok(Self { connection })
+    }
+
+    /// List all registered agents.
+    pub async fn list_agents(&mut self) -> Result<Vec<AgentSummary>> {
+        match self.connection.send(ClientMessage::ListAgents).await? {
+            ServerMessage::AgentList { agents } => Ok(agents),
+            ServerMessage::Error { code, message } => bail!("error ({code}): {message}"),
+            other => bail!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Get detailed info for a specific agent.
+    pub async fn agent_info(&mut self, agent: &str) -> Result<ServerMessage> {
+        let msg = ClientMessage::AgentInfo {
+            agent: CompactString::from(agent),
+        };
+        self.connection.send(msg).await
+    }
+
+    /// List all memory entries.
+    pub async fn list_memory(&mut self) -> Result<Vec<(String, String)>> {
+        match self.connection.send(ClientMessage::ListMemory).await? {
+            ServerMessage::MemoryList { entries } => Ok(entries),
+            ServerMessage::Error { code, message } => bail!("error ({code}): {message}"),
+            other => bail!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Get a specific memory entry by key.
+    pub async fn get_memory(&mut self, key: &str) -> Result<Option<String>> {
+        let msg = ClientMessage::GetMemory {
+            key: key.to_string(),
+        };
+        match self.connection.send(msg).await? {
+            ServerMessage::MemoryEntry { value, .. } => Ok(value),
+            ServerMessage::Error { code, message } => bail!("error ({code}): {message}"),
+            other => bail!("unexpected response: {other:?}"),
+        }
     }
 }
 

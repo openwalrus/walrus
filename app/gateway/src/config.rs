@@ -1,7 +1,9 @@
 //! Gateway configuration loaded from TOML.
 
+use anyhow::{Context, Result};
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Config directory name under platform config dir.
 pub const CONFIG_DIR: &str = "walrus";
@@ -33,9 +35,6 @@ pub struct GatewayConfig {
     /// Memory backend configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
-    /// Authentication configuration.
-    #[serde(default)]
-    pub auth: AuthConfig,
     /// Channel configurations.
     #[serde(default)]
     pub channels: Vec<ChannelConfig>,
@@ -44,32 +43,13 @@ pub struct GatewayConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
 
-/// Server bind configuration.
-#[derive(Debug, Serialize, Deserialize)]
+/// Server configuration.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ServerConfig {
-    /// Host address to bind to.
-    #[serde(default = "default_host")]
-    pub host: String,
-    /// Port to listen on.
-    #[serde(default = "default_port")]
-    pub port: u16,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            host: "127.0.0.1".to_owned(),
-            port: 6688,
-        }
-    }
-}
-
-fn default_host() -> String {
-    "127.0.0.1".to_string()
-}
-
-fn default_port() -> u16 {
-    6688
+    /// Custom Unix domain socket path. When `None`, defaults to
+    /// `<config_dir>/walrus.sock`.
+    pub socket_path: Option<String>,
 }
 
 /// LLM provider configuration.
@@ -109,14 +89,6 @@ pub enum MemoryBackendKind {
     Sqlite,
 }
 
-/// Authentication configuration.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AuthConfig {
-    /// API keys that grant access.
-    pub api_keys: Vec<String>,
-}
-
 /// Channel configuration.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChannelConfig {
@@ -152,6 +124,17 @@ fn default_true() -> bool {
     true
 }
 
+/// Default agent markdown content for first-run scaffold.
+pub const DEFAULT_AGENT_MD: &str = r#"---
+name: assistant
+description: A helpful assistant
+tools:
+  - remember
+---
+
+You are a helpful assistant. Be concise.
+"#;
+
 impl GatewayConfig {
     /// Parse a TOML string into a `GatewayConfig`, expanding environment
     /// variables in supported fields.
@@ -167,8 +150,40 @@ impl GatewayConfig {
         Self::from_toml(&content)
     }
 
-    /// Get the bind address as "host:port".
-    pub fn bind_address(&self) -> String {
-        format!("{}:{}", self.server.host, self.server.port)
+    /// Resolve the socket path. Uses the explicit config value if set,
+    /// otherwise defaults to `<config_dir>/walrus.sock`.
+    pub fn socket_path(&self, config_dir: &std::path::Path) -> std::path::PathBuf {
+        self.server
+            .socket_path
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| config_dir.join("walrus.sock"))
     }
+}
+
+/// Scaffold the full config directory structure on first run.
+///
+/// Creates subdirectories (agents, skills, cron, data), writes a default
+/// gateway.toml and a default assistant agent markdown file.
+pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(config_dir.join(AGENTS_DIR))
+        .context("failed to create agents directory")?;
+    std::fs::create_dir_all(config_dir.join(SKILLS_DIR))
+        .context("failed to create skills directory")?;
+    std::fs::create_dir_all(config_dir.join(CRON_DIR))
+        .context("failed to create cron directory")?;
+    std::fs::create_dir_all(config_dir.join(DATA_DIR))
+        .context("failed to create data directory")?;
+
+    let gateway_toml = config_dir.join("gateway.toml");
+    let contents = toml::to_string_pretty(&GatewayConfig::default())
+        .context("failed to serialize default config")?;
+    std::fs::write(&gateway_toml, contents)
+        .with_context(|| format!("failed to write {}", gateway_toml.display()))?;
+
+    let agent_path = config_dir.join(AGENTS_DIR).join("assistant.md");
+    std::fs::write(&agent_path, DEFAULT_AGENT_MD)
+        .with_context(|| format!("failed to write {}", agent_path.display()))?;
+
+    Ok(())
 }
