@@ -1,148 +1,206 @@
-//! Provider configuration
+//! Provider configuration (DD#67).
 //!
-//! Unified config for both remote (API-key-based) and local (model-path-based)
-//! providers. Uses `#[serde(tag = "provider", flatten)]` so all fields appear
-//! at the same level in TOML (DD#66).
+//! Flat `ProviderConfig` with optional fields for both remote and local
+//! providers. Provider kind inferred from model name prefix via `kind()`.
+//! `Loader` selects which mistralrs builder to use for local models.
 
+use anyhow::{Result, bail};
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
-/// Named provider configuration. Combines identity (`name`) with the
-/// provider-specific backend settings via `BackendConfig`.
+/// Flat provider configuration. All fields except `model` are optional.
+/// Provider kind is inferred from the model name — no explicit `provider` tag.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProviderConfig {
-    /// Unique name for this provider entry. Defaults to `"default"`.
-    #[serde(default = "default_name")]
-    pub name: CompactString,
-    /// Model identifier. Passed to `General::model` when constructing requests.
+    /// Model identifier. Remote models use known prefixes (`deepseek-*`,
+    /// `gpt-*`, `claude-*`, etc.). Local models use HuggingFace repo IDs
+    /// containing `/` (e.g. `microsoft/Phi-3.5-mini-instruct`).
     pub model: CompactString,
-    /// Provider-specific settings, discriminated by the `provider` field.
-    #[serde(flatten)]
-    pub backend: BackendConfig,
-}
-
-impl ProviderConfig {
-    /// Human-readable provider kind string for logging and protocol messages.
-    pub fn kind(&self) -> &'static str {
-        match &self.backend {
-            BackendConfig::DeepSeek(_) => "deepseek",
-            BackendConfig::OpenAI(_) => "openai",
-            BackendConfig::Grok(_) => "grok",
-            BackendConfig::Qwen(_) => "qwen",
-            BackendConfig::Kimi(_) => "kimi",
-            BackendConfig::Ollama(_) => "ollama",
-            BackendConfig::Claude(_) => "claude",
-            #[cfg(feature = "local")]
-            BackendConfig::Local(_) => "local",
-        }
-    }
-}
-
-/// Provider-specific configuration, discriminated by the `provider` field
-/// in TOML/JSON.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "provider", rename_all = "snake_case")]
-pub enum BackendConfig {
-    /// DeepSeek API (default).
-    DeepSeek(RemoteConfig),
-    /// OpenAI API.
-    #[serde(rename = "openai")]
-    OpenAI(RemoteConfig),
-    /// Grok (xAI) API — OpenAI-compatible.
-    Grok(RemoteConfig),
-    /// Qwen (Alibaba DashScope) API — OpenAI-compatible.
-    Qwen(RemoteConfig),
-    /// Kimi (Moonshot) API — OpenAI-compatible.
-    Kimi(RemoteConfig),
-    /// Ollama local API — OpenAI-compatible, no key required.
-    Ollama(OllamaConfig),
-    /// Claude (Anthropic) Messages API.
-    Claude(RemoteConfig),
-    /// Local inference via mistralrs (DD#59).
-    #[cfg(feature = "local")]
-    Local(LocalConfig),
-}
-
-/// Configuration for remote HTTP API providers.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct RemoteConfig {
-    /// API key (supports `${ENV_VAR}` expansion at the daemon layer).
-    #[serde(default)]
-    pub api_key: String,
-    /// Optional base URL override for the provider endpoint.
+    /// API key for remote providers. Supports `${ENV_VAR}` expansion at the
+    /// daemon layer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Base URL override for remote providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
-}
-
-/// Configuration for Ollama (OpenAI-compatible, no key required).
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct OllamaConfig {
-    /// Optional base URL override. Defaults to `http://localhost:11434/v1/chat/completions`.
+    /// Mistralrs model builder to use for local models. Defaults to `Text`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-}
-
-/// Configuration for local inference via mistralrs.
-#[cfg(feature = "local")]
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct LocalConfig {
-    /// HuggingFace model ID for `TextModelBuilder` (e.g. `"microsoft/Phi-3.5-mini-instruct"`).
-    /// Mutually exclusive with `model_path`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<String>,
-    /// Local directory path for `GgufModelBuilder`.
-    /// Mutually exclusive with `model_id`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model_path: Option<String>,
-    /// GGUF filenames (required when `model_path` is set).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub model_files: Vec<String>,
-    /// In-situ quantization type. `None` means no ISQ.
+    pub loader: Option<Loader>,
+    /// In-situ quantization for local models.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantization: Option<QuantizationType>,
-    /// Optional chat template override (path or inline Jinja).
+    /// Chat template override for local models (path or inline Jinja).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_template: Option<String>,
 }
 
+impl ProviderConfig {
+    /// Detect the provider kind from the model name.
+    pub fn kind(&self) -> Result<ProviderKind> {
+        ProviderKind::from_model(&self.model)
+    }
+
+    /// Validate field combinations.
+    ///
+    /// Called on startup and on provider add/reload.
+    pub fn validate(&self) -> Result<()> {
+        if self.model.is_empty() {
+            bail!("model is required");
+        }
+
+        let kind = self.kind()?;
+
+        match kind {
+            ProviderKind::Local => {
+                if self.api_key.is_some() {
+                    bail!("local provider '{}' must not have api_key", self.model);
+                }
+            }
+            _ => {
+                // Remote providers: api_key is required unless base_url is set
+                // (e.g. Ollama which is keyless with a local base_url).
+                if self.api_key.is_none() && self.base_url.is_none() {
+                    bail!(
+                        "remote provider '{}' requires api_key or base_url",
+                        self.model
+                    );
+                }
+                if self.loader.is_some() {
+                    bail!(
+                        "remote provider '{}' must not have loader field",
+                        self.model
+                    );
+                }
+                if self.quantization.is_some() {
+                    bail!(
+                        "remote provider '{}' must not have quantization field",
+                        self.model
+                    );
+                }
+                if self.chat_template.is_some() {
+                    bail!(
+                        "remote provider '{}' must not have chat_template field",
+                        self.model
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Provider kind, inferred from the model name at runtime.
+///
+/// Not serialized — purely a dispatch enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKind {
+    DeepSeek,
+    OpenAI,
+    Claude,
+    Grok,
+    Qwen,
+    Kimi,
+    Local,
+}
+
+impl ProviderKind {
+    /// Detect provider kind from a model name string.
+    ///
+    /// Rules:
+    /// 1. If model contains `/` → Local (HuggingFace repo ID).
+    /// 2. Otherwise, match known remote prefixes.
+    /// 3. No match → error.
+    pub fn from_model(model: &str) -> Result<Self> {
+        if model.contains('/') {
+            return Ok(Self::Local);
+        }
+
+        let prefixes: &[(&[&str], ProviderKind)] = &[
+            (&["deepseek-"], ProviderKind::DeepSeek),
+            (&["gpt-", "o1-", "o3-", "o4-"], ProviderKind::OpenAI),
+            (&["claude-"], ProviderKind::Claude),
+            (&["grok-"], ProviderKind::Grok),
+            (&["qwen-", "qwq-"], ProviderKind::Qwen),
+            (&["kimi-", "moonshot-"], ProviderKind::Kimi),
+        ];
+
+        for (patterns, kind) in prefixes {
+            for prefix in *patterns {
+                if model.starts_with(prefix) {
+                    return Ok(*kind);
+                }
+            }
+        }
+
+        bail!("unknown model prefix: '{model}' — cannot detect provider kind")
+    }
+
+    /// Human-readable name for logging.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DeepSeek => "deepseek",
+            Self::OpenAI => "openai",
+            Self::Claude => "claude",
+            Self::Grok => "grok",
+            Self::Qwen => "qwen",
+            Self::Kimi => "kimi",
+            Self::Local => "local",
+        }
+    }
+}
+
+/// Selects which mistralrs model builder to use for local inference.
+///
+/// Defaults to `Text` when omitted in config.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Loader {
+    /// `TextModelBuilder` — standard text models.
+    #[default]
+    Text,
+    /// `LoraModelBuilder` — LoRA adapter models.
+    Lora,
+    /// `XLoraModelBuilder` — X-LoRA adapter models.
+    #[serde(rename = "xlora")]
+    XLora,
+    /// `GgufModelBuilder` — GGUF quantized models.
+    Gguf,
+    /// `GgufLoraModelBuilder` — GGUF + LoRA.
+    #[serde(rename = "gguf_lora")]
+    GgufLora,
+    /// `GgufXLoraModelBuilder` — GGUF + X-LoRA.
+    #[serde(rename = "gguf_xlora")]
+    GgufXLora,
+    /// `VisionModelBuilder` — vision-language models.
+    Vision,
+}
+
 /// Quantization types supported by mistralrs (maps to `IsqType`).
-#[cfg(feature = "local")]
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum QuantizationType {
-    /// GGML Q4_0.
     #[serde(rename = "q4_0")]
     Q4_0,
-    /// GGML Q4_1.
     #[serde(rename = "q4_1")]
     Q4_1,
-    /// GGML Q5_0.
     #[serde(rename = "q5_0")]
     Q5_0,
-    /// GGML Q5_1.
     #[serde(rename = "q5_1")]
     Q5_1,
-    /// GGML Q8_0.
     #[serde(rename = "q8_0")]
     Q8_0,
-    /// GGML Q8_1.
     #[serde(rename = "q8_1")]
     Q8_1,
-    /// GGML Q2K.
     #[serde(rename = "q2k")]
     Q2K,
-    /// GGML Q3K.
     #[serde(rename = "q3k")]
     Q3K,
-    /// GGML Q4K.
     #[serde(rename = "q4k")]
     Q4K,
-    /// GGML Q5K.
     #[serde(rename = "q5k")]
     Q5K,
-    /// GGML Q6K.
     #[serde(rename = "q6k")]
     Q6K,
-    /// GGML Q8K.
     #[serde(rename = "q8k")]
     Q8K,
 }
@@ -166,8 +224,4 @@ impl QuantizationType {
             Self::Q8K => mistralrs::IsqType::Q8K,
         }
     }
-}
-
-fn default_name() -> CompactString {
-    CompactString::const_new("default")
 }

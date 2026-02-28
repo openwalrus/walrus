@@ -1,7 +1,7 @@
 //! Protocol impls for the gateway.
 
 use crate::MemoryBackend;
-use provider::Provider;
+use provider::ProviderManager;
 use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ impl<H: Hook + 'static> Clone for Gateway<H> {
 pub struct GatewayHook;
 
 impl Hook for GatewayHook {
-    type Provider = Provider;
+    type Provider = ProviderManager;
     type Memory = MemoryBackend;
 
     fn compact() -> &'static str {

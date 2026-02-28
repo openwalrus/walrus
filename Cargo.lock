@@ -6508,6 +6508,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "compact_str 0.8.1",
+ "dirs",
  "futures-core",
  "mistralrs",
  "serde_json",

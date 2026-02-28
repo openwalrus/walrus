@@ -4,15 +4,14 @@
 //! `Provider` enum wraps concrete backends (DeepSeek, OpenAI, Claude, Local)
 //! behind a unified `LLM` impl. `ProviderManager` holds a named map of
 //! providers with concurrent-safe active-provider swapping (DD#60, DD#65).
-//! Config uses `BackendConfig` tagged enum to describe both remote and local
-//! providers in a single type (DD#66).
+//! Config uses flat `ProviderConfig` with model-prefix kind detection (DD#67).
 
 pub mod config;
 pub mod manager;
 mod provider;
 
 pub use {
-    config::{BackendConfig, ProviderConfig},
+    config::{ProviderConfig, ProviderKind},
     manager::ProviderManager,
     provider::{Provider, build_provider},
 };

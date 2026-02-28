@@ -1,9 +1,9 @@
-//! Provider implementation
+//! Provider implementation (DD#67).
 //!
 //! Unified `Provider` enum with enum dispatch over concrete backends.
-//! `build_provider()` is async to support local model loading (DD#66).
+//! `build_provider()` matches on `ProviderKind` detected from the model name.
 
-use crate::config::{BackendConfig, ProviderConfig, RemoteConfig};
+use crate::config::{ProviderConfig, ProviderKind};
 use anyhow::Result;
 use async_stream::try_stream;
 use claude::Claude;
@@ -15,8 +15,8 @@ use openai::OpenAI;
 
 /// Unified LLM provider enum.
 ///
-/// The gateway constructs the appropriate variant based on `BackendConfig`
-/// in config. The runtime is monomorphized on `Provider`.
+/// The gateway constructs the appropriate variant based on `ProviderKind`
+/// detected from the model name. The runtime is monomorphized on `Provider`.
 #[derive(Clone)]
 pub enum Provider {
     /// DeepSeek API.
@@ -35,79 +35,62 @@ pub enum Provider {
 /// This function is async because local providers need to load model weights
 /// asynchronously.
 pub async fn build_provider(config: &ProviderConfig, client: llm::Client) -> Result<Provider> {
-    let provider = match &config.backend {
-        BackendConfig::DeepSeek(rc) => build_remote_deepseek(rc, client)?,
-        BackendConfig::OpenAI(rc) => build_remote_openai(rc, client)?,
-        BackendConfig::Grok(rc) => build_remote_grok(rc, client)?,
-        BackendConfig::Qwen(rc) => build_remote_qwen(rc, client)?,
-        BackendConfig::Kimi(rc) => build_remote_kimi(rc, client)?,
-        BackendConfig::Ollama(oc) => match &oc.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, "", url)?),
-            None => Provider::OpenAI(OpenAI::ollama(client)?),
+    let kind = config.kind()?;
+    let api_key = config.api_key.as_deref().unwrap_or("");
+    let base_url = config.base_url.as_deref();
+
+    let provider = match kind {
+        ProviderKind::DeepSeek => match base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, api_key, url)?),
+            None => Provider::DeepSeek(DeepSeek::new(client, api_key)?),
         },
-        BackendConfig::Claude(rc) => match &rc.base_url {
-            Some(url) => Provider::Claude(Claude::custom(client, &rc.api_key, url)?),
-            None => Provider::Claude(Claude::anthropic(client, &rc.api_key)?),
+        ProviderKind::OpenAI => match base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, api_key, url)?),
+            None => Provider::OpenAI(OpenAI::api(client, api_key)?),
+        },
+        ProviderKind::Claude => match base_url {
+            Some(url) => Provider::Claude(Claude::custom(client, api_key, url)?),
+            None => Provider::Claude(Claude::anthropic(client, api_key)?),
+        },
+        ProviderKind::Grok => match base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, api_key, url)?),
+            None => Provider::OpenAI(OpenAI::grok(client, api_key)?),
+        },
+        ProviderKind::Qwen => match base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, api_key, url)?),
+            None => Provider::OpenAI(OpenAI::qwen(client, api_key)?),
+        },
+        ProviderKind::Kimi => match base_url {
+            Some(url) => Provider::OpenAI(OpenAI::custom(client, api_key, url)?),
+            None => Provider::OpenAI(OpenAI::kimi(client, api_key)?),
         },
         #[cfg(feature = "local")]
-        BackendConfig::Local(lc) => build_local(lc).await?,
+        ProviderKind::Local => {
+            use crate::config::Loader;
+            let loader = config.loader.unwrap_or_default();
+            let isq = config.quantization.map(|q| q.to_isq());
+            let chat_template = config.chat_template.as_deref();
+            let local = match loader {
+                Loader::Text => local::Local::from_text(&config.model, isq, chat_template).await?,
+                Loader::Gguf => local::Local::from_gguf(&config.model, chat_template).await?,
+                Loader::Vision => {
+                    local::Local::from_vision(&config.model, isq, chat_template).await?
+                }
+                Loader::Lora | Loader::XLora | Loader::GgufLora | Loader::GgufXLora => {
+                    anyhow::bail!(
+                        "loader {:?} requires adapter configuration (not yet supported)",
+                        loader
+                    );
+                }
+            };
+            Provider::Local(local)
+        }
+        #[cfg(not(feature = "local"))]
+        ProviderKind::Local => {
+            anyhow::bail!("local provider requires the 'local' feature");
+        }
     };
     Ok(provider)
-}
-
-fn build_remote_deepseek(rc: &RemoteConfig, client: llm::Client) -> Result<Provider> {
-    match &rc.base_url {
-        Some(url) => Ok(Provider::OpenAI(OpenAI::custom(client, &rc.api_key, url)?)),
-        None => Ok(Provider::DeepSeek(DeepSeek::new(client, &rc.api_key)?)),
-    }
-}
-
-fn build_remote_openai(rc: &RemoteConfig, client: llm::Client) -> Result<Provider> {
-    match &rc.base_url {
-        Some(url) => Ok(Provider::OpenAI(OpenAI::custom(client, &rc.api_key, url)?)),
-        None => Ok(Provider::OpenAI(OpenAI::api(client, &rc.api_key)?)),
-    }
-}
-
-fn build_remote_grok(rc: &RemoteConfig, client: llm::Client) -> Result<Provider> {
-    match &rc.base_url {
-        Some(url) => Ok(Provider::OpenAI(OpenAI::custom(client, &rc.api_key, url)?)),
-        None => Ok(Provider::OpenAI(OpenAI::grok(client, &rc.api_key)?)),
-    }
-}
-
-fn build_remote_qwen(rc: &RemoteConfig, client: llm::Client) -> Result<Provider> {
-    match &rc.base_url {
-        Some(url) => Ok(Provider::OpenAI(OpenAI::custom(client, &rc.api_key, url)?)),
-        None => Ok(Provider::OpenAI(OpenAI::qwen(client, &rc.api_key)?)),
-    }
-}
-
-fn build_remote_kimi(rc: &RemoteConfig, client: llm::Client) -> Result<Provider> {
-    match &rc.base_url {
-        Some(url) => Ok(Provider::OpenAI(OpenAI::custom(client, &rc.api_key, url)?)),
-        None => Ok(Provider::OpenAI(OpenAI::kimi(client, &rc.api_key)?)),
-    }
-}
-
-#[cfg(feature = "local")]
-async fn build_local(lc: &crate::config::LocalConfig) -> Result<Provider> {
-    use anyhow::bail;
-
-    let provider = if let Some(model_id) = &lc.model_id {
-        let isq = lc.quantization.map(|q| q.to_isq());
-        local::Local::from_hf(model_id, isq).await?
-    } else if let Some(model_path) = &lc.model_path {
-        local::Local::from_gguf(
-            model_path,
-            lc.model_files.clone(),
-            lc.chat_template.as_deref(),
-        )
-        .await?
-    } else {
-        bail!("local provider requires either model_id or model_path");
-    };
-    Ok(Provider::Local(provider))
 }
 
 impl LLM for Provider {

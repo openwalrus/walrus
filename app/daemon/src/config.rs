@@ -1,10 +1,10 @@
-//! Gateway configuration loaded from TOML.
+//! Gateway configuration loaded from TOML (DD#67).
 
 use anyhow::{Context, Result};
 use compact_str::CompactString;
-use provider::config::{BackendConfig, RemoteConfig};
 pub use provider::{ProviderConfig, ProviderManager};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Config directory name under platform config dir.
@@ -32,8 +32,8 @@ pub fn global_config_dir() -> std::path::PathBuf {
 pub struct GatewayConfig {
     /// Server bind configuration.
     pub server: ServerConfig,
-    /// LLM provider configuration.
-    pub llm: ProviderConfig,
+    /// Named LLM provider configurations (`[llm.name]` tables).
+    pub llm: BTreeMap<CompactString, ProviderConfig>,
     /// Memory backend configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
@@ -47,16 +47,21 @@ pub struct GatewayConfig {
 
 impl Default for GatewayConfig {
     fn default() -> Self {
+        let mut llm = BTreeMap::new();
+        llm.insert(
+            CompactString::const_new("default"),
+            ProviderConfig {
+                model: "deepseek-chat".into(),
+                api_key: Some("${DEEPSEEK_API_KEY}".to_owned()),
+                base_url: None,
+                loader: None,
+                quantization: None,
+                chat_template: None,
+            },
+        );
         Self {
             server: ServerConfig::default(),
-            llm: ProviderConfig {
-                name: "default".into(),
-                model: "deepseek-chat".into(),
-                backend: BackendConfig::DeepSeek(RemoteConfig {
-                    api_key: "${DEEPSEEK_API_KEY}".to_owned(),
-                    base_url: None,
-                }),
-            },
+            llm,
             memory: MemoryConfig::default(),
             channels: Vec::new(),
             mcp_servers: Vec::new(),

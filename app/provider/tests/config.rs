@@ -1,75 +1,259 @@
-//! Tests for `ProviderConfig`.
+//! Tests for `ProviderConfig` (DD#67).
 
-use walrus_provider::{ProviderConfig, config::BackendConfig};
+use walrus_provider::{ProviderConfig, ProviderKind};
+
+// --- kind detection ---
 
 #[test]
-fn test_provider_config_deepseek_from_json() {
-    let json = r#"{"provider": "deep_seek", "model": "deepseek-chat", "api_key": "key"}"#;
+fn kind_deepseek() {
+    let config = ProviderConfig {
+        model: "deepseek-chat".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::DeepSeek);
+}
+
+#[test]
+fn kind_openai() {
+    let config = ProviderConfig {
+        model: "gpt-4o".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::OpenAI);
+}
+
+#[test]
+fn kind_openai_o_series() {
+    for model in &["o1-preview", "o3-mini", "o4-mini"] {
+        let config = ProviderConfig {
+            model: (*model).into(),
+            api_key: Some("k".into()),
+            base_url: None,
+            loader: None,
+            quantization: None,
+            chat_template: None,
+        };
+        assert_eq!(
+            config.kind().unwrap(),
+            ProviderKind::OpenAI,
+            "model: {model}"
+        );
+    }
+}
+
+#[test]
+fn kind_claude() {
+    let config = ProviderConfig {
+        model: "claude-sonnet-4-20250514".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Claude);
+}
+
+#[test]
+fn kind_grok() {
+    let config = ProviderConfig {
+        model: "grok-3".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Grok);
+}
+
+#[test]
+fn kind_qwen() {
+    let config = ProviderConfig {
+        model: "qwen-plus".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Qwen);
+}
+
+#[test]
+fn kind_qwq() {
+    let config = ProviderConfig {
+        model: "qwq-32b".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Qwen);
+}
+
+#[test]
+fn kind_kimi() {
+    let config = ProviderConfig {
+        model: "kimi-latest".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Kimi);
+}
+
+#[test]
+fn kind_moonshot() {
+    let config = ProviderConfig {
+        model: "moonshot-v1-128k".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Kimi);
+}
+
+#[test]
+fn kind_local() {
+    let config = ProviderConfig {
+        model: "microsoft/Phi-3.5-mini-instruct".into(),
+        api_key: None,
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert_eq!(config.kind().unwrap(), ProviderKind::Local);
+}
+
+#[test]
+fn kind_unknown_prefix_errors() {
+    let config = ProviderConfig {
+        model: "foobar-model".into(),
+        api_key: Some("k".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert!(config.kind().is_err());
+}
+
+// --- validation ---
+
+#[test]
+fn validate_remote_ok() {
+    let config = ProviderConfig {
+        model: "deepseek-chat".into(),
+        api_key: Some("key".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    config.validate().unwrap();
+}
+
+#[test]
+fn validate_remote_with_base_url_no_key() {
+    let config = ProviderConfig {
+        model: "gpt-4o".into(),
+        api_key: None,
+        base_url: Some("http://localhost:8080/v1".into()),
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    config.validate().unwrap();
+}
+
+#[test]
+fn validate_remote_missing_key_and_url() {
+    let config = ProviderConfig {
+        model: "deepseek-chat".into(),
+        api_key: None,
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert!(config.validate().is_err());
+}
+
+#[test]
+fn validate_local_rejects_api_key() {
+    let config = ProviderConfig {
+        model: "microsoft/Phi-3.5-mini-instruct".into(),
+        api_key: Some("key".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    let err = config.validate().unwrap_err();
+    assert!(err.to_string().contains("must not have api_key"));
+}
+
+#[test]
+fn validate_remote_rejects_loader() {
+    use walrus_provider::config::Loader;
+    let config = ProviderConfig {
+        model: "deepseek-chat".into(),
+        api_key: Some("key".into()),
+        base_url: None,
+        loader: Some(Loader::Text),
+        quantization: None,
+        chat_template: None,
+    };
+    let err = config.validate().unwrap_err();
+    assert!(err.to_string().contains("must not have loader"));
+}
+
+#[test]
+fn validate_empty_model() {
+    let config = ProviderConfig {
+        model: "".into(),
+        api_key: None,
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    let err = config.validate().unwrap_err();
+    assert!(err.to_string().contains("model is required"));
+}
+
+// --- serde round-trip ---
+
+#[test]
+fn deserialize_flat_remote() {
+    let json = r#"{"model": "deepseek-chat", "api_key": "test-key"}"#;
     let config: ProviderConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.name.as_str(), "default");
     assert_eq!(config.model.as_str(), "deepseek-chat");
-    assert!(matches!(config.backend, BackendConfig::DeepSeek(_)));
+    assert_eq!(config.api_key.as_deref(), Some("test-key"));
+    assert!(config.loader.is_none());
 }
 
 #[test]
-fn test_provider_config_custom_name() {
+fn deserialize_flat_local_with_loader() {
     let json =
-        r#"{"name": "prod", "provider": "openai", "model": "gpt-4o", "api_key": "key"}"#;
+        r#"{"model": "microsoft/Phi-3.5-mini-instruct", "loader": "gguf", "quantization": "q4k"}"#;
     let config: ProviderConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.name.as_str(), "prod");
-    assert!(matches!(config.backend, BackendConfig::OpenAI(_)));
-}
-
-#[test]
-fn test_provider_config_claude() {
-    let json = r#"{"provider": "claude", "model": "claude-sonnet", "api_key": "k"}"#;
-    let config: ProviderConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.kind(), "claude");
-}
-
-#[test]
-fn test_provider_config_ollama() {
-    let json = r#"{"provider": "ollama", "model": "llama3"}"#;
-    let config: ProviderConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.kind(), "ollama");
-}
-
-#[cfg(feature = "local")]
-#[test]
-fn test_provider_config_local_hf() {
-    let json = r#"{
-        "provider": "local",
-        "model": "phi-3.5-mini",
-        "model_id": "microsoft/Phi-3.5-mini-instruct",
-        "quantization": "q4k"
-    }"#;
-    let config: ProviderConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.kind(), "local");
-    match &config.backend {
-        BackendConfig::Local(lc) => {
-            assert_eq!(lc.model_id.as_deref(), Some("microsoft/Phi-3.5-mini-instruct"));
-            assert!(lc.quantization.is_some());
-        }
-        _ => panic!("expected Local backend"),
-    }
-}
-
-#[cfg(feature = "local")]
-#[test]
-fn test_provider_config_local_gguf() {
-    let json = r#"{
-        "provider": "local",
-        "model": "mistral-7b",
-        "model_path": "/models/mistral/",
-        "model_files": ["mistral-7b.Q4_K_M.gguf"]
-    }"#;
-    let config: ProviderConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.kind(), "local");
-    match &config.backend {
-        BackendConfig::Local(lc) => {
-            assert_eq!(lc.model_path.as_deref(), Some("/models/mistral/"));
-            assert_eq!(lc.model_files.len(), 1);
-        }
-        _ => panic!("expected Local backend"),
-    }
+    assert_eq!(config.kind().unwrap(), ProviderKind::Local);
+    assert!(config.loader.is_some());
+    assert!(config.quantization.is_some());
 }

@@ -1,8 +1,11 @@
-//! Local LLM provider via mistralrs.
+//! Local LLM provider via mistralrs (DD#67).
 //!
-//! Wraps `mistralrs::Model` for native on-device inference (DD#59).
+//! Wraps `mistralrs::Model` for native on-device inference.
 //! No HTTP transport — inference runs in-process.
+//! Provides per-builder constructors: `from_text()`, `from_gguf()`,
+//! `from_vision()`. All use the walrus model cache directory.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 mod provider;
@@ -21,32 +24,68 @@ impl Local {
         }
     }
 
-    /// Build from a HuggingFace model ID using `TextModelBuilder`.
+    /// Build using `TextModelBuilder`.
     ///
-    /// Optionally applies in-situ quantization via `isq`.
-    pub async fn from_hf(
+    /// Standard text models from HuggingFace.
+    pub async fn from_text(
         model_id: &str,
         isq: Option<mistralrs::IsqType>,
+        chat_template: Option<&str>,
     ) -> anyhow::Result<Self> {
-        let mut builder = mistralrs::TextModelBuilder::new(model_id).with_logging();
+        let mut builder = mistralrs::TextModelBuilder::new(model_id)
+            .with_logging()
+            .from_hf_cache_pathf(cache_dir());
         if let Some(isq) = isq {
             builder = builder.with_isq(isq);
         }
-        let model = builder.build().await?;
-        Ok(Self::from_model(model))
-    }
-
-    /// Build from local GGUF files using `GgufModelBuilder`.
-    pub async fn from_gguf(
-        model_id: &str,
-        files: Vec<String>,
-        chat_template: Option<&str>,
-    ) -> anyhow::Result<Self> {
-        let mut builder = mistralrs::GgufModelBuilder::new(model_id, files).with_logging();
         if let Some(template) = chat_template {
             builder = builder.with_chat_template(template);
         }
         let model = builder.build().await?;
         Ok(Self::from_model(model))
     }
+
+    /// Build using `GgufModelBuilder`.
+    ///
+    /// GGUF quantized models from HuggingFace. The `model_id` is the HF repo
+    /// ID; mistralrs auto-discovers GGUF files in the repo.
+    pub async fn from_gguf(model_id: &str, chat_template: Option<&str>) -> anyhow::Result<Self> {
+        // Pass empty files vec — mistralrs will auto-detect GGUF files.
+        let mut builder =
+            mistralrs::GgufModelBuilder::new(model_id, Vec::<String>::new()).with_logging();
+        if let Some(template) = chat_template {
+            builder = builder.with_chat_template(template);
+        }
+        let model = builder.build().await?;
+        Ok(Self::from_model(model))
+    }
+
+    /// Build using `VisionModelBuilder`.
+    ///
+    /// Vision-language models from HuggingFace.
+    pub async fn from_vision(
+        model_id: &str,
+        isq: Option<mistralrs::IsqType>,
+        chat_template: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let mut builder = mistralrs::VisionModelBuilder::new(model_id)
+            .with_logging()
+            .from_hf_cache_pathf(cache_dir());
+        if let Some(isq) = isq {
+            builder = builder.with_isq(isq);
+        }
+        if let Some(template) = chat_template {
+            builder = builder.with_chat_template(template);
+        }
+        let model = builder.build().await?;
+        Ok(Self::from_model(model))
+    }
+}
+
+/// Walrus model cache directory: `~/.cache/walrus/models/`.
+fn cache_dir() -> PathBuf {
+    dirs::cache_dir()
+        .expect("no platform cache directory")
+        .join("walrus")
+        .join("models")
 }

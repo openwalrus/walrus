@@ -100,7 +100,6 @@ fn memory_backend_from_config_inmemory() {
         backend: MemoryBackendKind::InMemory,
     };
     assert_eq!(config.backend, MemoryBackendKind::InMemory);
-    // Constructing in-memory should always succeed.
     let _backend = MemoryBackend::in_memory();
 }
 
@@ -124,8 +123,7 @@ fn default_bind_address() {
     let config = walrus_daemon::GatewayConfig::from_toml(
         r#"
 [server]
-[llm]
-provider = "deep_seek"
+[llm.default]
 model = "deepseek-chat"
 api_key = "test-key"
 "#,

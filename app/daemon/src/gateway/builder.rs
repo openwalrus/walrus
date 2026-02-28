@@ -4,6 +4,7 @@ use crate::MemoryBackend;
 use crate::config::{self, MemoryBackendKind};
 use crate::gateway::GatewayHook;
 use anyhow::Result;
+use provider::ProviderManager;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
 use std::path::Path;
 
@@ -32,23 +33,22 @@ pub async fn build_runtime(
         }
     };
 
-    // Construct provider from config.
-    let client = llm::Client::new();
-    let provider = provider::build_provider(&config.llm, client).await?;
+    // Construct provider manager from named config map.
+    let manager = ProviderManager::from_configs(&config.llm).await?;
     tracing::info!(
-        "provider {} initialized for model {}",
-        config.llm.kind(),
-        config.llm.model
+        "provider manager initialized — active: {} (model: {})",
+        manager.active_name(),
+        manager.active_model()
     );
 
     // Build general config.
     let general = General {
-        model: config.llm.model.clone(),
+        model: manager.active_model(),
         ..General::default()
     };
 
     // Build runtime.
-    let mut runtime = Runtime::<GatewayHook>::new(general, provider, memory);
+    let mut runtime = Runtime::<GatewayHook>::new(general, manager, memory);
 
     // Load agents from markdown files.
     let agents = runtime::load_agents_dir(&config_dir.join(config::AGENTS_DIR))?;

@@ -1,62 +1,100 @@
-//! Tests for `ProviderManager`.
+//! Tests for `ProviderManager` (DD#67).
 
-use walrus_provider::{
-    ProviderConfig, ProviderManager,
-    config::{BackendConfig, RemoteConfig},
-};
+use compact_str::CompactString;
+use std::collections::BTreeMap;
+use walrus_provider::{ProviderConfig, ProviderManager};
 
-fn test_configs() -> Vec<ProviderConfig> {
-    vec![
+fn test_configs() -> BTreeMap<CompactString, ProviderConfig> {
+    let mut map = BTreeMap::new();
+    map.insert(
+        "primary".into(),
         ProviderConfig {
-            name: "primary".into(),
             model: "deepseek-chat".into(),
-            backend: BackendConfig::DeepSeek(RemoteConfig {
-                api_key: "key1".to_string(),
-                base_url: None,
-            }),
+            api_key: Some("key1".into()),
+            base_url: None,
+            loader: None,
+            quantization: None,
+            chat_template: None,
         },
+    );
+    map.insert(
+        "secondary".into(),
         ProviderConfig {
-            name: "secondary".into(),
             model: "gpt-4o".into(),
-            backend: BackendConfig::OpenAI(RemoteConfig {
-                api_key: "key2".to_string(),
-                base_url: None,
-            }),
+            api_key: Some("key2".into()),
+            base_url: None,
+            loader: None,
+            quantization: None,
+            chat_template: None,
         },
-    ]
+    );
+    map
 }
 
 #[tokio::test]
-async fn test_manager_add_and_switch() {
+async fn from_btreemap_first_key_active() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-
-    // First config is active by default.
+    // BTreeMap sorts alphabetically — "primary" < "secondary".
     assert_eq!(manager.active_name().as_str(), "primary");
+}
 
-    // Switch to secondary.
+#[tokio::test]
+async fn active_model_returns_model() {
+    let configs = test_configs();
+    let manager = ProviderManager::from_configs(&configs).await.unwrap();
+    assert_eq!(manager.active_model().as_str(), "deepseek-chat");
+}
+
+#[tokio::test]
+async fn switch_and_active_config() {
+    let configs = test_configs();
+    let manager = ProviderManager::from_configs(&configs).await.unwrap();
     manager.switch("secondary").unwrap();
     assert_eq!(manager.active_name().as_str(), "secondary");
-
-    // Add a third provider and switch to it.
-    let third = ProviderConfig {
-        name: "third".into(),
-        model: "claude-sonnet-4-6".into(),
-        backend: BackendConfig::Claude(RemoteConfig {
-            api_key: "key3".to_string(),
-            base_url: None,
-        }),
-    };
-    manager.add(&third).await.unwrap();
-    manager.switch("third").unwrap();
-    assert_eq!(manager.active_name().as_str(), "third");
+    assert_eq!(manager.active_model().as_str(), "gpt-4o");
+    let config = manager.active_config();
+    assert_eq!(config.model.as_str(), "gpt-4o");
 }
 
 #[tokio::test]
-async fn test_manager_remove_active_fails() {
+async fn add_and_switch() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
+    let third = ProviderConfig {
+        model: "claude-sonnet-4-6".into(),
+        api_key: Some("key3".into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    manager.add("third", &third).await.unwrap();
+    manager.switch("third").unwrap();
+    assert_eq!(manager.active_name().as_str(), "third");
+    assert_eq!(manager.active_model().as_str(), "claude-sonnet-4-6");
+}
 
+#[tokio::test]
+async fn add_validates_config() {
+    let configs = test_configs();
+    let manager = ProviderManager::from_configs(&configs).await.unwrap();
+    // Missing api_key and base_url for remote model — should fail validation.
+    let invalid = ProviderConfig {
+        model: "deepseek-chat".into(),
+        api_key: None,
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    assert!(manager.add("invalid", &invalid).await.is_err());
+}
+
+#[tokio::test]
+async fn remove_active_fails() {
+    let configs = test_configs();
+    let manager = ProviderManager::from_configs(&configs).await.unwrap();
     let result = manager.remove("primary");
     assert!(result.is_err());
     assert!(
@@ -68,10 +106,9 @@ async fn test_manager_remove_active_fails() {
 }
 
 #[tokio::test]
-async fn test_manager_remove_inactive() {
+async fn remove_inactive() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-
     manager.remove("secondary").unwrap();
     let entries = manager.list();
     assert_eq!(entries.len(), 1);
@@ -79,13 +116,11 @@ async fn test_manager_remove_inactive() {
 }
 
 #[tokio::test]
-async fn test_manager_list_shows_active() {
+async fn list_shows_active() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-
     let entries = manager.list();
     assert_eq!(entries.len(), 2);
-
     let primary = entries.iter().find(|e| e.name == "primary").unwrap();
     let secondary = entries.iter().find(|e| e.name == "secondary").unwrap();
     assert!(primary.active);
@@ -93,28 +128,27 @@ async fn test_manager_list_shows_active() {
 }
 
 #[tokio::test]
-async fn test_manager_switch_unknown_fails() {
+async fn switch_unknown_fails() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-
     let result = manager.switch("nonexistent");
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not found"));
 }
 
 #[tokio::test]
-async fn test_manager_remove_unknown_fails() {
+async fn remove_unknown_fails() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-
     let result = manager.remove("nonexistent");
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not found"));
 }
 
 #[tokio::test]
-async fn test_manager_empty_configs_fails() {
-    let result = ProviderManager::from_configs(&[]).await;
+async fn empty_configs_fails() {
+    let configs: BTreeMap<CompactString, ProviderConfig> = BTreeMap::new();
+    let result = ProviderManager::from_configs(&configs).await;
     assert!(result.is_err());
     assert!(
         result

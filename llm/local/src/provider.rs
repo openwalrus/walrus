@@ -58,17 +58,15 @@ fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBu
     for msg in messages {
         match msg.role {
             Role::System => {
-                builder =
-                    builder.add_message(mistralrs::TextMessageRole::System, &msg.content);
+                builder = builder.add_message(mistralrs::TextMessageRole::System, &msg.content);
             }
             Role::User => {
-                builder =
-                    builder.add_message(mistralrs::TextMessageRole::User, &msg.content);
+                builder = builder.add_message(mistralrs::TextMessageRole::User, &msg.content);
             }
             Role::Assistant => {
                 if msg.tool_calls.is_empty() {
-                    builder = builder
-                        .add_message(mistralrs::TextMessageRole::Assistant, &msg.content);
+                    builder =
+                        builder.add_message(mistralrs::TextMessageRole::Assistant, &msg.content);
                 } else {
                     let tool_calls = msg
                         .tool_calls
@@ -101,10 +99,8 @@ fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBu
             .iter()
             .map(|t| {
                 let params: HashMap<String, serde_json::Value> =
-                    serde_json::from_value(
-                        serde_json::to_value(&t.parameters).unwrap_or_default(),
-                    )
-                    .unwrap_or_default();
+                    serde_json::from_value(serde_json::to_value(&t.parameters).unwrap_or_default())
+                        .unwrap_or_default();
                 mistralrs::Tool {
                     tp: mistralrs::ToolType::Function,
                     function: mistralrs::Function {
@@ -122,16 +118,14 @@ fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBu
         let mr_choice = match tool_choice {
             llm::ToolChoice::None => mistralrs::ToolChoice::None,
             llm::ToolChoice::Auto | llm::ToolChoice::Required => mistralrs::ToolChoice::Auto,
-            llm::ToolChoice::Function(name) => {
-                mistralrs::ToolChoice::Tool(mistralrs::Tool {
-                    tp: mistralrs::ToolType::Function,
-                    function: mistralrs::Function {
-                        description: None,
-                        name: name.to_string(),
-                        parameters: None,
-                    },
-                })
-            }
+            llm::ToolChoice::Function(name) => mistralrs::ToolChoice::Tool(mistralrs::Tool {
+                tp: mistralrs::ToolType::Function,
+                function: mistralrs::Function {
+                    description: None,
+                    name: name.to_string(),
+                    parameters: None,
+                },
+            }),
         };
         builder = builder.set_tool_choice(mr_choice);
     }
@@ -189,7 +183,10 @@ fn to_stream_chunk(chunk: mistralrs::ChatCompletionChunkResponse) -> StreamChunk
                     .tool_calls
                     .map(|tcs| tcs.into_iter().map(convert_tool_call).collect()),
             },
-            finish_reason: c.finish_reason.as_ref().and_then(|r| parse_finish_reason(r)),
+            finish_reason: c
+                .finish_reason
+                .as_ref()
+                .and_then(|r| parse_finish_reason(r)),
             logprobs: None,
         })
         .collect();

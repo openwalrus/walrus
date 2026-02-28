@@ -1,9 +1,13 @@
 //! `ProviderManager` — concurrent-safe named provider map with active-provider
-//! swapping (DD#65).
+//! swapping (DD#65, DD#67).
 
 use crate::{Provider, ProviderConfig, build_provider};
 use anyhow::{Result, bail};
+use async_stream::try_stream;
 use compact_str::CompactString;
+use futures_core::Stream;
+use futures_util::StreamExt;
+use llm::{General, LLM, Message, Response, StreamChunk};
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
@@ -17,8 +21,8 @@ pub struct ProviderManager {
 }
 
 struct Inner {
-    /// Named provider instances.
-    providers: BTreeMap<CompactString, Provider>,
+    /// Named provider instances with their configs.
+    providers: BTreeMap<CompactString, (ProviderConfig, Provider)>,
     /// Name of the currently active provider.
     active: CompactString,
     /// Shared HTTP client for constructing new providers.
@@ -35,23 +39,30 @@ pub struct ProviderEntry {
 }
 
 impl ProviderManager {
-    /// Create a new manager from a list of provider configs.
+    /// Create a new manager from a named map of provider configs.
     ///
-    /// The first config in the list becomes the active provider. Returns an
-    /// error if the list is empty or any provider fails to build.
-    pub async fn from_configs(configs: &[ProviderConfig]) -> Result<Self> {
+    /// The first key (BTreeMap alphabetical order) becomes the active provider.
+    /// Returns an error if the map is empty, any config fails validation, or
+    /// any provider fails to build.
+    pub async fn from_configs(configs: &BTreeMap<CompactString, ProviderConfig>) -> Result<Self> {
         if configs.is_empty() {
             bail!("at least one provider config is required");
         }
 
         let client = llm::Client::new();
         let mut providers = BTreeMap::new();
-        let active = configs[0].name.clone();
 
-        for config in configs {
+        for (name, config) in configs {
+            config.validate()?;
             let provider = build_provider(config, client.clone()).await?;
-            providers.insert(config.name.clone(), provider);
+            providers.insert(name.clone(), (config.clone(), provider));
         }
+
+        let active = providers
+            .keys()
+            .next()
+            .expect("non-empty checked above")
+            .clone();
 
         Ok(Self {
             inner: Arc::new(RwLock::new(Inner {
@@ -63,9 +74,9 @@ impl ProviderManager {
     }
 
     /// Create a manager with a single provider.
-    pub fn single(name: CompactString, provider: Provider) -> Self {
+    pub fn single(name: CompactString, config: ProviderConfig, provider: Provider) -> Self {
         let mut providers = BTreeMap::new();
-        providers.insert(name.clone(), provider);
+        providers.insert(name.clone(), (config, provider));
         Self {
             inner: Arc::new(RwLock::new(Inner {
                 providers,
@@ -78,13 +89,25 @@ impl ProviderManager {
     /// Get a clone of the active provider.
     pub fn active(&self) -> Provider {
         let inner = self.inner.read().expect("provider lock poisoned");
-        inner.providers[&inner.active].clone()
+        inner.providers[&inner.active].1.clone()
     }
 
     /// Get the name of the active provider.
     pub fn active_name(&self) -> CompactString {
         let inner = self.inner.read().expect("provider lock poisoned");
         inner.active.clone()
+    }
+
+    /// Get the model identifier of the active provider.
+    pub fn active_model(&self) -> CompactString {
+        let inner = self.inner.read().expect("provider lock poisoned");
+        inner.providers[&inner.active].0.model.clone()
+    }
+
+    /// Get a clone of the active provider's config.
+    pub fn active_config(&self) -> ProviderConfig {
+        let inner = self.inner.read().expect("provider lock poisoned");
+        inner.providers[&inner.active].0.clone()
     }
 
     /// Switch to a different provider by name. Returns an error if the name
@@ -98,15 +121,19 @@ impl ProviderManager {
         Ok(())
     }
 
-    /// Add a new provider. Replaces any existing provider with the same name.
-    pub async fn add(&self, config: &ProviderConfig) -> Result<()> {
+    /// Add a new provider. Validates config first. Replaces any existing
+    /// provider with the same name.
+    pub async fn add(&self, name: &str, config: &ProviderConfig) -> Result<()> {
+        config.validate()?;
         let client = {
             let inner = self.inner.read().expect("provider lock poisoned");
             inner.client.clone()
         };
         let provider = build_provider(config, client).await?;
         let mut inner = self.inner.write().expect("provider lock poisoned");
-        inner.providers.insert(config.name.clone(), provider);
+        inner
+            .providers
+            .insert(CompactString::from(name), (config.clone(), provider));
         Ok(())
     }
 
@@ -133,6 +160,30 @@ impl ProviderManager {
                 active: *name == inner.active,
             })
             .collect()
+    }
+}
+
+impl LLM for ProviderManager {
+    type ChatConfig = General;
+
+    async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {
+        self.active().send(config, messages).await
+    }
+
+    fn stream(
+        &self,
+        config: General,
+        messages: &[Message],
+        usage: bool,
+    ) -> impl Stream<Item = Result<StreamChunk>> + Send {
+        let provider = self.active();
+        let messages = messages.to_vec();
+        try_stream! {
+            let mut stream = std::pin::pin!(provider.stream(config, &messages, usage));
+            while let Some(chunk) = stream.next().await {
+                yield chunk?;
+            }
+        }
     }
 }
 
