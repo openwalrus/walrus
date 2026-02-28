@@ -2,7 +2,7 @@
 
 use crate::gateway::Gateway;
 use compact_str::CompactString;
-use llm::Message;
+use wcore::model::Message;
 use protocol::codec::{self, FrameError};
 use protocol::{AgentSummary, ClientMessage, ServerMessage};
 use runtime::Hook;

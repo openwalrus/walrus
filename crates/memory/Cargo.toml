@@ -1,7 +1,7 @@
 [package]
-name = "walrus-core"
-description = "Walrus agent library"
-documentation = "https://docs.rs/walrus-core"
+name = "walrus-memory"
+description = "Memory backends for Walrus agents"
+documentation = "https://docs.rs/walrus-memory"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,16 +10,11 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
+wcore.workspace = true
 anyhow.workspace = true
-async-stream.workspace = true
 compact_str.workspace = true
-futures-core.workspace = true
-schemars.workspace = true
-serde.workspace = true
+rusqlite.workspace = true
 serde_json.workspace = true
-smallvec.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tokio.workspace = true

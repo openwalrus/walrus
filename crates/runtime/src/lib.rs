@@ -16,7 +16,7 @@
 //! ```
 
 pub use hook::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook};
-pub use llm::{Client, General, Message, Response, Role, StreamChunk, Tool};
+pub use wcore::model::{General, Message, Response, Role, StreamChunk, Tool};
 pub use loader::{CronEntry, load_agents_dir, load_cron_dir, parse_agent_md, parse_cron_md};
 pub use mcp::McpBridge;
 pub use skills::{SkillRegistry, parse_skill_md};
@@ -27,7 +27,7 @@ use anyhow::Result;
 use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use llm::{Config, FinishReason, LLM, ToolCall, ToolChoice, estimate_tokens};
+use wcore::model::{Config, FinishReason, LLM, ToolCall, ToolChoice, estimate_tokens};
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
 pub mod hook;

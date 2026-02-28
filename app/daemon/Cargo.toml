@@ -14,9 +14,8 @@ path = "src/bin/main.rs"
 [dependencies]
 runtime = { workspace = true }
 wcore = { workspace = true }
-provider = { workspace = true }
-sqlite = { workspace = true }
-llm = { workspace = true }
+model = { workspace = true }
+memory = { workspace = true }
 protocol = { workspace = true }
 compact_str = { workspace = true }
 serde = { workspace = true }

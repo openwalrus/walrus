@@ -1,7 +1,7 @@
 [package]
-name = "walrus-core"
-description = "Walrus agent library"
-documentation = "https://docs.rs/walrus-core"
+name = "walrus-model"
+description = "Walrus LLM provider implementations"
+documentation = "https://docs.rs/walrus-model"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,17 +9,24 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[features]
+default = ["local"]
+local = ["dep:mistralrs", "dep:dirs"]
+
 [dependencies]
+wcore.workspace = true
 anyhow.workspace = true
 async-stream.workspace = true
 compact_str.workspace = true
 futures-core.workspace = true
-schemars.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-smallvec.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+dirs = { workspace = true, optional = true }
+mistralrs = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
-tokio.workspace = true

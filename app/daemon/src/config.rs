@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use compact_str::CompactString;
-pub use provider::{ProviderConfig, ProviderManager};
+pub use model::{ProviderConfig, ProviderManager};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

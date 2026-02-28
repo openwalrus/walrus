@@ -20,7 +20,7 @@
 
 use crate::{Handler, Hook, MAX_TOOL_CALLS, SkillRegistry};
 use compact_str::CompactString;
-use llm::{Config, General, LLM, Message, Tool, ToolChoice};
+use wcore::model::{Config, General, LLM, Message, Tool, ToolChoice};
 use std::{collections::BTreeMap, sync::Arc};
 use wcore::{Agent, Memory};
 

@@ -4,7 +4,7 @@ use crate::MemoryBackend;
 use crate::config;
 use crate::gateway::GatewayHook;
 use anyhow::Result;
-use provider::ProviderManager;
+use model::ProviderManager;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
 use std::path::Path;
 
