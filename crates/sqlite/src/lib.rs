@@ -1,18 +1,18 @@
 //! SQLite-backed memory for Walrus agents.
 //!
-//! Provides [`SqliteMemory`], a persistent [`Memory`](agent::Memory) implementation
+//! Provides [`SqliteMemory`], a persistent [`Memory`](wcore::Memory) implementation
 //! using SQLite with FTS5 full-text search and optional hybrid vector recall.
 //!
 //! All SQL lives in `sql/*.sql` files, loaded via `include_str!`.
 
 pub use crate::utils::cosine_similarity;
 use crate::utils::{decode_embedding, mmr_rerank, now_unix};
-use agent::{Embedder, MemoryEntry, RecallOptions};
 use anyhow::Result;
 use compact_str::CompactString;
 use rusqlite::Connection;
 use serde_json::Value;
 use std::{collections::HashMap, path::Path, sync::Mutex};
+use wcore::{Embedder, MemoryEntry, RecallOptions};
 
 mod memory;
 mod sql;

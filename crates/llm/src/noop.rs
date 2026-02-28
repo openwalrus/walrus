@@ -4,7 +4,7 @@
 //! unit tests that exercise tool dispatch, memory, and session logic
 //! without making real LLM calls.
 
-use crate::{Client, General, LLM, Message, Response, StreamChunk};
+use crate::{General, LLM, Message, Response, StreamChunk};
 use anyhow::Result;
 use futures_core::Stream;
 
@@ -19,10 +19,6 @@ pub struct NoopProvider;
 
 impl LLM for NoopProvider {
     type ChatConfig = General;
-
-    fn new(_client: Client, _key: &str) -> Result<Self> {
-        Ok(Self)
-    }
 
     async fn send(&self, _config: &General, _messages: &[Message]) -> Result<Response> {
         panic!("NoopProvider::send called — not intended for real LLM calls");

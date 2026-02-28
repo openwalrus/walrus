@@ -9,6 +9,10 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[features]
+default = ["http"]
+http = ["dep:reqwest", "dep:futures-util"]
+
 [dependencies]
 anyhow.workspace = true
 async-stream.workspace = true
@@ -17,8 +21,8 @@ serde.workspace = true
 smallvec.workspace = true
 serde_json.workspace = true
 futures-core.workspace = true
-futures-util.workspace = true
-reqwest.workspace = true
+futures-util = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 schemars.workspace = true
 tracing.workspace = true
 

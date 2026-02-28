@@ -1,10 +1,10 @@
 //! Tests for SkillRegistry.
 
-use agent::{Skill, SkillTier};
 use compact_str::CompactString;
 use std::collections::BTreeMap;
 use walrus_runtime::parse_skill_md;
 use walrus_runtime::skills::SkillRegistry;
+use wcore::{Skill, SkillTier};
 
 #[test]
 fn parse_skill_frontmatter() {

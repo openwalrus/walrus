@@ -1,7 +1,7 @@
 //! Tests for SqliteMemory.
 
-use agent::{Embedder, Memory, MemoryEntry, RecallOptions};
 use walrus_sqlite::{SqliteMemory, cosine_similarity};
+use wcore::{Embedder, Memory, MemoryEntry, RecallOptions};
 
 /// Noop embedder for tests that don't need vector search.
 struct NoopEmbedder;

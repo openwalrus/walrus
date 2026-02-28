@@ -5,10 +5,10 @@
 //! fields and the markdown body becomes the system prompt (agents) or
 //! message template (cron).
 
-use agent::Agent;
 use compact_str::CompactString;
 use serde::Deserialize;
 use std::path::Path;
+use wcore::Agent;
 
 /// YAML frontmatter for agent markdown files.
 #[derive(Deserialize)]

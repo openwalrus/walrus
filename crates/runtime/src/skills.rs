@@ -4,11 +4,11 @@
 //! (agentskills.io format). The [`SkillRegistry`] loads them from a directory,
 //! builds tag/trigger indices, and returns ranked matches.
 
-use agent::{Skill, SkillTier};
 use compact_str::CompactString;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
+use wcore::{Skill, SkillTier};
 
 /// An indexed skill with its tier and priority (extracted from metadata).
 #[derive(Debug, Clone)]

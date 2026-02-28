@@ -15,13 +15,13 @@
 //! let response = runtime.send_to("assistant", Message::user("hello")).await?;
 //! ```
 
-pub use agent::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
 pub use hook::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook};
 pub use llm::{Client, General, Message, Response, Role, StreamChunk, Tool};
 pub use loader::{CronEntry, load_agents_dir, load_cron_dir, parse_agent_md, parse_cron_md};
 pub use mcp::McpBridge;
 pub use skills::{SkillRegistry, parse_skill_md};
 pub use team::{build_team, extract_input, worker_tool};
+pub use wcore::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
 
 use anyhow::Result;
 use compact_str::CompactString;
