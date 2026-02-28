@@ -4,17 +4,6 @@ use crate::model::{Tool, ToolChoice};
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
-/// LLM configuration
-pub trait Config: From<General> + Sized + Clone {
-    /// Create a new configuration with tools
-    fn with_tools(self, tools: Vec<Tool>) -> Self;
-
-    /// Create a new configuration with tool choice
-    ///
-    /// This should be used for per-message level.
-    fn with_tool_choice(self, tool_choice: ToolChoice) -> Self;
-}
-
 /// Chat configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct General {
@@ -53,6 +42,18 @@ impl General {
             context_limit: None,
         }
     }
+
+    /// Set the tools for the request.
+    pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Set the tool choice for the request.
+    pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
 }
 
 impl Default for General {
@@ -65,17 +66,5 @@ impl Default for General {
             usage: false,
             context_limit: None,
         }
-    }
-}
-
-impl Config for General {
-    fn with_tools(mut self, tools: Vec<Tool>) -> Self {
-        self.tools = Some(tools);
-        self
-    }
-
-    fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.tool_choice = Some(tool_choice);
-        self
     }
 }

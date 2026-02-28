@@ -27,7 +27,7 @@ impl<H: Hook + 'static> Clone for Gateway<H> {
 pub struct GatewayHook;
 
 impl Hook for GatewayHook {
-    type Provider = ProviderManager;
+    type Registry = ProviderManager;
     type Memory = MemoryBackend;
 
     fn compact() -> &'static str {

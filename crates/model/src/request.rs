@@ -6,7 +6,7 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use wcore::model::{Config, General, Message, Tool, ToolChoice};
+use wcore::model::{General, Message, Tool, ToolChoice};
 
 /// OpenAI-compatible chat completions request body.
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +78,39 @@ impl Request {
         };
         self
     }
+
+    /// Set the tools for the request.
+    pub fn with_tools(self, tools: Vec<Tool>) -> Self {
+        let tools = tools
+            .into_iter()
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "function": json!(tool),
+                })
+            })
+            .collect::<Vec<_>>();
+        Self {
+            tools: Some(json!(tools)),
+            ..self
+        }
+    }
+
+    /// Set the tool choice for the request.
+    pub fn with_tool_choice(self, tool_choice: ToolChoice) -> Self {
+        Self {
+            tool_choice: match tool_choice {
+                ToolChoice::None => Some(json!("none")),
+                ToolChoice::Auto => Some(json!("auto")),
+                ToolChoice::Required => Some(json!("required")),
+                ToolChoice::Function(name) => Some(json!({
+                    "type": "function",
+                    "function": { "name": name }
+                })),
+            },
+            ..self
+        }
+    }
 }
 
 impl From<General> for Request {
@@ -113,38 +146,5 @@ impl From<General> for Request {
         }
 
         req
-    }
-}
-
-impl Config for Request {
-    fn with_tools(self, tools: Vec<Tool>) -> Self {
-        let tools = tools
-            .into_iter()
-            .map(|tool| {
-                json!({
-                    "type": "function",
-                    "function": json!(tool),
-                })
-            })
-            .collect::<Vec<_>>();
-        Self {
-            tools: Some(json!(tools)),
-            ..self
-        }
-    }
-
-    fn with_tool_choice(self, tool_choice: ToolChoice) -> Self {
-        Self {
-            tool_choice: match tool_choice {
-                ToolChoice::None => Some(json!("none")),
-                ToolChoice::Auto => Some(json!("auto")),
-                ToolChoice::Required => Some(json!("required")),
-                ToolChoice::Function(name) => Some(json!({
-                    "type": "function",
-                    "function": { "name": name }
-                })),
-            },
-            ..self
-        }
     }
 }

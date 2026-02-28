@@ -30,6 +30,20 @@ pub enum Provider {
     Local(crate::local::Local),
 }
 
+impl Provider {
+    /// Query the context length for a given model ID.
+    ///
+    /// Local providers delegate to mistralrs; remote providers return None
+    /// (callers fall back to the static map in `wcore::model::default_context_limit`).
+    pub fn context_length(&self, model: &str) -> Option<usize> {
+        match self {
+            Self::DeepSeek(_) | Self::OpenAI(_) | Self::Claude(_) => None,
+            #[cfg(feature = "local")]
+            Self::Local(p) => p.context_length(model),
+        }
+    }
+}
+
 /// Construct a `Provider` from config and a shared HTTP client.
 ///
 /// This function is async because local providers need to load model weights

@@ -1,11 +1,12 @@
-//! No-op LLM provider for testing.
+//! No-op LLM provider and registry for testing.
 //!
-//! Implements [`LLM`] but panics on `send` and `stream`. Intended for
-//! unit tests that exercise tool dispatch, memory, and session logic
-//! without making real LLM calls.
+//! Implements [`LLM`] and [`Registry`] but panics on `send` and `stream`.
+//! Intended for unit tests that exercise tool dispatch, memory, and session
+//! logic without making real LLM calls.
 
-use crate::model::{General, LLM, Message, Response, StreamChunk};
+use crate::model::{General, LLM, Message, Registry, Response, StreamChunk};
 use anyhow::Result;
+use compact_str::CompactString;
 use futures_core::Stream;
 
 /// A no-op LLM provider that panics on any actual LLM call.
@@ -37,5 +38,38 @@ impl LLM for NoopProvider {
                 yield Ok(StreamChunk::separator());
             }
         }
+    }
+}
+
+impl Registry for NoopProvider {
+    async fn send(
+        &self,
+        _model: &str,
+        _config: &General,
+        _messages: &[Message],
+    ) -> Result<Response> {
+        panic!("NoopProvider::send called — not intended for real LLM calls");
+    }
+
+    fn stream(
+        &self,
+        _model: &str,
+        _config: General,
+        _messages: &[Message],
+        _usage: bool,
+    ) -> Result<impl Stream<Item = Result<StreamChunk>> + Send> {
+        panic!("NoopProvider::stream called — not intended for real LLM calls");
+        #[allow(unreachable_code)]
+        Ok(async_stream::stream! {
+            yield Ok(StreamChunk::separator());
+        })
+    }
+
+    fn context_limit(&self, _model: &str) -> usize {
+        64_000
+    }
+
+    fn active_model(&self) -> CompactString {
+        CompactString::from("noop")
     }
 }

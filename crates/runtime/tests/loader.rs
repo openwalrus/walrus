@@ -99,3 +99,31 @@ fn load_agents_dir_missing_returns_empty() {
     let agents = load_agents_dir(&missing).unwrap();
     assert!(agents.is_empty());
 }
+
+#[test]
+fn parse_agent_md_with_model() {
+    let md = r#"---
+name: analyst
+model: claude-3-sonnet
+tools:
+  - remember
+---
+
+You are a data analyst.
+"#;
+    let agent = parse_agent_md(md).unwrap();
+    assert_eq!(agent.name.as_str(), "analyst");
+    assert_eq!(agent.model.as_deref(), Some("claude-3-sonnet"));
+}
+
+#[test]
+fn parse_agent_md_without_model() {
+    let md = r#"---
+name: assistant
+---
+
+You are helpful.
+"#;
+    let agent = parse_agent_md(md).unwrap();
+    assert!(agent.model.is_none());
+}

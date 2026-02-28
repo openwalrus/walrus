@@ -1,8 +1,8 @@
 //! Team composition: register workers as tools in the runtime.
 //!
 //! Each worker agent is exposed as a tool on the leader. When the leader
-//! calls a worker tool, the handler runs a self-contained LLM send loop
-//! using captured state (provider, config, memory, agent config, tools,
+//! calls a worker tool, the handler runs a self-contained send loop
+//! using captured state (registry, config, memory, agent config, tools,
 //! handlers) — no reference back to the Runtime needed.
 //!
 //! # Example
@@ -21,20 +21,20 @@
 use crate::{Handler, Hook, MAX_TOOL_CALLS, SkillRegistry};
 use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
-use wcore::model::{Config, General, LLM, Message, Tool, ToolChoice};
+use wcore::model::{General, Message, Registry, Tool, ToolChoice};
 use wcore::{Agent, Memory};
 
 /// Build a team: register each worker as a tool and add to the leader.
 ///
 /// Each worker's handler captures everything it needs to independently run
-/// an LLM conversation: provider, config, memory, agent config, resolved
+/// a conversation: registry, config, memory, agent config, resolved
 /// tool schemas, and resolved tool handlers.
 pub fn build_team<H: Hook + 'static>(
     mut leader: Agent,
     workers: Vec<Agent>,
     runtime: &mut crate::Runtime<H>,
 ) -> Agent {
-    let provider = runtime.provider().clone();
+    let registry = runtime.registry().clone();
     let config = runtime.config().clone();
     let memory = runtime.memory_arc();
     let skills = runtime.skills().map(Arc::clone);
@@ -52,8 +52,15 @@ pub fn build_team<H: Hook + 'static>(
             (t, h)
         };
 
+        // Resolve model for this worker (DD#68).
+        let model = worker
+            .model
+            .clone()
+            .unwrap_or_else(|| registry.active_model());
+
         let ctx = Arc::new(WorkerCtx {
-            provider: provider.clone(),
+            registry: registry.clone(),
+            model,
             config: config.clone(),
             memory: Arc::clone(&memory),
             skills: skills.clone(),
@@ -80,9 +87,10 @@ pub fn build_team<H: Hook + 'static>(
 }
 
 /// Shared immutable state for a worker handler, wrapped in Arc
-/// to avoid cloning provider, Agent, `Vec<Tool>`, and BTreeMap per call.
-struct WorkerCtx<P: LLM, M: Memory> {
-    provider: P,
+/// to avoid cloning registry, Agent, `Vec<Tool>`, and BTreeMap per call.
+struct WorkerCtx<R: Registry, M: Memory> {
+    registry: R,
+    model: CompactString,
     config: General,
     memory: Arc<M>,
     skills: Option<Arc<SkillRegistry>>,
@@ -91,11 +99,11 @@ struct WorkerCtx<P: LLM, M: Memory> {
     handlers: BTreeMap<CompactString, Handler>,
 }
 
-/// Run a self-contained LLM send loop for a worker agent.
+/// Run a self-contained send loop for a worker agent.
 ///
 /// Builds the system prompt (base + memory context), sends the input as a
 /// user message, and loops through tool calls up to [`MAX_TOOL_CALLS`].
-async fn worker_send<P: LLM, M: Memory>(ctx: &WorkerCtx<P, M>, input: String) -> String {
+async fn worker_send<R: Registry, M: Memory>(ctx: &WorkerCtx<R, M>, input: String) -> String {
     let mut system_prompt = ctx.agent.system_prompt.clone();
     let memory_context = ctx.memory.compile_relevant(&input).await;
     if !memory_context.is_empty() {
@@ -117,11 +125,8 @@ async fn worker_send<P: LLM, M: Memory>(ctx: &WorkerCtx<P, M>, input: String) ->
     let base_cfg = ctx.config.clone().with_tools(ctx.tools.to_vec());
 
     for _ in 0..MAX_TOOL_CALLS {
-        let cfg: P::ChatConfig = base_cfg
-            .clone()
-            .with_tool_choice(tool_choice.clone())
-            .into();
-        let response = match ctx.provider.send(&cfg, &messages).await {
+        let cfg = base_cfg.clone().with_tool_choice(tool_choice.clone());
+        let response = match ctx.registry.send(&ctx.model, &cfg, &messages).await {
             Ok(r) => r,
             Err(e) => return format!("worker error: {e}"),
         };

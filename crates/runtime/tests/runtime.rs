@@ -72,15 +72,8 @@ async fn dispatch_unknown_tool() {
 #[test]
 fn context_limit_default() {
     let rt = Runtime::<()>::new(General::default(), NoopProvider, InMemory::new());
-    assert_eq!(rt.context_limit(), 64_000);
-}
-
-#[test]
-fn context_limit_override() {
-    let mut config = General::default();
-    config.context_limit = Some(128_000);
-    let rt = Runtime::<()>::new(config, NoopProvider, InMemory::new());
-    assert_eq!(rt.context_limit(), 128_000);
+    // NoopProvider's Registry impl always returns 64_000.
+    assert_eq!(rt.context_limit("any-model"), 64_000);
 }
 
 #[test]
