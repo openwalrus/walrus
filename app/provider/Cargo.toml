@@ -1,0 +1,25 @@
+[package]
+name = "walrus-provider"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+llm = { workspace = true }
+deepseek = { workspace = true }
+openai = { workspace = true }
+claude = { workspace = true }
+mistral = { workspace = true }
+compact_str = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+async-stream = { workspace = true }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,6 +1,7 @@
 //! Protocol impls for the gateway.
 
-use crate::{MemoryBackend, provider::Provider};
+use crate::MemoryBackend;
+use provider::Provider;
 use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
 use std::sync::Arc;
 

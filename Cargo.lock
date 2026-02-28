@@ -2157,13 +2157,10 @@ name = "walrus-daemon"
 version = "0.0.9"
 dependencies = [
  "anyhow",
- "async-stream",
  "chrono",
  "compact_str",
  "cron",
  "dirs",
- "futures-core",
- "futures-util",
  "rmcp",
  "serde",
  "serde_json",
@@ -2173,13 +2170,10 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "walrus-claude",
  "walrus-core",
- "walrus-deepseek",
  "walrus-llm",
- "walrus-mistral",
- "walrus-openai",
  "walrus-protocol",
+ "walrus-provider",
  "walrus-runtime",
  "walrus-sqlite",
 ]
@@ -2252,6 +2246,25 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "walrus-provider"
+version = "0.0.9"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "compact_str",
+ "futures-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "walrus-claude",
+ "walrus-deepseek",
+ "walrus-llm",
+ "walrus-mistral",
+ "walrus-openai",
 ]
 
 [[package]]

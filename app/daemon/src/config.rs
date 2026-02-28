@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use compact_str::CompactString;
+pub use provider::ProviderKind;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -77,29 +78,6 @@ impl Default for LlmConfig {
             base_url: None,
         }
     }
-}
-
-/// Supported LLM provider kinds.
-#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderKind {
-    /// DeepSeek API (default).
-    #[default]
-    DeepSeek,
-    /// OpenAI API.
-    OpenAI,
-    /// Grok (xAI) API — OpenAI-compatible.
-    Grok,
-    /// Qwen (Alibaba DashScope) API — OpenAI-compatible.
-    Qwen,
-    /// Kimi (Moonshot) API — OpenAI-compatible.
-    Kimi,
-    /// Ollama local API — OpenAI-compatible, no key required.
-    Ollama,
-    /// Claude (Anthropic) Messages API.
-    Claude,
-    /// Mistral chat completions API.
-    Mistral,
 }
 
 /// Memory backend configuration.

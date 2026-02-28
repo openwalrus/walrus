@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 use deepseek::DeepSeek;
-use llm::LLM;
 use walrus_runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Memory, prelude::*};
 
 /// Example hook wiring DeepSeek as the LLM provider.

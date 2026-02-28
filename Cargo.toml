@@ -21,6 +21,7 @@ runtime = { path = "crates/runtime", package = "walrus-runtime", version = "0.0.
 sqlite = { path = "crates/sqlite", package = "walrus-sqlite", version = "0.0.9" }
 telegram = { path = "crates/telegram", package = "walrus-telegram", version = "0.0.9" }
 protocol = { path = "app/protocol", package = "walrus-protocol", version = "0.0.9" }
+provider = { path = "app/provider", package = "walrus-provider", version = "0.0.9" }
 daemon = { path = "app/daemon", package = "walrus-daemon", version = "0.0.9" }
 client = { path = "app/client", package = "walrus-client", version = "0.0.9" }
 
