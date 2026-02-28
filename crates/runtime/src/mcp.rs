@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use compact_str::CompactString;
-use llm::Tool;
 use rmcp::{
     ServiceExt,
     model::{CallToolRequestParams, RawContent},
@@ -14,6 +13,7 @@ use rmcp::{
 };
 use std::collections::BTreeMap;
 use tokio::{process::Command, sync::Mutex};
+use wcore::model::Tool;
 
 /// A connected MCP server peer with its tool names.
 struct ConnectedPeer {
@@ -23,7 +23,7 @@ struct ConnectedPeer {
 
 /// Bridge to one or more MCP servers via the rmcp SDK.
 ///
-/// Converts MCP tool definitions to walrus-llm [`Tool`] schemas and
+/// Converts MCP tool definitions to walrus-core [`Tool`] schemas and
 /// dispatches tool calls through the protocol.
 pub struct McpBridge {
     peers: Mutex<Vec<ConnectedPeer>>,
@@ -121,7 +121,7 @@ impl McpBridge {
     }
 }
 
-/// Convert an rmcp Tool to a walrus-llm Tool.
+/// Convert an rmcp Tool to a walrus-core Tool.
 pub fn convert_tool(mcp_tool: &rmcp::model::Tool) -> Tool {
     let schema_value =
         serde_json::to_value(mcp_tool.input_schema.as_ref()).unwrap_or(serde_json::json!({}));

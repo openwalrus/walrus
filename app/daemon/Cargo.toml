@@ -14,12 +14,8 @@ path = "src/bin/main.rs"
 [dependencies]
 runtime = { workspace = true }
 wcore = { workspace = true }
-deepseek = { workspace = true }
-openai = { workspace = true }
-claude = { workspace = true }
-mistral = { workspace = true }
-sqlite = { workspace = true }
-llm = { workspace = true }
+model = { workspace = true }
+memory = { workspace = true }
 protocol = { workspace = true }
 compact_str = { workspace = true }
 serde = { workspace = true }
@@ -33,9 +29,6 @@ smallvec = { workspace = true }
 cron = { workspace = true }
 chrono = { workspace = true }
 rmcp = { workspace = true }
-futures-core = { workspace = true }
-futures-util = { workspace = true }
-async-stream = { workspace = true }
 dirs = { workspace = true }
 
 [dev-dependencies]

@@ -1,7 +1,7 @@
 //! Tests for team composition.
 
-use llm::{General, NoopProvider};
 use walrus_runtime::{Runtime, build_team, extract_input, worker_tool};
+use wcore::model::{General, NoopProvider};
 use wcore::{Agent, InMemory};
 
 #[test]
@@ -89,11 +89,11 @@ async fn worker_handler_parses_input() {
     let _leader = build_team(leader, vec![analyst], &mut rt);
 
     // Dispatch a tool call with invalid JSON to verify input parsing.
-    let calls = vec![llm::ToolCall {
+    let calls = vec![wcore::model::ToolCall {
         id: "call_1".into(),
         index: 0,
         call_type: "function".into(),
-        function: llm::FunctionCall {
+        function: wcore::model::FunctionCall {
             name: "analyst".into(),
             arguments: "not json".into(),
         },

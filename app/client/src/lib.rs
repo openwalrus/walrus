@@ -21,11 +21,11 @@ impl Default for ClientConfig {
     }
 }
 
-/// Default socket path: `~/.config/walrus/walrus.sock`.
+/// Default socket path: `~/.walrus/walrus.sock`.
 fn default_socket_path() -> PathBuf {
-    dirs::config_dir()
-        .expect("no platform config directory")
-        .join("walrus")
+    dirs::home_dir()
+        .expect("no home directory")
+        .join(".walrus")
         .join("walrus.sock")
 }
 

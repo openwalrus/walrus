@@ -58,9 +58,9 @@ pub enum AttachmentKind {
     Video,
 }
 
-impl From<ChannelMessage> for llm::Message {
+impl From<ChannelMessage> for crate::model::Message {
     fn from(msg: ChannelMessage) -> Self {
-        llm::Message::user(msg.content)
+        crate::model::Message::user(msg.content)
     }
 }
 

@@ -5,7 +5,7 @@ use walrus_client::{ClientConfig, WalrusClient};
 #[test]
 fn client_config_defaults() {
     let config = ClientConfig::default();
-    assert!(config.socket_path.ends_with("walrus/walrus.sock"));
+    assert!(config.socket_path.ends_with(".walrus/walrus.sock"));
 }
 
 #[test]

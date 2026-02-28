@@ -1,55 +1,12 @@
-//! Runtime builder — constructs a fully-configured Runtime from GatewayConfig.
+//! Runtime builder — constructs a fully-configured Runtime from DaemonConfig.
 
 use crate::MemoryBackend;
-use crate::config::{self, MemoryBackendKind, ProviderKind};
+use crate::config;
 use crate::gateway::GatewayHook;
-use crate::provider::Provider;
 use anyhow::Result;
-use claude::Claude;
-use deepseek::DeepSeek;
-use mistral::Mistral;
-use openai::OpenAI;
+use model::ProviderManager;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
 use std::path::Path;
-
-fn build_provider(config: &crate::config::LlmConfig, client: llm::Client) -> Result<Provider> {
-    let key = &config.api_key;
-    let provider = match config.provider {
-        ProviderKind::DeepSeek => match &config.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::DeepSeek(DeepSeek::new(client, key)?),
-        },
-        ProviderKind::OpenAI => match &config.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::api(client, key)?),
-        },
-        ProviderKind::Grok => match &config.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::grok(client, key)?),
-        },
-        ProviderKind::Qwen => match &config.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::qwen(client, key)?),
-        },
-        ProviderKind::Kimi => match &config.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::kimi(client, key)?),
-        },
-        ProviderKind::Ollama => match &config.base_url {
-            Some(url) => Provider::OpenAI(OpenAI::custom(client, key, url)?),
-            None => Provider::OpenAI(OpenAI::ollama(client)?),
-        },
-        ProviderKind::Claude => match &config.base_url {
-            Some(url) => Provider::Claude(Claude::custom(client, key, url)?),
-            None => Provider::Claude(Claude::anthropic(client, key)?),
-        },
-        ProviderKind::Mistral => match &config.base_url {
-            Some(url) => Provider::Mistral(Mistral::custom(client, key, url)?),
-            None => Provider::Mistral(Mistral::api(client, key)?),
-        },
-    };
-    Ok(provider)
-}
 
 /// Build a fully-configured `Runtime<GatewayHook>` from config and directory.
 ///
@@ -57,42 +14,28 @@ fn build_provider(config: &crate::config::LlmConfig, client: llm::Client) -> Res
 /// memory from `config_dir/data/memory.db` (when sqlite), and MCP servers
 /// from TOML config.
 pub async fn build_runtime(
-    config: &crate::GatewayConfig,
+    config: &crate::DaemonConfig,
     config_dir: &Path,
 ) -> Result<Runtime<GatewayHook>> {
-    // Construct memory backend.
-    let memory = match config.memory.backend {
-        MemoryBackendKind::InMemory => {
-            tracing::info!("using in-memory backend");
-            MemoryBackend::in_memory()
-        }
-        MemoryBackendKind::Sqlite => {
-            let data_dir = config_dir.join(config::DATA_DIR);
-            std::fs::create_dir_all(&data_dir)?;
-            let db_path = data_dir.join(config::MEMORY_DB);
-            let path = db_path.to_str().expect("non-UTF-8 config path");
-            tracing::info!("using sqlite backend at {path}");
-            MemoryBackend::sqlite(path)?
-        }
-    };
+    // Construct in-memory backend.
+    let memory = MemoryBackend::in_memory();
+    tracing::info!("using in-memory backend");
 
-    // Construct provider.
-    let client = llm::Client::new();
-    let provider = build_provider(&config.llm, client)?;
+    // Construct provider manager from config list.
+    let manager = ProviderManager::from_configs(&config.models).await?;
     tracing::info!(
-        "provider {:?} initialized for model {}",
-        config.llm.provider,
-        config.llm.model
+        "provider manager initialized — active model: {}",
+        manager.active_model()
     );
 
     // Build general config.
     let general = General {
-        model: config.llm.model.clone(),
+        model: manager.active_model(),
         ..General::default()
     };
 
     // Build runtime.
-    let mut runtime = Runtime::<GatewayHook>::new(general, provider, memory);
+    let mut runtime = Runtime::<GatewayHook>::new(general, manager, memory);
 
     // Load agents from markdown files.
     let agents = runtime::load_agents_dir(&config_dir.join(config::AGENTS_DIR))?;
@@ -135,34 +78,4 @@ pub async fn build_runtime(
     }
 
     Ok(runtime)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::build_provider;
-    use crate::config::{LlmConfig, ProviderKind};
-
-    #[test]
-    fn build_provider_mistral_default_endpoint() {
-        let config = LlmConfig {
-            provider: ProviderKind::Mistral,
-            model: "mistral-small-latest".into(),
-            api_key: "test-key".to_string(),
-            base_url: None,
-        };
-        let provider = build_provider(&config, llm::Client::new()).expect("provider");
-        assert!(matches!(provider, crate::provider::Provider::Mistral(_)));
-    }
-
-    #[test]
-    fn build_provider_mistral_custom_endpoint() {
-        let config = LlmConfig {
-            provider: ProviderKind::Mistral,
-            model: "mistral-small-latest".into(),
-            api_key: "test-key".to_string(),
-            base_url: Some("http://localhost:8080/v1/chat/completions".to_string()),
-        };
-        let provider = build_provider(&config, llm::Client::new()).expect("provider");
-        assert!(matches!(provider, crate::provider::Provider::Mistral(_)));
-    }
 }

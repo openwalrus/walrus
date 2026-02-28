@@ -4,7 +4,7 @@
 //! delegation, following the Provider enum pattern (DD#22).
 
 use anyhow::Result;
-use sqlite::SqliteMemory;
+use memory::SqliteMemory;
 use std::future::Future;
 use wcore::{InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions};
 

@@ -19,9 +19,9 @@ fn channel_message_to_llm_message() {
         reply_to: None,
         timestamp: 1000,
     };
-    let llm_msg: llm::Message = msg.into();
+    let llm_msg: walrus_core::model::Message = msg.into();
     assert_eq!(llm_msg.content, "hello agent");
-    assert_eq!(llm_msg.role, llm::Role::User);
+    assert_eq!(llm_msg.role, walrus_core::model::Role::User);
 }
 
 #[test]

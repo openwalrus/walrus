@@ -1,6 +1,6 @@
 //! Embedding trait for converting text to vector representations.
 //!
-//! Used by memory backends that support semantic search (e.g. walrus-sqlite).
+//! Used by memory backends that support semantic search (e.g. walrus-memory).
 
 use std::future::Future;
 

@@ -2,8 +2,7 @@
 
 #![allow(dead_code)]
 
-use deepseek::DeepSeek;
-use llm::LLM;
+use model::deepseek::DeepSeek;
 use walrus_runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Memory, prelude::*};
 
 /// Example hook wiring DeepSeek as the LLM provider.
@@ -40,7 +39,7 @@ pub fn load_api_key() -> String {
 /// Build a default Runtime with DeepSeek provider and InMemory.
 pub fn build_runtime() -> Runtime<ExampleHook> {
     let key = load_api_key();
-    let provider = DeepSeek::new(llm::Client::new(), &key).expect("failed to create provider");
+    let provider = DeepSeek::new(model::Client::new(), &key).expect("failed to create provider");
     Runtime::new(General::default(), provider, InMemory::new())
 }
 

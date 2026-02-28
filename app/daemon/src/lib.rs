@@ -5,11 +5,10 @@ pub mod channel;
 pub mod config;
 mod feature;
 pub mod gateway;
-pub mod provider;
 pub mod utils;
 
 pub use channel::router::{ChannelRouter, RoutingRule};
-pub use config::GatewayConfig;
+pub use config::DaemonConfig;
 pub use feature::{
     cron::{CronJob, CronScheduler},
     memory::MemoryBackend,
