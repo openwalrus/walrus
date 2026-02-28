@@ -9,7 +9,9 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
-use wcore::model::{General, LLM, Message, Registry, Response, StreamChunk, default_context_limit};
+use wcore::model::{
+    General, Message, Model, Registry, Response, StreamChunk, default_context_limit,
+};
 
 /// Manages a set of named providers with an active selection.
 ///

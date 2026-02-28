@@ -7,11 +7,11 @@ use compact_str::CompactString;
 use futures_core::Stream;
 use std::collections::HashMap;
 use wcore::model::{
-    Choice, CompletionMeta, Delta, FunctionCall, General, LLM, Message, Response, Role,
+    Choice, CompletionMeta, Delta, FunctionCall, General, Message, Model, Response, Role,
     StreamChunk, ToolCall, Usage,
 };
 
-impl LLM for Local {
+impl Model for Local {
     type ChatConfig = General;
 
     async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {

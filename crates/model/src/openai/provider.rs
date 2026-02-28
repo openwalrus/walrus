@@ -6,9 +6,9 @@ use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use reqwest::Method;
-use wcore::model::{LLM, Message, Response, StreamChunk};
+use wcore::model::{Message, Model, Response, StreamChunk};
 
-impl LLM for OpenAI {
+impl Model for OpenAI {
     type ChatConfig = Request;
 
     async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {

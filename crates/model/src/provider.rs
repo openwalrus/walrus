@@ -11,7 +11,7 @@ use anyhow::Result;
 use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use wcore::model::{General, LLM, Message, Response, StreamChunk};
+use wcore::model::{General, Message, Model, Response, StreamChunk};
 
 /// Unified LLM provider enum.
 ///
@@ -111,7 +111,7 @@ pub async fn build_provider(config: &ProviderConfig, client: reqwest::Client) ->
     Ok(provider)
 }
 
-impl LLM for Provider {
+impl Model for Provider {
     type ChatConfig = General;
 
     async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {

@@ -9,7 +9,7 @@ use reqwest::{
     Client, Method,
     header::{self, HeaderMap},
 };
-use wcore::model::{LLM, Message, Response, StreamChunk};
+use wcore::model::{Message, Model, Response, StreamChunk};
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
@@ -24,7 +24,7 @@ impl DeepSeek {
     }
 }
 
-impl LLM for DeepSeek {
+impl Model for DeepSeek {
     /// The chat configuration.
     type ChatConfig = Request;
 

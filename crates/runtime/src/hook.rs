@@ -4,7 +4,7 @@
 //! which model registry and memory backend to use, and what prompts
 //! to send for automatic compaction and memory flush.
 
-use wcore::model::{NoopProvider, Registry};
+use wcore::model::Registry;
 use wcore::{InMemory, Memory};
 
 /// Type-level runtime configuration.
@@ -34,7 +34,7 @@ pub const DEFAULT_COMPACT_PROMPT: &str = include_str!("../prompts/compact.md");
 pub const DEFAULT_FLUSH_PROMPT: &str = include_str!("../prompts/flush.md");
 
 impl Hook for () {
-    type Registry = NoopProvider;
+    type Registry = ();
     type Memory = InMemory;
 
     fn compact() -> &'static str {

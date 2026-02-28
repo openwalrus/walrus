@@ -8,7 +8,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use reqwest::Method;
 use wcore::model::{
-    Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, LLM, Message, Response,
+    Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, Message, Model, Response,
     StreamChunk, Usage,
 };
 
@@ -41,7 +41,7 @@ struct AnthropicUsage {
     output_tokens: u32,
 }
 
-impl LLM for Claude {
+impl Model for Claude {
     type ChatConfig = Request;
 
     async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
