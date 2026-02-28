@@ -38,9 +38,9 @@ impl Cli {
     /// Resolve the socket path from CLI flag or default.
     fn resolve_socket(&self) -> PathBuf {
         self.socket.clone().unwrap_or_else(|| {
-            dirs::config_dir()
-                .expect("no platform config directory")
-                .join("walrus")
+            dirs::home_dir()
+                .expect("no home directory")
+                .join(".walrus")
                 .join("walrus.sock")
         })
     }

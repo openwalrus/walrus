@@ -21,9 +21,9 @@ pub struct ProviderManager {
 }
 
 struct Inner {
-    /// Named provider instances with their configs.
+    /// Provider instances keyed by model name.
     providers: BTreeMap<CompactString, (ProviderConfig, Provider)>,
-    /// Name of the currently active provider.
+    /// Model name of the currently active provider.
     active: CompactString,
     /// Shared HTTP client for constructing new providers.
     client: llm::Client,
@@ -32,19 +32,19 @@ struct Inner {
 /// Info about a single provider entry returned by `list()`.
 #[derive(Debug, Clone)]
 pub struct ProviderEntry {
-    /// Provider name.
+    /// Provider model name (key).
     pub name: CompactString,
     /// Whether this is the active provider.
     pub active: bool,
 }
 
 impl ProviderManager {
-    /// Create a new manager from a named map of provider configs.
+    /// Create a new manager from a list of provider configs.
     ///
-    /// The first key (BTreeMap alphabetical order) becomes the active provider.
-    /// Returns an error if the map is empty, any config fails validation, or
+    /// The first element becomes the active provider.
+    /// Returns an error if the slice is empty, any config fails validation, or
     /// any provider fails to build.
-    pub async fn from_configs(configs: &BTreeMap<CompactString, ProviderConfig>) -> Result<Self> {
+    pub async fn from_configs(configs: &[ProviderConfig]) -> Result<Self> {
         if configs.is_empty() {
             bail!("at least one provider config is required");
         }
@@ -52,17 +52,13 @@ impl ProviderManager {
         let client = llm::Client::new();
         let mut providers = BTreeMap::new();
 
-        for (name, config) in configs {
+        for config in configs {
             config.validate()?;
             let provider = build_provider(config, client.clone()).await?;
-            providers.insert(name.clone(), (config.clone(), provider));
+            providers.insert(config.model.clone(), (config.clone(), provider));
         }
 
-        let active = providers
-            .keys()
-            .next()
-            .expect("non-empty checked above")
-            .clone();
+        let active = configs[0].model.clone();
 
         Ok(Self {
             inner: Arc::new(RwLock::new(Inner {
@@ -74,13 +70,14 @@ impl ProviderManager {
     }
 
     /// Create a manager with a single provider.
-    pub fn single(name: CompactString, config: ProviderConfig, provider: Provider) -> Self {
+    pub fn single(config: ProviderConfig, provider: Provider) -> Self {
+        let model = config.model.clone();
         let mut providers = BTreeMap::new();
-        providers.insert(name.clone(), (config, provider));
+        providers.insert(model.clone(), (config, provider));
         Self {
             inner: Arc::new(RwLock::new(Inner {
                 providers,
-                active: name,
+                active: model,
                 client: llm::Client::new(),
             })),
         }
@@ -92,16 +89,10 @@ impl ProviderManager {
         inner.providers[&inner.active].1.clone()
     }
 
-    /// Get the name of the active provider.
-    pub fn active_name(&self) -> CompactString {
-        let inner = self.inner.read().expect("provider lock poisoned");
-        inner.active.clone()
-    }
-
-    /// Get the model identifier of the active provider.
+    /// Get the model name of the active provider (also its key).
     pub fn active_model(&self) -> CompactString {
         let inner = self.inner.read().expect("provider lock poisoned");
-        inner.providers[&inner.active].0.model.clone()
+        inner.active.clone()
     }
 
     /// Get a clone of the active provider's config.
@@ -110,20 +101,20 @@ impl ProviderManager {
         inner.providers[&inner.active].0.clone()
     }
 
-    /// Switch to a different provider by name. Returns an error if the name
-    /// is not found.
-    pub fn switch(&self, name: &str) -> Result<()> {
+    /// Switch to a different provider by model name. Returns an error if the
+    /// name is not found.
+    pub fn switch(&self, model: &str) -> Result<()> {
         let mut inner = self.inner.write().expect("provider lock poisoned");
-        if !inner.providers.contains_key(name) {
-            bail!("provider '{}' not found", name);
+        if !inner.providers.contains_key(model) {
+            bail!("provider '{}' not found", model);
         }
-        inner.active = CompactString::from(name);
+        inner.active = CompactString::from(model);
         Ok(())
     }
 
     /// Add a new provider. Validates config first. Replaces any existing
-    /// provider with the same name.
-    pub async fn add(&self, name: &str, config: &ProviderConfig) -> Result<()> {
+    /// provider with the same model name.
+    pub async fn add(&self, config: &ProviderConfig) -> Result<()> {
         config.validate()?;
         let client = {
             let inner = self.inner.read().expect("provider lock poisoned");
@@ -133,18 +124,19 @@ impl ProviderManager {
         let mut inner = self.inner.write().expect("provider lock poisoned");
         inner
             .providers
-            .insert(CompactString::from(name), (config.clone(), provider));
+            .insert(config.model.clone(), (config.clone(), provider));
         Ok(())
     }
 
-    /// Remove a provider by name. Fails if the provider is currently active.
-    pub fn remove(&self, name: &str) -> Result<()> {
+    /// Remove a provider by model name. Fails if the provider is currently
+    /// active.
+    pub fn remove(&self, model: &str) -> Result<()> {
         let mut inner = self.inner.write().expect("provider lock poisoned");
-        if inner.active == name {
-            bail!("cannot remove the active provider '{}'", name);
+        if inner.active == model {
+            bail!("cannot remove the active provider '{}'", model);
         }
-        if inner.providers.remove(name).is_none() {
-            bail!("provider '{}' not found", name);
+        if inner.providers.remove(model).is_none() {
+            bail!("provider '{}' not found", model);
         }
         Ok(())
     }

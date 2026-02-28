@@ -69,9 +69,9 @@ impl<R: Runner> ChatRepl<R> {
     }
 }
 
-/// Resolve the history file path at `~/.config/walrus/history`.
+/// Resolve the history file path at `~/.walrus/history`.
 fn history_file_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("walrus").join("history"))
+    dirs::home_dir().map(|d| d.join(".walrus").join("history"))
 }
 
 /// Consume a stream of content chunks and print them to stdout in real time.

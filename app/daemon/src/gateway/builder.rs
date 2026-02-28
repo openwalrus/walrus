@@ -1,7 +1,7 @@
 //! Runtime builder — constructs a fully-configured Runtime from GatewayConfig.
 
 use crate::MemoryBackend;
-use crate::config::{self, MemoryBackendKind};
+use crate::config;
 use crate::gateway::GatewayHook;
 use anyhow::Result;
 use provider::ProviderManager;
@@ -17,27 +17,14 @@ pub async fn build_runtime(
     config: &crate::GatewayConfig,
     config_dir: &Path,
 ) -> Result<Runtime<GatewayHook>> {
-    // Construct memory backend.
-    let memory = match config.memory.backend {
-        MemoryBackendKind::InMemory => {
-            tracing::info!("using in-memory backend");
-            MemoryBackend::in_memory()
-        }
-        MemoryBackendKind::Sqlite => {
-            let data_dir = config_dir.join(config::DATA_DIR);
-            std::fs::create_dir_all(&data_dir)?;
-            let db_path = data_dir.join(config::MEMORY_DB);
-            let path = db_path.to_str().expect("non-UTF-8 config path");
-            tracing::info!("using sqlite backend at {path}");
-            MemoryBackend::sqlite(path)?
-        }
-    };
+    // Construct in-memory backend.
+    let memory = MemoryBackend::in_memory();
+    tracing::info!("using in-memory backend");
 
-    // Construct provider manager from named config map.
+    // Construct provider manager from config list.
     let manager = ProviderManager::from_configs(&config.models).await?;
     tracing::info!(
-        "provider manager initialized — active: {} (model: {})",
-        manager.active_name(),
+        "provider manager initialized — active model: {}",
         manager.active_model()
     );
 

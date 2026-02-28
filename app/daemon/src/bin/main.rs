@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
         tracing::info!("created config directory at {}", config_dir.display());
     }
 
-    let handle = walrus_daemon::serve(&config_dir, None).await?;
+    let handle = walrus_daemon::serve(&config_dir).await?;
     tracing::info!("walrusd listening on {}", handle.socket_path.display());
 
     signal::ctrl_c().await?;

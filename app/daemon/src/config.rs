@@ -4,11 +4,8 @@ use anyhow::{Context, Result};
 use compact_str::CompactString;
 pub use provider::{ProviderConfig, ProviderManager};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Config directory name under platform config dir.
-pub const CONFIG_DIR: &str = "walrus";
 /// Agents subdirectory (contains *.md files).
 pub const AGENTS_DIR: &str = "agents";
 /// Skills subdirectory.
@@ -20,23 +17,21 @@ pub const DATA_DIR: &str = "data";
 /// SQLite memory database filename.
 pub const MEMORY_DB: &str = "memory.db";
 
-/// Resolve the global configuration directory (`~/.config/walrus/` on unix).
-pub fn global_config_dir() -> std::path::PathBuf {
-    dirs::config_dir()
-        .expect("no platform config directory")
-        .join(CONFIG_DIR)
+/// Resolve the global configuration directory (`~/.walrus/`).
+pub fn global_config_dir() -> PathBuf {
+    dirs::home_dir().expect("no home directory").join(".walrus")
+}
+
+/// Pinned socket path (`~/.walrus/walrus.sock`).
+pub fn socket_path() -> PathBuf {
+    global_config_dir().join("walrus.sock")
 }
 
 /// Top-level gateway configuration.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GatewayConfig {
-    /// Server bind configuration.
-    pub server: ServerConfig,
-    /// Named LLM provider configurations (`[llm.name]` tables).
-    pub models: BTreeMap<CompactString, ProviderConfig>,
-    /// Memory backend configuration.
-    #[serde(default)]
-    pub memory: MemoryConfig,
+    /// LLM provider configurations (`[[models]]` array).
+    pub models: Vec<ProviderConfig>,
     /// Channel configurations.
     #[serde(default)]
     pub channels: Vec<ChannelConfig>,
@@ -47,54 +42,19 @@ pub struct GatewayConfig {
 
 impl Default for GatewayConfig {
     fn default() -> Self {
-        let mut models = BTreeMap::new();
-        models.insert(
-            CompactString::const_new("default"),
-            ProviderConfig {
+        Self {
+            models: vec![ProviderConfig {
                 model: "deepseek-chat".into(),
                 api_key: Some("${DEEPSEEK_API_KEY}".to_owned()),
                 base_url: None,
                 loader: None,
                 quantization: None,
                 chat_template: None,
-            },
-        );
-        Self {
-            server: ServerConfig::default(),
-            models,
-            memory: MemoryConfig::default(),
+            }],
             channels: Vec::new(),
             mcp_servers: Vec::new(),
         }
     }
-}
-
-/// Server configuration.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ServerConfig {
-    /// Custom Unix domain socket path. When `None`, defaults to
-    /// `<config_dir>/walrus.sock`.
-    pub socket_path: Option<String>,
-}
-
-/// Memory backend configuration.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MemoryConfig {
-    /// Backend type: "in_memory" or "sqlite".
-    pub backend: MemoryBackendKind,
-}
-
-/// Memory backend kind.
-#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum MemoryBackendKind {
-    /// In-memory backend (no persistence).
-    #[default]
-    InMemory,
-    /// SQLite-backed persistent memory.
-    Sqlite,
 }
 
 /// Channel configuration.
@@ -156,16 +116,6 @@ impl GatewayConfig {
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         Self::from_toml(&content)
-    }
-
-    /// Resolve the socket path. Uses the explicit config value if set,
-    /// otherwise defaults to `<config_dir>/walrus.sock`.
-    pub fn socket_path(&self, config_dir: &std::path::Path) -> std::path::PathBuf {
-        self.server
-            .socket_path
-            .as_ref()
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| config_dir.join("walrus.sock"))
     }
 }
 

@@ -1,4 +1,4 @@
-//! Tests for the MemoryBackend enum dispatch and configuration integration.
+//! Tests for the MemoryBackend enum dispatch.
 
 use walrus_daemon::MemoryBackend;
 
@@ -91,43 +91,4 @@ async fn in_memory_backend_compile_relevant() {
     backend.set("fact", "the sky is blue");
     let compiled = backend.compile_relevant("sky color").await;
     assert!(compiled.contains("the sky is blue"));
-}
-
-#[test]
-fn memory_backend_from_config_inmemory() {
-    use walrus_daemon::config::{MemoryBackendKind, MemoryConfig};
-    let config = MemoryConfig {
-        backend: MemoryBackendKind::InMemory,
-    };
-    assert_eq!(config.backend, MemoryBackendKind::InMemory);
-    let _backend = MemoryBackend::in_memory();
-}
-
-#[test]
-fn memory_backend_from_config_sqlite() {
-    use walrus_daemon::config::{MemoryBackendKind, MemoryConfig};
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("cfg.db");
-    let config = MemoryConfig {
-        backend: MemoryBackendKind::Sqlite,
-    };
-    assert_eq!(config.backend, MemoryBackendKind::Sqlite);
-    let backend = MemoryBackend::sqlite(path.to_str().unwrap()).unwrap();
-    use wcore::Memory;
-    backend.set("test", "ok");
-    assert_eq!(backend.get("test").unwrap(), "ok");
-}
-
-#[test]
-fn default_bind_address() {
-    let config = walrus_daemon::GatewayConfig::from_toml(
-        r#"
-[server]
-[llm.default]
-model = "deepseek-chat"
-api_key = "test-key"
-"#,
-    )
-    .unwrap();
-    assert!(config.server.socket_path.is_none());
 }
