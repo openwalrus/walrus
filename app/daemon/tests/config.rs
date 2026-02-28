@@ -1,9 +1,6 @@
 //! Gateway configuration tests.
 
-use walrus_daemon::{
-    GatewayConfig,
-    config::{MemoryBackendKind, ProviderKind},
-};
+use walrus_daemon::{GatewayConfig, config::MemoryBackendKind};
 
 #[test]
 fn parse_minimal_config() {
@@ -11,13 +8,14 @@ fn parse_minimal_config() {
 [server]
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "test-key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     assert!(config.server.socket_path.is_none());
     assert_eq!(config.llm.model.as_str(), "deepseek-chat");
-    assert_eq!(config.llm.api_key, "test-key");
+    assert_eq!(config.llm.kind(), "deepseek");
     assert!(config.channels.is_empty());
 }
 
@@ -28,6 +26,7 @@ fn parse_full_config() {
 socket_path = "/tmp/walrus.sock"
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "sk-test"
 
@@ -57,25 +56,12 @@ args = ["playwright-mcp"]
 }
 
 #[test]
-fn default_server_config() {
-    let toml = r#"
-[server]
-
-[llm]
-model = "deepseek-chat"
-api_key = "key"
-"#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
-    assert!(config.server.socket_path.is_none());
-    assert_eq!(config.llm.provider, ProviderKind::DeepSeek);
-}
-
-#[test]
 fn default_memory_config() {
     let toml = r#"
 [server]
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "key"
 "#;
@@ -89,6 +75,7 @@ fn default_socket_path() {
 [server]
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "key"
 "#;
@@ -104,6 +91,7 @@ fn custom_socket_path() {
 socket_path = "/run/walrus/custom.sock"
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "key"
 "#;
@@ -119,11 +107,17 @@ fn env_var_expansion() {
 [server]
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "${TEST_WALRUS_KEY}"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.llm.api_key, "expanded-value");
+    match &config.llm.backend {
+        provider::BackendConfig::DeepSeek(rc) => {
+            assert_eq!(rc.api_key, "expanded-value");
+        }
+        _ => panic!("expected DeepSeek backend"),
+    }
     unsafe { std::env::remove_var("TEST_WALRUS_KEY") };
 }
 
@@ -133,6 +127,7 @@ fn mcp_server_config() {
 [server]
 
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "key"
 
@@ -158,49 +153,60 @@ KEY = "value"
 #[test]
 fn global_config_dir_is_under_platform_config() {
     let dir = walrus_daemon::config::global_config_dir();
-    // Should end with "walrus"
     assert_eq!(dir.file_name().unwrap(), "walrus");
 }
 
 #[test]
-fn parse_mistral_provider() {
+fn parse_claude_provider() {
     let toml = r#"
 [server]
 
 [llm]
-provider = "mistral"
-model = "mistral-small-latest"
+provider = "claude"
+model = "claude-sonnet-4-20250514"
 api_key = "test-key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.llm.provider, ProviderKind::Mistral);
-    assert_eq!(config.llm.model.as_str(), "mistral-small-latest");
+    assert_eq!(config.llm.kind(), "claude");
+    assert_eq!(config.llm.model.as_str(), "claude-sonnet-4-20250514");
 }
 
 #[test]
-fn parse_mistral_with_base_url() {
+fn parse_openai_with_base_url() {
     let toml = r#"
 [server]
 
 [llm]
-provider = "mistral"
-model = "mistral-small-latest"
+provider = "openai"
+model = "gpt-4o"
 api_key = "test-key"
 base_url = "http://localhost:8080/v1/chat/completions"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.llm.provider, ProviderKind::Mistral);
-    assert_eq!(
-        config.llm.base_url.as_deref(),
-        Some("http://localhost:8080/v1/chat/completions")
-    );
+    assert_eq!(config.llm.kind(), "openai");
+    match &config.llm.backend {
+        provider::BackendConfig::OpenAI(rc) => {
+            assert_eq!(
+                rc.base_url.as_deref(),
+                Some("http://localhost:8080/v1/chat/completions")
+            );
+        }
+        _ => panic!("expected OpenAI backend"),
+    }
 }
 
 #[test]
-fn provider_kind_mistral_roundtrip() {
-    let kind = ProviderKind::Mistral;
-    let serialized = serde_json::to_string(&kind).unwrap();
-    assert_eq!(serialized, "\"mistral\"");
-    let parsed: ProviderKind = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(parsed, ProviderKind::Mistral);
+fn parse_local_provider() {
+    let toml = r#"
+[server]
+
+[llm]
+provider = "local"
+model = "phi-3.5-mini"
+model_id = "microsoft/Phi-3.5-mini-instruct"
+quantization = "q4k"
+"#;
+    let config = GatewayConfig::from_toml(toml).unwrap();
+    assert_eq!(config.llm.kind(), "local");
+    assert_eq!(config.llm.model.as_str(), "phi-3.5-mini");
 }

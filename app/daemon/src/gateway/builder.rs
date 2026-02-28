@@ -4,7 +4,6 @@ use crate::MemoryBackend;
 use crate::config::{self, MemoryBackendKind};
 use crate::gateway::GatewayHook;
 use anyhow::Result;
-use provider::ProviderConfig;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};
 use std::path::Path;
 
@@ -33,19 +32,12 @@ pub async fn build_runtime(
         }
     };
 
-    // Construct provider from LlmConfig via ProviderConfig.
-    let provider_config = ProviderConfig {
-        name: "default".into(),
-        provider: config.llm.provider,
-        model: config.llm.model.clone(),
-        api_key: config.llm.api_key.clone(),
-        base_url: config.llm.base_url.clone(),
-    };
+    // Construct provider from config.
     let client = llm::Client::new();
-    let provider = provider::build_provider(&provider_config, client)?;
+    let provider = provider::build_provider(&config.llm, client).await?;
     tracing::info!(
-        "provider {:?} initialized for model {}",
-        config.llm.provider,
+        "provider {} initialized for model {}",
+        config.llm.kind(),
         config.llm.model
     );
 

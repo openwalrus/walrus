@@ -39,7 +39,7 @@ impl ProviderManager {
     ///
     /// The first config in the list becomes the active provider. Returns an
     /// error if the list is empty or any provider fails to build.
-    pub fn from_configs(configs: &[ProviderConfig]) -> Result<Self> {
+    pub async fn from_configs(configs: &[ProviderConfig]) -> Result<Self> {
         if configs.is_empty() {
             bail!("at least one provider config is required");
         }
@@ -49,7 +49,7 @@ impl ProviderManager {
         let active = configs[0].name.clone();
 
         for config in configs {
-            let provider = build_provider(config, client.clone())?;
+            let provider = build_provider(config, client.clone()).await?;
             providers.insert(config.name.clone(), provider);
         }
 
@@ -99,9 +99,13 @@ impl ProviderManager {
     }
 
     /// Add a new provider. Replaces any existing provider with the same name.
-    pub fn add(&self, config: &ProviderConfig) -> Result<()> {
+    pub async fn add(&self, config: &ProviderConfig) -> Result<()> {
+        let client = {
+            let inner = self.inner.read().expect("provider lock poisoned");
+            inner.client.clone()
+        };
+        let provider = build_provider(config, client).await?;
         let mut inner = self.inner.write().expect("provider lock poisoned");
-        let provider = build_provider(config, inner.client.clone())?;
         inner.providers.insert(config.name.clone(), provider);
         Ok(())
     }

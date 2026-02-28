@@ -12,7 +12,8 @@ llm = { workspace = true }
 deepseek = { workspace = true }
 openai = { workspace = true }
 claude = { workspace = true }
-mistral = { workspace = true }
+local = { workspace = true, optional = true }
+mistralrs = { workspace = true, optional = true }
 compact_str = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
@@ -20,6 +21,10 @@ serde = { workspace = true }
 async-stream = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
+
+[features]
+default = ["local"]
+local = ["dep:local", "dep:mistralrs"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

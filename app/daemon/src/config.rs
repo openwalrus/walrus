@@ -2,7 +2,8 @@
 
 use anyhow::{Context, Result};
 use compact_str::CompactString;
-pub use provider::ProviderKind;
+use provider::config::{BackendConfig, RemoteConfig};
+pub use provider::{ProviderConfig, ProviderManager};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -27,12 +28,12 @@ pub fn global_config_dir() -> std::path::PathBuf {
 }
 
 /// Top-level gateway configuration.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GatewayConfig {
     /// Server bind configuration.
     pub server: ServerConfig,
     /// LLM provider configuration.
-    pub llm: LlmConfig,
+    pub llm: ProviderConfig,
     /// Memory backend configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
@@ -44,6 +45,25 @@ pub struct GatewayConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
 
+impl Default for GatewayConfig {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig::default(),
+            llm: ProviderConfig {
+                name: "default".into(),
+                model: "deepseek-chat".into(),
+                backend: BackendConfig::DeepSeek(RemoteConfig {
+                    api_key: "${DEEPSEEK_API_KEY}".to_owned(),
+                    base_url: None,
+                }),
+            },
+            memory: MemoryConfig::default(),
+            channels: Vec::new(),
+            mcp_servers: Vec::new(),
+        }
+    }
+}
+
 /// Server configuration.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -51,33 +71,6 @@ pub struct ServerConfig {
     /// Custom Unix domain socket path. When `None`, defaults to
     /// `<config_dir>/walrus.sock`.
     pub socket_path: Option<String>,
-}
-
-/// LLM provider configuration.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LlmConfig {
-    /// Which LLM provider to use.
-    #[serde(default)]
-    pub provider: ProviderKind,
-    /// Model identifier.
-    pub model: CompactString,
-    /// API key (supports `${ENV_VAR}` expansion).
-    #[serde(default)]
-    pub api_key: String,
-    /// Optional base URL override for the provider endpoint.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-}
-
-impl Default for LlmConfig {
-    fn default() -> Self {
-        Self {
-            provider: ProviderKind::DeepSeek,
-            model: "deepseek-chat".into(),
-            api_key: "${DEEPSEEK_API_KEY}".to_owned(),
-            base_url: None,
-        }
-    }
 }
 
 /// Memory backend configuration.

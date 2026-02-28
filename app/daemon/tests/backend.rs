@@ -125,6 +125,7 @@ fn default_bind_address() {
         r#"
 [server]
 [llm]
+provider = "deep_seek"
 model = "deepseek-chat"
 api_key = "test-key"
 "#,

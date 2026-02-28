@@ -1,7 +1,7 @@
 [package]
-name = "walrus-mistral"
-description = "Walrus Mistral provider implementation"
-documentation = "https://docs.rs/walrus-mistral"
+name = "walrus-local"
+description = "Walrus local LLM provider via mistralrs"
+documentation = "https://docs.rs/walrus-local"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,16 +11,13 @@ keywords.workspace = true
 
 [dependencies]
 llm.workspace = true
-
-# crates-io dependencies
 anyhow.workspace = true
 async-stream.workspace = true
+compact_str.workspace = true
 futures-core.workspace = true
-futures-util.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+mistralrs.workspace = true
 
-[dev-dependencies]
-llm.workspace = true
-schemars.workspace = true
+[target.'cfg(target_os = "macos")'.dependencies]
+mistralrs = { workspace = true, features = ["metal", "accelerate"] }
