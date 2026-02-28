@@ -2,7 +2,6 @@
 
 use crate::gateway::Gateway;
 use compact_str::CompactString;
-use wcore::model::Message;
 use protocol::codec::{self, FrameError};
 use protocol::{AgentSummary, ClientMessage, ServerMessage};
 use runtime::Hook;
@@ -11,6 +10,7 @@ use tokio::net::UnixListener;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot};
 use wcore::Memory;
+use wcore::model::Message;
 
 /// Accept connections on the given `UnixListener` until shutdown is signalled.
 pub async fn accept_loop<H: Hook + 'static>(

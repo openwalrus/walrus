@@ -5,7 +5,6 @@
 //! Server-Sent Events streaming. Used by DeepSeek, OpenAI, and Mistral —
 //! Claude uses its own transport (different SSE format).
 
-use wcore::model::{Response, StreamChunk};
 use anyhow::Result;
 use async_stream::try_stream;
 use futures_core::Stream;
@@ -15,6 +14,7 @@ use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
 };
 use serde::Serialize;
+use wcore::model::{Response, StreamChunk};
 
 /// Shared HTTP transport for OpenAI-compatible providers.
 ///

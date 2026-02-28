@@ -3,8 +3,8 @@
 //! Implements the Anthropic Messages API, which differs from the OpenAI
 //! chat completions format in message structure and streaming events.
 
-use reqwest::{Client, header::HeaderMap};
 pub use request::Request;
+use reqwest::{Client, header::HeaderMap};
 
 mod provider;
 mod request;

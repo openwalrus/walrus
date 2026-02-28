@@ -1,7 +1,7 @@
 //! DeepSeek LLM provider
 
-use reqwest::{Client, header::HeaderMap};
 pub use request::Request;
+use reqwest::{Client, header::HeaderMap};
 
 mod provider;
 mod request;

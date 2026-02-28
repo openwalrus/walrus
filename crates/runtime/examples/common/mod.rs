@@ -39,8 +39,7 @@ pub fn load_api_key() -> String {
 /// Build a default Runtime with DeepSeek provider and InMemory.
 pub fn build_runtime() -> Runtime<ExampleHook> {
     let key = load_api_key();
-    let provider =
-        DeepSeek::new(model::Client::new(), &key).expect("failed to create provider");
+    let provider = DeepSeek::new(model::Client::new(), &key).expect("failed to create provider");
     Runtime::new(General::default(), provider, InMemory::new())
 }
 

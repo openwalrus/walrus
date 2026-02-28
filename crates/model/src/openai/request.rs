@@ -1,8 +1,8 @@
 //! Request body for OpenAI-compatible chat completions API.
 
-use wcore::model::{Config, General, Message, Tool, ToolChoice};
 use serde::Serialize;
 use serde_json::{Value, json};
+use wcore::model::{Config, General, Message, Tool, ToolChoice};
 
 /// The request body for the OpenAI chat completions API.
 #[derive(Debug, Clone, Serialize)]

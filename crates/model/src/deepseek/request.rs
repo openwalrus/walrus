@@ -1,8 +1,8 @@
 //! The request body for the DeepSeek API
 
-use wcore::model::{Config, General, Message, Tool, ToolChoice};
 use serde::Serialize;
 use serde_json::{Value, json};
+use wcore::model::{Config, General, Message, Tool, ToolChoice};
 
 /// The request body for the DeepSeek API
 #[derive(Debug, Clone, Serialize)]

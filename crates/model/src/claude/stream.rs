@@ -9,11 +9,11 @@
 //! - `message_stop` — end of message
 
 use compact_str::CompactString;
+use serde::Deserialize;
 use wcore::model::{
     Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, FunctionCall,
     StreamChunk, ToolCall, Usage,
 };
-use serde::Deserialize;
 
 /// A raw SSE event from the Anthropic streaming API.
 #[derive(Debug, Deserialize)]

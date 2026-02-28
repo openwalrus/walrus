@@ -7,9 +7,9 @@ use async_stream::try_stream;
 use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use wcore::model::{General, LLM, Message, Response, StreamChunk};
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
+use wcore::model::{General, LLM, Message, Response, StreamChunk};
 
 /// Manages a set of named providers with an active selection.
 ///

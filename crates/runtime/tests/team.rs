@@ -1,7 +1,7 @@
 //! Tests for team composition.
 
-use wcore::model::{General, NoopProvider};
 use walrus_runtime::{Runtime, build_team, extract_input, worker_tool};
+use wcore::model::{General, NoopProvider};
 use wcore::{Agent, InMemory};
 
 #[test]

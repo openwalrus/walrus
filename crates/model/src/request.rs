@@ -4,9 +4,9 @@
 //! use `Option` + `skip_serializing_if` so provider-specific extras (like
 //! DeepSeek's `thinking`) are simply absent when unused.
 
-use wcore::model::{Config, General, Message, Tool, ToolChoice};
 use serde::Serialize;
 use serde_json::{Value, json};
+use wcore::model::{Config, General, Message, Tool, ToolChoice};
 
 /// OpenAI-compatible chat completions request body.
 #[derive(Debug, Clone, Serialize)]

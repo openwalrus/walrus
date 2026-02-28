@@ -1,8 +1,8 @@
 //! Request body for the Anthropic Messages API.
 
-use wcore::model::{Config, General, Message, Role, Tool, ToolChoice};
 use serde::Serialize;
 use serde_json::{Value, json};
+use wcore::model::{Config, General, Message, Role, Tool, ToolChoice};
 
 /// The request body for the Anthropic Messages API.
 #[derive(Debug, Clone, Serialize)]

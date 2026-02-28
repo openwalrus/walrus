@@ -3,8 +3,8 @@
 //! Covers OpenAI, Grok (xAI), Qwen (Alibaba), Kimi (Moonshot), Ollama,
 //! and any other service exposing the OpenAI chat completions API.
 
-use reqwest::{Client, header::HeaderMap};
 pub use request::Request;
+use reqwest::{Client, header::HeaderMap};
 
 mod provider;
 mod request;

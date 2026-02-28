@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use compact_str::CompactString;
-use wcore::model::Tool;
 use rmcp::{
     ServiceExt,
     model::{CallToolRequestParams, RawContent},
@@ -14,6 +13,7 @@ use rmcp::{
 };
 use std::collections::BTreeMap;
 use tokio::{process::Command, sync::Mutex};
+use wcore::model::Tool;
 
 /// A connected MCP server peer with its tool names.
 struct ConnectedPeer {

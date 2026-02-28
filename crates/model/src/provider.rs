@@ -3,15 +3,15 @@
 //! Unified `Provider` enum with enum dispatch over concrete backends.
 //! `build_provider()` matches on `ProviderKind` detected from the model name.
 
+use crate::claude::Claude;
 use crate::config::{ProviderConfig, ProviderKind};
+use crate::deepseek::DeepSeek;
+use crate::openai::OpenAI;
 use anyhow::Result;
 use async_stream::try_stream;
-use crate::claude::Claude;
-use crate::deepseek::DeepSeek;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use wcore::model::{General, LLM, Message, Response, StreamChunk};
-use crate::openai::OpenAI;
 
 /// Unified LLM provider enum.
 ///
@@ -71,8 +71,12 @@ pub async fn build_provider(config: &ProviderConfig, client: reqwest::Client) ->
             let isq = config.quantization.map(|q| q.to_isq());
             let chat_template = config.chat_template.as_deref();
             let local = match loader {
-                Loader::Text => crate::local::Local::from_text(&config.model, isq, chat_template).await?,
-                Loader::Gguf => crate::local::Local::from_gguf(&config.model, chat_template).await?,
+                Loader::Text => {
+                    crate::local::Local::from_text(&config.model, isq, chat_template).await?
+                }
+                Loader::Gguf => {
+                    crate::local::Local::from_gguf(&config.model, chat_template).await?
+                }
                 Loader::Vision => {
                     crate::local::Local::from_vision(&config.model, isq, chat_template).await?
                 }

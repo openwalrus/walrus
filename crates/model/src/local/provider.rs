@@ -5,11 +5,11 @@ use anyhow::Result;
 use async_stream::try_stream;
 use compact_str::CompactString;
 use futures_core::Stream;
+use std::collections::HashMap;
 use wcore::model::{
     Choice, CompletionMeta, Delta, FunctionCall, General, LLM, Message, Response, Role,
     StreamChunk, ToolCall, Usage,
 };
-use std::collections::HashMap;
 
 impl LLM for Local {
     type ChatConfig = General;
@@ -117,15 +117,19 @@ fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBu
     if let Some(tool_choice) = &config.tool_choice {
         let mr_choice = match tool_choice {
             wcore::model::ToolChoice::None => mistralrs::ToolChoice::None,
-            wcore::model::ToolChoice::Auto | wcore::model::ToolChoice::Required => mistralrs::ToolChoice::Auto,
-            wcore::model::ToolChoice::Function(name) => mistralrs::ToolChoice::Tool(mistralrs::Tool {
-                tp: mistralrs::ToolType::Function,
-                function: mistralrs::Function {
-                    description: None,
-                    name: name.to_string(),
-                    parameters: None,
-                },
-            }),
+            wcore::model::ToolChoice::Auto | wcore::model::ToolChoice::Required => {
+                mistralrs::ToolChoice::Auto
+            }
+            wcore::model::ToolChoice::Function(name) => {
+                mistralrs::ToolChoice::Tool(mistralrs::Tool {
+                    tp: mistralrs::ToolType::Function,
+                    function: mistralrs::Function {
+                        description: None,
+                        name: name.to_string(),
+                        parameters: None,
+                    },
+                })
+            }
         };
         builder = builder.set_tool_choice(mr_choice);
     }

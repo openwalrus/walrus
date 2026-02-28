@@ -20,8 +20,8 @@
 
 use crate::{Handler, Hook, MAX_TOOL_CALLS, SkillRegistry};
 use compact_str::CompactString;
-use wcore::model::{Config, General, LLM, Message, Tool, ToolChoice};
 use std::{collections::BTreeMap, sync::Arc};
+use wcore::model::{Config, General, LLM, Message, Tool, ToolChoice};
 use wcore::{Agent, Memory};
 
 /// Build a team: register each worker as a tool and add to the leader.

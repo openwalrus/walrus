@@ -5,7 +5,10 @@ use anyhow::Result;
 use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use reqwest::{Client, Method, header::{self, HeaderMap}};
+use reqwest::{
+    Client, Method,
+    header::{self, HeaderMap},
+};
 use wcore::model::{LLM, Message, Response, StreamChunk};
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";

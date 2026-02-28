@@ -12,7 +12,9 @@ async fn build_deepseek_default() {
         quantization: None,
         chat_template: None,
     };
-    let p = build_provider(&config, walrus_model::Client::new()).await.unwrap();
+    let p = build_provider(&config, walrus_model::Client::new())
+        .await
+        .unwrap();
     assert!(matches!(p, Provider::DeepSeek(_)));
 }
 
@@ -26,7 +28,9 @@ async fn build_openai_custom_url() {
         quantization: None,
         chat_template: None,
     };
-    let p = build_provider(&config, walrus_model::Client::new()).await.unwrap();
+    let p = build_provider(&config, walrus_model::Client::new())
+        .await
+        .unwrap();
     assert!(matches!(p, Provider::OpenAI(_)));
 }
 
@@ -40,7 +44,9 @@ async fn build_ollama_base_url_only() {
         quantization: None,
         chat_template: None,
     };
-    let p = build_provider(&config, walrus_model::Client::new()).await.unwrap();
+    let p = build_provider(&config, walrus_model::Client::new())
+        .await
+        .unwrap();
     assert!(matches!(p, Provider::OpenAI(_)));
 }
 
@@ -54,6 +60,8 @@ async fn build_claude_default() {
         quantization: None,
         chat_template: None,
     };
-    let p = build_provider(&config, walrus_model::Client::new()).await.unwrap();
+    let p = build_provider(&config, walrus_model::Client::new())
+        .await
+        .unwrap();
     assert!(matches!(p, Provider::Claude(_)));
 }
