@@ -34,7 +34,7 @@ pub async fn build_runtime(
     };
 
     // Construct provider manager from named config map.
-    let manager = ProviderManager::from_configs(&config.llm).await?;
+    let manager = ProviderManager::from_configs(&config.models).await?;
     tracing::info!(
         "provider manager initialized — active: {} (model: {})",
         manager.active_name(),

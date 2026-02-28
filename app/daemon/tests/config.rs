@@ -13,8 +13,8 @@ api_key = "test-key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
     assert!(config.server.socket_path.is_none());
-    assert_eq!(config.llm.len(), 1);
-    let default = &config.llm["default"];
+    assert_eq!(config.models.len(), 1);
+    let default = &config.models["default"];
     assert_eq!(default.model.as_str(), "deepseek-chat");
     assert!(config.channels.is_empty());
 }
@@ -33,11 +33,11 @@ model = "gpt-4o"
 api_key = "key2"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    assert_eq!(config.llm.len(), 2);
-    assert!(config.llm.contains_key("ds"));
-    assert!(config.llm.contains_key("oai"));
-    assert_eq!(config.llm["ds"].model.as_str(), "deepseek-chat");
-    assert_eq!(config.llm["oai"].model.as_str(), "gpt-4o");
+    assert_eq!(config.models.len(), 2);
+    assert!(config.models.contains_key("ds"));
+    assert!(config.models.contains_key("oai"));
+    assert_eq!(config.models["ds"].model.as_str(), "deepseek-chat");
+    assert_eq!(config.models["oai"].model.as_str(), "gpt-4o");
 }
 
 #[test]
@@ -128,7 +128,7 @@ model = "deepseek-chat"
 api_key = "${TEST_WALRUS_KEY}"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    let default = &config.llm["default"];
+    let default = &config.models["default"];
     assert_eq!(default.api_key.as_deref(), Some("expanded-value"));
     unsafe { std::env::remove_var("TEST_WALRUS_KEY") };
 }
@@ -177,7 +177,7 @@ model = "claude-sonnet-4-20250514"
 api_key = "test-key"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    let claude = &config.llm["claude"];
+    let claude = &config.models["claude"];
     assert_eq!(claude.model.as_str(), "claude-sonnet-4-20250514");
     assert_eq!(claude.kind().unwrap().as_str(), "claude");
 }
@@ -193,7 +193,7 @@ api_key = "test-key"
 base_url = "http://localhost:8080/v1/chat/completions"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    let oai = &config.llm["oai"];
+    let oai = &config.models["oai"];
     assert_eq!(oai.kind().unwrap().as_str(), "openai");
     assert_eq!(
         oai.base_url.as_deref(),
@@ -211,7 +211,7 @@ model = "microsoft/Phi-3.5-mini-instruct"
 quantization = "q4k"
 "#;
     let config = GatewayConfig::from_toml(toml).unwrap();
-    let phi = &config.llm["phi"];
+    let phi = &config.models["phi"];
     assert_eq!(phi.kind().unwrap().as_str(), "local");
     assert_eq!(phi.model.as_str(), "microsoft/Phi-3.5-mini-instruct");
 }

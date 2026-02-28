@@ -33,7 +33,7 @@ pub struct GatewayConfig {
     /// Server bind configuration.
     pub server: ServerConfig,
     /// Named LLM provider configurations (`[llm.name]` tables).
-    pub llm: BTreeMap<CompactString, ProviderConfig>,
+    pub models: BTreeMap<CompactString, ProviderConfig>,
     /// Memory backend configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
@@ -47,8 +47,8 @@ pub struct GatewayConfig {
 
 impl Default for GatewayConfig {
     fn default() -> Self {
-        let mut llm = BTreeMap::new();
-        llm.insert(
+        let mut models = BTreeMap::new();
+        models.insert(
             CompactString::const_new("default"),
             ProviderConfig {
                 model: "deepseek-chat".into(),
@@ -61,7 +61,7 @@ impl Default for GatewayConfig {
         );
         Self {
             server: ServerConfig::default(),
-            llm,
+            models,
             memory: MemoryConfig::default(),
             channels: Vec::new(),
             mcp_servers: Vec::new(),
