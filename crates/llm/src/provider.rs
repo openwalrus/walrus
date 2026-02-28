@@ -3,17 +3,14 @@
 use crate::{Config, Message, Response, StreamChunk};
 use anyhow::Result;
 use futures_core::Stream;
-use reqwest::Client;
 
-/// A trait for LLM providers
+/// A trait for LLM providers.
+///
+/// Constructors are inherent methods on each provider — never called
+/// polymorphically (DD#57).
 pub trait LLM: Sized + Clone {
     /// The chat configuration.
     type ChatConfig: Config + Send;
-
-    /// Create a new LLM provider
-    fn new(client: Client, key: &str) -> Result<Self>
-    where
-        Self: Sized;
 
     /// Send a message to the LLM
     fn send(

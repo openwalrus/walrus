@@ -5,28 +5,10 @@ use anyhow::Result;
 use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use llm::{
-    Client, LLM, Message, Response, StreamChunk,
-    reqwest::{
-        Method,
-        header::{self, HeaderMap},
-    },
-};
+use llm::{LLM, Message, Response, StreamChunk, reqwest::Method};
 
 impl LLM for Mistral {
     type ChatConfig = Request;
-
-    fn new(client: Client, key: &str) -> Result<Self> {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, "application/json".parse()?);
-        headers.insert(header::ACCEPT, "application/json".parse()?);
-        headers.insert(header::AUTHORIZATION, format!("Bearer {key}").parse()?);
-        Ok(Self {
-            client,
-            headers,
-            endpoint: crate::endpoint::MISTRAL.to_owned(),
-        })
-    }
 
     async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
         let body = req.messages(messages);

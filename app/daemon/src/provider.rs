@@ -11,7 +11,7 @@ use claude::Claude;
 use deepseek::DeepSeek;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use llm::{Client, General, LLM, Message, Response, StreamChunk};
+use llm::{General, LLM, Message, Response, StreamChunk};
 use mistral::Mistral;
 use openai::OpenAI;
 
@@ -33,10 +33,6 @@ pub enum Provider {
 
 impl LLM for Provider {
     type ChatConfig = General;
-
-    fn new(client: Client, key: &str) -> Result<Self> {
-        Ok(Self::DeepSeek(DeepSeek::new(client, key)?))
-    }
 
     async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {
         match self {

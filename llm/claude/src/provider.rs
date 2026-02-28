@@ -7,12 +7,8 @@ use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use llm::{
-    Choice, Client, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, LLM, Message,
-    Response, StreamChunk, Usage,
-    reqwest::{
-        Method,
-        header::{self, HeaderMap},
-    },
+    Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, LLM, Message, Response,
+    StreamChunk, Usage, reqwest::Method,
 };
 
 /// Raw Anthropic non-streaming response.
@@ -46,18 +42,6 @@ struct AnthropicUsage {
 
 impl LLM for Claude {
     type ChatConfig = Request;
-
-    fn new(client: Client, key: &str) -> Result<Self> {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, "application/json".parse()?);
-        headers.insert("x-api-key", key.parse()?);
-        headers.insert("anthropic-version", crate::API_VERSION.parse()?);
-        Ok(Self {
-            client,
-            headers,
-            endpoint: crate::ENDPOINT.to_owned(),
-        })
-    }
 
     async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
         let body = req.messages(messages);

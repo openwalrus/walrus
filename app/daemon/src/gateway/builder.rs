@@ -7,7 +7,6 @@ use crate::provider::Provider;
 use anyhow::Result;
 use claude::Claude;
 use deepseek::DeepSeek;
-use llm::LLM;
 use mistral::Mistral;
 use openai::OpenAI;
 use runtime::{General, McpBridge, Runtime, SkillRegistry};

@@ -1,10 +1,10 @@
 //! Tests for the Runtime orchestrator.
 
-use wcore::{Agent, InMemory, Memory, Skill, SkillTier};
 use compact_str::CompactString;
 use llm::{FunctionCall, General, Message, NoopProvider, Tool, ToolCall};
 use std::collections::BTreeMap;
 use walrus_runtime::{Hook, Runtime, SkillRegistry};
+use wcore::{Agent, InMemory, Memory, Skill, SkillTier};
 
 fn echo_tool() -> Tool {
     Tool {

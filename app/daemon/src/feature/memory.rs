@@ -3,10 +3,10 @@
 //! Wraps [`InMemory`] and [`SqliteMemory<NoEmbedder>`] with Memory trait
 //! delegation, following the Provider enum pattern (DD#22).
 
-use wcore::{InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions};
 use anyhow::Result;
 use sqlite::SqliteMemory;
 use std::future::Future;
+use wcore::{InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions};
 
 /// Memory backend selected from configuration.
 ///

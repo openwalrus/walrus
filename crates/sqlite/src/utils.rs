@@ -1,7 +1,7 @@
 //! Utility functions for memory recall scoring and ranking.
 
-use wcore::MemoryEntry;
 use std::collections::HashSet;
+use wcore::MemoryEntry;
 
 /// Cosine similarity between two float vectors.
 ///

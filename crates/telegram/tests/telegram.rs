@@ -1,7 +1,7 @@
 //! Tests for the Telegram channel adapter.
 
-use wcore::{Channel, Platform};
 use walrus_telegram::{TelegramChannel, channel_message_from_update, send_message_url};
+use wcore::{Channel, Platform};
 
 #[test]
 fn telegram_channel_platform() {

@@ -22,4 +22,5 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+llm.workspace = true
 schemars.workspace = true

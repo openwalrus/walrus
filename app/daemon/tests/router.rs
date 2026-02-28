@@ -1,8 +1,8 @@
 //! Channel routing tests.
 
-use wcore::Platform;
 use compact_str::CompactString;
 use walrus_daemon::{ChannelRouter, RoutingRule};
+use wcore::Platform;
 
 #[test]
 fn exact_match_priority() {

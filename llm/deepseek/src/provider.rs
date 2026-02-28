@@ -15,18 +15,20 @@ use llm::{
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
-impl LLM for DeepSeek {
-    /// The chat configuration.
-    type ChatConfig = Request;
-
-    /// Create a new LLM provider
-    fn new(client: Client, key: &str) -> Result<Self> {
+impl DeepSeek {
+    /// Create a new DeepSeek provider with bearer auth.
+    pub fn new(client: Client, key: &str) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, "application/json".parse()?);
         headers.insert(header::ACCEPT, "application/json".parse()?);
         headers.insert(header::AUTHORIZATION, format!("Bearer {}", key).parse()?);
         Ok(Self { client, headers })
     }
+}
+
+impl LLM for DeepSeek {
+    /// The chat configuration.
+    type ChatConfig = Request;
 
     /// Send a message to the LLM
     async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
