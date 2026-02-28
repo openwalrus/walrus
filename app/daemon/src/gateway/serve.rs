@@ -1,6 +1,6 @@
 //! Shared gateway serve entrypoint — used by the binary and CLI.
 
-use crate::{GatewayConfig, gateway::Gateway};
+use crate::{DaemonConfig, gateway::Gateway};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
@@ -34,15 +34,15 @@ impl ServeHandle {
 ///
 /// Returns a [`ServeHandle`] with the socket path and a shutdown trigger.
 pub async fn serve(config_dir: &Path) -> Result<ServeHandle> {
-    let config_path = config_dir.join("gateway.toml");
-    let config = GatewayConfig::load(&config_path)?;
+    let config_path = config_dir.join("walrus.toml");
+    let config = DaemonConfig::load(&config_path)?;
     tracing::info!("loaded configuration from {}", config_path.display());
     serve_with_config(&config, config_dir).await
 }
 
 /// Serve with an already-loaded config. Useful when the caller resolves
 /// config separately (e.g. CLI with scaffold logic).
-pub async fn serve_with_config(config: &GatewayConfig, config_dir: &Path) -> Result<ServeHandle> {
+pub async fn serve_with_config(config: &DaemonConfig, config_dir: &Path) -> Result<ServeHandle> {
     use crate::gateway::uds;
     use std::sync::Arc;
 

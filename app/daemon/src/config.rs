@@ -1,4 +1,4 @@
-//! Gateway configuration loaded from TOML (DD#67).
+//! Daemon configuration loaded from TOML (DD#67).
 
 use anyhow::{Context, Result};
 use compact_str::CompactString;
@@ -27,9 +27,9 @@ pub fn socket_path() -> PathBuf {
     global_config_dir().join("walrus.sock")
 }
 
-/// Top-level gateway configuration.
+/// Top-level daemon configuration.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GatewayConfig {
+pub struct DaemonConfig {
     /// LLM provider configurations (`[[models]]` array).
     pub models: Vec<ProviderConfig>,
     /// Channel configurations.
@@ -40,7 +40,7 @@ pub struct GatewayConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
 
-impl Default for GatewayConfig {
+impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             models: vec![ProviderConfig {
@@ -103,8 +103,8 @@ tools:
 You are a helpful assistant. Be concise.
 "#;
 
-impl GatewayConfig {
-    /// Parse a TOML string into a `GatewayConfig`, expanding environment
+impl DaemonConfig {
+    /// Parse a TOML string into a `DaemonConfig`, expanding environment
     /// variables in supported fields.
     pub fn from_toml(toml_str: &str) -> anyhow::Result<Self> {
         let expanded = crate::utils::expand_env_vars(toml_str);
@@ -122,7 +122,7 @@ impl GatewayConfig {
 /// Scaffold the full config directory structure on first run.
 ///
 /// Creates subdirectories (agents, skills, cron, data), writes a default
-/// gateway.toml and a default assistant agent markdown file.
+/// walrus.toml and a default assistant agent markdown file.
 pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(config_dir.join(AGENTS_DIR))
         .context("failed to create agents directory")?;
@@ -133,8 +133,8 @@ pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(config_dir.join(DATA_DIR))
         .context("failed to create data directory")?;
 
-    let gateway_toml = config_dir.join("gateway.toml");
-    let contents = toml::to_string_pretty(&GatewayConfig::default())
+    let gateway_toml = config_dir.join("walrus.toml");
+    let contents = toml::to_string_pretty(&DaemonConfig::default())
         .context("failed to serialize default config")?;
     std::fs::write(&gateway_toml, contents)
         .with_context(|| format!("failed to write {}", gateway_toml.display()))?;

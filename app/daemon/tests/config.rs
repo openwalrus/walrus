@@ -1,6 +1,6 @@
-//! Gateway configuration tests (DD#67).
+//! Daemon configuration tests (DD#67).
 
-use walrus_daemon::GatewayConfig;
+use walrus_daemon::DaemonConfig;
 
 #[test]
 fn parse_minimal_config() {
@@ -9,7 +9,7 @@ fn parse_minimal_config() {
 model = "deepseek-chat"
 api_key = "test-key"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.models.len(), 1);
     assert_eq!(config.models[0].model.as_str(), "deepseek-chat");
     assert!(config.channels.is_empty());
@@ -26,7 +26,7 @@ api_key = "key1"
 model = "gpt-4o"
 api_key = "key2"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.models.len(), 2);
     assert_eq!(config.models[0].model.as_str(), "deepseek-chat");
     assert_eq!(config.models[1].model.as_str(), "gpt-4o");
@@ -49,7 +49,7 @@ name = "playwright"
 command = "npx"
 args = ["playwright-mcp"]
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.channels.len(), 1);
     assert_eq!(config.mcp_servers.len(), 1);
     assert_eq!(config.mcp_servers[0].name.as_str(), "playwright");
@@ -64,7 +64,7 @@ fn env_var_expansion() {
 model = "deepseek-chat"
 api_key = "${TEST_WALRUS_KEY}"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.models[0].api_key.as_deref(), Some("expanded-value"));
     unsafe { std::env::remove_var("TEST_WALRUS_KEY") };
 }
@@ -85,7 +85,7 @@ auto_restart = false
 [mcp_servers.env]
 KEY = "value"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.mcp_servers.len(), 1);
     let mcp = &config.mcp_servers[0];
     assert_eq!(mcp.name.as_str(), "test-server");
@@ -115,7 +115,7 @@ fn parse_claude_provider() {
 model = "claude-sonnet-4-20250514"
 api_key = "test-key"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.models[0].model.as_str(), "claude-sonnet-4-20250514");
     assert_eq!(config.models[0].kind().unwrap().as_str(), "claude");
 }
@@ -128,7 +128,7 @@ model = "gpt-4o"
 api_key = "test-key"
 base_url = "http://localhost:8080/v1/chat/completions"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.models[0].kind().unwrap().as_str(), "openai");
     assert_eq!(
         config.models[0].base_url.as_deref(),
@@ -143,7 +143,7 @@ fn parse_local_provider() {
 model = "microsoft/Phi-3.5-mini-instruct"
 quantization = "q4k"
 "#;
-    let config = GatewayConfig::from_toml(toml).unwrap();
+    let config = DaemonConfig::from_toml(toml).unwrap();
     assert_eq!(config.models[0].kind().unwrap().as_str(), "local");
     assert_eq!(
         config.models[0].model.as_str(),
@@ -153,8 +153,8 @@ quantization = "q4k"
 
 #[test]
 fn default_config_serializes() {
-    let config = GatewayConfig::default();
+    let config = DaemonConfig::default();
     let toml_str = toml::to_string_pretty(&config).unwrap();
     // Should roundtrip.
-    let _parsed: GatewayConfig = toml::from_str(&toml_str).unwrap();
+    let _parsed: DaemonConfig = toml::from_str(&toml_str).unwrap();
 }

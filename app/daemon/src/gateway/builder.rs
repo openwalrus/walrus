@@ -1,4 +1,4 @@
-//! Runtime builder — constructs a fully-configured Runtime from GatewayConfig.
+//! Runtime builder — constructs a fully-configured Runtime from DaemonConfig.
 
 use crate::MemoryBackend;
 use crate::config;
@@ -14,7 +14,7 @@ use std::path::Path;
 /// memory from `config_dir/data/memory.db` (when sqlite), and MCP servers
 /// from TOML config.
 pub async fn build_runtime(
-    config: &crate::GatewayConfig,
+    config: &crate::DaemonConfig,
     config_dir: &Path,
 ) -> Result<Runtime<GatewayHook>> {
     // Construct in-memory backend.
