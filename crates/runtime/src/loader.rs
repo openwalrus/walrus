@@ -20,6 +20,8 @@ struct AgentFrontmatter {
     tools: Vec<String>,
     #[serde(default)]
     skill_tags: Vec<String>,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 /// A cron job entry parsed from a markdown file.
@@ -59,6 +61,9 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<Agent> {
     }
     for tag in fm.skill_tags {
         agent = agent.skill_tag(tag);
+    }
+    if let Some(model) = fm.model {
+        agent = agent.model(model);
     }
 
     Ok(agent)

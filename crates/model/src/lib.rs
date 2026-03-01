@@ -9,7 +9,7 @@ pub mod config;
 pub mod http;
 pub mod manager;
 mod provider;
-pub mod request;
+mod request;
 
 pub mod claude;
 pub mod deepseek;
@@ -21,5 +21,4 @@ pub use config::{ProviderConfig, ProviderKind};
 pub use http::HttpProvider;
 pub use manager::ProviderManager;
 pub use provider::{Provider, build_provider};
-pub use request::Request;
 pub use reqwest::Client;

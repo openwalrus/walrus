@@ -5,7 +5,7 @@ use crate::config;
 use crate::gateway::GatewayHook;
 use anyhow::Result;
 use model::ProviderManager;
-use runtime::{General, McpBridge, Runtime, SkillRegistry};
+use runtime::{McpBridge, Request, Runtime, SkillRegistry};
 use std::path::Path;
 
 /// Build a fully-configured `Runtime<GatewayHook>` from config and directory.
@@ -28,14 +28,11 @@ pub async fn build_runtime(
         manager.active_model()
     );
 
-    // Build general config.
-    let general = General {
-        model: manager.active_model(),
-        ..General::default()
-    };
+    // Build request template.
+    let request = Request::new(manager.active_model());
 
     // Build runtime.
-    let mut runtime = Runtime::<GatewayHook>::new(general, manager, memory);
+    let mut runtime = Runtime::<GatewayHook>::new(request, manager, memory);
 
     // Load agents from markdown files.
     let agents = runtime::load_agents_dir(&config_dir.join(config::AGENTS_DIR))?;

@@ -2,14 +2,14 @@
 
 #![allow(dead_code)]
 
-use model::deepseek::DeepSeek;
+use model::ProviderManager;
 use walrus_runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Memory, prelude::*};
 
-/// Example hook wiring DeepSeek as the LLM provider.
+/// Example hook wiring ProviderManager as the model provider.
 pub struct ExampleHook;
 
 impl Hook for ExampleHook {
-    type Provider = DeepSeek;
+    type Model = ProviderManager;
     type Memory = InMemory;
 
     fn compact() -> &'static str {
@@ -39,8 +39,19 @@ pub fn load_api_key() -> String {
 /// Build a default Runtime with DeepSeek provider and InMemory.
 pub fn build_runtime() -> Runtime<ExampleHook> {
     let key = load_api_key();
-    let provider = DeepSeek::new(model::Client::new(), &key).expect("failed to create provider");
-    Runtime::new(General::default(), provider, InMemory::new())
+    let config = model::ProviderConfig {
+        model: "deepseek-chat".into(),
+        api_key: Some(key.into()),
+        base_url: None,
+        loader: None,
+        quantization: None,
+        chat_template: None,
+    };
+    let provider =
+        model::deepseek::DeepSeek::new(model::Client::new(), &config.api_key.as_ref().unwrap())
+            .expect("failed to create provider");
+    let manager = ProviderManager::single(config, model::Provider::DeepSeek(provider));
+    Runtime::new(Request::default(), manager, InMemory::new())
 }
 
 /// Simple REPL loop: read lines from stdin, stream to agent.

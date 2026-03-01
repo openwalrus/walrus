@@ -15,3 +15,15 @@ fn agent_skill_tag_builder() {
     assert_eq!(agent.skill_tags[0], "analysis");
     assert_eq!(agent.skill_tags[1], "coding");
 }
+
+#[test]
+fn agent_builder_model() {
+    let agent = Agent::new("test").model("deepseek-chat");
+    assert_eq!(agent.model.as_deref(), Some("deepseek-chat"));
+}
+
+#[test]
+fn agent_builder_no_model() {
+    let agent = Agent::new("test");
+    assert!(agent.model.is_none());
+}

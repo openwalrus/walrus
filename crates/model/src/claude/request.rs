@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use wcore::model::{Config, General, Message, Role, Tool, ToolChoice};
+use wcore::model::{Role, Tool, ToolChoice};
 
 /// The request body for the Anthropic Messages API.
 #[derive(Debug, Clone, Serialize)]
@@ -34,13 +34,53 @@ pub struct Request {
 }
 
 impl Request {
-    /// Build the request with the given messages, converting from walrus
-    /// `Message` format to Anthropic content block format.
-    pub fn messages(&self, messages: &[Message]) -> Self {
-        let mut system = self.system.clone();
+    /// Enable streaming for the request.
+    pub fn stream(mut self) -> Self {
+        self.stream = Some(true);
+        self
+    }
+
+    /// Set the tools for the request.
+    fn with_tools(self, tools: Vec<Tool>) -> Self {
+        let tools = tools
+            .into_iter()
+            .map(|tool| {
+                json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "input_schema": tool.parameters,
+                })
+            })
+            .collect::<Vec<_>>();
+        Self {
+            tools: Some(tools),
+            ..self
+        }
+    }
+
+    /// Set the tool choice for the request.
+    fn with_tool_choice(self, tool_choice: ToolChoice) -> Self {
+        Self {
+            tool_choice: match tool_choice {
+                ToolChoice::None => Some(json!({"type": "none"})),
+                ToolChoice::Auto => Some(json!({"type": "auto"})),
+                ToolChoice::Required => Some(json!({"type": "any"})),
+                ToolChoice::Function(name) => Some(json!({
+                    "type": "tool",
+                    "name": name,
+                })),
+            },
+            ..self
+        }
+    }
+}
+
+impl From<wcore::model::Request> for Request {
+    fn from(req: wcore::model::Request) -> Self {
+        let mut system = None;
         let mut anthropic_msgs = Vec::new();
 
-        for msg in messages {
+        for msg in &req.messages {
             match msg.role {
                 Role::System => {
                     system = Some(msg.content.clone());
@@ -93,27 +133,11 @@ impl Request {
             }
         }
 
-        Self {
+        let mut result = Self {
+            model: req.model.to_string(),
+            max_tokens: 4096,
             system,
             messages: anthropic_msgs,
-            ..self.clone()
-        }
-    }
-
-    /// Enable streaming for the request.
-    pub fn stream(mut self) -> Self {
-        self.stream = Some(true);
-        self
-    }
-}
-
-impl From<General> for Request {
-    fn from(config: General) -> Self {
-        let mut req = Self {
-            model: config.model.to_string(),
-            max_tokens: config.context_limit.unwrap_or(4096),
-            system: None,
-            messages: Vec::new(),
             stream: None,
             tools: None,
             tool_choice: None,
@@ -121,47 +145,13 @@ impl From<General> for Request {
             top_p: None,
         };
 
-        if let Some(tools) = config.tools {
-            req = req.with_tools(tools);
+        if let Some(tools) = req.tools {
+            result = result.with_tools(tools);
         }
-        if let Some(tool_choice) = config.tool_choice {
-            req = req.with_tool_choice(tool_choice);
+        if let Some(tool_choice) = req.tool_choice {
+            result = result.with_tool_choice(tool_choice);
         }
 
-        req
-    }
-}
-
-impl Config for Request {
-    fn with_tools(self, tools: Vec<Tool>) -> Self {
-        let tools = tools
-            .into_iter()
-            .map(|tool| {
-                json!({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": tool.parameters,
-                })
-            })
-            .collect::<Vec<_>>();
-        Self {
-            tools: Some(tools),
-            ..self
-        }
-    }
-
-    fn with_tool_choice(self, tool_choice: ToolChoice) -> Self {
-        Self {
-            tool_choice: match tool_choice {
-                ToolChoice::None => Some(json!({"type": "none"})),
-                ToolChoice::Auto => Some(json!({"type": "auto"})),
-                ToolChoice::Required => Some(json!({"type": "any"})),
-                ToolChoice::Function(name) => Some(json!({
-                    "type": "tool",
-                    "name": name,
-                })),
-            },
-            ..self
-        }
+        result
     }
 }

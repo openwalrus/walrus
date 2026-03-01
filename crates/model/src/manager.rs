@@ -1,5 +1,5 @@
-//! `ProviderManager` — concurrent-safe named provider map with active-provider
-//! swapping (DD#65, DD#67).
+//! `ProviderManager` — concurrent-safe named provider registry with model
+//! routing and active-provider swapping (DD#65, DD#67, DD#70).
 
 use crate::{Provider, ProviderConfig, build_provider};
 use anyhow::{Result, bail};
@@ -9,7 +9,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
-use wcore::model::{General, LLM, Message, Response, StreamChunk};
+use wcore::model::{Model, Response, StreamChunk, default_context_limit};
 
 /// Manages a set of named providers with an active selection.
 ///
@@ -153,29 +153,58 @@ impl ProviderManager {
             })
             .collect()
     }
+
+    /// Look up a provider by model name. Returns a clone so callers don't
+    /// hold the lock during LLM calls.
+    fn provider_for(&self, model: &str) -> Result<Provider> {
+        let inner = self.inner.read().expect("provider lock poisoned");
+        inner
+            .providers
+            .get(model)
+            .map(|(_, p)| p.clone())
+            .ok_or_else(|| anyhow::anyhow!("model '{}' not found in registry", model))
+    }
+
+    /// Resolve the context limit for a model (DD#68).
+    ///
+    /// Resolution chain: provider reports limit → static map → 8192 default.
+    pub fn context_limit(&self, model: &str) -> usize {
+        let inner = self.inner.read().expect("provider lock poisoned");
+        if let Some((_, provider)) = inner.providers.get(model)
+            && let Some(limit) = provider.context_length(model)
+        {
+            return limit;
+        }
+        default_context_limit(model)
+    }
 }
 
-impl LLM for ProviderManager {
-    type ChatConfig = General;
-
-    async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {
-        self.active().send(config, messages).await
+impl Model for ProviderManager {
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
+        let provider = self.provider_for(&request.model)?;
+        provider.send(request).await
     }
 
     fn stream(
         &self,
-        config: General,
-        messages: &[Message],
-        usage: bool,
+        request: wcore::model::Request,
     ) -> impl Stream<Item = Result<StreamChunk>> + Send {
-        let provider = self.active();
-        let messages = messages.to_vec();
+        let result = self.provider_for(&request.model);
         try_stream! {
-            let mut stream = std::pin::pin!(provider.stream(config, &messages, usage));
+            let provider = result?;
+            let mut stream = std::pin::pin!(provider.stream(request));
             while let Some(chunk) = stream.next().await {
                 yield chunk?;
             }
         }
+    }
+
+    fn context_limit(&self, model: &str) -> usize {
+        ProviderManager::context_limit(self, model)
+    }
+
+    fn active_model(&self) -> CompactString {
+        ProviderManager::active_model(self)
     }
 }
 
