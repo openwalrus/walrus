@@ -1,13 +1,14 @@
-//! Unified LLM interface types and traits.
+//! Unified LLM interface types and traits (DD#69, DD#70).
 //!
 //! Provides the shared types used across all LLM providers:
-//! `Message`, `Response`, `StreamChunk`, `Tool`, `General`, and the `LLM` trait.
+//! `Message`, `Response`, `StreamChunk`, `Tool`, `Request`, and the `Model` trait.
 
 use anyhow::Result;
+use compact_str::CompactString;
 use futures_core::Stream;
 pub use limits::default_context_limit;
 pub use message::{Message, MessageBuilder, Role, estimate_tokens};
-pub use request::General;
+pub use request::Request;
 pub use response::{
     Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, Response, Usage,
 };
@@ -21,87 +22,51 @@ mod response;
 mod stream;
 mod tool;
 
-/// A trait for LLM providers.
+/// Unified LLM provider trait (DD#70).
+///
+/// Abstracts any LLM provider — single-backend (DeepSeek, Claude) or
+/// multi-model registry (ProviderManager). All implementations take
+/// `&Request` directly; no associated config type.
 ///
 /// Constructors are inherent methods on each provider — never called
 /// polymorphically (DD#57).
 pub trait Model: Sized + Clone {
-    /// The chat configuration.
-    type ChatConfig: From<General> + Clone + Send;
+    /// Send a chat completion request.
+    fn send(&self, request: &Request) -> impl Future<Output = Result<Response>> + Send;
 
-    /// Send a message to the LLM
-    fn send(
-        &self,
-        config: &Self::ChatConfig,
-        messages: &[Message],
-    ) -> impl Future<Output = Result<Response>> + Send;
+    /// Stream a chat completion response.
+    fn stream(&self, request: Request) -> impl Stream<Item = Result<StreamChunk>> + Send;
 
-    /// Send a message to the LLM with streaming
-    fn stream(
-        &self,
-        config: Self::ChatConfig,
-        messages: &[Message],
-        usage: bool,
-    ) -> impl Stream<Item = Result<StreamChunk>> + Send;
-}
-
-/// A model registry that routes requests to named providers (DD#68).
-///
-/// Unlike [`LLM`] which represents a single provider, `Registry` manages
-/// multiple providers and routes by model name. Used by the runtime for
-/// per-agent model selection.
-pub trait Registry: Clone {
-    /// Send a request to the named model.
-    fn send(
-        &self,
-        model: &str,
-        config: &General,
-        messages: &[Message],
-    ) -> impl Future<Output = Result<Response>> + Send;
-
-    /// Stream a response from the named model.
-    fn stream(
-        &self,
-        model: &str,
-        config: General,
-        messages: &[Message],
-        usage: bool,
-    ) -> Result<impl Stream<Item = Result<StreamChunk>> + Send>;
-
-    /// Resolve the context limit for a model.
-    fn context_limit(&self, model: &str) -> usize;
-
-    /// Get the active/default model name.
-    fn active_model(&self) -> compact_str::CompactString;
-}
-
-impl Registry for () {
-    async fn send(
-        &self,
-        _model: &str,
-        _config: &General,
-        _messages: &[Message],
-    ) -> Result<Response> {
-        anyhow::bail!("not implemented")
+    /// Resolve the context limit for a model name.
+    ///
+    /// Default implementation uses the static prefix-matching map.
+    fn context_limit(&self, model: &str) -> usize {
+        default_context_limit(model)
     }
 
-    fn stream(
-        &self,
-        _model: &str,
-        _config: General,
-        _messages: &[Message],
-        _usage: bool,
-    ) -> Result<impl Stream<Item = Result<StreamChunk>> + Send> {
-        Ok(async_stream::stream! {
+    /// Get the active/default model name.
+    fn active_model(&self) -> CompactString;
+}
+
+/// `()` as a no-op Model for testing (panics on send/stream).
+impl Model for () {
+    async fn send(&self, _request: &Request) -> Result<Response> {
+        panic!("NoopModel::send called — not intended for real LLM calls");
+    }
+
+    #[allow(unreachable_code)]
+    fn stream(&self, _request: Request) -> impl Stream<Item = Result<StreamChunk>> + Send {
+        panic!("NoopModel::stream called — not intended for real LLM calls");
+        async_stream::stream! {
             yield Err(anyhow::anyhow!("not implemented"));
-        })
+        }
     }
 
     fn context_limit(&self, _model: &str) -> usize {
         0
     }
 
-    fn active_model(&self) -> compact_str::CompactString {
-        compact_str::CompactString::new("")
+    fn active_model(&self) -> CompactString {
+        CompactString::new("")
     }
 }

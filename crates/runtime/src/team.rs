@@ -2,8 +2,8 @@
 //!
 //! Each worker agent is exposed as a tool on the leader. When the leader
 //! calls a worker tool, the handler runs a self-contained send loop
-//! using captured state (registry, config, memory, agent config, tools,
-//! handlers) — no reference back to the Runtime needed.
+//! using captured state (provider, request template, memory, agent config,
+//! tools, handlers) — no reference back to the Runtime needed.
 //!
 //! # Example
 //!
@@ -21,21 +21,21 @@
 use crate::{Handler, Hook, MAX_TOOL_CALLS, SkillRegistry};
 use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
-use wcore::model::{General, Message, Registry, Tool, ToolChoice};
+use wcore::model::{Message, Model, Request, Tool, ToolChoice};
 use wcore::{Agent, Memory};
 
 /// Build a team: register each worker as a tool and add to the leader.
 ///
 /// Each worker's handler captures everything it needs to independently run
-/// a conversation: registry, config, memory, agent config, resolved
+/// a conversation: provider, request template, memory, agent config, resolved
 /// tool schemas, and resolved tool handlers.
 pub fn build_team<H: Hook + 'static>(
     mut leader: Agent,
     workers: Vec<Agent>,
     runtime: &mut crate::Runtime<H>,
 ) -> Agent {
-    let registry = runtime.registry().clone();
-    let config = runtime.config().clone();
+    let provider = runtime.provider().clone();
+    let request = runtime.request().clone();
     let memory = runtime.memory_arc();
     let skills = runtime.skills().map(Arc::clone);
 
@@ -56,12 +56,12 @@ pub fn build_team<H: Hook + 'static>(
         let model = worker
             .model
             .clone()
-            .unwrap_or_else(|| registry.active_model());
+            .unwrap_or_else(|| provider.active_model());
 
         let ctx = Arc::new(WorkerCtx {
-            registry: registry.clone(),
+            provider: provider.clone(),
             model,
-            config: config.clone(),
+            request: request.clone(),
             memory: Arc::clone(&memory),
             skills: skills.clone(),
             agent: worker.clone(),
@@ -87,11 +87,11 @@ pub fn build_team<H: Hook + 'static>(
 }
 
 /// Shared immutable state for a worker handler, wrapped in Arc
-/// to avoid cloning registry, Agent, `Vec<Tool>`, and BTreeMap per call.
-struct WorkerCtx<R: Registry, M: Memory> {
-    registry: R,
+/// to avoid cloning provider, Agent, `Vec<Tool>`, and BTreeMap per call.
+struct WorkerCtx<P: Model, M: Memory> {
+    provider: P,
     model: CompactString,
-    config: General,
+    request: Request,
     memory: Arc<M>,
     skills: Option<Arc<SkillRegistry>>,
     agent: Agent,
@@ -103,7 +103,7 @@ struct WorkerCtx<R: Registry, M: Memory> {
 ///
 /// Builds the system prompt (base + memory context), sends the input as a
 /// user message, and loops through tool calls up to [`MAX_TOOL_CALLS`].
-async fn worker_send<R: Registry, M: Memory>(ctx: &WorkerCtx<R, M>, input: String) -> String {
+async fn worker_send<P: Model, M: Memory>(ctx: &WorkerCtx<P, M>, input: String) -> String {
     let mut system_prompt = ctx.agent.system_prompt.clone();
     let memory_context = ctx.memory.compile_relevant(&input).await;
     if !memory_context.is_empty() {
@@ -120,13 +120,24 @@ async fn worker_send<R: Registry, M: Memory>(ctx: &WorkerCtx<R, M>, input: Strin
         }
     }
 
-    let mut messages = vec![Message::system(&system_prompt), Message::user(&input)];
+    let messages = vec![Message::system(&system_prompt), Message::user(&input)];
     let mut tool_choice = ToolChoice::Auto;
-    let base_cfg = ctx.config.clone().with_tools(ctx.tools.to_vec());
+    let mut history = messages;
 
     for _ in 0..MAX_TOOL_CALLS {
-        let cfg = base_cfg.clone().with_tool_choice(tool_choice.clone());
-        let response = match ctx.registry.send(&ctx.model, &cfg, &messages).await {
+        let request = Request {
+            model: ctx.model.clone(),
+            messages: history.clone(),
+            think: ctx.request.think,
+            tools: if ctx.tools.is_empty() {
+                None
+            } else {
+                Some(ctx.tools.clone())
+            },
+            tool_choice: Some(tool_choice.clone()),
+            usage: ctx.request.usage,
+        };
+        let response = match ctx.provider.send(&request).await {
             Ok(r) => r,
             Err(e) => return format!("worker error: {e}"),
         };
@@ -149,8 +160,8 @@ async fn worker_send<R: Registry, M: Memory>(ctx: &WorkerCtx<R, M>, input: Strin
             tool_results.push(Message::tool(output, call.id.clone()));
         }
 
-        messages.push(message);
-        messages.extend(tool_results);
+        history.push(message);
+        history.extend(tool_results);
         tool_choice = ToolChoice::None;
     }
 

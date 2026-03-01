@@ -1,7 +1,7 @@
-//! Tests for `ProviderManager` (DD#67, DD#68).
+//! Tests for `ProviderManager` (DD#67, DD#68, DD#70).
 
 use walrus_model::{ProviderConfig, ProviderManager};
-use wcore::model::General;
+use wcore::model::{Model, Request};
 
 fn test_configs() -> Vec<ProviderConfig> {
     vec![
@@ -147,11 +147,8 @@ async fn empty_configs_fails() {
 async fn send_unknown_model_errors() {
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-    let config = General {
-        model: "nonexistent".into(),
-        ..General::default()
-    };
-    let result = manager.send_to_model("nonexistent", &config, &[]).await;
+    let request = Request::new("nonexistent");
+    let result = manager.send(&request).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not found"));
 }
@@ -176,12 +173,12 @@ async fn context_limit_unknown_default() {
 
 #[tokio::test]
 async fn stream_unknown_model_errors() {
+    use futures_util::StreamExt;
     let configs = test_configs();
     let manager = ProviderManager::from_configs(&configs).await.unwrap();
-    let config = General {
-        model: "nonexistent".into(),
-        ..General::default()
-    };
-    let result = manager.stream_from_model("nonexistent", config, &[], false);
-    assert!(result.is_err());
+    let request = Request::new("nonexistent");
+    let mut stream = std::pin::pin!(manager.stream(request));
+    let first = stream.next().await;
+    assert!(first.is_some());
+    assert!(first.unwrap().is_err());
 }

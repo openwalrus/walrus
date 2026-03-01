@@ -5,11 +5,11 @@
 use model::ProviderManager;
 use walrus_runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Memory, prelude::*};
 
-/// Example hook wiring ProviderManager as the model registry.
+/// Example hook wiring ProviderManager as the model provider.
 pub struct ExampleHook;
 
 impl Hook for ExampleHook {
-    type Registry = ProviderManager;
+    type Model = ProviderManager;
     type Memory = InMemory;
 
     fn compact() -> &'static str {
@@ -51,7 +51,7 @@ pub fn build_runtime() -> Runtime<ExampleHook> {
         model::deepseek::DeepSeek::new(model::Client::new(), &config.api_key.as_ref().unwrap())
             .expect("failed to create provider");
     let manager = ProviderManager::single(config, model::Provider::DeepSeek(provider));
-    Runtime::new(General::default(), manager, InMemory::new())
+    Runtime::new(Request::default(), manager, InMemory::new())
 }
 
 /// Simple REPL loop: read lines from stdin, stream to agent.

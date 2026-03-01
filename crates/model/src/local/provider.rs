@@ -1,4 +1,4 @@
-//! LLM trait implementation for the Local provider.
+//! Model trait implementation for the Local provider.
 
 use super::Local;
 use anyhow::Result;
@@ -7,30 +7,25 @@ use compact_str::CompactString;
 use futures_core::Stream;
 use std::collections::HashMap;
 use wcore::model::{
-    Choice, CompletionMeta, Delta, FunctionCall, General, Message, Model, Response, Role,
-    StreamChunk, ToolCall, Usage,
+    Choice, CompletionMeta, Delta, FunctionCall, Model, Response, Role, StreamChunk, ToolCall,
+    Usage,
 };
 
 impl Model for Local {
-    type ChatConfig = General;
-
-    async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {
-        let request = build_request(config, messages);
-        let resp = self.model.send_chat_request(request).await?;
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
+        let mr_request = build_request(request);
+        let resp = self.model.send_chat_request(mr_request).await?;
         Ok(to_response(resp))
     }
 
     fn stream(
         &self,
-        config: General,
-        messages: &[Message],
-        _usage: bool,
+        request: wcore::model::Request,
     ) -> impl Stream<Item = Result<StreamChunk>> + Send {
         let model = self.model.clone();
-        let messages = messages.to_vec();
         try_stream! {
-            let request = build_request(&config, &messages);
-            let mut stream = model.stream_chat_request(request).await?;
+            let mr_request = build_request(&request);
+            let mut stream = model.stream_chat_request(mr_request).await?;
             while let Some(resp) = stream.next().await {
                 match resp {
                     mistralrs::Response::Chunk(chunk) => {
@@ -49,13 +44,22 @@ impl Model for Local {
             }
         }
     }
+
+    fn context_limit(&self, model: &str) -> usize {
+        self.context_length(model)
+            .unwrap_or_else(|| wcore::model::default_context_limit(model))
+    }
+
+    fn active_model(&self) -> CompactString {
+        CompactString::from("local")
+    }
 }
 
-/// Build a mistralrs `RequestBuilder` from walrus `General` config and messages.
-fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBuilder {
+/// Build a mistralrs `RequestBuilder` from a walrus `Request`.
+fn build_request(request: &wcore::model::Request) -> mistralrs::RequestBuilder {
     let mut builder = mistralrs::RequestBuilder::new();
 
-    for msg in messages {
+    for msg in &request.messages {
         match msg.role {
             Role::System => {
                 builder = builder.add_message(mistralrs::TextMessageRole::System, &msg.content);
@@ -94,7 +98,7 @@ fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBu
         }
     }
 
-    if let Some(tools) = &config.tools {
+    if let Some(tools) = &request.tools {
         let mr_tools = tools
             .iter()
             .map(|t| {
@@ -114,7 +118,7 @@ fn build_request(config: &General, messages: &[Message]) -> mistralrs::RequestBu
         builder = builder.set_tools(mr_tools);
     }
 
-    if let Some(tool_choice) = &config.tool_choice {
+    if let Some(tool_choice) = &request.tool_choice {
         let mr_choice = match tool_choice {
             wcore::model::ToolChoice::None => mistralrs::ToolChoice::None,
             wcore::model::ToolChoice::Auto | wcore::model::ToolChoice::Required => {

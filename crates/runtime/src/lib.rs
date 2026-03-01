@@ -1,7 +1,7 @@
 //! Walrus runtime: the top-level orchestrator.
 //!
 //! The [`Runtime`] is the entry point for the agent framework. It holds
-//! the model registry (configured via [`Hook`]), agent configurations,
+//! the model provider (configured via [`Hook`]), agent configurations,
 //! tool handlers, and manages sessions internally.
 //!
 //! # Example
@@ -9,8 +9,8 @@
 //! ```rust,ignore
 //! use walrus_runtime::prelude::*;
 //!
-//! let registry = MyRegistry::new(client, &key)?;
-//! let mut runtime = Runtime::<MyHook>::new(General::default(), registry, InMemory::new());
+//! let provider = MyProvider::new(client, &key)?;
+//! let mut runtime = Runtime::<MyHook>::new(Request::default(), provider, InMemory::new());
 //! runtime.add_agent(Agent::new("assistant").system_prompt("You are helpful."));
 //! let response = runtime.send_to("assistant", Message::user("hello")).await?;
 //! ```
@@ -20,7 +20,7 @@ pub use loader::{CronEntry, load_agents_dir, load_cron_dir, parse_agent_md, pars
 pub use mcp::McpBridge;
 pub use skills::{SkillRegistry, parse_skill_md};
 pub use team::{build_team, extract_input, worker_tool};
-pub use wcore::model::{General, Message, Response, Role, StreamChunk, Tool};
+pub use wcore::model::{Message, Request, Response, Role, StreamChunk, Tool};
 pub use wcore::{Agent, InMemory, Memory, NoEmbedder, Skill, SkillTier};
 
 use anyhow::Result;
@@ -28,7 +28,7 @@ use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
-use wcore::model::{FinishReason, Registry, ToolCall, ToolChoice, estimate_tokens};
+use wcore::model::{FinishReason, Model, ToolCall, ToolChoice, estimate_tokens};
 
 pub mod hook;
 pub mod loader;
@@ -39,7 +39,7 @@ pub mod team;
 /// Re-exports of the most commonly used types.
 pub mod prelude {
     pub use crate::{
-        Agent, General, Hook, InMemory, Message, Response, Role, Runtime, SkillRegistry,
+        Agent, Hook, InMemory, Message, Request, Response, Role, Runtime, SkillRegistry,
         StreamChunk, Tool,
     };
 }
@@ -67,11 +67,11 @@ impl Session {
 
 /// The walrus runtime — top-level orchestrator.
 ///
-/// Generic over `H: Hook` for type-level configuration of the model registry,
+/// Generic over `H: Hook` for type-level configuration of the model provider,
 /// memory backend, and compaction prompts.
 pub struct Runtime<H: Hook> {
-    registry: H::Registry,
-    config: General,
+    provider: H::Model,
+    request: Request,
     memory: Arc<H::Memory>,
     skills: Option<Arc<SkillRegistry>>,
     mcp: Option<Arc<McpBridge>>,
@@ -81,12 +81,12 @@ pub struct Runtime<H: Hook> {
 }
 
 impl<H: Hook + 'static> Runtime<H> {
-    /// Create a new runtime with the given config, registry, and memory.
-    pub fn new(config: General, registry: H::Registry, memory: H::Memory) -> Self {
+    /// Create a new runtime with the given request template, provider, and memory.
+    pub fn new(request: Request, provider: H::Model, memory: H::Memory) -> Self {
         let memory = Arc::new(memory);
         let mut rt = Self {
-            registry,
-            config,
+            provider,
+            request,
             memory: Arc::clone(&memory),
             skills: None,
             mcp: None,
@@ -206,7 +206,7 @@ impl<H: Hook + 'static> Runtime<H> {
 
     /// Context window limit for a specific model (DD#68).
     pub fn context_limit(&self, model: &str) -> usize {
-        self.registry.context_limit(model)
+        self.provider.context_limit(model)
     }
 
     /// Clear the session for a named agent, resetting conversation history.
@@ -298,10 +298,10 @@ impl<H: Hook + 'static> Runtime<H> {
 
             'outer: for _ in 0..MAX_TOOL_CALLS {
                 let api_msgs = self.api_messages_from(agent, &messages).await;
-                let cfg = self.build_config(&tools, tool_choice.clone());
+                let request = self.build_request(&model, api_msgs, &tools, tool_choice.clone());
                 let mut builder = Message::builder(Role::Assistant);
 
-                let inner = self.registry.stream(&model, cfg, &api_msgs, self.config.usage)?;
+                let inner = self.provider.stream(request);
                 futures_util::pin_mut!(inner);
 
                 while let Some(result) = inner.next().await {
@@ -351,14 +351,14 @@ impl<H: Hook + 'static> Runtime<H> {
         Arc::clone(&self.memory)
     }
 
-    /// Get a reference to the model registry.
-    pub fn registry(&self) -> &H::Registry {
-        &self.registry
+    /// Get a reference to the model provider.
+    pub fn provider(&self) -> &H::Model {
+        &self.provider
     }
 
-    /// Get a reference to the general config.
-    pub fn config(&self) -> &General {
-        &self.config
+    /// Get a reference to the request template.
+    pub fn request(&self) -> &Request {
+        &self.request
     }
 
     /// Get a shared reference to the skill registry, if one is set.
@@ -370,12 +370,12 @@ impl<H: Hook + 'static> Runtime<H> {
 
     /// Resolve the model name for an agent (DD#68).
     ///
-    /// Uses the agent's model field if set, otherwise the registry's active model.
+    /// Uses the agent's model field if set, otherwise the provider's active model.
     fn resolve_model(&self, agent: &Agent) -> CompactString {
         agent
             .model
             .clone()
-            .unwrap_or_else(|| self.registry.active_model())
+            .unwrap_or_else(|| self.provider.active_model())
     }
 
     /// Estimate current token usage for a session.
@@ -395,7 +395,7 @@ impl<H: Hook + 'static> Runtime<H> {
             .agents
             .get(agent)
             .and_then(|a| a.model.as_deref())
-            .unwrap_or(self.config.model.as_str());
+            .unwrap_or(self.request.model.as_str());
         let limit = self.context_limit(model);
         usage > (limit * 4 / 5)
     }
@@ -471,7 +471,7 @@ impl<H: Hook + 'static> Runtime<H> {
             .agents
             .get(agent)
             .and_then(|a| a.model.as_deref())
-            .unwrap_or(self.config.model.as_str());
+            .unwrap_or(self.request.model.as_str());
 
         // 1. Memory flush: extract durable facts via "remember" tool.
         let flush_prompt = H::flush();
@@ -479,12 +479,9 @@ impl<H: Hook + 'static> Runtime<H> {
             let remember_tool = self.resolve(&["remember".into()]);
             let mut flush_messages = session.messages.clone();
             flush_messages.insert(0, Message::system(flush_prompt));
-            let cfg = self
-                .config
-                .clone()
-                .with_tools(remember_tool)
-                .with_tool_choice(ToolChoice::Auto);
-            match self.registry.send(model, &cfg, &flush_messages).await {
+            let request =
+                self.build_request(model, flush_messages, &remember_tool, ToolChoice::Auto);
+            match self.provider.send(&request).await {
                 Ok(response) => {
                     if let Some(msg) = response.message()
                         && !msg.tool_calls.is_empty()
@@ -501,12 +498,8 @@ impl<H: Hook + 'static> Runtime<H> {
         if !compact_prompt.is_empty() {
             let mut summary_messages = session.messages.clone();
             summary_messages.insert(0, Message::system(compact_prompt));
-            let cfg = self
-                .config
-                .clone()
-                .with_tools(vec![])
-                .with_tool_choice(ToolChoice::None);
-            match self.registry.send(model, &cfg, &summary_messages).await {
+            let request = self.build_request(model, summary_messages, &[], ToolChoice::None);
+            match self.provider.send(&request).await {
                 Ok(response) => {
                     let summary = response.content().cloned().unwrap_or_default();
                     session.messages.clear();
@@ -520,12 +513,26 @@ impl<H: Hook + 'static> Runtime<H> {
         }
     }
 
-    /// Build a config with the given tools and tool choice.
-    fn build_config(&self, tools: &[Tool], tool_choice: ToolChoice) -> General {
-        self.config
-            .clone()
-            .with_tools(tools.to_vec())
-            .with_tool_choice(tool_choice)
+    /// Build a request from the template with the given model, messages, tools, and tool choice.
+    fn build_request(
+        &self,
+        model: &str,
+        messages: Vec<Message>,
+        tools: &[Tool],
+        tool_choice: ToolChoice,
+    ) -> Request {
+        Request {
+            model: CompactString::from(model),
+            messages,
+            think: self.request.think,
+            tools: if tools.is_empty() {
+                None
+            } else {
+                Some(tools.to_vec())
+            },
+            tool_choice: Some(tool_choice),
+            usage: self.request.usage,
+        }
     }
 
     /// Internal send loop (non-streaming).
@@ -547,8 +554,8 @@ impl<H: Hook + 'static> Runtime<H> {
 
         for _ in 0..MAX_TOOL_CALLS {
             let messages = self.api_messages(agent, session).await;
-            let cfg = self.build_config(&tools, tool_choice.clone());
-            let response = self.registry.send(&model, &cfg, &messages).await?;
+            let request = self.build_request(&model, messages, &tools, tool_choice.clone());
+            let response = self.provider.send(&request).await?;
             let Some(message) = response.message() else {
                 return Ok(response);
             };
@@ -589,8 +596,8 @@ impl<H: Hook + 'static> Runtime<H> {
 
         for _ in 0..MAX_TOOL_CALLS {
             let api_msgs = self.api_messages_from(agent, messages).await;
-            let cfg = self.build_config(&tools, tool_choice.clone());
-            let response = self.registry.send(&model, &cfg, &api_msgs).await?;
+            let request = self.build_request(&model, api_msgs, &tools, tool_choice.clone());
+            let response = self.provider.send(&request).await?;
             let Some(message) = response.message() else {
                 return Ok(response.content().cloned().unwrap_or_default());
             };

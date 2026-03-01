@@ -1,19 +1,19 @@
 //! Hook trait — type-level runtime configuration.
 //!
 //! Hook is a pure trait with no `&self` parameter. It tells the Runtime
-//! which model registry and memory backend to use, and what prompts
+//! which model provider and memory backend to use, and what prompts
 //! to send for automatic compaction and memory flush.
 
-use wcore::model::Registry;
+use wcore::model::Model;
 use wcore::{InMemory, Memory};
 
 /// Type-level runtime configuration.
 ///
-/// Determines the model registry, memory backend, and compaction/flush prompts.
+/// Determines the model provider, memory backend, and compaction/flush prompts.
 /// No instances are created — methods are called as `H::compact()`.
 pub trait Hook {
-    /// The model registry for this hook (DD#68).
-    type Registry: Registry + Send + Sync;
+    /// The model provider for this hook (DD#70).
+    type Model: Model + Send + Sync;
 
     /// The memory backend for this hook.
     type Memory: Memory;
@@ -34,7 +34,7 @@ pub const DEFAULT_COMPACT_PROMPT: &str = include_str!("../prompts/compact.md");
 pub const DEFAULT_FLUSH_PROMPT: &str = include_str!("../prompts/flush.md");
 
 impl Hook for () {
-    type Registry = ();
+    type Model = ();
     type Memory = InMemory;
 
     fn compact() -> &'static str {

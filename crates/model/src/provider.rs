@@ -1,4 +1,4 @@
-//! Provider implementation (DD#67).
+//! Provider implementation (DD#67, DD#70).
 //!
 //! Unified `Provider` enum with enum dispatch over concrete backends.
 //! `build_provider()` matches on `ProviderKind` detected from the model name.
@@ -9,9 +9,10 @@ use crate::deepseek::DeepSeek;
 use crate::openai::OpenAI;
 use anyhow::Result;
 use async_stream::try_stream;
+use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use wcore::model::{General, Message, Model, Response, StreamChunk};
+use wcore::model::{Model, Response, StreamChunk};
 
 /// Unified LLM provider enum.
 ///
@@ -35,11 +36,11 @@ impl Provider {
     ///
     /// Local providers delegate to mistralrs; remote providers return None
     /// (callers fall back to the static map in `wcore::model::default_context_limit`).
-    pub fn context_length(&self, model: &str) -> Option<usize> {
+    pub fn context_length(&self, _model: &str) -> Option<usize> {
         match self {
             Self::DeepSeek(_) | Self::OpenAI(_) | Self::Claude(_) => None,
             #[cfg(feature = "local")]
-            Self::Local(p) => p.context_length(model),
+            Self::Local(p) => p.context_length(_model),
         }
     }
 }
@@ -112,66 +113,64 @@ pub async fn build_provider(config: &ProviderConfig, client: reqwest::Client) ->
 }
 
 impl Model for Provider {
-    type ChatConfig = General;
-
-    async fn send(&self, config: &General, messages: &[Message]) -> Result<Response> {
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
         match self {
-            Self::DeepSeek(p) => {
-                let req = crate::deepseek::Request::from(config.clone());
-                p.send(&req, messages).await
-            }
-            Self::OpenAI(p) => {
-                let req = crate::openai::Request::from(config.clone());
-                p.send(&req, messages).await
-            }
-            Self::Claude(p) => {
-                let req = crate::claude::Request::from(config.clone());
-                p.send(&req, messages).await
-            }
+            Self::DeepSeek(p) => p.send(request).await,
+            Self::OpenAI(p) => p.send(request).await,
+            Self::Claude(p) => p.send(request).await,
             #[cfg(feature = "local")]
-            Self::Local(p) => p.send(config, messages).await,
+            Self::Local(p) => p.send(request).await,
         }
     }
 
     fn stream(
         &self,
-        config: General,
-        messages: &[Message],
-        usage: bool,
+        request: wcore::model::Request,
     ) -> impl Stream<Item = Result<StreamChunk>> + Send {
-        let messages = messages.to_vec();
         let this = self.clone();
         try_stream! {
             match this {
                 Provider::DeepSeek(p) => {
-                    let req = crate::deepseek::Request::from(config);
-                    let mut stream = std::pin::pin!(p.stream(req, &messages, usage));
+                    let mut stream = std::pin::pin!(p.stream(request));
                     while let Some(chunk) = stream.next().await {
                         yield chunk?;
                     }
                 }
                 Provider::OpenAI(p) => {
-                    let req = crate::openai::Request::from(config);
-                    let mut stream = std::pin::pin!(p.stream(req, &messages, usage));
+                    let mut stream = std::pin::pin!(p.stream(request));
                     while let Some(chunk) = stream.next().await {
                         yield chunk?;
                     }
                 }
                 Provider::Claude(p) => {
-                    let req = crate::claude::Request::from(config);
-                    let mut stream = std::pin::pin!(p.stream(req, &messages, usage));
+                    let mut stream = std::pin::pin!(p.stream(request));
                     while let Some(chunk) = stream.next().await {
                         yield chunk?;
                     }
                 }
                 #[cfg(feature = "local")]
                 Provider::Local(p) => {
-                    let mut stream = std::pin::pin!(p.stream(config, &messages, usage));
+                    let mut stream = std::pin::pin!(p.stream(request));
                     while let Some(chunk) = stream.next().await {
                         yield chunk?;
                     }
                 }
             }
+        }
+    }
+
+    fn context_limit(&self, model: &str) -> usize {
+        self.context_length(model)
+            .unwrap_or_else(|| wcore::model::default_context_limit(model))
+    }
+
+    fn active_model(&self) -> CompactString {
+        match self {
+            Self::DeepSeek(p) => p.active_model(),
+            Self::OpenAI(p) => p.active_model(),
+            Self::Claude(p) => p.active_model(),
+            #[cfg(feature = "local")]
+            Self::Local(p) => p.active_model(),
         }
     }
 }

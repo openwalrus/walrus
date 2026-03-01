@@ -1,5 +1,5 @@
 //! `ProviderManager` — concurrent-safe named provider registry with model
-//! routing and active-provider swapping (DD#65, DD#67, DD#68).
+//! routing and active-provider swapping (DD#65, DD#67, DD#70).
 
 use crate::{Provider, ProviderConfig, build_provider};
 use anyhow::{Result, bail};
@@ -9,9 +9,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
-use wcore::model::{
-    General, Message, Model, Registry, Response, StreamChunk, default_context_limit,
-};
+use wcore::model::{Model, Response, StreamChunk, default_context_limit};
 
 /// Manages a set of named providers with an active selection.
 ///
@@ -167,35 +165,6 @@ impl ProviderManager {
             .ok_or_else(|| anyhow::anyhow!("model '{}' not found in registry", model))
     }
 
-    /// Send a message to the named model (DD#68).
-    pub async fn send_to_model(
-        &self,
-        model: &str,
-        config: &General,
-        messages: &[Message],
-    ) -> Result<Response> {
-        let provider = self.provider_for(model)?;
-        provider.send(config, messages).await
-    }
-
-    /// Stream a response from the named model (DD#68).
-    pub fn stream_from_model(
-        &self,
-        model: &str,
-        config: General,
-        messages: &[Message],
-        usage: bool,
-    ) -> Result<impl Stream<Item = Result<StreamChunk>> + Send> {
-        let provider = self.provider_for(model)?;
-        let messages = messages.to_vec();
-        Ok(try_stream! {
-            let mut stream = std::pin::pin!(provider.stream(config, &messages, usage));
-            while let Some(chunk) = stream.next().await {
-                yield chunk?;
-            }
-        })
-    }
-
     /// Resolve the context limit for a model (DD#68).
     ///
     /// Resolution chain: provider reports limit → static map → 8192 default.
@@ -210,19 +179,24 @@ impl ProviderManager {
     }
 }
 
-impl Registry for ProviderManager {
-    async fn send(&self, model: &str, config: &General, messages: &[Message]) -> Result<Response> {
-        self.send_to_model(model, config, messages).await
+impl Model for ProviderManager {
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
+        let provider = self.provider_for(&request.model)?;
+        provider.send(request).await
     }
 
     fn stream(
         &self,
-        model: &str,
-        config: General,
-        messages: &[Message],
-        usage: bool,
-    ) -> Result<impl Stream<Item = Result<StreamChunk>> + Send> {
-        self.stream_from_model(model, config, messages, usage)
+        request: wcore::model::Request,
+    ) -> impl Stream<Item = Result<StreamChunk>> + Send {
+        let result = self.provider_for(&request.model);
+        try_stream! {
+            let provider = result?;
+            let mut stream = std::pin::pin!(provider.stream(request));
+            while let Some(chunk) = stream.next().await {
+                yield chunk?;
+            }
+        }
     }
 
     fn context_limit(&self, model: &str) -> usize {

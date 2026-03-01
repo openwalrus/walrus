@@ -1,4 +1,4 @@
-//! LLM trait implementation for the Claude (Anthropic) provider.
+//! Model trait implementation for the Claude (Anthropic) provider.
 
 use super::{Claude, Request, stream::Event};
 use anyhow::Result;
@@ -8,7 +8,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use reqwest::Method;
 use wcore::model::{
-    Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, Message, Model, Response,
+    Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, Model, Response,
     StreamChunk, Usage,
 };
 
@@ -42,10 +42,8 @@ struct AnthropicUsage {
 }
 
 impl Model for Claude {
-    type ChatConfig = Request;
-
-    async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
-        let body = req.messages(messages);
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
+        let body = Request::from(request.clone());
         tracing::trace!("request: {}", serde_json::to_string(&body)?);
         let text = self
             .client
@@ -64,11 +62,9 @@ impl Model for Claude {
 
     fn stream(
         &self,
-        req: Request,
-        messages: &[Message],
-        _usage: bool,
-    ) -> impl Stream<Item = Result<StreamChunk>> {
-        let body = req.messages(messages).stream();
+        request: wcore::model::Request,
+    ) -> impl Stream<Item = Result<StreamChunk>> + Send {
+        let body = Request::from(request).stream();
         if let Ok(body) = serde_json::to_string(&body) {
             tracing::trace!("request: {}", body);
         }
@@ -98,6 +94,10 @@ impl Model for Claude {
                 yield chunk;
             }
         }
+    }
+
+    fn active_model(&self) -> CompactString {
+        CompactString::from("claude-sonnet-4-20250514")
     }
 }
 

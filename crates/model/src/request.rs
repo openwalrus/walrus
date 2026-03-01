@@ -1,4 +1,4 @@
-//! Shared OpenAI-compatible request body (DD#58).
+//! Shared OpenAI-compatible request body (DD#58, DD#71).
 //!
 //! Superset of the fields used by DeepSeek, OpenAI, and Mistral. Fields
 //! use `Option` + `skip_serializing_if` so provider-specific extras (like
@@ -6,7 +6,7 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use wcore::model::{General, Message, Tool, ToolChoice};
+use wcore::model::{Message, Tool, ToolChoice};
 
 /// OpenAI-compatible chat completions request body.
 #[derive(Debug, Clone, Serialize)]
@@ -60,14 +60,6 @@ pub struct Request {
 }
 
 impl Request {
-    /// Clone the request with the given messages.
-    pub fn messages(&self, messages: &[Message]) -> Self {
-        Self {
-            messages: messages.to_vec(),
-            ..self.clone()
-        }
-    }
-
     /// Enable streaming for the request.
     pub fn stream(mut self, usage: bool) -> Self {
         self.stream = Some(true);
@@ -80,7 +72,7 @@ impl Request {
     }
 
     /// Set the tools for the request.
-    pub fn with_tools(self, tools: Vec<Tool>) -> Self {
+    fn with_tools(self, tools: Vec<Tool>) -> Self {
         let tools = tools
             .into_iter()
             .map(|tool| {
@@ -97,7 +89,7 @@ impl Request {
     }
 
     /// Set the tool choice for the request.
-    pub fn with_tool_choice(self, tool_choice: ToolChoice) -> Self {
+    fn with_tool_choice(self, tool_choice: ToolChoice) -> Self {
         Self {
             tool_choice: match tool_choice {
                 ToolChoice::None => Some(json!("none")),
@@ -113,11 +105,11 @@ impl Request {
     }
 }
 
-impl From<General> for Request {
-    fn from(config: General) -> Self {
-        let mut req = Self {
-            messages: Vec::new(),
-            model: config.model.to_string(),
+impl From<wcore::model::Request> for Request {
+    fn from(req: wcore::model::Request) -> Self {
+        let mut wire = Self {
+            messages: req.messages,
+            model: req.model.to_string(),
             frequency_penalty: None,
             logprobs: None,
             max_tokens: None,
@@ -126,7 +118,7 @@ impl From<General> for Request {
             stop: None,
             stream: None,
             stream_options: None,
-            thinking: if config.think {
+            thinking: if req.think {
                 Some(json!({ "type": "enabled" }))
             } else {
                 None
@@ -138,13 +130,13 @@ impl From<General> for Request {
             top_p: None,
         };
 
-        if let Some(tools) = config.tools {
-            req = req.with_tools(tools);
+        if let Some(tools) = req.tools {
+            wire = wire.with_tools(tools);
         }
-        if let Some(tool_choice) = config.tool_choice {
-            req = req.with_tool_choice(tool_choice);
+        if let Some(tool_choice) = req.tool_choice {
+            wire = wire.with_tool_choice(tool_choice);
         }
 
-        req
+        wire
     }
 }

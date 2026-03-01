@@ -1,18 +1,17 @@
-//! LLM trait implementation for the OpenAI-compatible provider.
+//! Model trait implementation for the OpenAI-compatible provider.
 
-use super::{OpenAI, Request};
+use super::OpenAI;
 use anyhow::Result;
 use async_stream::try_stream;
+use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use reqwest::Method;
-use wcore::model::{Message, Model, Response, StreamChunk};
+use wcore::model::{Model, Response, StreamChunk};
 
 impl Model for OpenAI {
-    type ChatConfig = Request;
-
-    async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
-        let body = req.messages(messages);
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
+        let body = crate::request::Request::from(request.clone());
         tracing::trace!("request: {}", serde_json::to_string(&body)?);
         let text = self
             .client
@@ -29,11 +28,10 @@ impl Model for OpenAI {
 
     fn stream(
         &self,
-        req: Request,
-        messages: &[Message],
-        usage: bool,
-    ) -> impl Stream<Item = Result<StreamChunk>> {
-        let body = req.messages(messages).stream(usage);
+        request: wcore::model::Request,
+    ) -> impl Stream<Item = Result<StreamChunk>> + Send {
+        let usage = request.usage;
+        let body = crate::request::Request::from(request).stream(usage);
         if let Ok(body) = serde_json::to_string(&body) {
             tracing::trace!("request: {}", body);
         }
@@ -61,5 +59,9 @@ impl Model for OpenAI {
                 }
             }
         }
+    }
+
+    fn active_model(&self) -> CompactString {
+        CompactString::from("gpt-4o")
     }
 }
