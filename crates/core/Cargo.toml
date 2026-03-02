@@ -18,8 +18,5 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true
-tracing.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
 tokio.workspace = true
+tracing.workspace = true

@@ -5,14 +5,15 @@ use crate::config;
 use crate::gateway::GatewayHook;
 use anyhow::Result;
 use model::ProviderManager;
-use runtime::{General, McpBridge, Runtime, SkillRegistry};
+use runtime::{McpBridge, Memory, Request, Runtime, SkillRegistry, Tool};
 use std::path::Path;
+use std::sync::Arc;
 
 /// Build a fully-configured `Runtime<GatewayHook>` from config and directory.
 ///
 /// Loads agents from `config_dir/agents/*.md`, skills from `config_dir/skills/`,
 /// memory from `config_dir/data/memory.db` (when sqlite), and MCP servers
-/// from TOML config.
+/// from TOML config. Registers memory tools (remember) backed by the memory backend.
 pub async fn build_runtime(
     config: &crate::DaemonConfig,
     config_dir: &Path,
@@ -28,14 +29,14 @@ pub async fn build_runtime(
         manager.active_model()
     );
 
-    // Build general config.
-    let general = General {
-        model: manager.active_model(),
-        ..General::default()
-    };
+    // Build request template.
+    let request = Request::new(manager.active_model());
 
     // Build runtime.
-    let mut runtime = Runtime::<GatewayHook>::new(general, manager, memory);
+    let mut runtime = Runtime::<GatewayHook>::new(request, manager, memory);
+
+    // Register memory tools.
+    register_memory_tools(&mut runtime);
 
     // Load agents from markdown files.
     let agents = runtime::load_agents_dir(&config_dir.join(config::AGENTS_DIR))?;
@@ -46,7 +47,7 @@ pub async fn build_runtime(
 
     // Load skills if directory exists.
     let skills_dir = config_dir.join(config::SKILLS_DIR);
-    match SkillRegistry::load_dir(&skills_dir, wcore::SkillTier::Workspace) {
+    match SkillRegistry::load_dir(&skills_dir, runtime::SkillTier::Workspace) {
         Ok(registry) => {
             tracing::info!("loaded {} skill(s)", registry.len());
             runtime.set_skills(registry);
@@ -78,4 +79,86 @@ pub async fn build_runtime(
     }
 
     Ok(runtime)
+}
+
+/// Register memory-backed tools (remember, recall) into the runtime.
+fn register_memory_tools(runtime: &mut Runtime<GatewayHook>) {
+    // remember tool
+    {
+        let mem = runtime.memory_arc();
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "key": { "type": "string", "description": "Memory key" },
+                "value": { "type": "string", "description": "Value to remember" }
+            },
+            "required": ["key", "value"]
+        });
+        let tool = Tool {
+            name: "remember".into(),
+            description: "Store a key-value pair in memory.".into(),
+            parameters: serde_json::from_value(schema).unwrap(),
+            strict: false,
+        };
+        runtime.register(tool, move |args| {
+            let mem = Arc::clone(&mem);
+            async move {
+                let parsed: serde_json::Value = match serde_json::from_str(&args) {
+                    Ok(v) => v,
+                    Err(e) => return format!("invalid arguments: {e}"),
+                };
+                let key = parsed["key"].as_str().unwrap_or("");
+                let value = parsed["value"].as_str().unwrap_or("");
+                match mem.store(key.to_owned(), value.to_owned()).await {
+                    Ok(()) => format!("remembered: {key}"),
+                    Err(e) => format!("failed to store: {e}"),
+                }
+            }
+        });
+    }
+
+    // recall tool
+    {
+        let mem = runtime.memory_arc();
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string", "description": "Search query for relevant memories" },
+                "limit": { "type": "integer", "description": "Maximum number of results (default: 10)" }
+            },
+            "required": ["query"]
+        });
+        let tool = Tool {
+            name: "recall".into(),
+            description: "Search memory for entries relevant to a query.".into(),
+            parameters: serde_json::from_value(schema).unwrap(),
+            strict: false,
+        };
+        runtime.register(tool, move |args| {
+            let mem = Arc::clone(&mem);
+            async move {
+                let parsed: serde_json::Value = match serde_json::from_str(&args) {
+                    Ok(v) => v,
+                    Err(e) => return format!("invalid arguments: {e}"),
+                };
+                let query = parsed["query"].as_str().unwrap_or("");
+                let limit = parsed["limit"].as_u64().unwrap_or(10) as usize;
+                let options = memory::RecallOptions {
+                    limit,
+                    ..Default::default()
+                };
+                match mem.recall(query, options).await {
+                    Ok(entries) if entries.is_empty() => "no memories found".to_owned(),
+                    Ok(entries) => {
+                        let mut out = String::new();
+                        for entry in &entries {
+                            out.push_str(&format!("{}: {}\n", entry.key, entry.value));
+                        }
+                        out
+                    }
+                    Err(e) => format!("recall failed: {e}"),
+                }
+            }
+        });
+    }
 }

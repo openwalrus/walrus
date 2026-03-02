@@ -1,4 +1,4 @@
-//! Local LLM provider via mistralrs (DD#67).
+//! Local LLM provider via mistralrs.
 //!
 //! Wraps `mistralrs::Model` for native on-device inference.
 //! No HTTP transport — inference runs in-process.
@@ -58,6 +58,21 @@ impl Local {
         }
         let model = builder.build().await?;
         Ok(Self::from_model(model))
+    }
+
+    /// Access the inner mistralrs `Model`.
+    pub fn model(&self) -> &mistralrs::Model {
+        &self.model
+    }
+
+    /// Query the context length for a given model ID.
+    ///
+    /// Returns None if the model doesn't report a sequence length.
+    pub fn context_length(&self, model: &str) -> Option<usize> {
+        self.model
+            .max_sequence_length_with_model(Some(model))
+            .ok()
+            .flatten()
     }
 
     /// Build using `VisionModelBuilder`.

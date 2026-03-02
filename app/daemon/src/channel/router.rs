@@ -2,10 +2,10 @@
 //!
 //! Maps incoming channel events to the correct agent based on platform
 //! and channel ID with three-tier fallback: exact match, platform
-//! catch-all, default agent (DD#3).
+//! catch-all, default agent.
 
+use channel::Platform;
 use compact_str::CompactString;
-use wcore::Platform;
 
 /// A routing rule mapping platform/channel to an agent.
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ impl ChannelRouter {
 
     /// Resolve the target agent for a given platform and channel ID.
     ///
-    /// Fallback order (DD#3):
+    /// Fallback order:
     /// 1. Exact match (platform + channel_id)
     /// 2. Platform catch-all (platform only, no channel_id in rule)
     /// 3. Default agent

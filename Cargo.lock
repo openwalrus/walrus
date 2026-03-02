@@ -6041,15 +6041,16 @@ dependencies = [
  "compact_str 0.8.1",
  "cron",
  "dirs",
+ "futures-util",
  "rmcp",
  "serde",
  "serde_json",
  "smallvec 1.15.1",
- "tempfile",
  "tokio",
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "walrus-channel",
  "walrus-core",
  "walrus-memory",
  "walrus-model",
@@ -6065,7 +6066,6 @@ dependencies = [
  "compact_str 0.8.1",
  "rusqlite",
  "serde_json",
- "tokio",
  "walrus-core",
 ]
 
@@ -6115,11 +6115,11 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "walrus-core",
+ "walrus-memory",
  "walrus-model",
 ]
 

@@ -35,7 +35,7 @@ async fn main() {
     );
 
     runtime.add_agent(
-        Agent::new("assistant")
+        AgentConfig::new("assistant")
             .system_prompt(
                 "You are a helpful assistant with access to tools. \
                  Use current_time when the user asks about the current time or date.",
@@ -49,5 +49,5 @@ async fn main() {
     println!("  'What day of the week is it today?'");
     println!("(type 'exit' to quit)");
     println!("---");
-    common::repl(&mut runtime, "assistant").await;
+    common::repl(&runtime, "assistant").await;
 }

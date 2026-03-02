@@ -1,6 +1,6 @@
 //! Runner trait abstracting the execution mode.
 //!
-//! Uses RPITIT (DD#11) — no dyn dispatch. The CLI connects to walrusd via
+//! Uses RPITIT — no dyn dispatch. The CLI connects to walrusd via
 //! Unix domain socket.
 
 use anyhow::Result;

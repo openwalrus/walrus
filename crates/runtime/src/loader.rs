@@ -8,7 +8,7 @@
 use compact_str::CompactString;
 use serde::Deserialize;
 use std::path::Path;
-use wcore::Agent;
+use wcore::AgentConfig;
 
 /// YAML frontmatter for agent markdown files.
 #[derive(Deserialize)]
@@ -20,6 +20,8 @@ struct AgentFrontmatter {
     tools: Vec<String>,
     #[serde(default)]
     skill_tags: Vec<String>,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 /// A cron job entry parsed from a markdown file.
@@ -43,25 +45,25 @@ struct CronFrontmatter {
     agent: String,
 }
 
-/// Parse an agent markdown file (YAML frontmatter + body) into an [`Agent`].
+/// Parse an agent markdown file (YAML frontmatter + body) into an [`AgentConfig`].
 ///
 /// The frontmatter provides name, description, tools, and skill_tags.
 /// The markdown body (trimmed) becomes the agent's system prompt.
-pub fn parse_agent_md(content: &str) -> anyhow::Result<Agent> {
+pub fn parse_agent_md(content: &str) -> anyhow::Result<AgentConfig> {
     let (frontmatter, body) = crate::skills::split_yaml_frontmatter(content)?;
     let fm: AgentFrontmatter = serde_yaml::from_str(frontmatter)?;
 
-    let mut agent = Agent::new(fm.name)
-        .description(fm.description)
-        .system_prompt(body.trim().to_owned());
-    for tool in fm.tools {
-        agent = agent.tool(tool);
-    }
-    for tag in fm.skill_tags {
-        agent = agent.skill_tag(tag);
-    }
+    let config = AgentConfig {
+        name: fm.name.into(),
+        description: fm.description.into(),
+        system_prompt: body.trim().to_owned(),
+        model: fm.model.map(Into::into),
+        tools: fm.tools.into_iter().map(Into::into).collect(),
+        skill_tags: fm.skill_tags.into_iter().map(Into::into).collect(),
+        ..AgentConfig::default()
+    };
 
-    Ok(agent)
+    Ok(config)
 }
 
 /// Load all agent markdown files from a directory.
@@ -69,7 +71,7 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<Agent> {
 /// Each `.md` file is parsed with [`parse_agent_md`]. Non-`.md` files are
 /// silently skipped. Entries are sorted by filename for deterministic ordering.
 /// Returns an empty vec if the directory does not exist.
-pub fn load_agents_dir(path: &Path) -> anyhow::Result<Vec<Agent>> {
+pub fn load_agents_dir(path: &Path) -> anyhow::Result<Vec<AgentConfig>> {
     if !path.exists() {
         tracing::warn!("agent directory does not exist: {}", path.display());
         return Ok(Vec::new());

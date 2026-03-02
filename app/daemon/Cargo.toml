@@ -16,8 +16,10 @@ runtime = { workspace = true }
 wcore = { workspace = true }
 model = { workspace = true }
 memory = { workspace = true }
+channel = { workspace = true }
 protocol = { workspace = true }
 compact_str = { workspace = true }
+futures-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
@@ -30,6 +32,3 @@ cron = { workspace = true }
 chrono = { workspace = true }
 rmcp = { workspace = true }
 dirs = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }

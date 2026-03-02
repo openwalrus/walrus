@@ -1,6 +1,6 @@
 //! Embedding trait for converting text to vector representations.
 //!
-//! Used by memory backends that support semantic search (e.g. walrus-memory).
+//! Used by memory backends that support semantic search.
 
 use std::future::Future;
 
@@ -15,7 +15,7 @@ pub trait Embedder: Send + Sync {
 
 /// A no-op embedder that always returns an empty vector.
 ///
-/// Used with [`crate::Memory`] backends that support optional embeddings
+/// Used with memory backends that support optional embeddings
 /// (e.g. `SqliteMemory<NoEmbedder>`) when no embedding model is configured.
 pub struct NoEmbedder;
 

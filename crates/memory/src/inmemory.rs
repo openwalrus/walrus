@@ -1,6 +1,6 @@
 //! In-memory implementation of the Memory trait.
 
-use crate::memory::Memory;
+use crate::Memory;
 use std::sync::Mutex;
 
 /// In-memory store backed by `Mutex<Vec<(String, String)>>`.

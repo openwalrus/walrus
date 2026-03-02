@@ -1,4 +1,4 @@
-//! Daemon configuration loaded from TOML (DD#67).
+//! Daemon configuration loaded from TOML.
 
 use anyhow::{Context, Result};
 use compact_str::CompactString;

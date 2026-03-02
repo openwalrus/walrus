@@ -1,36 +1,19 @@
-//! The LLM implementation
+//! Model trait implementation for DeepSeek.
 
-use super::{DeepSeek, Request};
+use super::DeepSeek;
 use anyhow::Result;
 use async_stream::try_stream;
+use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use reqwest::{
-    Client, Method,
-    header::{self, HeaderMap},
-};
-use wcore::model::{LLM, Message, Response, StreamChunk};
+use reqwest::Method;
+use wcore::model::{Model, Response, StreamChunk};
 
 const ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 
-impl DeepSeek {
-    /// Create a new DeepSeek provider with bearer auth.
-    pub fn new(client: Client, key: &str) -> Result<Self> {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, "application/json".parse()?);
-        headers.insert(header::ACCEPT, "application/json".parse()?);
-        headers.insert(header::AUTHORIZATION, format!("Bearer {}", key).parse()?);
-        Ok(Self { client, headers })
-    }
-}
-
-impl LLM for DeepSeek {
-    /// The chat configuration.
-    type ChatConfig = Request;
-
-    /// Send a message to the LLM
-    async fn send(&self, req: &Request, messages: &[Message]) -> Result<Response> {
-        let body = req.messages(messages);
+impl Model for DeepSeek {
+    async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
+        let body = crate::request::Request::from(request.clone());
         tracing::trace!("request: {}", serde_json::to_string(&body)?);
         let text = self
             .client
@@ -45,14 +28,12 @@ impl LLM for DeepSeek {
         serde_json::from_str(&text).map_err(Into::into)
     }
 
-    /// Send a message to the LLM with streaming
     fn stream(
         &self,
-        req: Request,
-        messages: &[Message],
-        usage: bool,
-    ) -> impl Stream<Item = Result<StreamChunk>> {
-        let body = req.messages(messages).stream(usage);
+        request: wcore::model::Request,
+    ) -> impl Stream<Item = Result<StreamChunk>> + Send {
+        let usage = request.usage;
+        let body = crate::request::Request::from(request).stream(usage);
         if let Ok(body) = serde_json::to_string(&body) {
             tracing::trace!("request: {}", body);
         }
@@ -80,5 +61,9 @@ impl LLM for DeepSeek {
                 }
             }
         }
+    }
+
+    fn active_model(&self) -> CompactString {
+        CompactString::from("deepseek-chat")
     }
 }

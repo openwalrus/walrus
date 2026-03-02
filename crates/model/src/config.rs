@@ -1,4 +1,4 @@
-//! Provider configuration (DD#67).
+//! Provider configuration.
 //!
 //! Flat `ProviderConfig` with optional fields for both remote and local
 //! providers. Provider kind inferred from model name prefix via `kind()`.

@@ -43,7 +43,7 @@ async fn main() {
         .expect("failed to register MCP tools");
 
     runtime.add_agent(
-        Agent::new("assistant")
+        AgentConfig::new("assistant")
             .system_prompt(
                 "You are a helpful web browsing assistant. Use Playwright tools \
                  to navigate pages, interact with elements, and read page content.",
@@ -56,5 +56,5 @@ async fn main() {
     println!("  'Search for Rust programming on Wikipedia'");
     println!("(type 'exit' to quit)");
     println!("---");
-    common::repl(&mut runtime, "assistant").await;
+    common::repl(&runtime, "assistant").await;
 }

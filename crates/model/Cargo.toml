@@ -27,6 +27,3 @@ tokio.workspace = true
 tracing.workspace = true
 dirs = { workspace = true, optional = true }
 mistralrs = { workspace = true, optional = true }
-
-[dev-dependencies]
-serde_json.workspace = true

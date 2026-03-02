@@ -1,12 +1,11 @@
 //! Memory backend enum for static dispatch over memory implementations.
 //!
 //! Wraps [`InMemory`] and [`SqliteMemory<NoEmbedder>`] with Memory trait
-//! delegation, following the Provider enum pattern (DD#22).
+//! delegation, following the Provider enum pattern.
 
 use anyhow::Result;
-use memory::SqliteMemory;
+use memory::{InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions, SqliteMemory};
 use std::future::Future;
-use wcore::{InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions};
 
 /// Memory backend selected from configuration.
 ///

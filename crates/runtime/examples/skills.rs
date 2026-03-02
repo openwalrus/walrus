@@ -35,10 +35,11 @@ async fn main() {
     runtime.set_skills(registry);
 
     // Two agents: same base prompt, different skill tags.
-    runtime
-        .add_agent(Agent::new("default").system_prompt("You are a helpful programming assistant."));
     runtime.add_agent(
-        Agent::new("concise")
+        AgentConfig::new("default").system_prompt("You are a helpful programming assistant."),
+    );
+    runtime.add_agent(
+        AgentConfig::new("concise")
             .system_prompt("You are a helpful programming assistant.")
             .skill_tag("style"),
     );
@@ -75,8 +76,8 @@ async fn main() {
         );
 
         // Clear sessions so each question is independent.
-        runtime.clear_session("default");
-        runtime.clear_session("concise");
+        runtime.clear_session("default").await;
+        runtime.clear_session("concise").await;
 
         println!();
     }

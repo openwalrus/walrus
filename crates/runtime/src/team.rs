@@ -1,65 +1,50 @@
 //! Team composition: register workers as tools in the runtime.
 //!
 //! Each worker agent is exposed as a tool on the leader. When the leader
-//! calls a worker tool, the handler runs a self-contained LLM send loop
-//! using captured state (provider, config, memory, agent config, tools,
-//! handlers) — no reference back to the Runtime needed.
+//! calls a worker tool, the handler creates an ephemeral Agent instance
+//! and runs it with a captured RuntimeDispatcher.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use walrus_core::Agent;
+//! use walrus_core::AgentConfig;
 //! use walrus_runtime::{Runtime, build_team};
 //!
-//! let leader = Agent::new("leader").system_prompt("You coordinate.");
-//! let analyst = Agent::new("analyst").description("Market analysis");
+//! let leader = AgentConfig::new("leader").system_prompt("You coordinate.");
+//! let analyst = AgentConfig::new("analyst").description("Market analysis");
 //!
 //! let leader = build_team(leader, vec![analyst], &mut runtime);
 //! runtime.add_agent(leader);
 //! ```
 
-use crate::{Handler, Hook, MAX_TOOL_CALLS, SkillRegistry};
+use crate::{Hook, RuntimeDispatcher, SkillRegistry};
 use compact_str::CompactString;
-use std::{collections::BTreeMap, sync::Arc};
-use wcore::model::{Config, General, LLM, Message, Tool, ToolChoice};
-use wcore::{Agent, Memory};
+use std::sync::Arc;
+use wcore::AgentConfig;
+use wcore::model::{Message, Model, Tool};
 
 /// Build a team: register each worker as a tool and add to the leader.
 ///
 /// Each worker's handler captures everything it needs to independently run
-/// an LLM conversation: provider, config, memory, agent config, resolved
-/// tool schemas, and resolved tool handlers.
+/// a conversation: provider, agent config, and a RuntimeDispatcher.
+/// Workers create ephemeral Agent instances per invocation (no cross-call state).
 pub fn build_team<H: Hook + 'static>(
-    mut leader: Agent,
-    workers: Vec<Agent>,
+    mut leader: AgentConfig,
+    workers: Vec<AgentConfig>,
     runtime: &mut crate::Runtime<H>,
-) -> Agent {
+) -> AgentConfig {
     let provider = runtime.provider().clone();
-    let config = runtime.config().clone();
-    let memory = runtime.memory_arc();
     let skills = runtime.skills().map(Arc::clone);
 
     for worker in workers {
         let tool_def = worker_tool(worker.name.clone(), worker.description.to_string());
-        let resolved = runtime.resolve_tools(&worker.tools);
-        let (worker_tools, worker_handlers) = {
-            let mut t = Vec::with_capacity(resolved.len());
-            let mut h = BTreeMap::new();
-            for (tool, handler) in resolved {
-                h.insert(tool.name.clone(), handler);
-                t.push(tool);
-            }
-            (t, h)
-        };
+        let dispatcher = runtime.build_dispatcher(&worker);
 
         let ctx = Arc::new(WorkerCtx {
             provider: provider.clone(),
-            config: config.clone(),
-            memory: Arc::clone(&memory),
             skills: skills.clone(),
             agent: worker.clone(),
-            tools: worker_tools,
-            handlers: worker_handlers,
+            dispatcher,
         });
 
         runtime.register(tool_def, move |args| {
@@ -79,77 +64,40 @@ pub fn build_team<H: Hook + 'static>(
     leader
 }
 
-/// Shared immutable state for a worker handler, wrapped in Arc
-/// to avoid cloning provider, Agent, `Vec<Tool>`, and BTreeMap per call.
-struct WorkerCtx<P: LLM, M: Memory> {
+/// Shared immutable state for a worker handler.
+struct WorkerCtx<P: Model> {
     provider: P,
-    config: General,
-    memory: Arc<M>,
     skills: Option<Arc<SkillRegistry>>,
-    agent: Agent,
-    tools: Vec<Tool>,
-    handlers: BTreeMap<CompactString, Handler>,
+    agent: AgentConfig,
+    dispatcher: RuntimeDispatcher,
 }
 
-/// Run a self-contained LLM send loop for a worker agent.
+/// Run a worker agent using Agent.run().
 ///
-/// Builds the system prompt (base + memory context), sends the input as a
-/// user message, and loops through tool calls up to [`MAX_TOOL_CALLS`].
-async fn worker_send<P: LLM, M: Memory>(ctx: &WorkerCtx<P, M>, input: String) -> String {
-    let mut system_prompt = ctx.agent.system_prompt.clone();
-    let memory_context = ctx.memory.compile_relevant(&input).await;
-    if !memory_context.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{memory_context}");
-    }
+/// Creates an ephemeral Agent with a fresh event channel, enriches the
+/// system prompt with skills, pushes the user input, and runs to completion.
+async fn worker_send<P: Model>(ctx: &WorkerCtx<P>, input: String) -> String {
+    let mut config = ctx.agent.clone();
 
     // Inject skill bodies matching the agent's skill tags.
     if let Some(registry) = &ctx.skills {
-        for skill in registry.find_by_tags(&ctx.agent.skill_tags) {
+        for skill in registry.find_by_tags(&config.skill_tags) {
             if !skill.body.is_empty() {
-                system_prompt.push_str("\n\n");
-                system_prompt.push_str(&skill.body);
+                config.system_prompt.push_str("\n\n");
+                config.system_prompt.push_str(&skill.body);
             }
         }
     }
 
-    let mut messages = vec![Message::system(&system_prompt), Message::user(&input)];
-    let mut tool_choice = ToolChoice::Auto;
-    let base_cfg = ctx.config.clone().with_tools(ctx.tools.to_vec());
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    let mut agent = wcore::AgentBuilder::new(tx).config(config).build();
+    agent.push_message(Message::user(&input));
 
-    for _ in 0..MAX_TOOL_CALLS {
-        let cfg: P::ChatConfig = base_cfg
-            .clone()
-            .with_tool_choice(tool_choice.clone())
-            .into();
-        let response = match ctx.provider.send(&cfg, &messages).await {
-            Ok(r) => r,
-            Err(e) => return format!("worker error: {e}"),
-        };
-        let Some(message) = response.message() else {
-            return response.content().cloned().unwrap_or_default();
-        };
+    // Drain events (discard for workers).
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
 
-        if message.tool_calls.is_empty() {
-            return message.content.clone();
-        }
-
-        // Dispatch tool calls using captured handlers.
-        let mut tool_results = Vec::with_capacity(message.tool_calls.len());
-        for call in &message.tool_calls {
-            let output = if let Some(handler) = ctx.handlers.get(call.function.name.as_str()) {
-                handler(call.function.arguments.clone()).await
-            } else {
-                format!("function {} not available", call.function.name)
-            };
-            tool_results.push(Message::tool(output, call.id.clone()));
-        }
-
-        messages.push(message);
-        messages.extend(tool_results);
-        tool_choice = ToolChoice::None;
-    }
-
-    "worker: max tool calls reached".to_string()
+    let response = agent.run(&ctx.provider, &ctx.dispatcher).await;
+    response.final_response.unwrap_or_default()
 }
 
 /// Build a tool definition for a worker agent.

@@ -2,8 +2,10 @@
 
 use crate::MemoryBackend;
 use model::ProviderManager;
-use runtime::{DEFAULT_COMPACT_PROMPT, DEFAULT_FLUSH_PROMPT, Hook, Runtime};
+use runtime::Hook;
+use runtime::Runtime;
 use std::sync::Arc;
+use wcore::AgentEvent;
 
 pub mod builder;
 pub mod serve;
@@ -27,14 +29,30 @@ impl<H: Hook + 'static> Clone for Gateway<H> {
 pub struct GatewayHook;
 
 impl Hook for GatewayHook {
-    type Provider = ProviderManager;
+    type Model = ProviderManager;
     type Memory = MemoryBackend;
 
-    fn compact() -> &'static str {
-        DEFAULT_COMPACT_PROMPT
-    }
-
-    fn flush() -> &'static str {
-        DEFAULT_FLUSH_PROMPT
+    fn on_event(event: &AgentEvent) {
+        match event {
+            AgentEvent::TextDelta(text) => {
+                tracing::trace!(text_len = text.len(), "agent text delta");
+            }
+            AgentEvent::ToolCallsStart(calls) => {
+                tracing::debug!(count = calls.len(), "agent tool calls started");
+            }
+            AgentEvent::ToolResult { call_id, .. } => {
+                tracing::debug!(%call_id, "agent tool result");
+            }
+            AgentEvent::ToolCallsComplete => {
+                tracing::debug!("agent tool calls complete");
+            }
+            AgentEvent::Done(response) => {
+                tracing::info!(
+                    iterations = response.iterations,
+                    stop_reason = ?response.stop_reason,
+                    "agent run complete"
+                );
+            }
+        }
     }
 }

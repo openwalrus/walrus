@@ -1,19 +1,17 @@
 //! Walrus agent library.
 //!
-//! - [`Agent`]: Pure config struct (name, system prompt, tool names).
-//! - [`Memory`] / [`InMemory`]: Structured knowledge for system prompts.
-//! - [`Embedder`]: Text-to-vector trait for semantic search.
-//! - [`Channel`]: Messaging platform integration trait.
-//! - [`Skill`] / [`SkillTier`]: Skill data types.
+//! - [`Agent`]: Stateful execution unit with step/run/run_stream.
+//! - [`AgentBuilder`]: Fluent construction requiring event sender.
+//! - [`AgentConfig`]: Serializable agent parameters.
+//! - [`Dispatcher`]: Generic async trait for tool dispatch.
 //! - [`model`]: Unified LLM interface types and traits.
+//! - Agent event types: [`AgentEvent`], [`AgentStep`], [`AgentResponse`], [`AgentStopReason`].
 
-pub use agent::Agent;
-pub use channel::{Attachment, AttachmentKind, Channel, ChannelMessage, Platform};
-pub use memory::{Embedder, InMemory, Memory, MemoryEntry, NoEmbedder, RecallOptions, with_memory};
-pub use skill::{Skill, SkillTier};
+pub use agent::{Agent, AgentBuilder, AgentConfig};
+pub use dispatch::Dispatcher;
+pub use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 
 mod agent;
-mod channel;
-pub mod memory;
+mod dispatch;
+mod event;
 pub mod model;
-mod skill;

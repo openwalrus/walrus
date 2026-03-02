@@ -1,15 +1,13 @@
 //! Unix domain socket server — accept loop and per-connection message handler.
 
 use crate::gateway::Gateway;
-use compact_str::CompactString;
+use memory::Memory;
 use protocol::codec::{self, FrameError};
 use protocol::{AgentSummary, ClientMessage, ServerMessage};
 use runtime::Hook;
-use std::collections::BTreeMap;
 use tokio::net::UnixListener;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot};
-use wcore::Memory;
 use wcore::model::Message;
 
 /// Accept connections on the given `UnixListener` until shutdown is signalled.
@@ -73,8 +71,6 @@ async fn receiver_loop<H: Hook + 'static>(
     tx: mpsc::UnboundedSender<ServerMessage>,
     state: Gateway<H>,
 ) {
-    let mut session_histories: BTreeMap<CompactString, Vec<Message>> = BTreeMap::new();
-
     loop {
         let client_msg: ClientMessage = match codec::read_message(&mut reader).await {
             Ok(msg) => msg,
@@ -87,17 +83,10 @@ async fn receiver_loop<H: Hook + 'static>(
 
         match client_msg {
             ClientMessage::Send { agent, content } => {
-                let history = session_histories.entry(agent.clone()).or_default();
-                match state
-                    .runtime
-                    .send_stateless(&agent, history, &content)
-                    .await
-                {
+                match state.runtime.send_to(&agent, Message::user(&content)).await {
                     Ok(response) => {
-                        let _ = tx.send(ServerMessage::Response {
-                            agent,
-                            content: response,
-                        });
+                        let content = response.content().cloned().unwrap_or_default();
+                        let _ = tx.send(ServerMessage::Response { agent, content });
                     }
                     Err(e) => {
                         let _ = tx.send(ServerMessage::Error {
@@ -113,27 +102,26 @@ async fn receiver_loop<H: Hook + 'static>(
                     agent: agent.clone(),
                 });
 
-                let history = session_histories.entry(agent.clone()).or_default();
-                match state
-                    .runtime
-                    .send_stateless(&agent, history, &content)
-                    .await
                 {
-                    Ok(response) => {
-                        let _ = tx.send(ServerMessage::StreamChunk { content: response });
-                        let _ = tx.send(ServerMessage::StreamEnd { agent });
-                    }
-                    Err(e) => {
-                        let _ = tx.send(ServerMessage::Error {
-                            code: 500,
-                            message: format!("stream error: {e}"),
-                        });
+                    let stream = state.runtime.stream_to(&agent, Message::user(&content));
+                    futures_util::pin_mut!(stream);
+
+                    while let Some(event) = futures_util::StreamExt::next(&mut stream).await {
+                        match event {
+                            wcore::AgentEvent::TextDelta(text) => {
+                                let _ = tx.send(ServerMessage::StreamChunk { content: text });
+                            }
+                            wcore::AgentEvent::Done(_) => break,
+                            _ => {}
+                        }
                     }
                 }
+
+                let _ = tx.send(ServerMessage::StreamEnd { agent });
             }
 
             ClientMessage::ClearSession { agent } => {
-                session_histories.remove(&agent);
+                state.runtime.clear_session(&agent).await;
                 let _ = tx.send(ServerMessage::SessionCleared { agent });
             }
 

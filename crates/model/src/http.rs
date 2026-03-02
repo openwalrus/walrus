@@ -1,4 +1,4 @@
-//! Shared HTTP transport for OpenAI-compatible LLM providers (DD#58).
+//! Shared HTTP transport for OpenAI-compatible LLM providers.
 //!
 //! `HttpProvider` wraps a `reqwest::Client` with pre-configured headers and
 //! endpoint URL. Provides `send()` for non-streaming and `stream_sse()` for

@@ -1,7 +1,7 @@
 //! Cron scheduler for periodic agent tasks.
 //!
 //! Each cron job runs in an isolated session with no state carried
-//! between runs (DD#6). The scheduler is decoupled from the runtime —
+//! between runs. The scheduler is decoupled from the runtime —
 //! it produces events (fires jobs), and the Gateway wires them to
 //! agent dispatch.
 
