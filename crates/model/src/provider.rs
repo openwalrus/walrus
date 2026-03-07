@@ -67,6 +67,12 @@ pub async fn build_provider(config: &ProviderConfig, client: reqwest::Client) ->
         #[cfg(feature = "local")]
         ProviderKind::Local => {
             use crate::config::Loader;
+
+            // Auto-switch HF registry so mistralrs uses the fastest endpoint.
+            let endpoint = crate::local::download::probe_endpoint().await;
+            tracing::info!("using hf endpoint: {endpoint}");
+            unsafe { std::env::set_var("HF_ENDPOINT", &endpoint) };
+
             let loader = config.loader.unwrap_or_default();
             let isq = config.quantization.map(|q| q.to_isq());
             let chat_template = config.chat_template.as_deref();

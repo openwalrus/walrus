@@ -1,6 +1,6 @@
 [package]
 name = "walrus-core"
-description = "Walrus agent library"
+description = "Core types and traits for the Walrus agent runtime"
 documentation = "https://docs.rs/walrus-core"
 readme = "README.md"
 version.workspace = true

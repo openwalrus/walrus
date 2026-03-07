@@ -1,10 +1,9 @@
 //! Model download with progress reporting via hf-hub.
 //!
-//! Pre-downloads model files from HuggingFace into the walrus cache
-//! directory so mistralrs finds them without re-downloading. Progress
-//! events are sent through an mpsc channel for streaming to clients.
+//! Pre-downloads model files from HuggingFace into the cache directory
+//! controlled by `HF_HOME` so mistralrs finds them without re-downloading.
+//! Progress events are sent through an mpsc channel for streaming to clients.
 
-use crate::local::cache_dir;
 use hf_hub::api::tokio::{ApiBuilder, Progress};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
@@ -115,20 +114,13 @@ pub async fn probe_endpoint() -> String {
 
 /// Download all files for a model repo, sending progress events to `tx`.
 ///
-/// Uses hf-hub's async API with `download_with_progress()`. Files are
-/// cached in `cache_dir()` (`~/.walrus/hf`), matching the path
-/// mistralrs reads from.
+/// Uses hf-hub's async API with `download_with_progress()`. Reads
+/// `HF_HOME` and `HF_ENDPOINT` from env (set by `build_provider`).
 pub async fn download_model(
     model_id: &str,
     tx: mpsc::UnboundedSender<DownloadEvent>,
 ) -> anyhow::Result<()> {
-    let endpoint = probe_endpoint().await;
-    tracing::info!("using hf endpoint: {endpoint}");
-    let api = ApiBuilder::new()
-        .with_endpoint(endpoint)
-        .with_progress(false)
-        .with_cache_dir(cache_dir())
-        .build()?;
+    let api = ApiBuilder::from_env().with_progress(false).build()?;
     let repo = api.model(model_id.to_owned());
     let info = repo.info().await?;
 

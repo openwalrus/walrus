@@ -11,8 +11,13 @@
 # make macos-amd64
 # make linux-arm64
 # make linux-amd64
-VERSION = 0.0.2
+VERSION = v0.0.4
 CARGO = cargo b --profile prod
+
+# Cross-compilation: set CC/AR so aws-lc-sys cmake uses the right
+# assembler (macOS as doesn't understand armv8.4-a+sha3 etc).
+LINUX_ARM64_ENV = CC=aarch64-linux-gnu-gcc AR=aarch64-linux-gnu-ar
+LINUX_AMD64_ENV = CC=x86_64-linux-gnu-gcc AR=x86_64-linux-gnu-ar
 
 # build all targets
 bundle: macos-arm64 macos-amd64 linux-amd64 linux-arm64 tar-all
@@ -30,7 +35,7 @@ tar-walrus:
 
 # build macos-arm64 (Metal acceleration)
 macos-arm64:
-	$(CARGO) --target aarch64-apple-darwin -p openwalrus
+	$(CARGO) --target aarch64-apple-darwin -p openwalrus --features metal
 
 # build macos-amd64
 macos-amd64:
@@ -38,8 +43,8 @@ macos-amd64:
 
 # build linux-arm64
 linux-arm64:
-	$(CARGO) --target aarch64-unknown-linux-gnu -p openwalrus
+	$(LINUX_ARM64_ENV) $(CARGO) --target aarch64-unknown-linux-gnu -p openwalrus
 
 # build linux-amd64 (CUDA acceleration)
 linux-amd64:
-	$(CARGO) --target x86_64-unknown-linux-gnu -p openwalrus
+	$(LINUX_AMD64_ENV) $(CARGO) --target x86_64-unknown-linux-gnu -p openwalrus

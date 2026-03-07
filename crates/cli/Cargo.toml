@@ -1,6 +1,6 @@
 [package]
 name = "openwalrus"
-description = "Command-line interface for OpenWalrus"
+description = "Run autonomous agents with built-in LLM inference"
 documentation = "https://docs.rs/walrus-cli"
 readme = "README.md"
 version.workspace = true
@@ -15,7 +15,7 @@ name = "walrus"
 path = "src/bin/main.rs"
 
 [features]
-default = ["daemon"]
+default = ["local"]
 daemon = ["dep:daemon"]
 local = ["daemon/local"]
 metal = ["daemon/metal"]
@@ -29,6 +29,7 @@ wcore.workspace = true
 # crates.io
 anyhow.workspace = true
 clap.workspace = true
+openssl-sys.workspace = true
 compact_str.workspace = true
 dirs.workspace = true
 futures-core.workspace = true

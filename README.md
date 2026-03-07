@@ -2,40 +2,50 @@
 
 [![Crates.io](https://img.shields.io/crates/v/openwalrus.svg)](https://crates.io/crates/openwalrus)
 
-**Composable primitives for agentic workflows in Rust.**
+**Run autonomous agents with built-in LLM inference. No API keys. No cloud.
+Just one binary.**
 
-Build agents that remember, use tools, schedule tasks, and talk to users —
-without a framework telling you how.
+```bash
+curl -fsSL https://raw.githubusercontent.com/openwalrus/walrus/main/install.sh | sh
+```
+
+Or install with Cargo:
 
 ```bash
 cargo install openwalrus
 ```
 
-## Why Walrus
+## What It Does
 
-Most agent libraries are monolithic. Walrus is a set of focused crates you
-assemble yourself. Each one does one thing and implements a clean trait.
-Only bring in what you need.
+- **Local inference** — runs LLMs on your machine (Metal on macOS, CUDA on Linux)
+- **Persistent memory** — agents remember across sessions (SQLite + FTS5)
+- **Built-in tools** — file I/O, shell, MCP servers, cron scheduling
+- **Multi-channel** — talk to your agents from the terminal, Telegram, or Discord
+- **Skills** — extend agents with Markdown prompt files, no code needed
 
+## Quick Start
+
+```bash
+# 1. Start the daemon
+walrus daemon
+
+# 2. Chat with your agent
+walrus attach
 ```
-walrus-core      ← Agent, Runtime, Hook, Dispatcher, Model/Memory traits
-walrus-model     ← OpenAI-compatible, Anthropic, and other providers
-walrus-memory    ← InMemory + SQLite (FTS5) with vector recall
-walrus-system    ← Skills, MCP bridge, cron scheduler
-walrus-channel   ← Channel trait + Telegram adapter
-walrus-socket    ← Unix domain socket transport
+
+Models are configured in `~/.walrus/config.toml`. Point it at a local model
+or any OpenAI-compatible API:
+
+```toml
+[model]
+model = "deepseek-r1:8b"
 ```
 
-## How it fits together
+## Cloud Providers
 
-**`Agent<M>`** runs the loop: call the model, dispatch tools, emit events.
-**`Hook`** is the composition seam — inject memory, skills, or scheduled jobs
-by implementing three lifecycle methods. **`Runtime<M, H>`** manages a pool
-of named agents with per-agent locking and a shared tool registry.
-
-Everything is generic and statically dispatched. No `Box<dyn Agent>` on the
-hot path. RPITIT for async traits throughout.
+walrus works with OpenAI, Anthropic, DeepSeek, and other OpenAI-compatible
+APIs. Local inference is the default — cloud is opt-in.
 
 ## License
 
-MIT
+GPL-3.0

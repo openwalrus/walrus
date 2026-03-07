@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-/// Global configuration directory (`~/.walrus/`).
+/// Global configuration directory (`~/.openwalrus/`).
 pub static GLOBAL_CONFIG_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     dirs::home_dir()
         .expect("no home directory")

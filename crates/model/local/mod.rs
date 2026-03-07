@@ -3,9 +3,10 @@
 //! Wraps `mistralrs::Model` for native on-device inference.
 //! No HTTP transport — inference runs in-process.
 //! Provides per-builder constructors: `from_text()`, `from_gguf()`,
-//! `from_vision()`. All use the walrus model cache directory.
+//! `from_vision()`. Cache directory is controlled by env vars
+//! (`HF_HOME`, `HF_ENDPOINT`) set in `build_provider`.
 
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 pub mod download;
 mod provider;
@@ -32,9 +33,7 @@ impl Local {
         isq: Option<mistralrs::IsqType>,
         chat_template: Option<&str>,
     ) -> anyhow::Result<Self> {
-        let mut builder = mistralrs::TextModelBuilder::new(model_id)
-            .with_logging()
-            .from_hf_cache_pathf(cache_dir());
+        let mut builder = mistralrs::TextModelBuilder::new(model_id).with_logging();
         if let Some(isq) = isq {
             builder = builder.with_isq(isq);
         }
@@ -83,9 +82,7 @@ impl Local {
         isq: Option<mistralrs::IsqType>,
         chat_template: Option<&str>,
     ) -> anyhow::Result<Self> {
-        let mut builder = mistralrs::VisionModelBuilder::new(model_id)
-            .with_logging()
-            .from_hf_cache_pathf(cache_dir());
+        let mut builder = mistralrs::VisionModelBuilder::new(model_id).with_logging();
         if let Some(isq) = isq {
             builder = builder.with_isq(isq);
         }
@@ -95,12 +92,4 @@ impl Local {
         let model = builder.build().await?;
         Ok(Self::from_model(model))
     }
-}
-
-/// Walrus HF cache directory: `~/.walrus/hf`.
-pub(crate) fn cache_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("no home directory")
-        .join(".walrus")
-        .join("hf")
 }

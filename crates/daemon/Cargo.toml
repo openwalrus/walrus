@@ -1,6 +1,6 @@
 [package]
 name = "walrus-daemon"
-description = "The Walrus daemon"
+description = "Walrus agent runtime with memory, tools, and local inference"
 documentation = "https://docs.rs/walrus-daemon"
 readme = "README.md"
 version.workspace = true
