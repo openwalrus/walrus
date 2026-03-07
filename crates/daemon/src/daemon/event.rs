@@ -1,18 +1,15 @@
 //! Daemon event types and dispatch.
 //!
-//! All inbound stimuli (socket messages, channel messages, tool calls) are
-//! represented as [`DaemonEvent`] variants sent through a single
-//! `mpsc::unbounded_channel`. The [`Daemon`] processes them via
-//! [`handle_events`](Daemon::handle_events).
+//! All inbound stimuli (socket, channel, tool calls) are represented as
+//! [`DaemonEvent`] variants sent through a single `mpsc::unbounded_channel`.
+//! The [`Daemon`] processes them via [`handle_events`](Daemon::handle_events).
 //!
 //! Tool call routing is fully delegated to [`DaemonHook::dispatch_tool`] —
 //! no tool name matching happens here.
 
 use crate::daemon::Daemon;
-use compact_str::CompactString;
 use futures_util::{StreamExt, pin_mut};
-use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use wcore::{
     ToolRequest,
     protocol::{
@@ -22,23 +19,14 @@ use wcore::{
 };
 
 /// Inbound event from any source, processed by the central event loop.
-pub(crate) enum DaemonEvent {
-    /// A client message from a socket connection.
-    Socket {
+pub enum DaemonEvent {
+    /// A client message from any source (socket, telegram, discord).
+    /// Reply channel streams `ServerMessage`s back to the caller.
+    Message {
         /// The parsed client message.
         msg: ClientMessage,
-        /// Per-connection reply channel for streaming `ServerMessage`s back.
+        /// Per-request reply channel for streaming `ServerMessage`s back.
         reply: mpsc::UnboundedSender<ServerMessage>,
-    },
-    /// A message from an external channel (Telegram, etc.) with a oneshot
-    /// reply channel so the channel loop can await the response.
-    Channel {
-        /// Target agent name (resolved by the router).
-        agent: CompactString,
-        /// Message content.
-        content: String,
-        /// Oneshot channel to send the response back to the channel loop.
-        reply: oneshot::Sender<Result<String, String>>,
     },
     /// A tool call from an agent, routed through `DaemonHook::dispatch_tool`.
     ToolCall(ToolRequest),
@@ -47,7 +35,7 @@ pub(crate) enum DaemonEvent {
 }
 
 /// Shorthand for the event sender half of the daemon event channel.
-pub(crate) type DaemonEventSender = mpsc::UnboundedSender<DaemonEvent>;
+pub type DaemonEventSender = mpsc::UnboundedSender<DaemonEvent>;
 
 // ── Event dispatch ───────────────────────────────────────────────────
 
@@ -59,12 +47,7 @@ impl Daemon {
         tracing::info!("event loop started");
         while let Some(event) = rx.recv().await {
             match event {
-                DaemonEvent::Channel {
-                    agent,
-                    content,
-                    reply,
-                } => self.handle_channel(agent, content, reply),
-                DaemonEvent::Socket { msg, reply } => self.handle_socket(msg, reply),
+                DaemonEvent::Message { msg, reply } => self.handle_message(msg, reply),
                 DaemonEvent::ToolCall(req) => self.handle_tool_call(req),
                 DaemonEvent::Shutdown => {
                     tracing::info!("event loop shutting down");
@@ -75,27 +58,8 @@ impl Daemon {
         tracing::info!("event loop stopped");
     }
 
-    /// Dispatch a channel message to the target agent and reply via oneshot.
-    fn handle_channel(
-        &self,
-        agent: CompactString,
-        content: String,
-        reply: oneshot::Sender<Result<String, String>>,
-    ) {
-        let runtime = self.runtime.clone();
-        tokio::spawn(async move {
-            tracing::info!(%agent, "channel dispatch");
-            let rt: Arc<_> = runtime.read().await.clone();
-            let result = match rt.send_to(&agent, &content).await {
-                Ok(resp) => Ok(resp.final_response.unwrap_or_default()),
-                Err(e) => Err(e.to_string()),
-            };
-            let _ = reply.send(result);
-        });
-    }
-
-    /// Dispatch a socket message through the Server trait and stream replies.
-    fn handle_socket(&self, msg: ClientMessage, reply: mpsc::UnboundedSender<ServerMessage>) {
+    /// Dispatch a client message through the Server trait and stream replies.
+    fn handle_message(&self, msg: ClientMessage, reply: mpsc::UnboundedSender<ServerMessage>) {
         let daemon = self.clone();
         tokio::spawn(async move {
             let stream = daemon.dispatch(msg);

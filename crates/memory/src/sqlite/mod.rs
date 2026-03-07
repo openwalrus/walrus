@@ -52,7 +52,7 @@ impl<E: Embedder> SqliteMemory<E> {
 
     /// Initialize the database schema.
     fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute_batch(sql::SCHEMA)?;
         Ok(())
     }
@@ -77,7 +77,7 @@ impl<E: Embedder> SqliteMemory<E> {
 
         // Phase 1: DB queries under lock. Collect raw rows, release lock.
         let (bm25_candidates, vec_candidates) = {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
 
             // BM25 path: FTS5 MATCH.
             let mut fts_stmt = conn.prepare(sql::RECALL_FTS)?;
@@ -241,9 +241,9 @@ impl<E: Embedder> SqliteMemory<E> {
         metadata: Option<&Value>,
         embedding: Option<&[f32]>,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = now_unix() as i64;
-        let meta_json = metadata.map(|m| serde_json::to_string(m).unwrap());
+        let meta_json = metadata.map(serde_json::to_string).transpose()?;
         let emb_blob: Option<Vec<u8>> =
             embedding.map(|e| e.iter().flat_map(|f| f.to_le_bytes()).collect());
 
@@ -256,7 +256,7 @@ impl<E: Embedder> SqliteMemory<E> {
 
     /// Get a full MemoryEntry for a key.
     pub fn get_entry(&self, key: &str) -> Option<MemoryEntry> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(sql::SELECT_ENTRY, [key], |row| {
             let emb_blob: Option<Vec<u8>> = row.get(6)?;
             Ok(MemoryEntry {

@@ -7,5 +7,6 @@ pub mod ext;
 pub mod hook;
 
 pub use config::DaemonConfig;
-pub use daemon::{Daemon, DaemonHandle};
+pub use daemon::event::{DaemonEvent, DaemonEventSender};
+pub use daemon::{Daemon, DaemonHandle, bridge_shutdown, setup_channels, setup_socket};
 pub use hook::DaemonHook;

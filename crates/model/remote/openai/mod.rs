@@ -56,10 +56,13 @@ impl OpenAI {
 
     /// Create a provider targeting a custom endpoint without authentication (e.g. Ollama).
     pub fn no_auth(client: Client, endpoint: &str, model: &str) -> Self {
-        use reqwest::header;
+        use reqwest::header::{self, HeaderValue};
         let mut headers = HeaderMap::new();
-        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
-        headers.insert(header::ACCEPT, "application/json".parse().unwrap());
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
         Self {
             client,
             headers,

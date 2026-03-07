@@ -18,11 +18,20 @@ impl Daemon {
                 config::GLOBAL_CONFIG_DIR.display()
             );
         }
+
         let handle = WalrusDaemon::start(&config::GLOBAL_CONFIG_DIR).await?;
-        tracing::info!("walrusd listening on {}", handle.socket_path.display());
+
+        // Spawn transports using the daemon's event sender.
+        let (socket_path, socket_join) =
+            daemon::setup_socket(&handle.shutdown_tx, &handle.event_tx)?;
+        tracing::info!("walrusd listening on {}", socket_path.display());
+        daemon::setup_channels(&handle.config, &handle.event_tx).await;
+
         tokio::signal::ctrl_c().await?;
         tracing::info!("received ctrl-c, shutting down");
         handle.shutdown().await?;
+        socket_join.await?;
+        let _ = std::fs::remove_file(socket_path);
         tracing::info!("walrusd shut down");
         Ok(())
     }

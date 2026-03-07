@@ -4,7 +4,8 @@ use crate::hook::skill::{SkillRegistry, loader};
 use anyhow::Result;
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::{path::PathBuf, sync::Mutex};
+use std::path::PathBuf;
+use tokio::sync::Mutex;
 
 #[derive(Deserialize, JsonSchema)]
 pub(crate) struct SearchSkillInput {

@@ -7,7 +7,7 @@ use wcore::{Embedder, Memory, MemoryEntry, RecallOptions};
 
 impl<E: Embedder> Memory for SqliteMemory<E> {
     fn get(&self, key: &str) -> Option<String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = now_unix();
         conn.execute(sql::TOUCH_ACCESS, rusqlite::params![now as i64, key])
             .ok();
@@ -16,18 +16,20 @@ impl<E: Embedder> Memory for SqliteMemory<E> {
     }
 
     fn entries(&self) -> Vec<(String, String)> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(sql::SELECT_ENTRIES).unwrap();
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect()
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let Ok(mut stmt) = conn.prepare(sql::SELECT_ENTRIES) else {
+            return Vec::new();
+        };
+        let Ok(rows) = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))) else {
+            return Vec::new();
+        };
+        rows.filter_map(|r| r.ok()).collect()
     }
 
     fn set(&self, key: impl Into<String>, value: impl Into<String>) -> Option<String> {
         let key = key.into();
         let value = value.into();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = now_unix() as i64;
 
         let old: Option<String> = conn
@@ -41,7 +43,7 @@ impl<E: Embedder> Memory for SqliteMemory<E> {
     }
 
     fn remove(&self, key: &str) -> Option<String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let old: Option<String> = conn
             .query_row(sql::SELECT_VALUE, [key], |row| row.get(0))
             .ok();

@@ -12,7 +12,6 @@ use crate::{
 };
 use ::socket::server::accept_loop;
 use anyhow::Result;
-use compact_str::CompactString;
 use model::ProviderManager;
 use std::{
     path::{Path, PathBuf},
@@ -20,9 +19,10 @@ use std::{
 };
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use wcore::Runtime;
+use wcore::protocol::message::client::ClientMessage;
 
 pub(crate) mod builder;
-pub(crate) mod event;
+pub mod event;
 mod protocol;
 
 /// Shared daemon state — holds the runtime. Cheap to clone (`Arc`-backed).
@@ -43,25 +43,20 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    /// Load config, build runtime, bind the Unix domain socket, and start serving.
+    /// Load config, build runtime, and start the event loop.
     ///
-    /// Returns a [`DaemonHandle`] with the socket path and a shutdown trigger.
+    /// Returns a [`DaemonHandle`] with the event sender exposed. The caller
+    /// spawns transports (socket, channels) using the handle's `event_tx`
+    /// and `shutdown_tx`, then integrates its own channels by cloning
+    /// `event_tx` and sending [`DaemonEvent::Message`] variants.
     pub async fn start(config_dir: &Path) -> Result<DaemonHandle> {
         let config_path = config_dir.join("walrus.toml");
         let config = DaemonConfig::load(&config_path)?;
         tracing::info!("loaded configuration from {}", config_path.display());
-        Self::start_with_config(&config, config_dir).await
-    }
 
-    /// Start with an already-loaded config. Useful when the caller resolves
-    /// config separately (e.g. CLI with scaffold logic).
-    pub async fn start_with_config(
-        config: &DaemonConfig,
-        config_dir: &Path,
-    ) -> Result<DaemonHandle> {
         scaffold_work_dir(&GLOBAL_CONFIG_DIR, config.work_dir.as_deref())?;
         let (event_tx, event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
-        let daemon = Daemon::build(config, config_dir, event_tx.clone()).await?;
+        let daemon = Daemon::build(&config, config_dir, event_tx.clone()).await?;
 
         // Broadcast shutdown — all subsystems subscribe.
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
@@ -72,45 +67,45 @@ impl Daemon {
             let _ = shutdown_event_tx.send(DaemonEvent::Shutdown);
         });
 
-        let (socket_path, socket_join) = setup_socket(&shutdown_tx, &event_tx)?;
-        setup_channels(config, &event_tx).await;
-
         let d = daemon.clone();
         let event_loop_join = tokio::spawn(async move {
             d.handle_events(event_rx).await;
         });
 
         Ok(DaemonHandle {
-            socket_path,
-            shutdown_tx: Some(shutdown_tx),
-            socket_join: Some(socket_join),
+            config,
+            event_tx,
+            shutdown_tx,
             event_loop_join: Some(event_loop_join),
         })
     }
 }
 
-/// Handle returned by [`Daemon::start`] — holds the socket path and shutdown trigger.
+/// Handle returned by [`Daemon::start`] — holds the event sender and shutdown trigger.
+///
+/// The caller spawns transports (socket, channels) using [`setup_socket`] and
+/// [`setup_channels`], passing clones of `event_tx` and `shutdown_tx`.
 pub struct DaemonHandle {
-    /// The Unix domain socket path the daemon is listening on.
-    pub socket_path: &'static Path,
-    shutdown_tx: Option<broadcast::Sender<()>>,
-    socket_join: Option<tokio::task::JoinHandle<()>>,
+    /// The loaded daemon configuration.
+    pub config: DaemonConfig,
+    /// Sender for injecting events into the daemon event loop.
+    /// Clone this and pass to transport setup functions.
+    pub event_tx: DaemonEventSender,
+    /// Broadcast shutdown — call `.subscribe()` for transport shutdown,
+    /// or use [`DaemonHandle::shutdown`] to trigger.
+    pub shutdown_tx: broadcast::Sender<()>,
     event_loop_join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl DaemonHandle {
-    /// Trigger graceful shutdown and wait for all subsystems to stop.
+    /// Trigger graceful shutdown and wait for the event loop to stop.
+    ///
+    /// Transport tasks (socket, channels) are the caller's responsibility.
     pub async fn shutdown(mut self) -> Result<()> {
-        if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(());
-        }
-        if let Some(join) = self.socket_join.take() {
-            join.await?;
-        }
+        let _ = self.shutdown_tx.send(());
         if let Some(join) = self.event_loop_join.take() {
             join.await?;
         }
-        let _ = std::fs::remove_file(self.socket_path);
         Ok(())
     }
 }
@@ -118,7 +113,7 @@ impl DaemonHandle {
 // ── Transport setup helpers ──────────────────────────────────────────
 
 /// Bind the Unix domain socket and spawn the accept loop.
-fn setup_socket(
+pub fn setup_socket(
     shutdown_tx: &broadcast::Sender<()>,
     event_tx: &DaemonEventSender,
 ) -> Result<(&'static Path, tokio::task::JoinHandle<()>)> {
@@ -138,7 +133,7 @@ fn setup_socket(
     let join = tokio::spawn(accept_loop(
         listener,
         move |msg, reply| {
-            let _ = socket_tx.send(DaemonEvent::Socket { msg, reply });
+            let _ = socket_tx.send(DaemonEvent::Message { msg, reply });
         },
         socket_shutdown,
     ));
@@ -146,34 +141,33 @@ fn setup_socket(
     Ok((resolved_path, join))
 }
 
-/// Build the channel router and spawn channel transports.
-async fn setup_channels(config: &DaemonConfig, event_tx: &DaemonEventSender) {
-    let channels = config.channels.values().cloned().collect::<Vec<_>>();
-    let router = channel::build_router(&channels);
-    let router = Arc::new(router);
-    let channel_tx = event_tx.clone();
-    let on_message = Arc::new(move |agent: CompactString, content: String| {
-        let tx = channel_tx.clone();
+/// Spawn channel transports.
+pub async fn setup_channels(config: &DaemonConfig, event_tx: &DaemonEventSender) {
+    let tx = event_tx.clone();
+    let on_message = Arc::new(move |msg: ClientMessage| {
+        let tx = tx.clone();
         async move {
-            let (reply_tx, reply_rx) = oneshot::channel();
-            let event = DaemonEvent::Channel {
-                agent,
-                content,
+            let (reply_tx, reply_rx) = mpsc::unbounded_channel();
+            let _ = tx.send(DaemonEvent::Message {
+                msg,
                 reply: reply_tx,
-            };
-            if tx.send(event).is_err() {
-                return Err("event loop closed".to_owned());
-            }
+            });
             reply_rx
-                .await
-                .unwrap_or(Err("event loop dropped".to_owned()))
         }
     });
-    channel::spawn_channels(&channels, router, on_message).await;
+
+    // Use the first configured agent name as the default, falling back to "assistant".
+    let agents_dir = crate::config::GLOBAL_CONFIG_DIR.join(crate::config::AGENTS_DIR);
+    let default_agent = crate::config::load_agents_dir(&agents_dir)
+        .ok()
+        .and_then(|agents| agents.into_iter().next())
+        .map(|a| a.name)
+        .unwrap_or_else(|| compact_str::CompactString::from("assistant"));
+    channel::spawn_channels(&config.channel, default_agent, on_message).await;
 }
 
 /// Bridge a broadcast receiver into a oneshot receiver.
-fn bridge_shutdown(mut rx: broadcast::Receiver<()>) -> oneshot::Receiver<()> {
+pub fn bridge_shutdown(mut rx: broadcast::Receiver<()>) -> oneshot::Receiver<()> {
     let (otx, orx) = oneshot::channel();
     tokio::spawn(async move {
         let _ = rx.recv().await;

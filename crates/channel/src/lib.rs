@@ -1,16 +1,15 @@
-//! Walrus channel — platform-agnostic messaging abstraction.
+//! Walrus channel — messaging platform integration for OpenWalrus agents.
 //!
-//! Provides the [`Channel`] trait, message types, platform routing,
-//! configuration helpers, and the Telegram adapter.
+//! Provides configuration types and a spawn function that connects
+//! platform bots (Telegram, Discord) to the daemon's agent event loop.
 
-pub mod channel;
+pub(crate) mod command;
+pub mod config;
+pub(crate) mod discord;
 pub mod message;
-pub mod router;
 pub mod spawn;
-pub mod telegram;
+pub(crate) mod telegram;
 
-pub use channel::{Channel, ChannelHandle, ChannelSender};
-pub use message::{Attachment, AttachmentKind, ChannelMessage, Platform};
-pub use router::{ChannelRouter, RoutingRule, parse_platform};
-pub use spawn::{ChannelConfig, build_router, spawn_channels};
-pub use telegram::TelegramChannel;
+pub use config::{ChannelConfig, DiscordConfig, TelegramConfig};
+pub use message::{Attachment, AttachmentKind, ChannelMessage};
+pub use spawn::spawn_channels;

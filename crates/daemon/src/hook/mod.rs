@@ -151,7 +151,7 @@ impl DaemonHook {
             Err(e) => return format!("invalid arguments: {e}"),
         };
         let query = input.query.to_lowercase();
-        let registry = self.skills.registry.lock().unwrap();
+        let registry = self.skills.registry.lock().await;
         let matches: Vec<String> = registry
             .skills()
             .into_iter()
@@ -189,7 +189,7 @@ impl DaemonHook {
             Err(e) => return format!("failed to parse skill: {e}"),
         };
         let body = skill.body.clone();
-        self.skills.registry.lock().unwrap().add(skill);
+        self.skills.registry.lock().await.add(skill);
         let dir_path = skill_dir.display();
         format!("{body}\n\nSkill directory: {dir_path}")
     }

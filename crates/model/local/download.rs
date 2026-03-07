@@ -6,10 +6,8 @@
 
 use crate::local::cache_dir;
 use hf_hub::api::tokio::{ApiBuilder, Progress};
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 use tokio::{sync::mpsc, time::Instant};
 
 const HF_OFFICIAL: &str = "https://huggingface.co";
@@ -64,7 +62,7 @@ impl ChannelProgress {
 impl Progress for ChannelProgress {
     async fn init(&mut self, size: usize, filename: &str) {
         self.filename = filename.to_owned();
-        *self.last_update.lock().unwrap() = Instant::now();
+        *self.last_update.lock().await = Instant::now();
         let _ = self.tx.send(DownloadEvent::FileStart {
             filename: filename.to_owned(),
             size: size as u64,
@@ -72,7 +70,7 @@ impl Progress for ChannelProgress {
     }
 
     async fn update(&mut self, size: usize) {
-        let mut last = self.last_update.lock().unwrap();
+        let mut last = self.last_update.lock().await;
         let now = Instant::now();
         if now.duration_since(*last).as_millis() >= 100 {
             *last = now;

@@ -1,0 +1,119 @@
+//! Discord Bot adapter.
+//!
+//! Uses serenity gateway (WebSocket) for receiving messages and
+//! `ChannelId::say` for sending replies.
+
+pub(crate) mod command;
+
+use crate::message::{Attachment, AttachmentKind, ChannelMessage};
+use serenity::async_trait;
+use serenity::model::channel::Message;
+use serenity::model::gateway::Ready;
+use serenity::model::id::ChannelId;
+use serenity::prelude::*;
+use std::sync::Arc;
+use tokio::sync::{mpsc, oneshot};
+
+/// Serenity event handler that forwards messages as [`ChannelMessage`]s.
+struct Handler {
+    tx: mpsc::UnboundedSender<ChannelMessage>,
+    http_tx: std::sync::Mutex<Option<oneshot::Sender<Arc<serenity::http::Http>>>>,
+}
+
+#[async_trait]
+impl EventHandler for Handler {
+    async fn message(&self, _ctx: Context, msg: Message) {
+        if msg.author.bot {
+            return;
+        }
+
+        if let Some(cm) = convert_message(msg)
+            && self.tx.send(cm).is_err()
+        {
+            tracing::info!("channel handle dropped, stopping discord event loop");
+        }
+    }
+
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        tracing::info!(user = %ready.user.name, "discord bot connected");
+        if let Some(tx) = self.http_tx.lock().unwrap().take() {
+            let _ = tx.send(ctx.http.clone());
+        }
+    }
+}
+
+/// Convert a serenity `Message` to a `ChannelMessage`.
+fn convert_message(msg: Message) -> Option<ChannelMessage> {
+    let chat_id = msg.channel_id.get() as i64;
+    let sender_id = msg.author.id.get() as i64;
+    let content = msg.content.clone();
+
+    let attachments = msg
+        .attachments
+        .iter()
+        .map(|a| {
+            let kind = match a.content_type.as_deref() {
+                Some(ct) if ct.starts_with("image/") => AttachmentKind::Image,
+                Some(ct) if ct.starts_with("audio/") => AttachmentKind::Audio,
+                Some(ct) if ct.starts_with("video/") => AttachmentKind::Video,
+                _ => AttachmentKind::File,
+            };
+            Attachment {
+                kind,
+                url: a.url.clone(),
+                name: Some(a.filename.clone()),
+            }
+        })
+        .collect();
+
+    Some(ChannelMessage {
+        chat_id,
+        sender_id,
+        content,
+        attachments,
+        reply_to: None,
+        timestamp: msg.timestamp.unix_timestamp() as u64,
+    })
+}
+
+/// Start the serenity gateway client.
+///
+/// Sends the `Arc<Http>` through `http_tx` once the gateway is ready,
+/// then blocks on the gateway connection until shutdown.
+pub(crate) async fn event_loop(
+    token: &str,
+    tx: mpsc::UnboundedSender<ChannelMessage>,
+    http_tx: oneshot::Sender<Arc<serenity::http::Http>>,
+) {
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
+
+    let handler = Handler {
+        tx,
+        http_tx: std::sync::Mutex::new(Some(http_tx)),
+    };
+
+    let mut client = match Client::builder(token, intents).event_handler(handler).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("failed to create discord client: {e}");
+            return;
+        }
+    };
+
+    if let Err(e) = client.start().await {
+        tracing::error!("discord gateway error: {e}");
+    }
+}
+
+/// Send a plain-text message to the channel.
+pub(crate) async fn send_text(
+    http: &Arc<serenity::http::Http>,
+    channel_id: ChannelId,
+    content: String,
+) {
+    if let Err(e) = channel_id.say(http, content).await {
+        tracing::warn!("failed to send discord reply: {e}");
+    }
+}
