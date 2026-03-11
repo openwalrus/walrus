@@ -33,12 +33,12 @@ walrus daemon
 walrus attach
 ```
 
-Models are configured in `~/.walrus/config.toml`. Point it at a local model
+Models are configured in `~/.openwalrus/config.toml`. Point it at a local model
 or any OpenAI-compatible API:
 
 ```toml
 [model]
-model = "deepseek-r1:8b"
+model = "qwen3:4b"
 ```
 
 ## Cloud Providers
