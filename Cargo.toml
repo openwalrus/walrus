@@ -28,6 +28,7 @@ async-stream = "0.3"
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 compact_str = { version = "0.8", features = ["serde"] }
+crossterm = "0.28"
 dirs = "6"
 dotenvy = "0.15"
 candle-core = "0.9"
@@ -45,6 +46,7 @@ mistralrs = { version = "0.7.0", default-features = false }
 openssl-sys = { version = "0.9", features = ["vendored"] }
 percent-encoding = "2"
 rand = "0.9"
+ratatui = "0.29"
 scraper = "0.22"
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
