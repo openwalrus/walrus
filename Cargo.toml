@@ -39,6 +39,7 @@ futures-core = "0.3"
 futures-util = "0.3"
 hf-hub = { version = "0.5.0", features = ["tokio"] }
 lance-graph = { version = "0.5", default-features = false }
+lru = "0.14"
 lancedb = { version = "0.23", default-features = false }
 mistralrs = { version = "0.7.0", default-features = false }
 openssl-sys = { version = "0.9", features = ["vendored"] }

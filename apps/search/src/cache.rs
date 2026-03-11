@@ -1,5 +1,6 @@
 use crate::result::SearchResults;
-use std::collections::HashMap;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -8,38 +9,38 @@ struct CacheEntry {
     inserted_at: Instant,
 }
 
-/// Simple in-memory cache with TTL.
+/// LRU cache with TTL eviction.
 pub struct Cache {
-    entries: Mutex<HashMap<String, CacheEntry>>,
+    entries: Mutex<LruCache<String, CacheEntry>>,
     ttl: Duration,
 }
 
 impl Cache {
-    pub fn new(ttl_secs: u64) -> Self {
+    pub fn new(ttl_secs: u64, capacity: usize) -> Self {
+        let cap = NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::new(256).unwrap());
         Self {
-            entries: Mutex::new(HashMap::new()),
+            entries: Mutex::new(LruCache::new(cap)),
             ttl: Duration::from_secs(ttl_secs),
         }
     }
 
     pub fn get(&self, query: &str, page: u32) -> Option<SearchResults> {
         let key = Self::cache_key(query, page);
-        let mut map = self.entries.lock().ok()?;
+        let mut lru = self.entries.lock().ok()?;
 
-        if let Some(entry) = map.get(&key) {
-            if entry.inserted_at.elapsed() < self.ttl {
-                return Some(entry.results.clone());
-            }
-            // Expired — remove it
-            map.remove(&key);
+        let entry = lru.get(&key)?;
+        if entry.inserted_at.elapsed() < self.ttl {
+            return Some(entry.results.clone());
         }
+        // Expired — remove it
+        lru.pop(&key);
         None
     }
 
     pub fn insert(&self, query: &str, page: u32, results: SearchResults) {
         let key = Self::cache_key(query, page);
-        if let Ok(mut map) = self.entries.lock() {
-            map.insert(
+        if let Ok(mut lru) = self.entries.lock() {
+            lru.put(
                 key,
                 CacheEntry {
                     results,
@@ -70,24 +71,35 @@ mod tests {
 
     #[test]
     fn cache_hit_before_ttl() {
-        let cache = Cache::new(60);
+        let cache = Cache::new(60, 16);
         cache.insert("test", 0, dummy_results());
         assert!(cache.get("test", 0).is_some());
     }
 
     #[test]
     fn cache_miss_different_key() {
-        let cache = Cache::new(60);
+        let cache = Cache::new(60, 16);
         cache.insert("test", 0, dummy_results());
         assert!(cache.get("other", 0).is_none());
     }
 
     #[test]
     fn cache_miss_after_ttl() {
-        let cache = Cache::new(0); // 0 second TTL
+        let cache = Cache::new(0, 16); // 0 second TTL
         cache.insert("test", 0, dummy_results());
         // TTL is 0 seconds, so elapsed >= ttl immediately
         std::thread::sleep(std::time::Duration::from_millis(10));
         assert!(cache.get("test", 0).is_none());
+    }
+
+    #[test]
+    fn cache_evicts_lru() {
+        let cache = Cache::new(60, 2);
+        cache.insert("a", 0, dummy_results());
+        cache.insert("b", 0, dummy_results());
+        cache.insert("c", 0, dummy_results()); // evicts "a"
+        assert!(cache.get("a", 0).is_none());
+        assert!(cache.get("b", 0).is_some());
+        assert!(cache.get("c", 0).is_some());
     }
 }

@@ -21,6 +21,10 @@ pub struct Config {
     #[serde(default = "default_cache_ttl")]
     pub cache_ttl_secs: u64,
 
+    /// Maximum number of entries in the LRU cache.
+    #[serde(default = "default_cache_capacity")]
+    pub cache_capacity: usize,
+
     /// Output format.
     #[serde(default)]
     pub output_format: OutputFormat,
@@ -51,6 +55,10 @@ fn default_cache_ttl() -> u64 {
     300
 }
 
+fn default_cache_capacity() -> usize {
+    256
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -58,6 +66,7 @@ impl Default for Config {
             timeout_secs: default_timeout(),
             max_results: default_max_results(),
             cache_ttl_secs: default_cache_ttl(),
+            cache_capacity: default_cache_capacity(),
             output_format: OutputFormat::default(),
         }
     }

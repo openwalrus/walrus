@@ -28,7 +28,7 @@ impl Aggregator {
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()?;
 
-        let cache = Cache::new(config.cache_ttl_secs);
+        let cache = Cache::new(config.cache_ttl_secs, config.cache_capacity);
         let registry = EngineRegistry::new(&config.engines);
 
         Ok(Self {

@@ -21,6 +21,7 @@ cli = ["dep:clap", "dep:tracing-subscriber"]
 
 [dependencies]
 clap = { workspace = true, optional = true }
+lru.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 scraper.workspace = true
