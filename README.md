@@ -6,7 +6,7 @@
 Just one binary.**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openwalrus/walrus/main/install.sh | sh
+curl -fsSL https://openwalrus.xyz/install.sh | sh
 ```
 
 Or install with Cargo:
