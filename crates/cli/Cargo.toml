@@ -22,6 +22,7 @@ metal = ["daemon/metal"]
 cuda = ["daemon/cuda"]
 
 [dependencies]
+channel.workspace = true
 daemon = { workspace = true, optional = true }
 socket.workspace = true
 wcore.workspace = true

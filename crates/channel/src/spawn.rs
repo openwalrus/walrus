@@ -5,7 +5,7 @@
 //! `ClientMessage` and returns a `ServerMessage` stream.
 
 use crate::command::parse_command;
-use crate::config::{ChannelConfig, DiscordConfig, TelegramConfig};
+use crate::config::{ChannelConfig, ChannelType};
 use crate::message::ChannelMessage;
 use compact_str::CompactString;
 use serenity::model::id::ChannelId;
@@ -16,8 +16,8 @@ use wcore::protocol::message::{client::ClientMessage, server::ServerMessage};
 
 /// Connect configured channels and spawn message loops.
 ///
-/// Spawns transports for each configured platform (Telegram, Discord).
-/// `default_agent` is used when a platform config does not specify an agent.
+/// Iterates all channel entries and spawns a transport for each one.
+/// `default_agent` is used when an entry does not specify an agent.
 /// `on_message` dispatches any `ClientMessage` and returns a receiver for
 /// streamed `ServerMessage` results.
 pub async fn spawn_channels<C, CFut>(
@@ -28,38 +28,35 @@ pub async fn spawn_channels<C, CFut>(
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
 {
-    if let Some(tg) = &config.telegram {
-        if tg.bot.is_empty() {
-            tracing::warn!(platform = "telegram", "bot token is empty, skipping");
-        } else {
-            spawn_telegram(tg, &default_agent, on_message.clone()).await;
+    for entry in &config.0 {
+        if entry.token.is_empty() {
+            tracing::warn!(platform = ?entry.channel_type, "token is empty, skipping");
+            continue;
         }
-    }
 
-    if let Some(dc) = &config.discord {
-        if dc.token.is_empty() {
-            tracing::warn!(platform = "discord", "bot token is empty, skipping");
-        } else {
-            spawn_discord(dc, &default_agent, on_message.clone()).await;
+        let agent = entry
+            .agent
+            .as_deref()
+            .map(CompactString::from)
+            .unwrap_or_else(|| default_agent.clone());
+
+        match entry.channel_type {
+            ChannelType::Telegram => {
+                spawn_telegram(&entry.token, agent, on_message.clone()).await;
+            }
+            ChannelType::Discord => {
+                spawn_discord(&entry.token, agent, on_message.clone()).await;
+            }
         }
     }
 }
 
-async fn spawn_telegram<C, CFut>(
-    tg: &TelegramConfig,
-    default_agent: &CompactString,
-    on_message: Arc<C>,
-) where
+async fn spawn_telegram<C, CFut>(token: &str, agent: CompactString, on_message: Arc<C>)
+where
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
 {
-    let agent = tg
-        .agent
-        .as_deref()
-        .map(CompactString::from)
-        .unwrap_or_else(|| default_agent.clone());
-
-    let bot = Bot::new(&tg.bot);
+    let bot = Bot::new(token);
     let (tx, rx) = mpsc::unbounded_channel::<ChannelMessage>();
 
     let poll_bot = bot.clone();
@@ -71,24 +68,15 @@ async fn spawn_telegram<C, CFut>(
     tracing::info!(platform = "telegram", "channel transport started");
 }
 
-async fn spawn_discord<C, CFut>(
-    dc: &DiscordConfig,
-    default_agent: &CompactString,
-    on_message: Arc<C>,
-) where
+async fn spawn_discord<C, CFut>(token: &str, agent: CompactString, on_message: Arc<C>)
+where
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
 {
-    let agent = dc
-        .agent
-        .as_deref()
-        .map(CompactString::from)
-        .unwrap_or_else(|| default_agent.clone());
-
     let (msg_tx, msg_rx) = mpsc::unbounded_channel::<ChannelMessage>();
     let (http_tx, http_rx) = tokio::sync::oneshot::channel();
 
-    let token = dc.token.clone();
+    let token = token.to_owned();
     tokio::spawn(async move {
         crate::discord::event_loop(&token, msg_tx, http_tx).await;
     });

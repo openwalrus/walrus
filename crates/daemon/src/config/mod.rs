@@ -28,7 +28,7 @@ pub struct DaemonConfig {
     /// Model provider configurations (remote API endpoints).
     #[serde(default)]
     pub model: ModelConfig,
-    /// Channel configuration (Telegram bot).
+    /// Channel configurations (Telegram, Discord bots).
     #[serde(default)]
     pub channel: ChannelConfig,
     /// MCP server configurations.

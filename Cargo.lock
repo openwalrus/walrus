@@ -7141,6 +7141,7 @@ dependencies = [
  "toml_edit 0.22.27",
  "tracing",
  "tracing-subscriber",
+ "walrus-channel",
  "walrus-core",
  "walrus-daemon",
  "walrus-socket",
