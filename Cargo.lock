@@ -11187,6 +11187,7 @@ dependencies = [
  "hf-hub 0.5.0",
  "lance-graph",
  "lancedb",
+ "reqwest 0.12.28",
  "rmcp",
  "schemars 1.2.1",
  "serde",
@@ -11201,6 +11202,7 @@ dependencies = [
  "walrus-channel",
  "walrus-core",
  "walrus-model",
+ "walrus-search",
  "walrus-socket",
 ]
 

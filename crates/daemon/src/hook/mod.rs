@@ -17,6 +17,7 @@ use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry};
 pub mod mcp;
 pub mod memory;
 pub mod os;
+pub mod search;
 pub mod skill;
 pub mod task;
 
@@ -44,6 +45,8 @@ pub struct DaemonHook {
     pub sandboxed: bool,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
+    pub(crate) aggregator: wsearch::aggregator::Aggregator,
+    pub(crate) fetch_client: reqwest::Client,
 }
 
 /// OS tool names — bypass permission check when running in sandbox mode.
@@ -62,6 +65,8 @@ const BASE_TOOLS: &[&str] = &[
     "write",
     "edit",
     "bash",
+    "web_search",
+    "web_fetch",
 ];
 
 /// Skill discovery/loading tools.
@@ -81,6 +86,7 @@ const TASK_TOOLS: &[&str] = &[
 
 impl DaemonHook {
     /// Create a new DaemonHook with the given backends.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         memory: MemoryHook,
         skills: SkillHandler,
@@ -88,6 +94,8 @@ impl DaemonHook {
         tasks: Arc<Mutex<TaskRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
+        aggregator: wsearch::aggregator::Aggregator,
+        fetch_client: reqwest::Client,
     ) -> Self {
         Self {
             memory,
@@ -97,6 +105,8 @@ impl DaemonHook {
             permissions,
             sandboxed,
             scopes: BTreeMap::new(),
+            aggregator,
+            fetch_client,
         }
     }
 
@@ -201,6 +211,8 @@ impl DaemonHook {
             "create_task" => self.dispatch_create_task(args, agent).await,
             "ask_user" => self.dispatch_ask_user(args, task_id).await,
             "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
+            "web_search" => self.dispatch_web_search(args).await,
+            "web_fetch" => self.dispatch_web_fetch(args).await,
             name => {
                 tracing::debug!(tool = name, "forwarding tool to MCP bridge");
                 let bridge = self.mcp.bridge().await;
@@ -291,6 +303,7 @@ impl Hook for DaemonHook {
         self.memory.on_register_tools(tools).await;
         self.mcp.on_register_tools(tools).await;
         tools.insert_all(os::tool::tools());
+        tools.insert_all(search::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(task::tool::tools());
     }

@@ -139,6 +139,12 @@ impl Daemon {
             tracing::info!("sandbox mode active — OS tools bypass permission check");
         }
 
+        let aggregator = wsearch::aggregator::Aggregator::new(wsearch::config::Config::default())
+            .map_err(|e| anyhow::anyhow!("search init failed: {e}"))?;
+        let fetch_client = wsearch::browser::fetch::default_client()
+            .map_err(|e| anyhow::anyhow!("fetch client init failed: {e}"))?;
+        tracing::info!("search tools initialized");
+
         Ok(DaemonHook::new(
             memory,
             skills,
@@ -146,6 +152,8 @@ impl Daemon {
             tasks,
             config.permissions.clone(),
             sandboxed,
+            aggregator,
+            fetch_client,
         ))
     }
 
