@@ -19,6 +19,10 @@ use toml_edit::{DocumentMut, Item, Table};
 
 const PLATFORMS: [&str; 2] = ["Telegram", "Discord"];
 const FIELD_LABELS: [&str; 2] = ["Bot Token", "Agent"];
+const TOKEN_HINTS: [&str; 2] = [
+    "https://core.telegram.org/bots#botfather",
+    "https://discord.com/developers/applications",
+];
 
 /// Configure channel API tokens interactively.
 #[derive(clap::Args, Debug)]
@@ -408,32 +412,49 @@ fn render_fields(frame: &mut Frame, state: &AuthState, area: Rect) {
             Style::default().fg(Color::White)
         };
 
-        let display_value = if is_editing {
-            // Show cursor in editing mode — insert at char boundary
+        let label_span = Span::styled(format!("{label:>10}: "), label_style);
+
+        let line = if is_editing {
             let byte_pos = char_to_byte(value, state.cursor);
             let mut s = value.clone();
             s.insert(byte_pos, '|');
-            s
-        } else if value.is_empty() {
-            String::from("(empty)")
+            Line::from(vec![
+                label_span,
+                Span::styled(s, Style::default().fg(Color::Green)),
+            ])
+        } else if value.is_empty() && label == "Agent" {
+            // Show default agent name dimmed as placeholder
+            Line::from(vec![
+                label_span,
+                Span::styled("walrus", Style::default().fg(Color::DarkGray)),
+                Span::styled(" (default)", Style::default().fg(Color::DarkGray)),
+            ])
+        } else if value.is_empty() && label == "Bot Token" {
+            // Show hint for how to get the token
+            Line::from(vec![
+                label_span,
+                Span::styled(
+                    TOKEN_HINTS[state.platform],
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ])
         } else if label == "Bot Token" {
-            mask_token(value)
+            let style = if is_selected {
+                Style::default().fg(Color::White)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            Line::from(vec![label_span, Span::styled(mask_token(value), style)])
         } else {
-            value.clone()
+            let style = if is_selected {
+                Style::default().fg(Color::White)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            Line::from(vec![label_span, Span::styled(value.as_str(), style)])
         };
-
-        let value_style = if is_editing {
-            Style::default().fg(Color::Green)
-        } else if is_selected {
-            Style::default().fg(Color::White)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
-
-        let line = Line::from(vec![
-            Span::styled(format!("{label:>10}: "), label_style),
-            Span::styled(display_value, value_style),
-        ]);
 
         frame.render_widget(Paragraph::new(line), field_rows[i]);
     }
