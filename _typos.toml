@@ -1,2 +1,3 @@
 [default.extend-words]
 mmaped = "mmaped"
+ratatui = "ratatui"
