@@ -1,7 +1,7 @@
-//! Unix domain socket server — accept loop and per-connection message handler.
+//! TCP server — accept loop and per-connection message handler.
 
 use tokio::{
-    net::UnixListener,
+    net::TcpListener,
     sync::{mpsc, oneshot},
 };
 use wcore::protocol::{
@@ -9,13 +9,13 @@ use wcore::protocol::{
     message::{client::ClientMessage, server::ServerMessage},
 };
 
-/// Accept connections on the given `UnixListener` until shutdown is signalled.
+/// Accept connections on the given `TcpListener` until shutdown is signalled.
 ///
 /// Each connection is handled in a separate task. For each incoming
 /// `ClientMessage`, calls `on_message(msg, reply_tx)` where `reply_tx` is
 /// the per-connection sender for streaming `ServerMessage`s back.
 pub async fn accept_loop<F>(
-    listener: UnixListener,
+    listener: TcpListener,
     on_message: F,
     mut shutdown: oneshot::Receiver<()>,
 ) where
@@ -25,7 +25,9 @@ pub async fn accept_loop<F>(
         tokio::select! {
             result = listener.accept() => {
                 match result {
-                    Ok((stream, _addr)) => {
+                    Ok((stream, addr)) => {
+                        let _ = stream.set_nodelay(true);
+                        tracing::debug!("tcp connection from {addr}");
                         let cb = on_message.clone();
                         tokio::spawn(async move {
                             let (mut reader, mut writer) = stream.into_split();
@@ -52,11 +54,11 @@ pub async fn accept_loop<F>(
                             let _ = send_task.await;
                         });
                     }
-                    Err(e) => tracing::error!("failed to accept connection: {e}"),
+                    Err(e) => tracing::error!("failed to accept tcp connection: {e}"),
                 }
             }
             _ = &mut shutdown => {
-                tracing::info!("accept loop shutting down");
+                tracing::info!("tcp accept loop shutting down");
                 break;
             }
         }

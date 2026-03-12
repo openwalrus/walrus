@@ -20,6 +20,7 @@ daemon = ["dep:daemon"]
 local = ["daemon/local"]
 metal = ["daemon/metal"]
 cuda = ["daemon/cuda"]
+tcp = ["daemon/tcp"]
 
 [dependencies]
 channel.workspace = true

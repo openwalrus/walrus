@@ -1,7 +1,8 @@
-//! Length-prefixed framing codec for Unix domain socket transport.
+//! Length-prefixed framing codec for walrus wire protocol.
 //!
-//! Wire format: `[u32 BE length][JSON payload]`. The length is the byte count
-//! of the JSON payload only (not including the 4-byte header).
+//! Wire format: `[u32 BE length][MessagePack payload]`. The length is the byte
+//! count of the payload only (not including the 4-byte header). Generic over
+//! `AsyncRead`/`AsyncWrite` — used by both UDS and TCP transports.
 
 use serde::{Serialize, de::DeserializeOwned};
 use std::io;
@@ -17,8 +18,8 @@ pub enum FrameError {
     Io(io::Error),
     /// Frame exceeds the maximum allowed size.
     TooLarge { size: u32 },
-    /// JSON serialization/deserialization error.
-    Json(serde_json::Error),
+    /// MessagePack serialization/deserialization error.
+    Codec(String),
     /// The connection was closed (EOF during read).
     ConnectionClosed,
 }
@@ -30,7 +31,7 @@ impl std::fmt::Display for FrameError {
             Self::TooLarge { size } => {
                 write!(f, "frame too large: {size} bytes (max {MAX_FRAME_SIZE})")
             }
-            Self::Json(e) => write!(f, "json error: {e}"),
+            Self::Codec(e) => write!(f, "codec error: {e}"),
             Self::ConnectionClosed => write!(f, "connection closed"),
         }
     }
@@ -40,7 +41,6 @@ impl std::error::Error for FrameError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(e) => Some(e),
-            Self::Json(e) => Some(e),
             _ => None,
         }
     }
@@ -52,19 +52,25 @@ impl From<io::Error> for FrameError {
     }
 }
 
-impl From<serde_json::Error> for FrameError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::Json(e)
+impl From<rmp_serde::encode::Error> for FrameError {
+    fn from(e: rmp_serde::encode::Error) -> Self {
+        Self::Codec(e.to_string())
     }
 }
 
-/// Write a typed message as a length-prefixed JSON frame.
+impl From<rmp_serde::decode::Error> for FrameError {
+    fn from(e: rmp_serde::decode::Error) -> Self {
+        Self::Codec(e.to_string())
+    }
+}
+
+/// Write a typed message as a length-prefixed MessagePack frame.
 pub async fn write_message<W, T>(writer: &mut W, msg: &T) -> Result<(), FrameError>
 where
     W: tokio::io::AsyncWrite + Unpin,
     T: Serialize,
 {
-    let data = serde_json::to_vec(msg)?;
+    let data = rmp_serde::to_vec_named(msg)?;
     let len = data.len() as u32;
     if len > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: len });
@@ -75,7 +81,7 @@ where
     Ok(())
 }
 
-/// Read a length-prefixed JSON frame and deserialize into a typed message.
+/// Read a length-prefixed MessagePack frame and deserialize into a typed message.
 pub async fn read_message<R, T>(reader: &mut R) -> Result<T, FrameError>
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -97,6 +103,6 @@ where
 
     let mut buf = vec![0u8; len as usize];
     reader.read_exact(&mut buf).await?;
-    let msg = serde_json::from_slice(&buf)?;
+    let msg = rmp_serde::from_slice(&buf)?;
     Ok(msg)
 }

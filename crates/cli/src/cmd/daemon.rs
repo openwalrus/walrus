@@ -24,12 +24,18 @@ impl Daemon {
             daemon::setup_socket(&handle.shutdown_tx, &handle.event_tx)?;
         tracing::info!("walrusd listening on {}", socket_path.display());
         daemon::setup_channels(&handle.config, &handle.event_tx).await;
+        #[cfg(feature = "tcp")]
+        let tcp_join = daemon::setup_tcp(&handle.config, &handle.shutdown_tx, &handle.event_tx)?;
         handle.wait_until_ready().await?;
 
         tokio::signal::ctrl_c().await?;
         tracing::info!("received ctrl-c, shutting down");
         handle.shutdown().await?;
         socket_join.await?;
+        #[cfg(feature = "tcp")]
+        if let Some(join) = tcp_join {
+            join.await?;
+        }
         let _ = std::fs::remove_file(socket_path);
         tracing::info!("walrusd shut down");
         Ok(())

@@ -1,12 +1,12 @@
 //! Unix domain socket client for connecting to a walrus daemon.
 
-use crate::codec;
 use anyhow::Result;
 use futures_core::Stream;
 use std::path::{Path, PathBuf};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use wcore::protocol::{
     api::Client,
+    codec,
     message::{client::ClientMessage, server::ServerMessage},
 };
 

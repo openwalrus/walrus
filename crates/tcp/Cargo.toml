@@ -1,6 +1,6 @@
 [package]
-name = "walrus-socket"
-description = "Unix domain socket transport for Walrus daemon communication"
+name = "walrus-tcp"
+description = "TCP transport for Walrus daemon communication"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
