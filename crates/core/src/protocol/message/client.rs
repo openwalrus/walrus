@@ -142,6 +142,10 @@ pub enum ClientMessage {
     },
     /// Subscribe to task lifecycle events (streaming).
     SubscribeTasks,
+    /// List downloads in the download registry.
+    Downloads,
+    /// Subscribe to download lifecycle events (streaming).
+    SubscribeDownloads,
 }
 
 impl From<SendRequest> for ClientMessage {

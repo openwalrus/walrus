@@ -6,4 +6,6 @@ pub mod server;
 pub use client::{
     ClientMessage, DownloadRequest, HubAction, HubRequest, SendRequest, StreamRequest,
 };
-pub use server::{DownloadEvent, HubEvent, SendResponse, ServerMessage, StreamEvent, TaskEvent};
+pub use server::{
+    DownloadEvent, DownloadKind, SendResponse, ServerMessage, StreamEvent, TaskEvent,
+};

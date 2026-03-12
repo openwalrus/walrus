@@ -1,10 +1,10 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    DownloadEvent, DownloadRequest, HubAction, HubEvent, SendRequest, SendResponse, StreamEvent,
+    DownloadEvent, DownloadRequest, HubAction, SendRequest, SendResponse, StreamEvent,
     StreamRequest, TaskEvent,
     client::ClientMessage,
-    server::{ServerMessage, SessionInfo, TaskInfo},
+    server::{DownloadInfo, ServerMessage, SessionInfo, TaskInfo},
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -40,7 +40,7 @@ pub trait Server: Sync {
         &self,
         package: compact_str::CompactString,
         action: HubAction,
-    ) -> impl Stream<Item = Result<HubEvent>> + Send;
+    ) -> impl Stream<Item = Result<DownloadEvent>> + Send;
 
     /// Handle `Sessions` — list active sessions.
     fn list_sessions(&self) -> impl std::future::Future<Output = Result<Vec<SessionInfo>>> + Send;
@@ -66,6 +66,13 @@ pub trait Server: Sync {
 
     /// Handle `SubscribeTasks` — stream task lifecycle events.
     fn subscribe_tasks(&self) -> impl Stream<Item = Result<TaskEvent>> + Send;
+
+    /// Handle `Downloads` — list downloads in the registry.
+    fn list_downloads(&self)
+    -> impl std::future::Future<Output = Result<Vec<DownloadInfo>>> + Send;
+
+    /// Handle `SubscribeDownloads` — stream download lifecycle events.
+    fn subscribe_downloads(&self) -> impl Stream<Item = Result<DownloadEvent>> + Send;
 
     /// Dispatch a `ClientMessage` to the appropriate handler method.
     ///
@@ -175,6 +182,22 @@ pub trait Server: Sync {
                 }
                 ClientMessage::SubscribeTasks => {
                     let s = self.subscribe_tasks();
+                    tokio::pin!(s);
+                    while let Some(result) = s.next().await {
+                        yield result_to_msg(result);
+                    }
+                }
+                ClientMessage::Downloads => {
+                    yield match self.list_downloads().await {
+                        Ok(downloads) => ServerMessage::Downloads(downloads),
+                        Err(e) => ServerMessage::Error {
+                            code: 500,
+                            message: e.to_string(),
+                        },
+                    };
+                }
+                ClientMessage::SubscribeDownloads => {
+                    let s = self.subscribe_downloads();
                     tokio::pin!(s);
                     while let Some(result) = s.next().await {
                         yield result_to_msg(result);

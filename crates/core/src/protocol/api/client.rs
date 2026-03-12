@@ -1,7 +1,7 @@
 //! Client trait — transport primitives plus typed provided methods.
 
 use crate::protocol::message::{
-    DownloadEvent, DownloadRequest, HubEvent, HubRequest, SendRequest, SendResponse, StreamEvent,
+    DownloadEvent, DownloadRequest, HubRequest, SendRequest, SendResponse, StreamEvent,
     StreamRequest, TaskEvent, client::ClientMessage, server::ServerMessage,
 };
 use anyhow::Result;
@@ -64,19 +64,22 @@ pub trait Client: Send {
             .take_while(|r| {
                 std::future::ready(!matches!(
                     r,
-                    Ok(ServerMessage::Download(DownloadEvent::End { .. }))
+                    Ok(ServerMessage::Download(DownloadEvent::Completed { .. }))
                 ))
             })
             .map(|r| r.and_then(DownloadEvent::try_from))
     }
 
-    /// Install or uninstall a hub package, streaming progress events.
-    fn hub(&mut self, req: HubRequest) -> impl Stream<Item = Result<HubEvent>> + Send + '_ {
+    /// Install or uninstall a hub package, streaming download events.
+    fn hub(&mut self, req: HubRequest) -> impl Stream<Item = Result<DownloadEvent>> + Send + '_ {
         self.request_stream(req.into())
             .take_while(|r| {
-                std::future::ready(!matches!(r, Ok(ServerMessage::Hub(HubEvent::End { .. }))))
+                std::future::ready(!matches!(
+                    r,
+                    Ok(ServerMessage::Download(DownloadEvent::Completed { .. }))
+                ))
             })
-            .map(|r| r.and_then(HubEvent::try_from))
+            .map(|r| r.and_then(DownloadEvent::try_from))
     }
 
     /// Ping the server (keepalive).
@@ -98,5 +101,13 @@ pub trait Client: Send {
     fn subscribe_tasks(&mut self) -> impl Stream<Item = Result<TaskEvent>> + Send + '_ {
         self.request_stream(ClientMessage::SubscribeTasks)
             .map(|r| r.and_then(TaskEvent::try_from))
+    }
+
+    /// Subscribe to download lifecycle events.
+    ///
+    /// Streams `DownloadEvent`s indefinitely until the connection closes.
+    fn subscribe_downloads(&mut self) -> impl Stream<Item = Result<DownloadEvent>> + Send + '_ {
+        self.request_stream(ClientMessage::SubscribeDownloads)
+            .map(|r| r.and_then(DownloadEvent::try_from))
     }
 }

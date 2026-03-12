@@ -11,7 +11,7 @@ use tcp::TcpConnection;
 use wcore::protocol::{
     api::Client,
     message::{
-        DownloadEvent, DownloadRequest, HubAction, HubEvent, HubRequest, SendRequest, StreamEvent,
+        DownloadEvent, DownloadRequest, HubAction, HubRequest, SendRequest, StreamEvent,
         StreamRequest,
         client::ClientMessage,
         server::{ServerMessage, SessionInfo, TaskInfo},
@@ -179,7 +179,7 @@ impl Runner {
             .take_while(|r| {
                 std::future::ready(!matches!(
                     r,
-                    Ok(ServerMessage::Download(DownloadEvent::End { .. }))
+                    Ok(ServerMessage::Download(DownloadEvent::Completed { .. }))
                 ))
             })
             .map(|r| r.and_then(DownloadEvent::try_from))
@@ -190,7 +190,7 @@ impl Runner {
         &mut self,
         package: &str,
         action: HubAction,
-    ) -> impl Stream<Item = Result<HubEvent>> + '_ {
+    ) -> impl Stream<Item = Result<DownloadEvent>> + '_ {
         self.transport
             .request_stream(
                 HubRequest {
@@ -200,9 +200,12 @@ impl Runner {
                 .into(),
             )
             .take_while(|r| {
-                std::future::ready(!matches!(r, Ok(ServerMessage::Hub(HubEvent::End { .. }))))
+                std::future::ready(!matches!(
+                    r,
+                    Ok(ServerMessage::Download(DownloadEvent::Completed { .. }))
+                ))
             })
-            .map(|r| r.and_then(HubEvent::try_from))
+            .map(|r| r.and_then(DownloadEvent::try_from))
     }
 
     /// List active sessions on the daemon.

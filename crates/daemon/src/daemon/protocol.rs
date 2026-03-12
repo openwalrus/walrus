@@ -1,6 +1,6 @@
 //! Server trait implementation for the Daemon.
 
-use crate::{daemon::Daemon, ext::hub};
+use crate::daemon::Daemon;
 use anyhow::Result;
 use compact_str::CompactString;
 use futures_util::{StreamExt, pin_mut};
@@ -8,9 +8,9 @@ use std::sync::Arc;
 use wcore::protocol::{
     api::Server,
     message::{
-        DownloadEvent, DownloadRequest, HubAction, HubEvent, SendRequest, SendResponse,
-        StreamEvent, StreamRequest, TaskEvent,
-        server::{SessionInfo, TaskInfo, ToolCallInfo},
+        DownloadEvent, DownloadRequest, HubAction, SendRequest, SendResponse, StreamEvent,
+        StreamRequest, TaskEvent,
+        server::{DownloadInfo, SessionInfo, TaskInfo, ToolCallInfo},
     },
 };
 use wcore::{AgentEvent, model::Model};
@@ -101,66 +101,14 @@ impl Server for Daemon {
         &self,
         req: DownloadRequest,
     ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> + Send {
-        #[cfg(feature = "local")]
-        {
-            use tokio::sync::mpsc;
-            async_stream::try_stream! {
-                // Only registry models are supported.
-                let entry = model::local::registry::find(&req.model)
-                    .ok_or_else(|| anyhow::anyhow!(
-                        "model '{}' is not in the registry", req.model
-                    ))?;
-
-                if !entry.fits() {
-                    let required = entry.memory_requirement();
-                    let actual = model::local::system_memory() / (1024 * 1024 * 1024);
-                    Err(anyhow::anyhow!(
-                        "model '{}' requires at least {} RAM, your system has {}GB",
-                        entry.name, required, actual
-                    ))?;
-                }
-
-                yield DownloadEvent::Start { model: req.model.clone() };
-
-                let (dtx, mut drx) = mpsc::unbounded_channel();
-                let model_str = req.model.to_string();
-                let download_handle = tokio::spawn(async move {
-                    model::local::download::download_model(&model_str, dtx).await
-                });
-
-                while let Some(event) = drx.recv().await {
-                    let dl_event = match event {
-                        model::local::download::DownloadEvent::FileStart { filename, size } => {
-                            DownloadEvent::FileStart { model: req.model.clone(), filename, size }
-                        }
-                        model::local::download::DownloadEvent::Progress { bytes } => {
-                            DownloadEvent::Progress { model: req.model.clone(), bytes }
-                        }
-                        model::local::download::DownloadEvent::FileEnd { filename } => {
-                            DownloadEvent::FileEnd { model: req.model.clone(), filename }
-                        }
-                    };
-                    yield dl_event;
-                }
-
-                match download_handle.await {
-                    Ok(Ok(())) => {
-                        yield DownloadEvent::End { model: req.model };
-                    }
-                    Ok(Err(e)) => {
-                        Err(anyhow::anyhow!("download failed: {e}"))?;
-                    }
-                    Err(e) => {
-                        Err(anyhow::anyhow!("download task panicked: {e}"))?;
-                    }
-                }
-            }
-        }
-        #[cfg(not(feature = "local"))]
-        {
-            let _ = req;
-            async_stream::stream! {
-                yield Err(anyhow::anyhow!("this daemon was built without local model support"));
+        let runtime = self.runtime.clone();
+        async_stream::try_stream! {
+            let rt = runtime.read().await.clone();
+            let registry = rt.hook.downloads.clone();
+            let s = crate::ext::hub::model::download(req.model, registry);
+            pin_mut!(s);
+            while let Some(event) = s.next().await {
+                yield event?;
             }
         }
     }
@@ -325,18 +273,21 @@ impl Server for Daemon {
         &self,
         package: CompactString,
         action: HubAction,
-    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+    ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> + Send {
+        let runtime = self.runtime.clone();
         async_stream::try_stream! {
+            let rt = runtime.read().await.clone();
+            let registry = rt.hook.downloads.clone();
             match action {
                 HubAction::Install => {
-                    let s = hub::install(package);
+                    let s = crate::ext::hub::package::install(package, registry);
                     pin_mut!(s);
                     while let Some(event) = s.next().await {
                         yield event?;
                     }
                 }
                 HubAction::Uninstall => {
-                    let s = hub::uninstall(package);
+                    let s = crate::ext::hub::package::uninstall(package, registry);
                     pin_mut!(s);
                     while let Some(event) = s.next().await {
                         yield event?;
@@ -347,10 +298,33 @@ impl Server for Daemon {
     }
 
     fn subscribe_tasks(&self) -> impl futures_core::Stream<Item = Result<TaskEvent>> + Send {
-        let tasks = self.runtime.clone();
+        let runtime = self.runtime.clone();
         async_stream::try_stream! {
-            let rt = tasks.read().await.clone();
+            let rt = runtime.read().await.clone();
             let mut rx = rt.hook.tasks.lock().await.subscribe();
+            loop {
+                match rx.recv().await {
+                    Ok(event) => yield event,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                }
+            }
+        }
+    }
+
+    async fn list_downloads(&self) -> Result<Vec<DownloadInfo>> {
+        let rt = self.runtime.read().await.clone();
+        let registry = rt.hook.downloads.lock().await;
+        Ok(registry.list())
+    }
+
+    fn subscribe_downloads(
+        &self,
+    ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> + Send {
+        let runtime = self.runtime.clone();
+        async_stream::try_stream! {
+            let rt = runtime.read().await.clone();
+            let mut rx = rt.hook.downloads.lock().await.subscribe();
             loop {
                 match rx.recv().await {
                     Ok(event) => yield event,

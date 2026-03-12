@@ -64,62 +64,93 @@ pub enum StreamEvent {
     },
 }
 
-/// Events emitted during a model download.
+/// Kind of download operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadKind {
+    /// Local model download from HuggingFace.
+    Model,
+    /// Hub package install/uninstall.
+    Hub,
+    /// Embeddings model pre-download.
+    Embeddings,
+    /// Skill download (future).
+    Skill,
+}
+
+impl std::fmt::Display for DownloadKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Model => write!(f, "model"),
+            Self::Hub => write!(f, "hub"),
+            Self::Embeddings => write!(f, "embeddings"),
+            Self::Skill => write!(f, "skill"),
+        }
+    }
+}
+
+/// Unified download lifecycle events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DownloadEvent {
-    /// Download has started.
-    Start {
-        /// Model being downloaded.
-        model: CompactString,
+    /// A new download was registered.
+    Created {
+        /// Download identifier.
+        id: u64,
+        /// Kind of download.
+        kind: DownloadKind,
+        /// Human-readable label (model ID, package name, etc.).
+        label: String,
     },
-    /// A file download has started.
-    FileStart {
-        /// Model being downloaded.
-        model: CompactString,
-        /// Filename within the repo.
-        filename: String,
-        /// Total size in bytes.
-        size: u64,
-    },
-    /// Download progress for current file (delta, not cumulative).
+    /// Byte-level progress (delta, not cumulative).
     Progress {
-        /// Model being downloaded.
-        model: CompactString,
+        /// Download identifier.
+        id: u64,
         /// Bytes downloaded in this chunk.
         bytes: u64,
+        /// Total expected bytes (0 if unknown).
+        total_bytes: u64,
     },
-    /// A file download has completed.
-    FileEnd {
-        /// Model being downloaded.
-        model: CompactString,
-        /// Filename within the repo.
-        filename: String,
+    /// Human-readable progress step.
+    Step {
+        /// Download identifier.
+        id: u64,
+        /// Step description.
+        message: String,
     },
-    /// All downloads complete.
-    End {
-        /// Model that was downloaded.
-        model: CompactString,
+    /// Download completed successfully.
+    Completed {
+        /// Download identifier.
+        id: u64,
+    },
+    /// Download failed.
+    Failed {
+        /// Download identifier.
+        id: u64,
+        /// Error message.
+        error: String,
     },
 }
 
-/// Events emitted during a hub install or uninstall operation.
+/// Summary of a download in the registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HubEvent {
-    /// Operation has started.
-    Start {
-        /// Package being operated on.
-        package: CompactString,
-    },
-    /// A progress step message.
-    Step {
-        /// Human-readable step description.
-        message: String,
-    },
-    /// Operation has completed.
-    End {
-        /// Package that was operated on.
-        package: CompactString,
-    },
+pub struct DownloadInfo {
+    /// Download identifier.
+    pub id: u64,
+    /// Kind of download.
+    pub kind: DownloadKind,
+    /// Human-readable label.
+    pub label: String,
+    /// Current status.
+    pub status: String,
+    /// Bytes downloaded so far.
+    pub bytes_downloaded: u64,
+    /// Total expected bytes (0 if unknown).
+    pub total_bytes: u64,
+    /// Error message (if failed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Seconds since download started.
+    pub alive_secs: u64,
 }
 
 /// Summary of an active session.
@@ -211,7 +242,7 @@ pub enum ServerMessage {
     Response(SendResponse),
     /// A streamed response event.
     Stream(StreamEvent),
-    /// A model download event.
+    /// A download lifecycle event.
     Download(DownloadEvent),
     /// Error response.
     Error {
@@ -222,10 +253,10 @@ pub enum ServerMessage {
     },
     /// Pong response to client ping.
     Pong,
-    /// A hub install/uninstall event.
-    Hub(HubEvent),
     /// Active session list.
     Sessions(Vec<SessionInfo>),
+    /// Download registry list.
+    Downloads(Vec<DownloadInfo>),
     /// Task registry list.
     Tasks(Vec<TaskInfo>),
     /// A task lifecycle event (subscription stream).
@@ -252,12 +283,6 @@ impl From<StreamEvent> for ServerMessage {
 impl From<DownloadEvent> for ServerMessage {
     fn from(e: DownloadEvent) -> Self {
         Self::Download(e)
-    }
-}
-
-impl From<HubEvent> for ServerMessage {
-    fn from(e: HubEvent) -> Self {
-        Self::Hub(e)
     }
 }
 
@@ -301,16 +326,6 @@ impl TryFrom<ServerMessage> for DownloadEvent {
     fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
         match msg {
             ServerMessage::Download(e) => Ok(e),
-            other => Err(error_or_unexpected(other)),
-        }
-    }
-}
-
-impl TryFrom<ServerMessage> for HubEvent {
-    type Error = anyhow::Error;
-    fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
-        match msg {
-            ServerMessage::Hub(e) => Ok(e),
             other => Err(error_or_unexpected(other)),
         }
     }
