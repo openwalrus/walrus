@@ -1,5 +1,6 @@
 //! Messages sent by the gateway to the client.
 
+use crate::{AgentConfig, McpServerConfig, ProviderConfig};
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
@@ -234,6 +235,35 @@ pub enum TaskEvent {
     },
 }
 
+/// Summary of a loaded skill.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillInfo {
+    /// Skill identifier.
+    pub name: CompactString,
+    /// Human-readable description.
+    pub description: String,
+    /// License name or reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<CompactString>,
+    /// Compatibility constraints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility: Option<CompactString>,
+}
+
+/// Typed resource list response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceList {
+    /// MCP server configurations.
+    Mcps(Vec<(CompactString, McpServerConfig)>),
+    /// Loaded skill summaries (read-only).
+    Skills(Vec<SkillInfo>),
+    /// Agent configurations.
+    Agents(Vec<(CompactString, AgentConfig)>),
+    /// Remote model provider configurations.
+    Providers(Vec<(CompactString, ProviderConfig)>),
+}
+
 /// Messages sent by the gateway to the client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -266,6 +296,8 @@ pub enum ServerMessage {
         /// Whether the agent decided to respond.
         respond: bool,
     },
+    /// Resource list response.
+    Resource(ResourceList),
 }
 
 impl From<SendResponse> for ServerMessage {
