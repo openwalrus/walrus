@@ -6,9 +6,10 @@
 pub(crate) mod command;
 
 use crate::message::{Attachment, AttachmentKind, ChannelMessage};
+use compact_str::CompactString;
 use futures_util::StreamExt;
 use teloxide::prelude::*;
-use teloxide::types::UpdateKind;
+use teloxide::types::{ChatKind, UpdateKind};
 use teloxide::update_listeners::{AsUpdateStream, polling_default};
 use tokio::sync::mpsc;
 
@@ -42,7 +43,13 @@ fn convert_update(update: Update) -> Option<ChannelMessage> {
     };
 
     let chat_id = msg.chat.id.0;
-    let sender_id = msg.from.as_ref().map(|u| u.id.0 as i64).unwrap_or(0);
+    let sender = msg.from.as_ref();
+    let sender_id = sender.map(|u| u.id.0 as i64).unwrap_or(0);
+    let sender_name = sender
+        .map(|u| CompactString::from(u.first_name.as_str()))
+        .unwrap_or_default();
+    let is_bot = sender.is_some_and(|u| u.is_bot);
+    let is_group = matches!(msg.chat.kind, ChatKind::Public(_));
     let content = msg.text().unwrap_or("").to_owned();
 
     let mut attachments = Vec::new();
@@ -68,6 +75,9 @@ fn convert_update(update: Update) -> Option<ChannelMessage> {
     Some(ChannelMessage {
         chat_id,
         sender_id,
+        sender_name,
+        is_bot,
+        is_group,
         content,
         attachments,
         reply_to,

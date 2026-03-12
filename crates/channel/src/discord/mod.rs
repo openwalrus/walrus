@@ -6,27 +6,25 @@
 pub(crate) mod command;
 
 use crate::message::{Attachment, AttachmentKind, ChannelMessage};
+use compact_str::CompactString;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::ChannelId;
 use serenity::prelude::*;
-use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use std::{collections::HashSet, sync::Arc};
+use tokio::sync::{RwLock, mpsc, oneshot};
 
 /// Serenity event handler that forwards messages as [`ChannelMessage`]s.
 struct Handler {
     tx: mpsc::UnboundedSender<ChannelMessage>,
     http_tx: std::sync::Mutex<Option<oneshot::Sender<Arc<serenity::http::Http>>>>,
+    known_bots: Arc<RwLock<HashSet<CompactString>>>,
 }
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, _ctx: Context, msg: Message) {
-        if msg.author.bot {
-            return;
-        }
-
         if let Some(cm) = convert_message(msg)
             && self.tx.send(cm).is_err()
         {
@@ -35,7 +33,9 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        tracing::info!(user = %ready.user.name, "discord bot connected");
+        let bot_sender: CompactString = format!("dc:{}", ready.user.id.get()).into();
+        tracing::info!(user = %ready.user.name, %bot_sender, "discord bot connected");
+        self.known_bots.write().await.insert(bot_sender);
         if let Some(tx) = self.http_tx.lock().unwrap().take() {
             let _ = tx.send(ctx.http.clone());
         }
@@ -46,6 +46,9 @@ impl EventHandler for Handler {
 fn convert_message(msg: Message) -> Option<ChannelMessage> {
     let chat_id = msg.channel_id.get() as i64;
     let sender_id = msg.author.id.get() as i64;
+    let sender_name = CompactString::from(msg.author.name.as_str());
+    let is_bot = msg.author.bot;
+    let is_group = msg.guild_id.is_some();
     let content = msg.content.clone();
 
     let attachments = msg
@@ -69,6 +72,9 @@ fn convert_message(msg: Message) -> Option<ChannelMessage> {
     Some(ChannelMessage {
         chat_id,
         sender_id,
+        sender_name,
+        is_bot,
+        is_group,
         content,
         attachments,
         reply_to: None,
@@ -84,6 +90,7 @@ pub(crate) async fn event_loop(
     token: &str,
     tx: mpsc::UnboundedSender<ChannelMessage>,
     http_tx: oneshot::Sender<Arc<serenity::http::Http>>,
+    known_bots: Arc<RwLock<HashSet<CompactString>>>,
 ) {
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
@@ -92,6 +99,7 @@ pub(crate) async fn event_loop(
     let handler = Handler {
         tx,
         http_tx: std::sync::Mutex::new(Some(http_tx)),
+        known_bots,
     };
 
     let mut client = match Client::builder(token, intents).event_handler(handler).await {

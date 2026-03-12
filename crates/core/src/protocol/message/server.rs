@@ -195,6 +195,11 @@ pub enum ServerMessage {
     Sessions(Vec<SessionInfo>),
     /// Task registry list.
     Tasks(Vec<TaskInfo>),
+    /// Evaluation result — whether the agent should respond (DD#39).
+    Evaluation {
+        /// Whether the agent decided to respond.
+        respond: bool,
+    },
 }
 
 impl From<SendResponse> for ServerMessage {

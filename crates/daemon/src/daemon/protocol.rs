@@ -5,7 +5,6 @@ use anyhow::Result;
 use compact_str::CompactString;
 use futures_util::{StreamExt, pin_mut};
 use std::sync::Arc;
-use wcore::AgentEvent;
 use wcore::protocol::{
     api::Server,
     message::{
@@ -14,6 +13,7 @@ use wcore::protocol::{
         server::{SessionInfo, TaskInfo, ToolCallInfo},
     },
 };
+use wcore::{AgentEvent, model::Model};
 
 impl Server for Daemon {
     async fn send(&self, req: SendRequest) -> Result<SendResponse> {
@@ -253,6 +253,72 @@ impl Server for Daemon {
         let rt = self.runtime.read().await.clone();
         let mut registry = rt.hook.tasks.lock().await;
         Ok(registry.approve(task_id, response))
+    }
+
+    async fn evaluate(&self, req: SendRequest) -> Result<bool> {
+        let rt: Arc<_> = self.runtime.read().await.clone();
+        let agent = rt
+            .get_agent(&req.agent)
+            .ok_or_else(|| anyhow::anyhow!("agent '{}' not found", req.agent))?;
+
+        let sender = req.sender.as_deref().unwrap_or("");
+
+        // Build sender context from memory.
+        let sender_context = if !sender.is_empty() {
+            let query = format!("{sender} profile");
+            let args = serde_json::json!({ "query": query, "entity_type": "profile", "limit": 3 });
+            let recall_result = rt
+                .hook
+                .memory
+                .dispatch_recall(&args.to_string(), &req.agent, sender)
+                .await;
+            if recall_result == "no entities found" {
+                String::new()
+            } else {
+                recall_result
+            }
+        } else {
+            String::new()
+        };
+
+        // Build a minimal evaluation prompt.
+        let mut eval_prompt = String::from(
+            "You are deciding whether to respond to a message in a group chat. \
+             Reply with exactly \"yes\" or \"no\".\n\n",
+        );
+        if !sender_context.is_empty() {
+            eval_prompt.push_str("Sender profile:\n");
+            eval_prompt.push_str(&sender_context);
+            eval_prompt.push('\n');
+        }
+        eval_prompt.push_str("Message: ");
+        eval_prompt.push_str(&req.content);
+        eval_prompt.push_str("\n\nShould you respond? (yes/no)");
+
+        let model_name = agent
+            .config
+            .model
+            .clone()
+            .unwrap_or_else(|| rt.model.active_model());
+
+        let messages = vec![
+            wcore::model::Message::system(&agent.config.system_prompt),
+            wcore::model::Message::user(eval_prompt),
+        ];
+
+        let request = wcore::model::Request::new(model_name).with_messages(messages);
+
+        match rt.model.send(&request).await {
+            Ok(response) => {
+                let text = response.message().map(|m| m.content).unwrap_or_default();
+                let lower = text.trim().to_lowercase();
+                Ok(lower.starts_with("yes"))
+            }
+            Err(e) => {
+                tracing::warn!(agent = %req.agent, "evaluate LLM call failed: {e}, defaulting to respond");
+                Ok(true)
+            }
+        }
     }
 
     fn hub(

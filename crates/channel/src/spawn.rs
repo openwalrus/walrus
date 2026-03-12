@@ -9,10 +9,21 @@ use crate::config::{ChannelConfig, ChannelType};
 use crate::message::ChannelMessage;
 use compact_str::CompactString;
 use serenity::model::id::ChannelId;
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+    sync::Arc,
+};
 use teloxide::prelude::*;
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, mpsc};
 use wcore::protocol::message::{client::ClientMessage, server::ServerMessage};
+
+/// Shared set of sender IDs belonging to sibling Walrus bots.
+///
+/// Built incrementally as each bot connects. Channel loops check this set
+/// before dispatching messages — senders in this set are silently dropped
+/// to prevent agent-to-agent loops.
+type KnownBots = Arc<RwLock<HashSet<CompactString>>>;
 
 /// Connect configured channels and spawn message loops.
 ///
@@ -28,6 +39,8 @@ pub async fn spawn_channels<C, CFut>(
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
 {
+    let known_bots: KnownBots = Arc::new(RwLock::new(HashSet::new()));
+
     for entry in &config.0 {
         if entry.token.is_empty() {
             tracing::warn!(platform = ?entry.channel_type, "token is empty, skipping");
@@ -42,21 +55,38 @@ pub async fn spawn_channels<C, CFut>(
 
         match entry.channel_type {
             ChannelType::Telegram => {
-                spawn_telegram(&entry.token, agent, on_message.clone()).await;
+                spawn_telegram(&entry.token, agent, on_message.clone(), known_bots.clone()).await;
             }
             ChannelType::Discord => {
-                spawn_discord(&entry.token, agent, on_message.clone()).await;
+                spawn_discord(&entry.token, agent, on_message.clone(), known_bots.clone()).await;
             }
         }
     }
 }
 
-async fn spawn_telegram<C, CFut>(token: &str, agent: CompactString, on_message: Arc<C>)
-where
+async fn spawn_telegram<C, CFut>(
+    token: &str,
+    agent: CompactString,
+    on_message: Arc<C>,
+    known_bots: KnownBots,
+) where
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
 {
     let bot = Bot::new(token);
+
+    // Resolve our own user ID and register it in the known-bot set.
+    match bot.get_me().await {
+        Ok(me) => {
+            let bot_sender: CompactString = format!("tg:{}", me.id.0).into();
+            tracing::info!(platform = "telegram", %bot_sender, "registered bot identity");
+            known_bots.write().await.insert(bot_sender);
+        }
+        Err(e) => {
+            tracing::warn!(platform = "telegram", "failed to resolve bot identity: {e}");
+        }
+    }
+
     let (tx, rx) = mpsc::unbounded_channel::<ChannelMessage>();
 
     let poll_bot = bot.clone();
@@ -64,12 +94,16 @@ where
         crate::telegram::poll_loop(poll_bot, tx).await;
     });
 
-    tokio::spawn(telegram_loop(rx, bot, agent, on_message));
+    tokio::spawn(telegram_loop(rx, bot, agent, on_message, known_bots));
     tracing::info!(platform = "telegram", "channel transport started");
 }
 
-async fn spawn_discord<C, CFut>(token: &str, agent: CompactString, on_message: Arc<C>)
-where
+async fn spawn_discord<C, CFut>(
+    token: &str,
+    agent: CompactString,
+    on_message: Arc<C>,
+    known_bots: KnownBots,
+) where
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
 {
@@ -77,14 +111,15 @@ where
     let (http_tx, http_rx) = tokio::sync::oneshot::channel();
 
     let token = token.to_owned();
+    let kb = known_bots.clone();
     tokio::spawn(async move {
-        crate::discord::event_loop(&token, msg_tx, http_tx).await;
+        crate::discord::event_loop(&token, msg_tx, http_tx, kb).await;
     });
 
     tokio::spawn(async move {
         match http_rx.await {
             Ok(http) => {
-                discord_loop(msg_rx, http, agent, on_message).await;
+                discord_loop(msg_rx, http, agent, on_message, known_bots).await;
             }
             Err(_) => {
                 tracing::error!("discord gateway failed to send http client");
@@ -105,6 +140,7 @@ async fn telegram_loop<C, CFut>(
     bot: Bot,
     agent: CompactString,
     on_message: Arc<C>,
+    known_bots: KnownBots,
 ) where
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
@@ -115,6 +151,12 @@ async fn telegram_loop<C, CFut>(
         let chat_id = msg.chat_id;
         let content = msg.content.clone();
         let sender: CompactString = format!("tg:{}", msg.sender_id).into();
+
+        // Drop messages from sibling Walrus bots.
+        if known_bots.read().await.contains(&sender) {
+            tracing::debug!(%sender, chat_id, "dropping message from known bot");
+            continue;
+        }
 
         tracing::info!(%agent, chat_id, "telegram dispatch");
 
@@ -141,6 +183,12 @@ async fn telegram_loop<C, CFut>(
 
         // Normal agent chat path with session mapping.
         let session = sessions.get(&chat_id).copied();
+
+        // Group chat: evaluate whether the agent should respond.
+        if msg.is_group && !should_respond(&on_message, &agent, &content, session, &sender).await {
+            tracing::debug!(%agent, chat_id, "agent declined to respond in group");
+            continue;
+        }
         let client_msg = ClientMessage::Send {
             agent: agent.clone(),
             content: content.clone(),
@@ -207,6 +255,7 @@ async fn discord_loop<C, CFut>(
     http: Arc<serenity::http::Http>,
     agent: CompactString,
     on_message: Arc<C>,
+    known_bots: KnownBots,
 ) where
     C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
     CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
@@ -218,6 +267,12 @@ async fn discord_loop<C, CFut>(
         let channel_id = ChannelId::new(chat_id as u64);
         let content = msg.content.clone();
         let sender: CompactString = format!("dc:{}", msg.sender_id).into();
+
+        // Drop messages from sibling Walrus bots.
+        if known_bots.read().await.contains(&sender) {
+            tracing::debug!(%sender, chat_id, "dropping message from known bot");
+            continue;
+        }
 
         tracing::info!(%agent, chat_id, "discord dispatch");
 
@@ -242,6 +297,13 @@ async fn discord_loop<C, CFut>(
 
         // Normal agent chat path with session mapping.
         let session = sessions.get(&chat_id).copied();
+
+        // Group chat: evaluate whether the agent should respond.
+        if msg.is_group && !should_respond(&on_message, &agent, &content, session, &sender).await {
+            tracing::debug!(%agent, chat_id, "agent declined to respond in group");
+            continue;
+        }
+
         let client_msg = ClientMessage::Send {
             agent: agent.clone(),
             content: content.clone(),
@@ -293,4 +355,37 @@ async fn discord_loop<C, CFut>(
     }
 
     tracing::info!(platform = "discord", "channel loop ended");
+}
+
+/// Ask the daemon whether the agent should respond to a group message.
+///
+/// Dispatches `ClientMessage::Evaluate` and checks for
+/// `ServerMessage::Evaluation { respond }`. Falls back to `true` on any
+/// unexpected response or error so the agent still responds if evaluation
+/// fails.
+async fn should_respond<C, CFut>(
+    on_message: &Arc<C>,
+    agent: &CompactString,
+    content: &str,
+    session: Option<u64>,
+    sender: &CompactString,
+) -> bool
+where
+    C: Fn(ClientMessage) -> CFut + Send + Sync + 'static,
+    CFut: Future<Output = mpsc::UnboundedReceiver<ServerMessage>> + Send + 'static,
+{
+    let eval_msg = ClientMessage::Evaluate {
+        agent: agent.clone(),
+        content: content.to_owned(),
+        session,
+        sender: Some(sender.clone()),
+    };
+    let mut rx = on_message(eval_msg).await;
+    match rx.recv().await {
+        Some(ServerMessage::Evaluation { respond }) => respond,
+        _ => {
+            tracing::warn!(%agent, "evaluate returned unexpected response, defaulting to respond");
+            true
+        }
+    }
 }

@@ -61,6 +61,9 @@ pub trait Server: Sync {
         response: String,
     ) -> impl std::future::Future<Output = Result<bool>> + Send;
 
+    /// Handle `Evaluate` — decide whether the agent should respond (DD#39).
+    fn evaluate(&self, req: SendRequest) -> impl std::future::Future<Output = Result<bool>> + Send;
+
     /// Dispatch a `ClientMessage` to the appropriate handler method.
     ///
     /// Returns a stream of `ServerMessage`s. Request-response operations
@@ -152,6 +155,15 @@ pub trait Server: Sync {
                             code: 404,
                             message: format!("task {task_id} not found or not blocked"),
                         },
+                        Err(e) => ServerMessage::Error {
+                            code: 500,
+                            message: e.to_string(),
+                        },
+                    };
+                }
+                ClientMessage::Evaluate { agent, content, session, sender } => {
+                    yield match self.evaluate(SendRequest { agent, content, session, sender }).await {
+                        Ok(respond) => ServerMessage::Evaluation { respond },
                         Err(e) => ServerMessage::Error {
                             code: 500,
                             message: e.to_string(),

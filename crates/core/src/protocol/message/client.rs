@@ -124,6 +124,22 @@ pub enum ClientMessage {
         /// Response to send to the blocked tool call.
         response: String,
     },
+    /// Evaluate whether the agent should respond to a message.
+    ///
+    /// Used by channel loops for group-chat gating (DD#39). Returns
+    /// `ServerMessage::Evaluation` with a boolean decision.
+    Evaluate {
+        /// Target agent identifier.
+        agent: CompactString,
+        /// Message content to evaluate.
+        content: String,
+        /// Session to use for context. `None` creates a temporary session.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session: Option<u64>,
+        /// Sender identity. `None` = local.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender: Option<CompactString>,
+    },
 }
 
 impl From<SendRequest> for ClientMessage {
