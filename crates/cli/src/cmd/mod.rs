@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use compact_str::CompactString;
 use std::path::PathBuf;
+use wcore::paths::TCP_PORT_FILE;
 
 pub mod attach;
 pub mod auth;
@@ -53,19 +54,19 @@ impl Cli {
         match self.command {
             Command::Auth(cmd) => cmd.run(),
             Command::Attach(cmd) => {
-                let runner = connect(&socket_path).await?;
+                let runner = connect(cmd.tcp, &socket_path).await?;
                 cmd.run(runner, agent).await
             }
             Command::Hub(cmd) => {
-                let mut runner = connect(&socket_path).await?;
+                let mut runner = connect_uds(&socket_path).await?;
                 cmd.run(&mut runner).await
             }
             Command::Model(cmd) => {
-                let mut runner = connect(&socket_path).await?;
+                let mut runner = connect_uds(&socket_path).await?;
                 cmd.run(&mut runner).await
             }
             Command::Session(cmd) => {
-                let mut runner = connect(&socket_path).await?;
+                let mut runner = connect_uds(&socket_path).await?;
                 cmd.run(&mut runner).await
             }
             #[cfg(unix)]
@@ -97,8 +98,34 @@ pub enum Command {
     Daemon(daemon::Daemon),
 }
 
-/// Connect to walrusd, returning a helpful error if not running.
-async fn connect(socket_path: &std::path::Path) -> Result<Runner> {
+/// Connect to walrusd via TCP or UDS.
+async fn connect(use_tcp: bool, socket_path: &std::path::Path) -> Result<Runner> {
+    if use_tcp {
+        connect_tcp().await
+    } else {
+        connect_uds(socket_path).await
+    }
+}
+
+/// Connect to walrusd via TCP, reading the port from the port file.
+async fn connect_tcp() -> Result<Runner> {
+    let port_str = std::fs::read_to_string(&*TCP_PORT_FILE).with_context(|| {
+        format!(
+            "failed to read TCP port file at {}. Is walrusd running?",
+            TCP_PORT_FILE.display()
+        )
+    })?;
+    let port: u16 = port_str
+        .trim()
+        .parse()
+        .with_context(|| format!("invalid port in {}", TCP_PORT_FILE.display()))?;
+    Runner::connect_tcp(port).await.with_context(|| {
+        format!("failed to connect to walrusd via TCP on port {port}. Is walrusd running?")
+    })
+}
+
+/// Connect to walrusd via Unix domain socket.
+async fn connect_uds(socket_path: &std::path::Path) -> Result<Runner> {
     Runner::connect(socket_path).await.with_context(|| {
         format!(
             "failed to connect to walrusd at {}. Is walrusd running?",

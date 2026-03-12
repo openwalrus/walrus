@@ -1,5 +1,6 @@
 //! TCP server — accept loop and per-connection message handler.
 
+use std::net::{Ipv4Addr, SocketAddr};
 use tokio::{
     net::TcpListener,
     sync::{mpsc, oneshot},
@@ -8,6 +9,27 @@ use wcore::protocol::{
     codec,
     message::{client::ClientMessage, server::ServerMessage},
 };
+
+/// Default TCP port for the walrus daemon.
+pub const DEFAULT_PORT: u16 = 6688;
+
+/// Bind a TCP listener, trying the default port first, then picking an
+/// available port if busy.
+///
+/// Returns the listener and the actual address it bound to.
+pub fn bind() -> std::io::Result<(std::net::TcpListener, SocketAddr)> {
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_PORT));
+    match std::net::TcpListener::bind(addr) {
+        Ok(listener) => Ok((listener, addr)),
+        Err(_) => {
+            // Port busy — bind to :0 and let the OS pick.
+            let fallback = SocketAddr::from((Ipv4Addr::LOCALHOST, 0u16));
+            let listener = std::net::TcpListener::bind(fallback)?;
+            let actual = listener.local_addr()?;
+            Ok((listener, actual))
+        }
+    }
+}
 
 /// Accept connections on the given `TcpListener` until shutdown is signalled.
 ///

@@ -7127,6 +7127,7 @@ name = "openwalrus"
 version = "0.0.5"
 dependencies = [
  "anyhow",
+ "async-stream",
  "clap",
  "compact_str 0.8.1",
  "crossterm 0.28.1",
@@ -7145,6 +7146,7 @@ dependencies = [
  "walrus-core",
  "walrus-daemon",
  "walrus-socket",
+ "walrus-tcp",
 ]
 
 [[package]]

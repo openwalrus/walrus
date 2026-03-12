@@ -3,15 +3,11 @@
 use anyhow::Result;
 use clap::Args;
 use daemon::{Daemon as WalrusDaemon, config};
-use wcore::paths::CONFIG_DIR;
+use wcore::paths::{CONFIG_DIR, TCP_PORT_FILE};
 
 /// Start the walrus daemon in the foreground.
 #[derive(Args, Debug)]
-pub struct Daemon {
-    /// Listen on TCP instead of Unix domain socket.
-    #[arg(long)]
-    pub tcp: Option<std::net::SocketAddr>,
-}
+pub struct Daemon;
 
 impl Daemon {
     /// Run the daemon, blocking until Ctrl-C.
@@ -23,16 +19,15 @@ impl Daemon {
 
         let handle = WalrusDaemon::start(&CONFIG_DIR).await?;
 
-        // Spawn transport: TCP or UDS (mutually exclusive).
-        let mut socket_path = None;
-        let transport_join = if let Some(addr) = self.tcp {
-            daemon::setup_tcp(addr, &handle.shutdown_tx, &handle.event_tx)?
-        } else {
-            let (path, join) = daemon::setup_socket(&handle.shutdown_tx, &handle.event_tx)?;
-            tracing::info!("walrusd listening on {}", path.display());
-            socket_path = Some(path);
-            join
-        };
+        // UDS transport.
+        let (socket_path, socket_join) =
+            daemon::setup_socket(&handle.shutdown_tx, &handle.event_tx)?;
+        tracing::info!("walrusd listening on {}", socket_path.display());
+
+        // TCP transport.
+        let (tcp_join, tcp_port) = daemon::setup_tcp(&handle.shutdown_tx, &handle.event_tx)?;
+        std::fs::write(&*TCP_PORT_FILE, tcp_port.to_string())?;
+        tracing::info!("wrote tcp port file at {}", TCP_PORT_FILE.display());
 
         daemon::setup_channels(&handle.config, &handle.event_tx).await;
         handle.wait_until_ready().await?;
@@ -40,10 +35,10 @@ impl Daemon {
         tokio::signal::ctrl_c().await?;
         tracing::info!("received ctrl-c, shutting down");
         handle.shutdown().await?;
-        transport_join.await?;
-        if let Some(path) = socket_path {
-            let _ = std::fs::remove_file(path);
-        }
+        socket_join.await?;
+        tcp_join.await?;
+        let _ = std::fs::remove_file(socket_path);
+        let _ = std::fs::remove_file(&*TCP_PORT_FILE);
         tracing::info!("walrusd shut down");
         Ok(())
     }

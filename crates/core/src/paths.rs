@@ -16,6 +16,9 @@ pub static CONFIG_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
 /// Pinned socket path (`~/.openwalrus/walrus.sock`).
 pub static SOCKET_PATH: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("walrus.sock"));
 
+/// TCP port file (`~/.openwalrus/walrus.tcp`). Contains the port number as text.
+pub static TCP_PORT_FILE: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("walrus.tcp"));
+
 /// Agents subdirectory (contains *.md files).
 pub const AGENTS_DIR: &str = "agents";
 /// Skills subdirectory.

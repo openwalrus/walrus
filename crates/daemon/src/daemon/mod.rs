@@ -213,12 +213,15 @@ pub async fn setup_channels(config: &DaemonConfig, event_tx: &DaemonEventSender)
 }
 
 /// Bind a TCP listener and spawn the accept loop.
+///
+/// Tries the default port (6688), falls back to an OS-assigned port.
+/// Returns the join handle and the actual port bound.
 pub fn setup_tcp(
-    addr: std::net::SocketAddr,
     shutdown_tx: &broadcast::Sender<()>,
     event_tx: &DaemonEventSender,
-) -> Result<tokio::task::JoinHandle<()>> {
-    let listener = tokio::net::TcpListener::from_std(std::net::TcpListener::bind(addr)?)?;
+) -> Result<(tokio::task::JoinHandle<()>, u16)> {
+    let (std_listener, addr) = tcp::server::bind()?;
+    let listener = tokio::net::TcpListener::from_std(std_listener)?;
     tracing::info!("daemon listening on tcp://{addr}");
 
     let tcp_shutdown = bridge_shutdown(shutdown_tx.subscribe());
@@ -231,7 +234,7 @@ pub fn setup_tcp(
         tcp_shutdown,
     ));
 
-    Ok(join)
+    Ok((join, addr.port()))
 }
 
 /// Bridge a broadcast receiver into a oneshot receiver.

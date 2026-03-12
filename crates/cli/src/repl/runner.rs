@@ -1,16 +1,21 @@
-//! Gateway runner — connects to walrusd via Unix domain socket.
+//! Gateway runner — connects to walrusd via Unix domain socket or TCP.
 
 use anyhow::Result;
 use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use socket::{ClientConfig, Connection, WalrusClient};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
-use wcore::protocol::message::{
-    DownloadEvent, DownloadRequest, HubAction, HubEvent, HubRequest, SendRequest, StreamEvent,
-    StreamRequest,
-    client::ClientMessage,
-    server::{ServerMessage, SessionInfo},
+use tcp::TcpConnection;
+use wcore::protocol::{
+    api::Client,
+    message::{
+        DownloadEvent, DownloadRequest, HubAction, HubEvent, HubRequest, SendRequest, StreamEvent,
+        StreamRequest,
+        client::ClientMessage,
+        server::{ServerMessage, SessionInfo},
+    },
 };
 
 /// A typed chunk from the streaming response.
@@ -23,34 +28,87 @@ pub enum OutputChunk {
     Status(String),
 }
 
-/// Runs agents via a walrusd Unix domain socket connection.
+/// Transport-agnostic connection to walrusd.
+enum Transport {
+    Uds(Connection),
+    Tcp(TcpConnection),
+}
+
+impl Transport {
+    async fn request(&mut self, msg: ClientMessage) -> Result<ServerMessage> {
+        match self {
+            Self::Uds(c) => c.request(msg).await,
+            Self::Tcp(c) => c.request(msg).await,
+        }
+    }
+
+    fn request_stream(
+        &mut self,
+        msg: ClientMessage,
+    ) -> impl Stream<Item = Result<ServerMessage>> + Send + '_ {
+        async_stream::try_stream! {
+            match self {
+                Self::Uds(c) => {
+                    let s = c.request_stream(msg);
+                    tokio::pin!(s);
+                    while let Some(item) = s.next().await {
+                        yield item?;
+                    }
+                }
+                Self::Tcp(c) => {
+                    let s = c.request_stream(msg);
+                    tokio::pin!(s);
+                    while let Some(item) = s.next().await {
+                        yield item?;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Runs agents via a walrusd connection (UDS or TCP).
 pub struct Runner {
-    connection: Connection,
+    transport: Transport,
 }
 
 impl Runner {
-    /// Connect to walrusd.
+    /// Connect to walrusd via Unix domain socket.
     pub async fn connect(socket_path: &Path) -> Result<Self> {
         let config = ClientConfig {
             socket_path: socket_path.to_path_buf(),
         };
         let client = WalrusClient::new(config);
         let connection = client.connect().await?;
-        Ok(Self { connection })
+        Ok(Self {
+            transport: Transport::Uds(connection),
+        })
+    }
+
+    /// Connect to walrusd via TCP.
+    pub async fn connect_tcp(port: u16) -> Result<Self> {
+        let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+        let connection = TcpConnection::connect(addr).await?;
+        Ok(Self {
+            transport: Transport::Tcp(connection),
+        })
     }
 
     /// Send a one-shot message and return the response content.
     pub async fn send(&mut self, agent: &str, content: &str) -> Result<String> {
-        use wcore::protocol::api::Client;
         let resp = self
-            .connection
-            .send(SendRequest {
-                agent: CompactString::from(agent),
-                content: content.to_string(),
-                session: None,
-                sender: None,
-            })
+            .transport
+            .request(
+                SendRequest {
+                    agent: CompactString::from(agent),
+                    content: content.to_string(),
+                    session: None,
+                    sender: None,
+                }
+                .into(),
+            )
             .await?;
+        let resp = wcore::protocol::message::SendResponse::try_from(resp)?;
         Ok(resp.content)
     }
 
@@ -60,33 +118,47 @@ impl Runner {
         agent: &'a str,
         content: &'a str,
     ) -> impl Stream<Item = Result<OutputChunk>> + Send + 'a {
-        use wcore::protocol::api::Client;
-        self.connection
-            .stream(StreamRequest {
-                agent: CompactString::from(agent),
-                content: content.to_string(),
-                session: None,
-                sender: None,
+        self.transport
+            .request_stream(
+                StreamRequest {
+                    agent: CompactString::from(agent),
+                    content: content.to_string(),
+                    session: None,
+                    sender: None,
+                }
+                .into(),
+            )
+            .take_while(|r| {
+                std::future::ready(!matches!(
+                    r,
+                    Ok(ServerMessage::Stream(StreamEvent::End { .. }))
+                ))
             })
             .filter_map(|result| async {
                 match result {
-                    Ok(StreamEvent::Chunk { content }) => Some(Ok(OutputChunk::Text(content))),
-                    Ok(StreamEvent::Thinking { content }) => {
+                    Ok(ServerMessage::Stream(StreamEvent::Chunk { content })) => {
+                        Some(Ok(OutputChunk::Text(content)))
+                    }
+                    Ok(ServerMessage::Stream(StreamEvent::Thinking { content })) => {
                         Some(Ok(OutputChunk::Thinking(content)))
                     }
-                    Ok(StreamEvent::ToolStart { calls }) => {
+                    Ok(ServerMessage::Stream(StreamEvent::ToolStart { calls })) => {
                         let names: Vec<_> = calls.iter().map(|c| c.name.as_str()).collect();
                         Some(Ok(OutputChunk::Status(format!(
                             "\n[calling {}...]\n",
                             names.join(", ")
                         ))))
                     }
-                    Ok(StreamEvent::ToolResult { .. }) => None,
-                    Ok(StreamEvent::ToolsComplete) => {
+                    Ok(ServerMessage::Stream(StreamEvent::ToolResult { .. })) => None,
+                    Ok(ServerMessage::Stream(StreamEvent::ToolsComplete)) => {
                         Some(Ok(OutputChunk::Status("[done]\n".to_string())))
                     }
-                    Ok(StreamEvent::Start { .. }) => None,
-                    Ok(StreamEvent::End { .. }) => None,
+                    Ok(ServerMessage::Stream(StreamEvent::Start { .. })) => None,
+                    Ok(ServerMessage::Stream(StreamEvent::End { .. })) => None,
+                    Ok(ServerMessage::Error { code, message }) => {
+                        Some(Err(anyhow::anyhow!("server error ({code}): {message}")))
+                    }
+                    Ok(_) => None,
                     Err(e) => Some(Err(e)),
                 }
             })
@@ -97,10 +169,20 @@ impl Runner {
         &mut self,
         model: &str,
     ) -> impl Stream<Item = Result<DownloadEvent>> + '_ {
-        use wcore::protocol::api::Client;
-        self.connection.download(DownloadRequest {
-            model: CompactString::from(model),
-        })
+        self.transport
+            .request_stream(
+                DownloadRequest {
+                    model: CompactString::from(model),
+                }
+                .into(),
+            )
+            .take_while(|r| {
+                std::future::ready(!matches!(
+                    r,
+                    Ok(ServerMessage::Download(DownloadEvent::End { .. }))
+                ))
+            })
+            .map(|r| r.and_then(DownloadEvent::try_from))
     }
 
     /// Send a hub install/uninstall request and return a stream of progress events.
@@ -109,17 +191,23 @@ impl Runner {
         package: &str,
         action: HubAction,
     ) -> impl Stream<Item = Result<HubEvent>> + '_ {
-        use wcore::protocol::api::Client;
-        self.connection.hub(HubRequest {
-            package: CompactString::from(package),
-            action,
-        })
+        self.transport
+            .request_stream(
+                HubRequest {
+                    package: CompactString::from(package),
+                    action,
+                }
+                .into(),
+            )
+            .take_while(|r| {
+                std::future::ready(!matches!(r, Ok(ServerMessage::Hub(HubEvent::End { .. }))))
+            })
+            .map(|r| r.and_then(HubEvent::try_from))
     }
 
     /// List active sessions on the daemon.
     pub async fn list_sessions(&mut self) -> Result<Vec<SessionInfo>> {
-        use wcore::protocol::api::Client;
-        match self.connection.request(ClientMessage::Sessions).await? {
+        match self.transport.request(ClientMessage::Sessions).await? {
             ServerMessage::Sessions(sessions) => Ok(sessions),
             ServerMessage::Error { code, message } => {
                 anyhow::bail!("server error ({code}): {message}")
@@ -130,9 +218,8 @@ impl Runner {
 
     /// Kill (close) a session by ID. Returns true if it existed.
     pub async fn kill_session(&mut self, session: u64) -> Result<bool> {
-        use wcore::protocol::api::Client;
         match self
-            .connection
+            .transport
             .request(ClientMessage::Kill { session })
             .await?
         {

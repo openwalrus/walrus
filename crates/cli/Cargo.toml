@@ -25,10 +25,12 @@ cuda = ["daemon/cuda"]
 channel.workspace = true
 daemon = { workspace = true, optional = true }
 socket.workspace = true
+tcp.workspace = true
 wcore.workspace = true
 
 # crates.io
 anyhow.workspace = true
+async-stream.workspace = true
 clap.workspace = true
 crossterm.workspace = true
 openssl-sys.workspace = true
