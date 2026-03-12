@@ -170,6 +170,39 @@ pub struct TaskInfo {
     pub blocked_on: Option<String>,
 }
 
+/// Task lifecycle events emitted by the subscription stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TaskEvent {
+    /// A new task was created.
+    Created {
+        /// Full task snapshot at creation time.
+        task: TaskInfo,
+    },
+    /// Task status changed (non-terminal).
+    StatusChanged {
+        /// Task identifier.
+        task_id: u64,
+        /// New status.
+        status: String,
+        /// Pending inbox question (if blocked).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        blocked_on: Option<String>,
+    },
+    /// Task reached a terminal state (finished or failed).
+    Completed {
+        /// Task identifier.
+        task_id: u64,
+        /// Terminal status ("finished" or "failed").
+        status: String,
+        /// Result content (if finished).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        result: Option<String>,
+        /// Error message (if failed).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+}
+
 /// Messages sent by the gateway to the client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -195,6 +228,8 @@ pub enum ServerMessage {
     Sessions(Vec<SessionInfo>),
     /// Task registry list.
     Tasks(Vec<TaskInfo>),
+    /// A task lifecycle event (subscription stream).
+    Task(TaskEvent),
     /// Evaluation result — whether the agent should respond (DD#39).
     Evaluation {
         /// Whether the agent decided to respond.
@@ -223,6 +258,12 @@ impl From<DownloadEvent> for ServerMessage {
 impl From<HubEvent> for ServerMessage {
     fn from(e: HubEvent) -> Self {
         Self::Hub(e)
+    }
+}
+
+impl From<TaskEvent> for ServerMessage {
+    fn from(e: TaskEvent) -> Self {
+        Self::Task(e)
     }
 }
 
@@ -270,6 +311,16 @@ impl TryFrom<ServerMessage> for HubEvent {
     fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
         match msg {
             ServerMessage::Hub(e) => Ok(e),
+            other => Err(error_or_unexpected(other)),
+        }
+    }
+}
+
+impl TryFrom<ServerMessage> for TaskEvent {
+    type Error = anyhow::Error;
+    fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
+        match msg {
+            ServerMessage::Task(e) => Ok(e),
             other => Err(error_or_unexpected(other)),
         }
     }

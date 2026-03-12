@@ -9,7 +9,7 @@ use wcore::protocol::{
     api::Server,
     message::{
         DownloadEvent, DownloadRequest, HubAction, HubEvent, SendRequest, SendResponse,
-        StreamEvent, StreamRequest,
+        StreamEvent, StreamRequest, TaskEvent,
         server::{SessionInfo, TaskInfo, ToolCallInfo},
     },
 };
@@ -341,6 +341,21 @@ impl Server for Daemon {
                     while let Some(event) = s.next().await {
                         yield event?;
                     }
+                }
+            }
+        }
+    }
+
+    fn subscribe_tasks(&self) -> impl futures_core::Stream<Item = Result<TaskEvent>> + Send {
+        let tasks = self.runtime.clone();
+        async_stream::try_stream! {
+            let rt = tasks.read().await.clone();
+            let mut rx = rt.hook.tasks.lock().await.subscribe();
+            loop {
+                match rx.recv().await {
+                    Ok(event) => yield event,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 }
             }
         }

@@ -14,7 +14,7 @@ use wcore::protocol::{
         DownloadEvent, DownloadRequest, HubAction, HubEvent, HubRequest, SendRequest, StreamEvent,
         StreamRequest,
         client::ClientMessage,
-        server::{ServerMessage, SessionInfo},
+        server::{ServerMessage, SessionInfo, TaskInfo},
     },
 };
 
@@ -221,6 +221,49 @@ impl Runner {
         match self
             .transport
             .request(ClientMessage::Kill { session })
+            .await?
+        {
+            ServerMessage::Pong => Ok(true),
+            ServerMessage::Error { code: 404, .. } => Ok(false),
+            ServerMessage::Error { code, message } => {
+                anyhow::bail!("server error ({code}): {message}")
+            }
+            other => anyhow::bail!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// List tasks in the task registry.
+    pub async fn list_tasks(&mut self) -> Result<Vec<TaskInfo>> {
+        match self.transport.request(ClientMessage::Tasks).await? {
+            ServerMessage::Tasks(tasks) => Ok(tasks),
+            ServerMessage::Error { code, message } => {
+                anyhow::bail!("server error ({code}): {message}")
+            }
+            other => anyhow::bail!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Kill (cancel) a task by ID. Returns true if it existed.
+    pub async fn kill_task(&mut self, task_id: u64) -> Result<bool> {
+        match self
+            .transport
+            .request(ClientMessage::KillTask { task_id })
+            .await?
+        {
+            ServerMessage::Pong => Ok(true),
+            ServerMessage::Error { code: 404, .. } => Ok(false),
+            ServerMessage::Error { code, message } => {
+                anyhow::bail!("server error ({code}): {message}")
+            }
+            other => anyhow::bail!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Approve a blocked task. Returns true if the task was blocked and approved.
+    pub async fn approve_task(&mut self, task_id: u64, response: String) -> Result<bool> {
+        match self
+            .transport
+            .request(ClientMessage::Approve { task_id, response })
             .await?
         {
             ServerMessage::Pong => Ok(true),

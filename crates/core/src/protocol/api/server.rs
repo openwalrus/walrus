@@ -2,7 +2,7 @@
 
 use crate::protocol::message::{
     DownloadEvent, DownloadRequest, HubAction, HubEvent, SendRequest, SendResponse, StreamEvent,
-    StreamRequest,
+    StreamRequest, TaskEvent,
     client::ClientMessage,
     server::{ServerMessage, SessionInfo, TaskInfo},
 };
@@ -63,6 +63,9 @@ pub trait Server: Sync {
 
     /// Handle `Evaluate` — decide whether the agent should respond (DD#39).
     fn evaluate(&self, req: SendRequest) -> impl std::future::Future<Output = Result<bool>> + Send;
+
+    /// Handle `SubscribeTasks` — stream task lifecycle events.
+    fn subscribe_tasks(&self) -> impl Stream<Item = Result<TaskEvent>> + Send;
 
     /// Dispatch a `ClientMessage` to the appropriate handler method.
     ///
@@ -169,6 +172,13 @@ pub trait Server: Sync {
                             message: e.to_string(),
                         },
                     };
+                }
+                ClientMessage::SubscribeTasks => {
+                    let s = self.subscribe_tasks();
+                    tokio::pin!(s);
+                    while let Some(result) = s.next().await {
+                        yield result_to_msg(result);
+                    }
                 }
             }
         }

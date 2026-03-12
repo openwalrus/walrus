@@ -140,6 +140,8 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sender: Option<CompactString>,
     },
+    /// Subscribe to task lifecycle events (streaming).
+    SubscribeTasks,
 }
 
 impl From<SendRequest> for ClientMessage {
