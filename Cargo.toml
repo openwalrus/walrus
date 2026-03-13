@@ -22,7 +22,6 @@ wsearch = { path = "apps/search", package = "walrus-search", version = "0.0.5", 
 
 # crates.io
 anyhow = "1"
-arrow = "56"
 arrow-array = "56"
 arrow-schema = "56"
 async-stream = "0.3"
