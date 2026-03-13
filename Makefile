@@ -35,7 +35,7 @@ tar-walrus:
 
 # build macos-arm64 (Metal acceleration)
 macos-arm64:
-	$(CARGO) --target aarch64-apple-darwin -p openwalrus --features metal
+	$(CARGO) --target aarch64-apple-darwin -p openwalrus
 
 # build macos-amd64
 # .cargo/cc-x86_64.sh rewrites -march=native (ARM host) to x86-64-v4
