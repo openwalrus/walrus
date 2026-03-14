@@ -4,17 +4,21 @@
 //! messages through a `DaemonClient` that speaks the walrus protocol
 //! over a UDS connection.
 
-use crate::{
-    client::DaemonClient, command::parse_command, config::GatewayConfig, message::GatewayMessage,
-};
+use crate::{client::DaemonClient, config::GatewayConfig};
+#[cfg(any(feature = "telegram", feature = "discord"))]
+use crate::{command::parse_command, message::GatewayMessage};
 use compact_str::CompactString;
+#[cfg(feature = "discord")]
 use serenity::model::id::ChannelId;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+#[cfg(any(feature = "telegram", feature = "discord"))]
+use std::collections::HashMap;
+use std::{collections::HashSet, sync::Arc};
+#[cfg(feature = "telegram")]
 use teloxide::prelude::*;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::RwLock;
+#[cfg(any(feature = "telegram", feature = "discord"))]
+use tokio::sync::mpsc;
+#[cfg(any(feature = "telegram", feature = "discord"))]
 use wcore::protocol::message::{
     ClientMessage, EvaluateMsg, EvaluationMsg, SendMsg, ServerMessage, client_message,
     server_message,
@@ -31,6 +35,7 @@ type KnownBots = Arc<RwLock<HashSet<CompactString>>>;
 ///
 /// Iterates all gateway entries and spawns a transport for each one.
 /// `default_agent` is used when an entry does not specify an agent.
+#[allow(unused_variables)]
 pub async fn spawn_gateways(
     config: &GatewayConfig,
     default_agent: CompactString,
@@ -38,6 +43,7 @@ pub async fn spawn_gateways(
 ) {
     let known_bots: KnownBots = Arc::new(RwLock::new(HashSet::new()));
 
+    #[cfg(feature = "telegram")]
     if let Some(tg) = &config.telegram {
         if tg.token.is_empty() {
             tracing::warn!(platform = "telegram", "token is empty, skipping");
@@ -52,6 +58,7 @@ pub async fn spawn_gateways(
         }
     }
 
+    #[cfg(feature = "discord")]
     if let Some(dc) = &config.discord {
         if dc.token.is_empty() {
             tracing::warn!(platform = "discord", "token is empty, skipping");
@@ -61,6 +68,7 @@ pub async fn spawn_gateways(
     }
 }
 
+#[cfg(feature = "telegram")]
 async fn spawn_telegram(
     token: &str,
     agent: CompactString,
@@ -92,6 +100,7 @@ async fn spawn_telegram(
     tracing::info!(platform = "telegram", "channel transport started");
 }
 
+#[cfg(feature = "discord")]
 async fn spawn_discord(
     token: &str,
     agent: CompactString,
@@ -121,6 +130,7 @@ async fn spawn_discord(
     tracing::info!(platform = "discord", "channel transport started");
 }
 
+#[cfg(feature = "telegram")]
 /// Telegram message loop: routes incoming messages to agents or bot commands.
 ///
 /// Maintains a `chat_id → session_id` mapping so consecutive messages from the
@@ -244,6 +254,7 @@ async fn telegram_loop(
     tracing::info!(platform = "telegram", "channel loop ended");
 }
 
+#[cfg(feature = "discord")]
 /// Discord message loop: routes incoming messages to agents or bot commands.
 ///
 /// Maintains a `chat_id → session_id` mapping so consecutive messages from the
@@ -362,6 +373,7 @@ async fn discord_loop(
     tracing::info!(platform = "discord", "channel loop ended");
 }
 
+#[cfg(any(feature = "telegram", feature = "discord"))]
 /// Ask the daemon whether the agent should respond to a group message.
 ///
 /// Dispatches `ClientMessage::Evaluate` and checks for

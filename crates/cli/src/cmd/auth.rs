@@ -6,7 +6,6 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use gateway::GatewayType;
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -17,6 +16,33 @@ use ratatui::{
 };
 use std::{io::Stdout, time::Duration};
 use toml_edit::{DocumentMut, Item, Table};
+
+/// Supported gateway platforms.
+#[derive(Clone, Copy)]
+enum GatewayType {
+    Telegram,
+    Discord,
+}
+
+impl GatewayType {
+    const VARIANTS: &[Self] = &[Self::Telegram, Self::Discord];
+
+    fn token_hint(self) -> &'static str {
+        match self {
+            Self::Telegram => "https://core.telegram.org/bots#botfather",
+            Self::Discord => "https://discord.com/developers/applications",
+        }
+    }
+}
+
+impl std::fmt::Display for GatewayType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Telegram => f.write_str("Telegram"),
+            Self::Discord => f.write_str("Discord"),
+        }
+    }
+}
 
 /// Configure channel tokens interactively.
 #[derive(clap::Args, Debug)]

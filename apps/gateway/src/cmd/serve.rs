@@ -1,6 +1,7 @@
 //! Gateway serve command — connect to daemon and spawn platform bots.
 
 use crate::{client::DaemonClient, config::GatewayConfig};
+use compact_str::CompactString;
 use std::{path::Path, sync::Arc};
 
 /// Run the gateway service.
@@ -27,17 +28,17 @@ pub async fn run(daemon_socket: &str, config_json: &str) -> anyhow::Result<()> {
 
 /// Read the agents directory and return the first agent name found,
 /// falling back to "assistant".
-fn resolve_default_agent(agents_dir: &Path) -> compact_str::CompactString {
+fn resolve_default_agent(agents_dir: &Path) -> CompactString {
     let Ok(entries) = std::fs::read_dir(agents_dir) else {
-        return compact_str::CompactString::from("assistant");
+        return CompactString::from("assistant");
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|ext| ext == "md")
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
         {
-            return compact_str::CompactString::from(stem);
+            return CompactString::from(stem);
         }
     }
-    compact_str::CompactString::from("assistant")
+    CompactString::from("assistant")
 }

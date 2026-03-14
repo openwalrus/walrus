@@ -5610,7 +5610,6 @@ dependencies = [
  "tracing-subscriber",
  "walrus-core",
  "walrus-daemon",
- "walrus-gateway",
  "walrus-socket",
  "walrus-tcp",
 ]
