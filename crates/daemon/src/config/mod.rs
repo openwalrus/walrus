@@ -46,9 +46,6 @@ pub struct DaemonConfig {
     /// Permission configuration: global defaults + per-agent overrides.
     #[serde(default)]
     pub permissions: PermissionConfig,
-    /// Search engine configuration.
-    #[serde(default)]
-    pub search: wsearch::config::Config,
     /// Managed child services (`[services.<name>]`).
     #[serde(default)]
     pub services: BTreeMap<String, crate::service::ServiceConfig>,

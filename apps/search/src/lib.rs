@@ -7,3 +7,5 @@ pub mod config;
 pub mod engine;
 pub mod error;
 pub mod result;
+#[cfg(feature = "serve")]
+pub mod tool;

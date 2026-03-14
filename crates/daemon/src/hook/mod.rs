@@ -1,9 +1,10 @@
 //! Stateful Hook implementation for the daemon.
 //!
-//! [`DaemonHook`] composes memory, skill, MCP, and OS sub-hooks.
-//! `on_build_agent` delegates to skills and memory; `on_register_tools`
-//! delegates to all sub-hooks in sequence. `dispatch_tool` routes every
-//! agent tool call by name — the single entry point from `event.rs`.
+//! [`DaemonHook`] composes memory, skill, MCP, and OS sub-hooks plus
+//! external WHS services. `on_build_agent` delegates to skills and memory;
+//! `on_register_tools` delegates to all sub-hooks in sequence.
+//! `dispatch_tool` routes every agent tool call by name — the single
+//! entry point from `event.rs`.
 
 use crate::{
     ext::hub::DownloadRegistry,
@@ -25,7 +26,6 @@ use wcore::{
 pub mod mcp;
 pub mod memory;
 pub mod os;
-pub mod search;
 pub mod skill;
 pub mod task;
 
@@ -54,8 +54,6 @@ pub struct DaemonHook {
     pub sandboxed: bool,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
-    pub(crate) aggregator: wsearch::aggregator::Aggregator,
-    pub(crate) fetch_client: reqwest::Client,
     /// External hook service registry (tools + queries).
     pub(crate) registry: Option<ServiceRegistry>,
 }
@@ -76,8 +74,6 @@ const BASE_TOOLS: &[&str] = &[
     "write",
     "edit",
     "bash",
-    "web_search",
-    "web_fetch",
 ];
 
 /// Skill discovery/loading tools.
@@ -106,8 +102,6 @@ impl DaemonHook {
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
-        aggregator: wsearch::aggregator::Aggregator,
-        fetch_client: reqwest::Client,
         registry: Option<ServiceRegistry>,
     ) -> Self {
         Self {
@@ -119,8 +113,6 @@ impl DaemonHook {
             permissions,
             sandboxed,
             scopes: BTreeMap::new(),
-            aggregator,
-            fetch_client,
             registry,
         }
     }
@@ -258,8 +250,6 @@ impl DaemonHook {
             "create_task" => self.dispatch_create_task(args, agent).await,
             "ask_user" => self.dispatch_ask_user(args, task_id).await,
             "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
-            "web_search" => self.dispatch_web_search(args).await,
-            "web_fetch" => self.dispatch_web_fetch(args).await,
             // External hook services, then MCP bridge as final fallback.
             name => {
                 if let Some(result) = self.dispatch_external(name, args, agent, task_id).await {
@@ -358,7 +348,6 @@ impl Hook for DaemonHook {
         self.memory.on_register_tools(tools).await;
         self.mcp.on_register_tools(tools).await;
         tools.insert_all(os::tool::tools());
-        tools.insert_all(search::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(task::tool::tools());
         // Merge external hook service tool schemas.

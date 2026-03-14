@@ -20,8 +20,9 @@ use wcore::{
         PROTOCOL_VERSION,
         codec::{read_message, write_message},
         whs::{
-            Capability, ToolsList, WhsError, WhsHello, WhsReady, WhsRegisterTools, WhsRequest,
-            WhsResponse, WhsToolSchemas, capability, whs_request, whs_response,
+            Capability, ToolsList, WhsConfigure, WhsConfigured, WhsError, WhsHello, WhsReady,
+            WhsRegisterTools, WhsRequest, WhsResponse, WhsToolSchemas, capability, whs_request,
+            whs_response,
         },
     },
 };
@@ -139,7 +140,10 @@ impl ServiceManager {
                 continue;
             }
 
-            match self.handshake_one(name, &entry.socket_path).await {
+            match self
+                .handshake_one(name, &entry.socket_path, &entry.config.config)
+                .await
+            {
                 Ok((handle, schemas)) => {
                     let handle = Arc::new(handle);
                     Self::register(&mut registry, &handle);
@@ -165,6 +169,7 @@ impl ServiceManager {
         &self,
         name: &str,
         socket_path: &Path,
+        config: &serde_json::Value,
     ) -> Result<(ServiceHandle, Vec<Tool>)> {
         // Wait for socket file to appear (service may need startup time).
         let deadline = time::Instant::now() + HANDSHAKE_TIMEOUT;
@@ -233,6 +238,26 @@ impl ServiceManager {
             reader,
             rpc_lock: Mutex::new(()),
         };
+
+        // Configure → Configured
+        let config_bytes = serde_json::to_vec(config).context("serialize service config")?;
+        let configure_req = WhsRequest {
+            msg: Some(whs_request::Msg::Configure(WhsConfigure {
+                config: config_bytes,
+            })),
+        };
+        let configure_resp = time::timeout(HANDSHAKE_TIMEOUT, handle.request(&configure_req))
+            .await
+            .context("Configure timeout")?
+            .context("Configure")?;
+        match configure_resp.msg {
+            Some(whs_response::Msg::Configured(WhsConfigured {})) => {}
+            Some(whs_response::Msg::Error(WhsError { message })) => {
+                bail!("Configure error: {message}")
+            }
+            other => bail!("unexpected response to Configure: {other:?}"),
+        }
+        tracing::debug!(service = %name, "handshake Configure/Configured complete");
 
         // RegisterTools → ToolSchemas
         let register_tools_req = WhsRequest {

@@ -8731,7 +8731,6 @@ dependencies = [
  "hf-hub",
  "lance-graph",
  "lancedb",
- "reqwest",
  "rmcp",
  "schemars 1.2.1",
  "serde",
@@ -8745,7 +8744,6 @@ dependencies = [
  "walrus-channel",
  "walrus-core",
  "walrus-model",
- "walrus-search",
  "walrus-socket",
  "walrus-tcp",
 ]
@@ -8771,11 +8769,14 @@ dependencies = [
 name = "walrus-search"
 version = "0.0.6"
 dependencies = [
+ "anyhow",
  "clap",
  "lru 0.14.0",
  "percent-encoding",
+ "prost",
  "rand 0.9.2",
  "reqwest",
+ "schemars 1.2.1",
  "scraper",
  "serde",
  "serde_json",
@@ -8785,6 +8786,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "walrus-core",
 ]
 
 [[package]]

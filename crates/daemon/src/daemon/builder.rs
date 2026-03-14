@@ -135,12 +135,6 @@ impl Daemon {
             tracing::info!("sandbox mode active — OS tools bypass permission check");
         }
 
-        let aggregator = wsearch::aggregator::Aggregator::new(config.search.clone())
-            .map_err(|e| anyhow::anyhow!("search init failed: {e}"))?;
-        let fetch_client = wsearch::browser::fetch::default_client()
-            .map_err(|e| anyhow::anyhow!("fetch client init failed: {e}"))?;
-        tracing::info!("search tools initialized");
-
         // Spawn and handshake managed hook services.
         let (registry, service_manager) = if config.services.is_empty() {
             (None, None)
@@ -160,8 +154,6 @@ impl Daemon {
                 downloads,
                 config.permissions.clone(),
                 sandboxed,
-                aggregator,
-                fetch_client,
                 registry,
             ),
             service_manager,

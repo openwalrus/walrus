@@ -2,6 +2,7 @@ pub mod config_cmd;
 pub mod engines;
 pub mod fetch;
 pub mod search;
+pub mod serve;
 
 use crate::config::{Config, OutputFormat};
 use crate::error::Error;
@@ -54,6 +55,13 @@ pub enum Command {
         #[arg(long)]
         init: bool,
     },
+
+    /// Run as a WHS hook service over a Unix domain socket.
+    Serve {
+        /// Path to the UDS socket to bind.
+        #[arg(long)]
+        socket: PathBuf,
+    },
 }
 
 impl App {
@@ -90,6 +98,11 @@ impl App {
             }
             Command::Config { init } => {
                 config_cmd::run(&config, init);
+            }
+            Command::Serve { socket } => {
+                serve::run(&socket)
+                    .await
+                    .map_err(|e| Error::Other(e.to_string()))?;
             }
         }
 

@@ -362,6 +362,7 @@ message WhsRequest {
     WhsToolCall tool_call = 3;
     WhsServiceQuery service_query = 4;
     WhsShutdown shutdown = 5;
+    WhsConfigure configure = 6;
   }
 }
 
@@ -371,6 +372,10 @@ message WhsHello {
 
 message WhsRegisterTools {}
 message WhsShutdown {}
+message WhsConfigure {
+  bytes config = 1;
+}
+message WhsConfigured {}
 
 message WhsToolCall {
   string name = 1;
@@ -390,6 +395,7 @@ message WhsResponse {
     WhsToolResult tool_result = 3;
     WhsServiceQueryResult service_query_result = 4;
     WhsError error = 5;
+    WhsConfigured configured = 6;
   }
 }
 

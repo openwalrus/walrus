@@ -1,6 +1,7 @@
 //! Service configuration types for `[services.*]` in `walrus.toml`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Kind of managed service.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -45,6 +46,9 @@ pub struct ServiceConfig {
     /// Whether the service is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Opaque service-specific configuration (forwarded via WHS Configure).
+    #[serde(default)]
+    pub config: Value,
 }
 
 fn default_true() -> bool {

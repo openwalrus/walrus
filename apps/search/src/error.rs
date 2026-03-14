@@ -23,6 +23,9 @@ pub enum Error {
 
     #[error("no engines configured")]
     NoEngines,
+
+    #[error("{0}")]
+    Other(String),
 }
 
 /// Error type for individual engine failures.
