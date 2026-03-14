@@ -10,6 +10,7 @@ use crate::{
     daemon::event::{DaemonEvent, DaemonEventSender},
     ext::hub::DownloadRegistry,
     hook::{self, DaemonHook, task::TaskRegistry},
+    service::ServiceManager,
 };
 use anyhow::Result;
 use compact_str::CompactString;
@@ -22,45 +23,54 @@ const SYSTEM_AGENT: &str = include_str!("../../prompts/walrus.md");
 
 impl Daemon {
     /// Build a fully-configured [`Daemon`] from the given config, config
-    /// directory, and event sender.
+    /// directory, and event sender. Returns the daemon and an optional
+    /// ServiceManager for lifecycle management of child services.
     pub(crate) async fn build(
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: DaemonEventSender,
-    ) -> Result<Self> {
-        let runtime = Self::build_runtime(config, config_dir, &event_tx).await?;
-        Ok(Self {
-            runtime: Arc::new(RwLock::new(Arc::new(runtime))),
-            config_dir: config_dir.to_path_buf(),
-            event_tx,
-            agents_config: config.agents.clone(),
-        })
+    ) -> Result<(Self, Option<ServiceManager>)> {
+        let (runtime, service_manager) = Self::build_runtime(config, config_dir, &event_tx).await?;
+        Ok((
+            Self {
+                runtime: Arc::new(RwLock::new(Arc::new(runtime))),
+                config_dir: config_dir.to_path_buf(),
+                event_tx,
+                agents_config: config.agents.clone(),
+            },
+            service_manager,
+        ))
     }
 
     /// Rebuild the runtime from disk and swap it in atomically.
     ///
     /// In-flight requests that already hold a reference to the old runtime
     /// complete normally. New requests after the swap see the new runtime.
+    /// Note: reload does not restart managed services — that requires a
+    /// full daemon restart. Services field is cleared to avoid re-spawning.
     pub async fn reload(&self) -> Result<()> {
-        let config = DaemonConfig::load(&self.config_dir.join("walrus.toml"))?;
-        let new_runtime = Self::build_runtime(&config, &self.config_dir, &self.event_tx).await?;
+        let mut config = DaemonConfig::load(&self.config_dir.join("walrus.toml"))?;
+        config.services.clear();
+        let (new_runtime, _) =
+            Self::build_runtime(&config, &self.config_dir, &self.event_tx).await?;
         *self.runtime.write().await = Arc::new(new_runtime);
         tracing::info!("daemon reloaded");
         Ok(())
     }
 
     /// Construct a fresh [`Runtime`] from config. Used by both [`build`] and [`reload`].
+    /// Returns the runtime and an optional ServiceManager for child service lifecycle.
     async fn build_runtime(
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-    ) -> Result<Runtime<ProviderManager, DaemonHook>> {
+    ) -> Result<(Runtime<ProviderManager, DaemonHook>, Option<ServiceManager>)> {
         let manager = Self::build_providers(config).await?;
-        let hook = Self::build_hook(config, config_dir, event_tx).await?;
+        let (hook, service_manager) = Self::build_hook(config, config_dir, event_tx).await?;
         let tool_tx = Self::build_tool_sender(event_tx);
         let mut runtime = Runtime::new(manager, hook, Some(tool_tx)).await;
         Self::load_agents(&mut runtime, config_dir, config)?;
-        Ok(runtime)
+        Ok((runtime, service_manager))
     }
 
     /// Construct the provider manager from config.
@@ -87,11 +97,12 @@ impl Daemon {
     }
 
     /// Build the daemon hook with all backends (memory, skills, MCP, tasks, downloads).
+    /// Returns the hook and an optional ServiceManager for child service lifecycle.
     async fn build_hook(
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-    ) -> Result<DaemonHook> {
+    ) -> Result<(DaemonHook, Option<ServiceManager>)> {
         let downloads = Arc::new(Mutex::new(DownloadRegistry::new()));
 
         // Pre-download embeddings model files so MemoryHook::open() finds them cached.
@@ -130,16 +141,30 @@ impl Daemon {
             .map_err(|e| anyhow::anyhow!("fetch client init failed: {e}"))?;
         tracing::info!("search tools initialized");
 
-        Ok(DaemonHook::new(
-            memory,
-            skills,
-            mcp_handler,
-            tasks,
-            downloads,
-            config.permissions.clone(),
-            sandboxed,
-            aggregator,
-            fetch_client,
+        // Spawn and handshake managed hook services.
+        let (registry, service_manager) = if config.services.is_empty() {
+            (None, None)
+        } else {
+            let mut sm = ServiceManager::new(&config.services, config_dir);
+            sm.spawn_all().await?;
+            let registry = sm.handshake_all().await;
+            (Some(registry), Some(sm))
+        };
+
+        Ok((
+            DaemonHook::new(
+                memory,
+                skills,
+                mcp_handler,
+                tasks,
+                downloads,
+                config.permissions.clone(),
+                sandboxed,
+                aggregator,
+                fetch_client,
+                registry,
+            ),
+            service_manager,
         ))
     }
 

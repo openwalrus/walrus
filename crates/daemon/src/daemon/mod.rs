@@ -8,6 +8,7 @@ use crate::{
     DaemonConfig,
     daemon::event::{DaemonEvent, DaemonEventSender},
     hook::DaemonHook,
+    service::ServiceManager,
 };
 use ::socket::server::accept_loop;
 use anyhow::Result;
@@ -58,7 +59,8 @@ impl Daemon {
         tracing::info!("loaded configuration from {}", config_path.display());
 
         let (event_tx, event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
-        let daemon = Daemon::build(&config, config_dir, event_tx.clone()).await?;
+        let (daemon, service_manager) =
+            Daemon::build(&config, config_dir, event_tx.clone()).await?;
 
         // Broadcast shutdown — all subsystems subscribe.
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
@@ -113,6 +115,7 @@ impl Daemon {
             shutdown_tx,
             daemon,
             event_loop_join: Some(event_loop_join),
+            service_manager,
         })
     }
 }
@@ -133,6 +136,8 @@ pub struct DaemonHandle {
     #[allow(unused)]
     daemon: Daemon,
     event_loop_join: Option<tokio::task::JoinHandle<()>>,
+    /// Managed child services — shutdown on daemon stop.
+    service_manager: Option<ServiceManager>,
 }
 
 impl DaemonHandle {
@@ -147,6 +152,10 @@ impl DaemonHandle {
     ///
     /// Transport tasks (socket, channels) are the caller's responsibility.
     pub async fn shutdown(mut self) -> Result<()> {
+        // Shutdown managed services before the event loop.
+        if let Some(ref mut sm) = self.service_manager {
+            sm.shutdown_all().await;
+        }
         let _ = self.shutdown_tx.send(());
         if let Some(join) = self.event_loop_join.take() {
             join.await?;

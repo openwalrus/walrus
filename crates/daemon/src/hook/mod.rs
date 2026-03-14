@@ -11,11 +11,16 @@ use crate::{
         mcp::McpHandler, memory::MemoryHook, os::PermissionConfig, skill::SkillHandler,
         task::TaskRegistry,
     },
+    service::ServiceRegistry,
 };
 use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
-use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
+use wcore::{
+    AgentConfig, AgentEvent, Hook, ToolRegistry,
+    model::Message,
+    protocol::whs::{WhsRequest, WhsResponse},
+};
 
 pub mod mcp;
 pub mod memory;
@@ -51,6 +56,8 @@ pub struct DaemonHook {
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
     pub(crate) aggregator: wsearch::aggregator::Aggregator,
     pub(crate) fetch_client: reqwest::Client,
+    /// External hook service registry (tools + queries).
+    pub(crate) registry: Option<ServiceRegistry>,
 }
 
 /// OS tool names — bypass permission check when running in sandbox mode.
@@ -101,6 +108,7 @@ impl DaemonHook {
         sandboxed: bool,
         aggregator: wsearch::aggregator::Aggregator,
         fetch_client: reqwest::Client,
+        registry: Option<ServiceRegistry>,
     ) -> Self {
         Self {
             memory,
@@ -113,6 +121,7 @@ impl DaemonHook {
             scopes: BTreeMap::new(),
             aggregator,
             fetch_client,
+            registry,
         }
     }
 
@@ -173,6 +182,32 @@ impl DaemonHook {
         }
     }
 
+    /// Dispatch to an external hook service if the tool is registered.
+    /// Returns `None` if the tool is not in the registry (fall through to in-process).
+    async fn dispatch_external(
+        &self,
+        name: &str,
+        args: &str,
+        agent: &str,
+        task_id: Option<u64>,
+    ) -> Option<String> {
+        let registry = self.registry.as_ref()?;
+        let handle = registry.tools.get(name)?;
+        let req = WhsRequest::ToolCall {
+            name: CompactString::from(name),
+            args: args.to_owned(),
+            agent: CompactString::from(agent),
+            task_id,
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(30), handle.request(&req)).await {
+            Ok(Ok(WhsResponse::ToolResult { result })) => Some(result),
+            Ok(Ok(WhsResponse::Error { message })) => Some(format!("service error: {message}")),
+            Ok(Ok(other)) => Some(format!("unexpected response: {other:?}")),
+            Ok(Err(e)) => Some(format!("service unavailable: {name} ({e})")),
+            Err(_) => Some(format!("service timeout: {name}")),
+        }
+    }
+
     /// Route a tool call by name to the appropriate handler.
     ///
     /// This is the single dispatch entry point — `event.rs` calls this
@@ -219,7 +254,11 @@ impl DaemonHook {
             "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
             "web_search" => self.dispatch_web_search(args).await,
             "web_fetch" => self.dispatch_web_fetch(args).await,
+            // External hook services, then MCP bridge as final fallback.
             name => {
+                if let Some(result) = self.dispatch_external(name, args, agent, task_id).await {
+                    return result;
+                }
                 tracing::debug!(tool = name, "forwarding tool to MCP bridge");
                 let bridge = self.mcp.bridge().await;
                 bridge.call(name, args).await
@@ -316,6 +355,10 @@ impl Hook for DaemonHook {
         tools.insert_all(search::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(task::tool::tools());
+        // Merge external hook service tool schemas.
+        if let Some(ref registry) = self.registry {
+            tools.insert_all(registry.tool_schemas.clone());
+        }
     }
 
     fn on_event(&self, agent: &str, event: &AgentEvent) {
