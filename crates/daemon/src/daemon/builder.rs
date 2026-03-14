@@ -98,7 +98,7 @@ impl Daemon {
         }
 
         // Add remote providers from config.
-        for config in config.model.providers.values() {
+        for config in config.model.remotes.values() {
             manager.add_config(config).await?;
         }
 

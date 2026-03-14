@@ -18,15 +18,17 @@ pub enum ApiStandard {
     Anthropic,
 }
 
-/// Remote provider configuration.
+/// Remote model configuration.
 ///
 /// Any model name is valid — the `standard` field (or auto-detection from
 /// `base_url`) determines which API protocol to use. Local models are handled
 /// by the built-in registry, not by this config.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProviderConfig {
-    /// Model identifier sent to the remote API.
-    pub model: CompactString,
+    /// Model identifier sent to the remote API. Auto-filled from the config
+    /// key if omitted.
+    #[serde(default)]
+    pub name: CompactString,
     /// API key for remote providers. Supports `${ENV_VAR}` expansion at the
     /// daemon layer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,16 +62,13 @@ impl ProviderConfig {
     ///
     /// Called on startup and on provider add/reload.
     pub fn validate(&self) -> Result<()> {
-        if self.model.is_empty() {
-            bail!("model is required");
+        if self.name.is_empty() {
+            bail!("model name is required");
         }
-        // Remote providers: api_key is required unless base_url is set
+        // Remote models: api_key is required unless base_url is set
         // (e.g. Ollama which is keyless with a local base_url).
         if self.api_key.is_none() && self.base_url.is_none() {
-            bail!(
-                "remote provider '{}' requires api_key or base_url",
-                self.model
-            );
+            bail!("remote model '{}' requires api_key or base_url", self.name);
         }
         Ok(())
     }

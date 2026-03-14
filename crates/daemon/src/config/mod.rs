@@ -25,7 +25,7 @@ pub struct DaemonConfig {
     /// The walrus daemon's own agent config (model, heartbeat).
     #[serde(default)]
     pub walrus: AgentConfig,
-    /// Model provider configurations (remote API endpoints).
+    /// Model configurations (remote API endpoints + local models).
     #[serde(default)]
     pub model: ModelConfig,
     /// Channel configurations (Telegram, Discord bots).
@@ -55,15 +55,11 @@ impl DaemonConfig {
     /// Parse a TOML string into a `DaemonConfig`.
     pub fn from_toml(toml_str: &str) -> Result<Self> {
         let mut config: Self = toml::from_str(toml_str)?;
-        config
-            .model
-            .providers
-            .iter_mut()
-            .for_each(|(key, provider)| {
-                if provider.model.is_empty() {
-                    provider.model = key.clone();
-                }
-            });
+        config.model.remotes.iter_mut().for_each(|(key, provider)| {
+            if provider.name.is_empty() {
+                provider.name = key.clone();
+            }
+        });
         config.mcps.iter_mut().for_each(|(name, server)| {
             if server.name.is_empty() {
                 server.name = name.clone().into();

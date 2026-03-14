@@ -65,7 +65,7 @@ impl Provider {
 /// Local models are not handled here — they use the built-in registry.
 pub async fn build_provider(config: &ProviderConfig, client: reqwest::Client) -> Result<Provider> {
     let api_key = config.api_key.as_deref().unwrap_or("");
-    let model = config.model.as_str();
+    let model = config.name.as_str();
 
     match config.effective_standard() {
         ApiStandard::Anthropic => {

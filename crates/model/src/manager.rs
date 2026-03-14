@@ -61,7 +61,7 @@ impl ProviderManager {
         if configs.is_empty() {
             bail!("at least one provider config is required");
         }
-        let manager = Self::new(configs[0].model.clone());
+        let manager = Self::new(configs[0].name.clone());
         for config in configs {
             manager.add_config(config).await?;
         }
@@ -93,7 +93,7 @@ impl ProviderManager {
             .inner
             .write()
             .map_err(|_| anyhow!("provider lock poisoned"))?;
-        inner.providers.insert(config.model.clone(), provider);
+        inner.providers.insert(config.name.clone(), provider);
         Ok(())
     }
 
