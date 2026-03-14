@@ -15,15 +15,7 @@ use crate::{
 use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
-use wcore::{
-    AgentConfig, AgentEvent, Hook, ToolRegistry,
-    model::{Message, Role},
-    protocol::whs::{
-        SimpleMessage, WhsBeforeRun, WhsBeforeRunResult, WhsBuildAgent, WhsBuildAgentResult,
-        WhsCompact, WhsCompactResult, WhsError, WhsRequest, WhsToolCall, WhsToolResult,
-        whs_request, whs_response,
-    },
-};
+use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry};
 
 pub mod mcp;
 pub mod os;
@@ -164,27 +156,10 @@ impl DaemonHook {
         agent: &str,
         task_id: Option<u64>,
     ) -> Option<String> {
-        let registry = self.registry.as_ref()?;
-        let handle = registry.tools.get(name)?;
-        let req = WhsRequest {
-            msg: Some(whs_request::Msg::ToolCall(WhsToolCall {
-                name: name.to_owned(),
-                args: args.to_owned(),
-                agent: agent.to_owned(),
-                task_id,
-            })),
-        };
-        match tokio::time::timeout(std::time::Duration::from_secs(30), handle.request(&req)).await {
-            Ok(Ok(resp)) => match resp.msg {
-                Some(whs_response::Msg::ToolResult(WhsToolResult { result })) => Some(result),
-                Some(whs_response::Msg::Error(WhsError { message })) => {
-                    Some(format!("service error: {message}"))
-                }
-                other => Some(format!("unexpected response: {other:?}")),
-            },
-            Ok(Err(e)) => Some(format!("service unavailable: {name} ({e})")),
-            Err(_) => Some(format!("service timeout: {name}")),
-        }
+        self.registry
+            .as_ref()?
+            .dispatch_tool(name, args, agent, task_id)
+            .await
     }
 
     /// Route a tool call by name to the appropriate handler.
@@ -239,60 +214,11 @@ impl DaemonHook {
 
 impl Hook for DaemonHook {
     fn on_build_agent(&self, config: AgentConfig) -> AgentConfig {
-        let mut config = config;
-
-        // Fan out to external WHS services with BuildAgent capability.
-        if let Some(ref registry) = self.registry {
-            let additions = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let mut additions = Vec::new();
-                    for handle in &registry.build_agent {
-                        let req = WhsRequest {
-                            msg: Some(whs_request::Msg::BuildAgent(WhsBuildAgent {
-                                name: config.name.to_string(),
-                                description: config.description.to_string(),
-                                system_prompt: config.system_prompt.clone(),
-                            })),
-                        };
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(10),
-                            handle.request(&req),
-                        )
-                        .await
-                        {
-                            Ok(Ok(resp)) => {
-                                if let Some(whs_response::Msg::BuildAgentResult(
-                                    WhsBuildAgentResult {
-                                        prompt_addition, ..
-                                    },
-                                )) = resp.msg
-                                    && !prompt_addition.is_empty()
-                                {
-                                    additions.push(prompt_addition);
-                                }
-                            }
-                            Ok(Err(e)) => {
-                                tracing::warn!(
-                                    service = %handle.name,
-                                    error = %e,
-                                    "BuildAgent dispatch failed"
-                                );
-                            }
-                            Err(_) => {
-                                tracing::warn!(
-                                    service = %handle.name,
-                                    "BuildAgent dispatch timeout"
-                                );
-                            }
-                        }
-                    }
-                    additions
-                })
-            });
-            for addition in additions {
-                config.system_prompt.push_str(&addition);
-            }
-        }
+        // Delegate to WHS services first (prompt enrichment).
+        let mut config = match self.registry {
+            Some(ref registry) => registry.on_build_agent(config),
+            None => config,
+        };
 
         // Walrus agent (empty scoping) gets all tools, no scope injection.
         let has_scoping =
@@ -369,129 +295,20 @@ impl Hook for DaemonHook {
     }
 
     fn on_compact(&self, prompt: &mut String) {
-        // Fan out to external WHS services with Compact capability.
         if let Some(ref registry) = self.registry {
-            let prompt_clone = prompt.clone();
-            let additions = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let mut additions = Vec::new();
-                    for handle in &registry.compact {
-                        let req = WhsRequest {
-                            msg: Some(whs_request::Msg::Compact(WhsCompact {
-                                agent: String::new(),
-                                prompt: prompt_clone.clone(),
-                            })),
-                        };
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(10),
-                            handle.request(&req),
-                        )
-                        .await
-                        {
-                            Ok(Ok(resp)) => {
-                                if let Some(whs_response::Msg::CompactResult(WhsCompactResult {
-                                    addition,
-                                })) = resp.msg
-                                    && !addition.is_empty()
-                                {
-                                    additions.push(addition);
-                                }
-                            }
-                            Ok(Err(e)) => {
-                                tracing::warn!(
-                                    service = %handle.name,
-                                    error = %e,
-                                    "Compact dispatch failed"
-                                );
-                            }
-                            Err(_) => {
-                                tracing::warn!(
-                                    service = %handle.name,
-                                    "Compact dispatch timeout"
-                                );
-                            }
-                        }
-                    }
-                    additions
-                })
-            });
-            for addition in additions {
-                prompt.push_str(&addition);
-            }
+            registry.on_compact(prompt);
         }
     }
 
-    fn on_before_run(&self, agent: &str, history: &[Message]) -> Vec<Message> {
-        let mut messages = Vec::new();
-
-        // Fan out to external WHS services with BeforeRun capability.
-        if let Some(ref registry) = self.registry {
-            let agent = agent.to_owned();
-            let simple_history: Vec<SimpleMessage> = history
-                .iter()
-                .map(|m| SimpleMessage {
-                    role: match m.role {
-                        Role::User => "user".to_owned(),
-                        Role::Assistant => "assistant".to_owned(),
-                        Role::System => "system".to_owned(),
-                        Role::Tool => "tool".to_owned(),
-                    },
-                    content: m.content.clone(),
-                })
-                .collect();
-            let external = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let mut external_msgs = Vec::new();
-                    for handle in &registry.before_run {
-                        let req = WhsRequest {
-                            msg: Some(whs_request::Msg::BeforeRun(WhsBeforeRun {
-                                agent: agent.clone(),
-                                history: simple_history.clone(),
-                            })),
-                        };
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(10),
-                            handle.request(&req),
-                        )
-                        .await
-                        {
-                            Ok(Ok(resp)) => {
-                                if let Some(whs_response::Msg::BeforeRunResult(
-                                    WhsBeforeRunResult { messages: whs_msgs },
-                                )) = resp.msg
-                                {
-                                    for sm in whs_msgs {
-                                        let msg = if sm.role == "assistant" {
-                                            Message::assistant(sm.content, None, None)
-                                        } else {
-                                            Message::user(sm.content)
-                                        };
-                                        external_msgs.push(msg);
-                                    }
-                                }
-                            }
-                            Ok(Err(e)) => {
-                                tracing::warn!(
-                                    service = %handle.name,
-                                    error = %e,
-                                    "BeforeRun dispatch failed"
-                                );
-                            }
-                            Err(_) => {
-                                tracing::warn!(
-                                    service = %handle.name,
-                                    "BeforeRun dispatch timeout"
-                                );
-                            }
-                        }
-                    }
-                    external_msgs
-                })
-            });
-            messages.extend(external);
+    fn on_before_run(
+        &self,
+        agent: &str,
+        history: &[wcore::model::Message],
+    ) -> Vec<wcore::model::Message> {
+        match self.registry {
+            Some(ref registry) => registry.on_before_run(agent, history),
+            None => Vec::new(),
         }
-
-        messages
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
@@ -499,9 +316,8 @@ impl Hook for DaemonHook {
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(task::tool::tools());
-        // Merge external hook service tool schemas.
         if let Some(ref registry) = self.registry {
-            tools.insert_all(registry.tool_schemas.clone());
+            registry.on_register_tools(tools).await;
         }
     }
 

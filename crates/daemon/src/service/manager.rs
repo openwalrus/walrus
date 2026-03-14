@@ -15,14 +15,16 @@ use tokio::{
     time,
 };
 use wcore::{
-    model::Tool,
+    AgentConfig, Hook, ToolRegistry,
+    model::{Message, Role, Tool},
     protocol::{
         PROTOCOL_VERSION,
         codec::{read_message, write_message},
         whs::{
-            Capability, ToolsList, WhsConfigure, WhsConfigured, WhsError, WhsHello, WhsReady,
-            WhsRegisterTools, WhsRequest, WhsResponse, WhsToolSchemas, capability, whs_request,
-            whs_response,
+            Capability, SimpleMessage, ToolsList, WhsBeforeRun, WhsBeforeRunResult, WhsBuildAgent,
+            WhsBuildAgentResult, WhsCompact, WhsCompactResult, WhsConfigure, WhsConfigured,
+            WhsError, WhsHello, WhsReady, WhsRegisterTools, WhsRequest, WhsResponse, WhsToolCall,
+            WhsToolResult, WhsToolSchemas, capability, whs_request, whs_response,
         },
     },
 };
@@ -65,6 +67,203 @@ pub struct ServiceRegistry {
     pub before_run: Vec<Arc<ServiceHandle>>,
     /// Services that declared Compact capability.
     pub compact: Vec<Arc<ServiceHandle>>,
+}
+
+impl ServiceRegistry {
+    /// Dispatch a tool call to the owning WHS service.
+    /// Returns `None` if the tool is not in the registry.
+    pub async fn dispatch_tool(
+        &self,
+        name: &str,
+        args: &str,
+        agent: &str,
+        task_id: Option<u64>,
+    ) -> Option<String> {
+        let handle = self.tools.get(name)?;
+        let req = WhsRequest {
+            msg: Some(whs_request::Msg::ToolCall(WhsToolCall {
+                name: name.to_owned(),
+                args: args.to_owned(),
+                agent: agent.to_owned(),
+                task_id,
+            })),
+        };
+        Some(
+            match time::timeout(std::time::Duration::from_secs(30), handle.request(&req)).await {
+                Ok(Ok(resp)) => match resp.msg {
+                    Some(whs_response::Msg::ToolResult(WhsToolResult { result })) => result,
+                    Some(whs_response::Msg::Error(WhsError { message })) => {
+                        format!("service error: {message}")
+                    }
+                    other => format!("unexpected response: {other:?}"),
+                },
+                Ok(Err(e)) => format!("service unavailable: {name} ({e})"),
+                Err(_) => format!("service timeout: {name}"),
+            },
+        )
+    }
+}
+
+impl Hook for ServiceRegistry {
+    fn on_build_agent(&self, config: AgentConfig) -> AgentConfig {
+        let mut config = config;
+        let additions = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let mut additions = Vec::new();
+                for handle in &self.build_agent {
+                    let req = WhsRequest {
+                        msg: Some(whs_request::Msg::BuildAgent(WhsBuildAgent {
+                            name: config.name.to_string(),
+                            description: config.description.to_string(),
+                            system_prompt: config.system_prompt.clone(),
+                        })),
+                    };
+                    match time::timeout(std::time::Duration::from_secs(10), handle.request(&req))
+                        .await
+                    {
+                        Ok(Ok(resp)) => {
+                            if let Some(whs_response::Msg::BuildAgentResult(WhsBuildAgentResult {
+                                prompt_addition,
+                                ..
+                            })) = resp.msg
+                                && !prompt_addition.is_empty()
+                            {
+                                additions.push(prompt_addition);
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                service = %handle.name, error = %e,
+                                "BuildAgent dispatch failed"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                "BuildAgent dispatch timeout"
+                            );
+                        }
+                    }
+                }
+                additions
+            })
+        });
+        for addition in additions {
+            config.system_prompt.push_str(&addition);
+        }
+        config
+    }
+
+    fn on_compact(&self, prompt: &mut String) {
+        let prompt_clone = prompt.clone();
+        let additions = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let mut additions = Vec::new();
+                for handle in &self.compact {
+                    let req = WhsRequest {
+                        msg: Some(whs_request::Msg::Compact(WhsCompact {
+                            agent: String::new(),
+                            prompt: prompt_clone.clone(),
+                        })),
+                    };
+                    match time::timeout(std::time::Duration::from_secs(10), handle.request(&req))
+                        .await
+                    {
+                        Ok(Ok(resp)) => {
+                            if let Some(whs_response::Msg::CompactResult(WhsCompactResult {
+                                addition,
+                            })) = resp.msg
+                                && !addition.is_empty()
+                            {
+                                additions.push(addition);
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                service = %handle.name, error = %e,
+                                "Compact dispatch failed"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                "Compact dispatch timeout"
+                            );
+                        }
+                    }
+                }
+                additions
+            })
+        });
+        for addition in additions {
+            prompt.push_str(&addition);
+        }
+    }
+
+    fn on_before_run(&self, agent: &str, history: &[Message]) -> Vec<Message> {
+        let agent = agent.to_owned();
+        let simple_history: Vec<SimpleMessage> = history
+            .iter()
+            .map(|m| SimpleMessage {
+                role: match m.role {
+                    Role::User => "user".to_owned(),
+                    Role::Assistant => "assistant".to_owned(),
+                    Role::System => "system".to_owned(),
+                    Role::Tool => "tool".to_owned(),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let mut messages = Vec::new();
+                for handle in &self.before_run {
+                    let req = WhsRequest {
+                        msg: Some(whs_request::Msg::BeforeRun(WhsBeforeRun {
+                            agent: agent.clone(),
+                            history: simple_history.clone(),
+                        })),
+                    };
+                    match time::timeout(std::time::Duration::from_secs(10), handle.request(&req))
+                        .await
+                    {
+                        Ok(Ok(resp)) => {
+                            if let Some(whs_response::Msg::BeforeRunResult(WhsBeforeRunResult {
+                                messages: whs_msgs,
+                            })) = resp.msg
+                            {
+                                for sm in whs_msgs {
+                                    let msg = if sm.role == "assistant" {
+                                        Message::assistant(sm.content, None, None)
+                                    } else {
+                                        Message::user(sm.content)
+                                    };
+                                    messages.push(msg);
+                                }
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                service = %handle.name, error = %e,
+                                "BeforeRun dispatch failed"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                "BeforeRun dispatch timeout"
+                            );
+                        }
+                    }
+                }
+                messages
+            })
+        })
+    }
+
+    async fn on_register_tools(&self, tools: &mut ToolRegistry) {
+        tools.insert_all(self.tool_schemas.clone());
+    }
 }
 
 /// Entry tracking a spawned service process.
