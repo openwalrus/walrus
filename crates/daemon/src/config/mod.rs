@@ -2,7 +2,6 @@
 
 pub use crate::hook::{
     mcp::McpServerConfig,
-    memory::MemoryConfig,
     os::{PermissionConfig, ToolPermission},
     task::TasksConfig,
 };
@@ -34,9 +33,6 @@ pub struct DaemonConfig {
     /// MCP server configurations.
     #[serde(default)]
     pub mcps: BTreeMap<String, McpServerConfig>,
-    /// Memory configuration.
-    #[serde(default)]
-    pub memory: MemoryConfig,
     /// Task executor pool configuration.
     #[serde(default)]
     pub tasks: TasksConfig,

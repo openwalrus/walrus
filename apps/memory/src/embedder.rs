@@ -13,7 +13,7 @@ use tokenizers::Tokenizer;
 const MODEL_ID: &str = "sentence-transformers/all-MiniLM-L6-v2";
 
 /// Sentence embedder backed by candle's BERT implementation.
-pub(crate) struct Embedder {
+pub struct Embedder {
     model: BertModel,
     tokenizer: Tokenizer,
 }
@@ -21,7 +21,7 @@ pub(crate) struct Embedder {
 impl Embedder {
     /// Load the all-MiniLM-L6-v2 model, downloading from HF Hub if needed.
     /// `cache_dir` controls where model files are stored on disk.
-    pub(crate) fn load(cache_dir: &Path) -> Result<Self> {
+    pub fn load(cache_dir: &Path) -> Result<Self> {
         let api = ApiBuilder::new()
             .with_cache_dir(cache_dir.to_path_buf())
             .with_progress(true)
@@ -58,7 +58,7 @@ impl Embedder {
     }
 
     /// Generate a normalized 384-dim embedding vector for the given text.
-    pub(crate) fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+    pub fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
         let encoding = self
             .tokenizer
             .encode(text, true)

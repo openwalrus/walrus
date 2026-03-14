@@ -4,7 +4,9 @@
 //! for backward-compatible import paths.
 
 pub use crate::protocol::proto::{
-    Capability, QueryCap, ToolDef, ToolsList, WhsConfigure, WhsConfigured, WhsError, WhsHello,
-    WhsReady, WhsRegisterTools, WhsRequest, WhsResponse, WhsServiceQuery, WhsServiceQueryResult,
-    WhsShutdown, WhsToolCall, WhsToolResult, WhsToolSchemas, capability, whs_request, whs_response,
+    BeforeRunCap, BuildAgentCap, Capability, CompactCap, QueryCap, SimpleMessage, ToolDef,
+    ToolsList, WhsBeforeRun, WhsBeforeRunResult, WhsBuildAgent, WhsBuildAgentResult, WhsCompact,
+    WhsCompactResult, WhsConfigure, WhsConfigured, WhsError, WhsHello, WhsReady, WhsRegisterTools,
+    WhsRequest, WhsResponse, WhsServiceQuery, WhsServiceQueryResult, WhsShutdown, WhsToolCall,
+    WhsToolResult, WhsToolSchemas, capability, whs_request, whs_response,
 };

@@ -96,7 +96,8 @@ impl Daemon {
         Ok(manager)
     }
 
-    /// Build the daemon hook with all backends (memory, skills, MCP, tasks, downloads).
+    /// Build the daemon hook with all backends (skills, MCP, tasks, downloads).
+    /// Memory is handled by the external WHS service.
     /// Returns the hook and an optional ServiceManager for child service lifecycle.
     async fn build_hook(
         config: &DaemonConfig,
@@ -104,15 +105,6 @@ impl Daemon {
         event_tx: &DaemonEventSender,
     ) -> Result<(DaemonHook, Option<ServiceManager>)> {
         let downloads = Arc::new(Mutex::new(DownloadRegistry::new()));
-
-        // Pre-download embeddings model files so MemoryHook::open() finds them cached.
-        if let Err(e) = crate::ext::hub::embeddings::pre_download(&downloads).await {
-            tracing::warn!("embeddings pre-download failed (memory may be degraded): {e}");
-        }
-
-        let memory_dir = config_dir.join("memory");
-        let memory = hook::memory::MemoryHook::open(memory_dir, &config.memory).await?;
-        tracing::info!("memory hook initialized (LanceDB graph)");
 
         let skills_dir = config_dir.join(wcore::paths::SKILLS_DIR);
         let skills = hook::skill::SkillHandler::load(skills_dir).unwrap_or_else(|e| {
@@ -147,7 +139,6 @@ impl Daemon {
 
         Ok((
             DaemonHook::new(
-                memory,
                 skills,
                 mcp_handler,
                 tasks,

@@ -1,9 +1,9 @@
 //! Conversions between protocol message types.
 
 use crate::protocol::proto::{
-    ClientMessage, DownloadEvent, SendMsg, SendResponse, ServerMessage, StreamEvent, StreamMsg,
-    TaskEvent, client_message, download_event, memory_result, server_message, stream_event,
-    task_event,
+    ClientMessage, DownloadEvent, SendMsg, SendResponse, ServerMessage, ServiceQueryResultMsg,
+    StreamEvent, StreamMsg, TaskEvent, client_message, download_event, server_message,
+    stream_event, task_event,
 };
 
 // ── ClientMessage constructors ───────────────────────────────────
@@ -115,13 +115,11 @@ impl TryFrom<ServerMessage> for task_event::Event {
     }
 }
 
-impl TryFrom<ServerMessage> for memory_result::Result {
+impl TryFrom<ServerMessage> for ServiceQueryResultMsg {
     type Error = anyhow::Error;
     fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
         match msg.msg {
-            Some(server_message::Msg::Memory(r)) => r
-                .result
-                .ok_or_else(|| anyhow::anyhow!("empty memory result")),
+            Some(server_message::Msg::ServiceQueryResult(r)) => Ok(r),
             _ => Err(error_or_unexpected(msg)),
         }
     }

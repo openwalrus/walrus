@@ -7,11 +7,9 @@ use std::sync::Arc;
 use wcore::protocol::{
     api::Server,
     message::{
-        DownloadEvent, DownloadInfo, EntityInfo, EntityList, HubAction, JournalInfo, JournalList,
-        MemoryOp, MemoryResult, RelationInfo, RelationList, SendMsg, SendResponse, SessionInfo,
-        StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, TaskEvent,
-        TaskInfo, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, memory_op,
-        memory_result, stream_event,
+        DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse, SessionInfo, StreamChunk,
+        StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, TaskEvent, TaskInfo,
+        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
     },
 };
 use wcore::{AgentEvent, model::Model};
@@ -196,11 +194,14 @@ impl Server for Daemon {
 
         let sender = req.sender.as_deref().unwrap_or("");
 
-        // Build sender context from memory.
+        // Build sender context from memory via external WHS service.
         let sender_context = if !sender.is_empty() {
             let query = format!("{sender} profile");
             let args = serde_json::json!({ "query": query, "entity_type": "profile", "limit": 3 });
-            let recall_result = rt.hook.memory.dispatch_recall(&args.to_string()).await;
+            let recall_result = rt
+                .hook
+                .dispatch_tool("recall", &args.to_string(), &req.agent, None, "")
+                .await;
             if recall_result == "no entities found" {
                 String::new()
             } else {
@@ -333,87 +334,31 @@ impl Server for Daemon {
         self.reload().await
     }
 
-    async fn memory_query(&self, query: MemoryOp) -> Result<MemoryResult> {
+    async fn service_query(&self, service: String, query: String) -> Result<String> {
         let rt = self.runtime.read().await.clone();
-        let lance = &rt.hook.memory.lance;
-        let default_limit = 50u32;
-
-        let op = query.op.ok_or_else(|| anyhow::anyhow!("empty memory op"))?;
-
-        match op {
-            memory_op::Op::Entities(req) => {
-                let limit = req.limit.unwrap_or(default_limit) as usize;
-                let entities = lance
-                    .list_entities(req.entity_type.as_deref(), limit)
-                    .await?;
-                Ok(MemoryResult {
-                    result: Some(memory_result::Result::Entities(EntityList {
-                        entities: entities
-                            .into_iter()
-                            .map(|e| EntityInfo {
-                                entity_type: e.entity_type,
-                                key: e.key,
-                                value: e.value,
-                                created_at: e.created_at,
-                            })
-                            .collect(),
-                    })),
-                })
+        let registry = rt
+            .hook
+            .registry
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("no service registry"))?;
+        let handle = registry
+            .query
+            .get(&service)
+            .ok_or_else(|| anyhow::anyhow!("service '{}' not available", service))?;
+        let req = wcore::protocol::whs::WhsRequest {
+            msg: Some(wcore::protocol::whs::whs_request::Msg::ServiceQuery(
+                wcore::protocol::whs::WhsServiceQuery { query },
+            )),
+        };
+        let resp = handle.request(&req).await?;
+        match resp.msg {
+            Some(wcore::protocol::whs::whs_response::Msg::ServiceQueryResult(result)) => {
+                Ok(result.result)
             }
-            memory_op::Op::Relations(req) => {
-                let limit = req.limit.unwrap_or(default_limit) as usize;
-                let relations = lance
-                    .list_relations(req.entity_id.as_deref(), limit)
-                    .await?;
-                Ok(MemoryResult {
-                    result: Some(memory_result::Result::Relations(RelationList {
-                        relations: relations
-                            .into_iter()
-                            .map(|r| RelationInfo {
-                                source_id: r.source,
-                                relation: r.relation,
-                                target_id: r.target,
-                                created_at: r.created_at,
-                            })
-                            .collect(),
-                    })),
-                })
+            Some(wcore::protocol::whs::whs_response::Msg::Error(e)) => {
+                anyhow::bail!("service '{}' error: {}", service, e.message)
             }
-            memory_op::Op::Journals(req) => {
-                let limit = req.limit.unwrap_or(default_limit) as usize;
-                let journals = lance.list_journals(req.agent.as_deref(), limit).await?;
-                Ok(MemoryResult {
-                    result: Some(memory_result::Result::Journals(JournalList {
-                        journals: journals
-                            .into_iter()
-                            .map(|j| JournalInfo {
-                                summary: j.summary,
-                                agent: j.agent,
-                                created_at: j.created_at,
-                            })
-                            .collect(),
-                    })),
-                })
-            }
-            memory_op::Op::Search(req) => {
-                let limit = req.limit.unwrap_or(default_limit) as usize;
-                let entities = lance
-                    .search_entities(&req.query, req.entity_type.as_deref(), limit)
-                    .await?;
-                Ok(MemoryResult {
-                    result: Some(memory_result::Result::Entities(EntityList {
-                        entities: entities
-                            .into_iter()
-                            .map(|e| EntityInfo {
-                                entity_type: e.entity_type,
-                                key: e.key,
-                                value: e.value,
-                                created_at: e.created_at,
-                            })
-                            .collect(),
-                    })),
-                })
-            }
+            other => anyhow::bail!("unexpected response from service '{}': {other:?}", service),
         }
     }
 }

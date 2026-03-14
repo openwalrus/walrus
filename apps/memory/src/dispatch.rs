@@ -1,21 +1,112 @@
-//! Tool dispatch handlers for memory tools.
+//! MemoryService — standalone graph-based memory service owning LanceDB
+//! entity, relation, and journal storage with candle embeddings.
 
-use crate::hook::memory::{
-    MemoryHook,
-    lance::{Direction, EntityRow, RelationRow},
-    tool::{Connections, Distill, Recall, Relate, Remember},
+use crate::{
+    config::MemoryConfig,
+    embedder::Embedder,
+    lance::{Direction, EntityRow, LanceStore, RelationRow},
 };
-use wcore::COMPACT_SENTINEL;
+use std::{path::Path, sync::Mutex};
+const MEMORY_PROMPT: &str = include_str!("../prompts/memory.md");
 
-/// Build entity ID: `{entity_type}:{key}`.
-fn entity_id(entity_type: &str, key: &str) -> String {
-    format!("{entity_type}:{key}")
+/// Default entity types provided by the framework.
+const DEFAULT_ENTITIES: &[&str] = &[
+    "fact",
+    "preference",
+    "person",
+    "event",
+    "concept",
+    "identity",
+    "profile",
+];
+
+/// Default relation types provided by the framework.
+const DEFAULT_RELATIONS: &[&str] = &[
+    "knows",
+    "prefers",
+    "related_to",
+    "caused_by",
+    "part_of",
+    "depends_on",
+    "tagged_with",
+];
+
+/// Graph-based memory service owning LanceDB entity, relation, and journal storage.
+pub struct MemoryService {
+    pub lance: LanceStore,
+    pub embedder: Mutex<Embedder>,
+    pub allowed_entities: Vec<String>,
+    pub allowed_relations: Vec<String>,
+    pub connection_limit: usize,
+    pub auto_recall: bool,
 }
 
-impl MemoryHook {
+impl MemoryService {
+    /// Create a new MemoryService, opening or creating the LanceDB database.
+    pub async fn open(memory_dir: impl AsRef<Path>, config: &MemoryConfig) -> anyhow::Result<Self> {
+        let memory_dir = memory_dir.as_ref();
+        tokio::fs::create_dir_all(memory_dir).await?;
+
+        // Load embedder first — needed for entity vector backfill during open.
+        let cache_dir = wcore::paths::CONFIG_DIR.join(".cache").join("huggingface");
+        let embedder = tokio::task::spawn_blocking(move || Embedder::load(&cache_dir)).await??;
+
+        let lance_dir = memory_dir.join("lance");
+        let embed_mutex = Mutex::new(embedder);
+        let lance = LanceStore::open(&lance_dir, |text| {
+            let mut emb = embed_mutex
+                .lock()
+                .map_err(|e| anyhow::anyhow!("embedder lock poisoned: {e}"))?;
+            emb.embed(text)
+        })
+        .await?;
+
+        let allowed_entities = merge_defaults(DEFAULT_ENTITIES, &config.entities);
+        let allowed_relations = merge_defaults(DEFAULT_RELATIONS, &config.relations);
+        let connection_limit = config.connections.clamp(1, 100);
+
+        Ok(Self {
+            lance,
+            embedder: embed_mutex,
+            allowed_entities,
+            allowed_relations,
+            connection_limit,
+            auto_recall: config.auto_recall,
+        })
+    }
+
+    /// Check if an entity type is allowed.
+    pub fn is_valid_entity(&self, entity_type: &str) -> bool {
+        self.allowed_entities.iter().any(|t| t == entity_type)
+    }
+
+    /// Check if a relation type is allowed.
+    pub fn is_valid_relation(&self, relation: &str) -> bool {
+        self.allowed_relations.iter().any(|r| r == relation)
+    }
+
+    /// Generate an embedding vector for text. Runs candle inference in a blocking task.
+    pub async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        let text = text.to_owned();
+        tokio::task::block_in_place(|| {
+            let mut embedder = self
+                .embedder
+                .lock()
+                .map_err(|e| anyhow::anyhow!("embedder lock poisoned: {e}"))?;
+            embedder.embed(&text)
+        })
+    }
+
+    /// Return the memory prompt to append to agent system prompts.
+    pub fn memory_prompt() -> &'static str {
+        MEMORY_PROMPT
+    }
+
+    // ── Tool dispatch methods ────────────────────────────────────────
+
     /// Dispatch the `remember` tool call.
-    pub(crate) async fn dispatch_remember(&self, args: &str) -> String {
-        let input: Remember = match serde_json::from_str(args) {
+    pub async fn dispatch_remember(&self, args: &str) -> String {
+        let input: crate::tool::Remember = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
         };
@@ -53,8 +144,8 @@ impl MemoryHook {
     }
 
     /// Dispatch the `recall` tool call.
-    pub(crate) async fn dispatch_recall(&self, args: &str) -> String {
-        let input: Recall = match serde_json::from_str(args) {
+    pub async fn dispatch_recall(&self, args: &str) -> String {
+        let input: crate::tool::Recall = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
         };
@@ -79,8 +170,8 @@ impl MemoryHook {
     }
 
     /// Dispatch the `relate` tool call.
-    pub(crate) async fn dispatch_relate(&self, args: &str) -> String {
-        let input: Relate = match serde_json::from_str(args) {
+    pub async fn dispatch_relate(&self, args: &str) -> String {
+        let input: crate::tool::Relate = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
         };
@@ -127,8 +218,8 @@ impl MemoryHook {
     }
 
     /// Dispatch the `connections` tool call.
-    pub(crate) async fn dispatch_connections(&self, args: &str) -> String {
-        let input: Connections = match serde_json::from_str(args) {
+    pub async fn dispatch_connections(&self, args: &str) -> String {
+        let input: crate::tool::Connections = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
         };
@@ -176,16 +267,16 @@ impl MemoryHook {
 
     /// Dispatch the `compact` tool call.
     ///
-    /// Returns the compact sentinel followed by recent journal context.
-    /// The agent loop detects the sentinel and triggers compaction.
-    pub(crate) async fn dispatch_compact(&self, agent: &str) -> String {
-        let mut result = COMPACT_SENTINEL.to_owned();
+    /// Returns recent journal context for the compaction flow.
+    /// The agent loop detects compact by tool name and triggers compaction.
+    pub async fn dispatch_compact(&self, agent: &str) -> String {
+        let mut result = String::new();
 
-        // Append recent journal entries for continuity context.
+        // Return recent journal entries for continuity context.
         if let Ok(journals) = self.lance.recent_journals(agent, 3).await
             && !journals.is_empty()
         {
-            result.push_str("\n\nPrevious journal entries:\n");
+            result.push_str("Previous journal entries:\n");
             for j in &journals {
                 let ts = chrono::DateTime::from_timestamp(j.created_at as i64, 0)
                     .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
@@ -200,7 +291,7 @@ impl MemoryHook {
     /// Internal dispatch for storing a journal entry.
     ///
     /// Called by the agent loop after compaction — `args` is the raw summary text.
-    pub(crate) async fn dispatch_journal(&self, args: &str, agent: &str) -> String {
+    pub async fn dispatch_journal(&self, args: &str, agent: &str) -> String {
         if args.is_empty() {
             return "empty journal entry".to_owned();
         }
@@ -217,8 +308,8 @@ impl MemoryHook {
     }
 
     /// Dispatch the `distill` tool call — semantic search over journal entries.
-    pub(crate) async fn dispatch_distill(&self, args: &str, agent: &str) -> String {
-        let input: Distill = match serde_json::from_str(args) {
+    pub async fn dispatch_distill(&self, args: &str, agent: &str) -> String {
+        let input: crate::tool::Distill = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
         };
@@ -247,4 +338,32 @@ impl MemoryHook {
             Err(e) => format!("distill failed: {e}"),
         }
     }
+}
+
+/// Build entity ID: `{entity_type}:{key}`.
+fn entity_id(entity_type: &str, key: &str) -> String {
+    format!("{entity_type}:{key}")
+}
+
+/// Truncate a string at a UTF-8 safe boundary, appending "..." if truncated.
+pub fn truncate_utf8(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_owned();
+    }
+    // Walk backward from max_bytes to find a char boundary.
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &s[..end])
+}
+
+fn merge_defaults(defaults: &[&str], extras: &[String]) -> Vec<String> {
+    let mut merged: Vec<String> = defaults.iter().map(|s| (*s).to_owned()).collect();
+    for t in extras {
+        if !merged.contains(t) {
+            merged.push(t.clone());
+        }
+    }
+    merged
 }

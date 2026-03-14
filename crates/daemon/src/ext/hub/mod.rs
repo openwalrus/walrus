@@ -1,8 +1,8 @@
 //! Walrus hub — unified registry for all download operations.
 //!
 //! The "hub" encompasses walrus packages, proxied huggingface models,
-//! embeddings pre-download, and future skill downloads. Each operation
-//! gets a unique ID, tracked status, and broadcasts events to subscribers.
+//! and future skill downloads. Each operation gets a unique ID, tracked
+//! status, and broadcasts events to subscribers.
 
 use std::{
     collections::BTreeMap,
@@ -15,7 +15,6 @@ use wcore::protocol::message::{
     DownloadProgress, DownloadStep, download_event,
 };
 
-pub mod embeddings;
 pub mod manifest;
 pub mod package;
 

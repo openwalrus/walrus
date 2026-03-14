@@ -1,10 +1,10 @@
 //! Client trait — transport primitives plus typed provided methods.
 
 use crate::protocol::message::{
-    ClientMessage, ConfigMsg, DownloadEvent, ErrorMsg, GetConfig, HubMsg, MemoryOp, MemoryQueryMsg,
-    Ping, SendMsg, SendResponse, ServerMessage, SetConfigMsg, StreamEvent, StreamMsg,
-    SubscribeDownloads, SubscribeTasks, client_message, download_event, memory_result,
-    server_message, stream_event, task_event,
+    ClientMessage, ConfigMsg, DownloadEvent, ErrorMsg, GetConfig, HubMsg, Ping, SendMsg,
+    SendResponse, ServerMessage, ServiceQueryMsg, ServiceQueryResultMsg, SetConfigMsg, StreamEvent,
+    StreamMsg, SubscribeDownloads, SubscribeTasks, client_message, download_event, server_message,
+    stream_event, task_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -175,20 +175,33 @@ pub trait Client: Send {
         }
     }
 
-    /// Query the memory graph.
-    fn memory_query(
+    /// Query a named service.
+    fn service_query(
         &mut self,
-        query: MemoryOp,
-    ) -> impl std::future::Future<Output = Result<memory_result::Result>> + Send {
+        service: String,
+        query: String,
+    ) -> impl std::future::Future<Output = Result<String>> + Send {
         async move {
-            memory_result::Result::try_from(
-                self.request(ClientMessage {
-                    msg: Some(client_message::Msg::MemoryQuery(MemoryQueryMsg {
-                        query: Some(query),
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ServiceQuery(ServiceQueryMsg {
+                        service,
+                        query,
                     })),
                 })
-                .await?,
-            )
+                .await?
+            {
+                ServerMessage {
+                    msg:
+                        Some(server_message::Msg::ServiceQueryResult(ServiceQueryResultMsg { result })),
+                } => Ok(result),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
         }
     }
 }

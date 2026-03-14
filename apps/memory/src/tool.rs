@@ -2,10 +2,13 @@
 
 use schemars::JsonSchema;
 use serde::Deserialize;
-use wcore::agent::ToolDescription;
+use wcore::{
+    agent::{AsTool, ToolDescription},
+    protocol::whs::ToolDef,
+};
 
 #[derive(Deserialize, JsonSchema)]
-pub(crate) struct Remember {
+pub struct Remember {
     /// Entity type (e.g. "fact", "preference", "identity", "profile").
     pub entity_type: String,
     /// Human-readable key/name for the entity.
@@ -19,7 +22,7 @@ impl ToolDescription for Remember {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub(crate) struct Recall {
+pub struct Recall {
     /// Search query for relevant entities.
     pub query: String,
     /// Optional entity type filter.
@@ -34,7 +37,7 @@ impl ToolDescription for Recall {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub(crate) struct Relate {
+pub struct Relate {
     /// Key of the source entity.
     pub source_key: String,
     /// Relation type (e.g. "knows", "prefers", "related_to", "caused_by").
@@ -48,7 +51,7 @@ impl ToolDescription for Relate {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub(crate) struct Connections {
+pub struct Connections {
     /// Key of the entity to find connections for.
     pub key: String,
     /// Optional relation type filter.
@@ -65,14 +68,14 @@ impl ToolDescription for Connections {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub(crate) struct Compact {}
+pub struct Compact {}
 
 impl ToolDescription for Compact {
     const DESCRIPTION: &'static str = "Trigger context compaction. Summarizes the conversation, stores a journal entry, and replaces history with the summary.";
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub(crate) struct Distill {
+pub struct Distill {
     /// Semantic search query over journal entries.
     pub query: String,
     /// Maximum number of results (default: 5).
@@ -81,4 +84,25 @@ pub(crate) struct Distill {
 
 impl ToolDescription for Distill {
     const DESCRIPTION: &'static str = "Search journal entries by semantic similarity. Returns past conversation summaries. Use `remember`/`relate` to extract durable facts.";
+}
+
+/// Build proto `ToolDef` messages for all memory tools.
+pub fn tool_defs() -> Vec<ToolDef> {
+    let tools = [
+        Remember::as_tool(),
+        Recall::as_tool(),
+        Relate::as_tool(),
+        Connections::as_tool(),
+        Compact::as_tool(),
+        Distill::as_tool(),
+    ];
+    tools
+        .into_iter()
+        .map(|t| ToolDef {
+            name: t.name.to_string(),
+            description: t.description.to_string(),
+            parameters: serde_json::to_vec(&t.parameters).expect("schema serialization"),
+            strict: t.strict,
+        })
+        .collect()
 }

@@ -14,7 +14,6 @@ use crate::model::{
 use anyhow::Result;
 use async_stream::stream;
 pub use builder::AgentBuilder;
-pub use compact::COMPACT_SENTINEL;
 pub use config::AgentConfig;
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
@@ -302,7 +301,7 @@ impl<M: Model> Agent<M> {
                         let result = self
                             .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender)
                             .await;
-                        if result.starts_with(compact::COMPACT_SENTINEL) {
+                        if tc.function.name == "compact" {
                             compact_triggered = true;
                         }
                         let msg = Message::tool(&result, tc.id.clone());

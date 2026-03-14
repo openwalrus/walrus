@@ -4,10 +4,6 @@ use crate::model::{Message, Model, Request};
 
 const COMPACT_PROMPT: &str = include_str!("../../prompts/compact.md");
 
-/// Sentinel prefix returned by the `compact` tool dispatch. When a tool result
-/// starts with this prefix, the agent loop triggers compaction.
-pub const COMPACT_SENTINEL: &str = "__COMPACT__";
-
 impl<M: Model> super::Agent<M> {
     /// Summarize the conversation history using the LLM.
     ///

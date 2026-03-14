@@ -27,10 +27,10 @@ const JOURNALS_TABLE: &str = "journals";
 const CONNECTIONS_MAX: usize = 100;
 
 /// Embedding vector dimension (all-MiniLM-L6-v2).
-pub(crate) const EMBED_DIM: i32 = 384;
+pub const EMBED_DIM: i32 = 384;
 
 /// Row data for an entity.
-pub(crate) struct EntityRow<'a> {
+pub struct EntityRow<'a> {
     pub id: &'a str,
     pub entity_type: &'a str,
     pub key: &'a str,
@@ -39,14 +39,14 @@ pub(crate) struct EntityRow<'a> {
 }
 
 /// Row data for a relation.
-pub(crate) struct RelationRow<'a> {
+pub struct RelationRow<'a> {
     pub source: &'a str,
     pub relation: &'a str,
     pub target: &'a str,
 }
 
 /// An entity returned from queries.
-pub(crate) struct EntityResult {
+pub struct EntityResult {
     pub id: String,
     pub entity_type: String,
     pub key: String,
@@ -55,7 +55,7 @@ pub(crate) struct EntityResult {
 }
 
 /// A relation returned from queries.
-pub(crate) struct RelationResult {
+pub struct RelationResult {
     pub source: String,
     pub relation: String,
     pub target: String,
@@ -63,7 +63,7 @@ pub(crate) struct RelationResult {
 }
 
 /// A journal entry returned from queries.
-pub(crate) struct JournalResult {
+pub struct JournalResult {
     pub summary: String,
     pub agent: String,
     pub created_at: u64,
@@ -73,7 +73,7 @@ pub(crate) struct JournalResult {
 ///
 /// Mutations use lancedb's merge_insert directly. Graph traversal
 /// (`find_connections`) uses lance-graph Cypher queries.
-pub(crate) struct LanceStore {
+pub struct LanceStore {
     _db: Connection,
     entities: LanceTable,
     relations: LanceTable,
@@ -423,7 +423,7 @@ impl LanceStore {
 }
 
 /// Direction for connection queries.
-pub(crate) enum Direction {
+pub enum Direction {
     Outgoing,
     Incoming,
     Both,

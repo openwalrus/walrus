@@ -1,17 +1,15 @@
 //! Stateful Hook implementation for the daemon.
 //!
-//! [`DaemonHook`] composes memory, skill, MCP, and OS sub-hooks plus
-//! external WHS services. `on_build_agent` delegates to skills and memory;
+//! [`DaemonHook`] composes skill, MCP, and OS sub-hooks plus external WHS
+//! services. Memory is handled by an external WHS service.
+//! `on_build_agent` delegates to skills and WHS services;
 //! `on_register_tools` delegates to all sub-hooks in sequence.
 //! `dispatch_tool` routes every agent tool call by name — the single
 //! entry point from `event.rs`.
 
 use crate::{
     ext::hub::DownloadRegistry,
-    hook::{
-        mcp::McpHandler, memory::MemoryHook, os::PermissionConfig, skill::SkillHandler,
-        task::TaskRegistry,
-    },
+    hook::{mcp::McpHandler, os::PermissionConfig, skill::SkillHandler, task::TaskRegistry},
     service::ServiceRegistry,
 };
 use compact_str::CompactString;
@@ -19,21 +17,19 @@ use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
 use wcore::{
     AgentConfig, AgentEvent, Hook, ToolRegistry,
-    model::Message,
-    protocol::whs::{WhsError, WhsRequest, WhsToolCall, WhsToolResult, whs_request, whs_response},
+    model::{Message, Role},
+    protocol::whs::{
+        SimpleMessage, WhsBeforeRun, WhsBeforeRunResult, WhsBuildAgent, WhsBuildAgentResult,
+        WhsCompact, WhsCompactResult, WhsError, WhsRequest, WhsToolCall, WhsToolResult,
+        whs_request, whs_response,
+    },
 };
 
 pub mod mcp;
-pub mod memory;
 pub mod os;
 pub mod skill;
 pub mod task;
 
-/// Stateful Hook implementation for the daemon.
-///
-/// Composes memory, skill, MCP, and OS sub-hooks. Each sub-hook
-/// self-registers its tools via `on_register_tools`. All tool dispatch
-/// is routed through `dispatch_tool`.
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
 pub(crate) struct AgentScope {
@@ -44,7 +40,6 @@ pub(crate) struct AgentScope {
 }
 
 pub struct DaemonHook {
-    pub memory: MemoryHook,
     pub skills: SkillHandler,
     pub mcp: McpHandler,
     pub tasks: Arc<Mutex<TaskRegistry>>,
@@ -61,20 +56,9 @@ pub struct DaemonHook {
 /// OS tool names — bypass permission check when running in sandbox mode.
 const OS_TOOLS: &[&str] = &["read", "write", "edit", "bash"];
 
-/// Base tools always included in every agent's whitelist (memory + OS).
-const BASE_TOOLS: &[&str] = &[
-    "remember",
-    "recall",
-    "relate",
-    "connections",
-    "compact",
-    "distill",
-    "__journal__",
-    "read",
-    "write",
-    "edit",
-    "bash",
-];
+/// Base tools always included in every agent's whitelist (OS tools).
+/// Memory tools come from the external WHS service.
+const BASE_TOOLS: &[&str] = &["read", "write", "edit", "bash"];
 
 /// Skill discovery/loading tools.
 const SKILL_TOOLS: &[&str] = &["search_skill", "load_skill"];
@@ -93,9 +77,7 @@ const TASK_TOOLS: &[&str] = &[
 
 impl DaemonHook {
     /// Create a new DaemonHook with the given backends.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        memory: MemoryHook,
         skills: SkillHandler,
         mcp: McpHandler,
         tasks: Arc<Mutex<TaskRegistry>>,
@@ -105,7 +87,6 @@ impl DaemonHook {
         registry: Option<ServiceRegistry>,
     ) -> Self {
         Self {
-            memory,
             skills,
             mcp,
             tasks,
@@ -230,13 +211,6 @@ impl DaemonHook {
             return format!("tool not available: {name}");
         }
         match name {
-            "remember" => self.memory.dispatch_remember(args).await,
-            "recall" => self.memory.dispatch_recall(args).await,
-            "relate" => self.memory.dispatch_relate(args).await,
-            "connections" => self.memory.dispatch_connections(args).await,
-            "compact" => self.memory.dispatch_compact(agent).await,
-            "__journal__" => self.memory.dispatch_journal(args, agent).await,
-            "distill" => self.memory.dispatch_distill(args, agent).await,
             "search_mcp" => self.dispatch_search_mcp(args, agent).await,
             "call_mcp_tool" => self.dispatch_call_mcp_tool(args, agent).await,
             "search_skill" => self.dispatch_search_skill(args, agent).await,
@@ -265,7 +239,60 @@ impl DaemonHook {
 
 impl Hook for DaemonHook {
     fn on_build_agent(&self, config: AgentConfig) -> AgentConfig {
-        let mut config = self.memory.on_build_agent(config);
+        let mut config = config;
+
+        // Fan out to external WHS services with BuildAgent capability.
+        if let Some(ref registry) = self.registry {
+            let additions = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let mut additions = Vec::new();
+                    for handle in &registry.build_agent {
+                        let req = WhsRequest {
+                            msg: Some(whs_request::Msg::BuildAgent(WhsBuildAgent {
+                                name: config.name.to_string(),
+                                description: config.description.to_string(),
+                                system_prompt: config.system_prompt.clone(),
+                            })),
+                        };
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            handle.request(&req),
+                        )
+                        .await
+                        {
+                            Ok(Ok(resp)) => {
+                                if let Some(whs_response::Msg::BuildAgentResult(
+                                    WhsBuildAgentResult {
+                                        prompt_addition, ..
+                                    },
+                                )) = resp.msg
+                                    && !prompt_addition.is_empty()
+                                {
+                                    additions.push(prompt_addition);
+                                }
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    error = %e,
+                                    "BuildAgent dispatch failed"
+                                );
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    "BuildAgent dispatch timeout"
+                                );
+                            }
+                        }
+                    }
+                    additions
+                })
+            });
+            for addition in additions {
+                config.system_prompt.push_str(&addition);
+            }
+        }
 
         // Walrus agent (empty scoping) gets all tools, no scope injection.
         let has_scoping =
@@ -274,9 +301,14 @@ impl Hook for DaemonHook {
             return config;
         }
 
-        // Compute tool whitelist — base tools always included.
+        // Compute tool whitelist — base tools + external service tools always included.
         let mut whitelist: Vec<CompactString> =
             BASE_TOOLS.iter().map(|&s| CompactString::from(s)).collect();
+        if let Some(ref registry) = self.registry {
+            for tool_name in registry.tools.keys() {
+                whitelist.push(CompactString::from(tool_name.as_str()));
+            }
+        }
         let mut scope_lines = Vec::new();
 
         // Skill tools if skills non-empty.
@@ -337,15 +369,132 @@ impl Hook for DaemonHook {
     }
 
     fn on_compact(&self, prompt: &mut String) {
-        self.memory.on_compact(prompt);
+        // Fan out to external WHS services with Compact capability.
+        if let Some(ref registry) = self.registry {
+            let prompt_clone = prompt.clone();
+            let additions = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let mut additions = Vec::new();
+                    for handle in &registry.compact {
+                        let req = WhsRequest {
+                            msg: Some(whs_request::Msg::Compact(WhsCompact {
+                                agent: String::new(),
+                                prompt: prompt_clone.clone(),
+                            })),
+                        };
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            handle.request(&req),
+                        )
+                        .await
+                        {
+                            Ok(Ok(resp)) => {
+                                if let Some(whs_response::Msg::CompactResult(WhsCompactResult {
+                                    addition,
+                                })) = resp.msg
+                                    && !addition.is_empty()
+                                {
+                                    additions.push(addition);
+                                }
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    error = %e,
+                                    "Compact dispatch failed"
+                                );
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    "Compact dispatch timeout"
+                                );
+                            }
+                        }
+                    }
+                    additions
+                })
+            });
+            for addition in additions {
+                prompt.push_str(&addition);
+            }
+        }
     }
 
     fn on_before_run(&self, agent: &str, history: &[Message]) -> Vec<Message> {
-        self.memory.on_before_run(agent, history)
+        let mut messages = Vec::new();
+
+        // Fan out to external WHS services with BeforeRun capability.
+        if let Some(ref registry) = self.registry {
+            let agent = agent.to_owned();
+            let simple_history: Vec<SimpleMessage> = history
+                .iter()
+                .map(|m| SimpleMessage {
+                    role: match m.role {
+                        Role::User => "user".to_owned(),
+                        Role::Assistant => "assistant".to_owned(),
+                        Role::System => "system".to_owned(),
+                        Role::Tool => "tool".to_owned(),
+                    },
+                    content: m.content.clone(),
+                })
+                .collect();
+            let external = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let mut external_msgs = Vec::new();
+                    for handle in &registry.before_run {
+                        let req = WhsRequest {
+                            msg: Some(whs_request::Msg::BeforeRun(WhsBeforeRun {
+                                agent: agent.clone(),
+                                history: simple_history.clone(),
+                            })),
+                        };
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            handle.request(&req),
+                        )
+                        .await
+                        {
+                            Ok(Ok(resp)) => {
+                                if let Some(whs_response::Msg::BeforeRunResult(
+                                    WhsBeforeRunResult { messages: whs_msgs },
+                                )) = resp.msg
+                                {
+                                    for sm in whs_msgs {
+                                        let msg = if sm.role == "assistant" {
+                                            Message::assistant(sm.content, None, None)
+                                        } else {
+                                            Message::user(sm.content)
+                                        };
+                                        external_msgs.push(msg);
+                                    }
+                                }
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    error = %e,
+                                    "BeforeRun dispatch failed"
+                                );
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    "BeforeRun dispatch timeout"
+                                );
+                            }
+                        }
+                    }
+                    external_msgs
+                })
+            });
+            messages.extend(external);
+        }
+
+        messages
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
-        self.memory.on_register_tools(tools).await;
         self.mcp.on_register_tools(tools).await;
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());

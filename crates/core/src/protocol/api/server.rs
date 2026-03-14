@@ -2,7 +2,7 @@
 
 use crate::protocol::message::{
     ClientMessage, ConfigMsg, DownloadEvent, DownloadInfo, DownloadList, ErrorMsg, EvaluationMsg,
-    HubAction, MemoryOp, MemoryResult, Pong, SendMsg, SendResponse, ServerMessage, SessionInfo,
+    HubAction, Pong, SendMsg, SendResponse, ServerMessage, ServiceQueryResultMsg, SessionInfo,
     SessionList, StreamEvent, StreamMsg, TaskEvent, TaskInfo, TaskList, client_message,
     server_message,
 };
@@ -96,11 +96,12 @@ pub trait Server: Sync {
     /// Handle `SetConfig` — replace the daemon config from JSON.
     fn set_config(&self, config: String) -> impl std::future::Future<Output = Result<()>> + Send;
 
-    /// Handle `MemoryQuery` — query the memory graph.
-    fn memory_query(
+    /// Handle `ServiceQuery` — route to a named service.
+    fn service_query(
         &self,
-        query: MemoryOp,
-    ) -> impl std::future::Future<Output = Result<MemoryResult>> + Send;
+        service: String,
+        query: String,
+    ) -> impl std::future::Future<Output = Result<String>> + Send;
 
     /// Dispatch a `ClientMessage` to the appropriate handler method.
     ///
@@ -234,14 +235,12 @@ pub trait Server: Sync {
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
-                client_message::Msg::MemoryQuery(memory_query_msg) => {
-                    let Some(query) = memory_query_msg.query else {
-                        yield server_error(400, "empty memory query".to_string());
-                        return;
-                    };
-                    yield match self.memory_query(query).await {
+                client_message::Msg::ServiceQuery(sq) => {
+                    yield match self.service_query(sq.service, sq.query).await {
                         Ok(result) => ServerMessage {
-                            msg: Some(server_message::Msg::Memory(result)),
+                            msg: Some(server_message::Msg::ServiceQueryResult(
+                                ServiceQueryResultMsg { result },
+                            )),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };

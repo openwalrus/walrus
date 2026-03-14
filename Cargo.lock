@@ -8717,26 +8717,17 @@ name = "walrus-daemon"
 version = "0.0.6"
 dependencies = [
  "anyhow",
- "arrow-array",
- "arrow-schema",
  "async-stream",
- "candle-core",
- "candle-nn",
- "candle-transformers",
  "chrono",
  "compact_str 0.8.1",
  "futures",
  "futures-core",
  "futures-util",
- "hf-hub",
- "lance-graph",
- "lancedb",
  "rmcp",
  "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_yaml",
- "tokenizers",
  "tokio",
  "toml",
  "toml_edit 0.22.27",
@@ -8746,6 +8737,34 @@ dependencies = [
  "walrus-model",
  "walrus-socket",
  "walrus-tcp",
+]
+
+[[package]]
+name = "walrus-memory"
+version = "0.0.6"
+dependencies = [
+ "anyhow",
+ "arrow-array",
+ "arrow-schema",
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "chrono",
+ "clap",
+ "compact_str 0.8.1",
+ "futures",
+ "hf-hub",
+ "lance-graph",
+ "lancedb",
+ "prost",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tokenizers",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "walrus-core",
 ]
 
 [[package]]

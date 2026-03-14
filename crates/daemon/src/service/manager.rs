@@ -59,6 +59,12 @@ pub struct ServiceRegistry {
     pub query: BTreeMap<String, Arc<ServiceHandle>>,
     /// Tool schemas collected from all hook services.
     pub tool_schemas: Vec<Tool>,
+    /// Services that declared BuildAgent capability.
+    pub build_agent: Vec<Arc<ServiceHandle>>,
+    /// Services that declared BeforeRun capability.
+    pub before_run: Vec<Arc<ServiceHandle>>,
+    /// Services that declared Compact capability.
+    pub compact: Vec<Arc<ServiceHandle>>,
 }
 
 /// Entry tracking a spawned service process.
@@ -303,6 +309,15 @@ impl ServiceManager {
                     registry
                         .query
                         .insert(handle.name.to_string(), Arc::clone(handle));
+                }
+                Some(capability::Cap::BuildAgent(_)) => {
+                    registry.build_agent.push(Arc::clone(handle));
+                }
+                Some(capability::Cap::BeforeRun(_)) => {
+                    registry.before_run.push(Arc::clone(handle));
+                }
+                Some(capability::Cap::Compact(_)) => {
+                    registry.compact.push(Arc::clone(handle));
                 }
                 None => {}
             }

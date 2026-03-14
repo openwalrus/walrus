@@ -21,7 +21,7 @@ message ClientMessage {
     SubscribeDownloads subscribe_downloads = 13;
     GetConfig get_config = 14;
     SetConfigMsg set_config = 15;
-    MemoryQueryMsg memory_query = 16;
+    ServiceQueryMsg service_query = 16;
   }
 }
 
@@ -81,38 +81,9 @@ message SetConfigMsg {
   string config = 1;
 }
 
-message MemoryQueryMsg {
-  MemoryOp query = 1;
-}
-
-message MemoryOp {
-  oneof op {
-    MemoryEntities entities = 1;
-    MemoryRelations relations = 2;
-    MemoryJournals journals = 3;
-    MemorySearch search = 4;
-  }
-}
-
-message MemoryEntities {
-  optional string entity_type = 1;
-  optional uint32 limit = 2;
-}
-
-message MemoryRelations {
-  optional string entity_id = 1;
-  optional uint32 limit = 2;
-}
-
-message MemoryJournals {
-  optional string agent = 1;
-  optional uint32 limit = 2;
-}
-
-message MemorySearch {
-  string query = 1;
-  optional string entity_type = 2;
-  optional uint32 limit = 3;
+message ServiceQueryMsg {
+  string service = 1;
+  string query = 2;
 }
 
 // ── Server Messages ──────────────────────────────────────────────
@@ -130,7 +101,7 @@ message ServerMessage {
     TaskEvent task = 9;
     EvaluationMsg evaluation = 10;
     ConfigMsg config = 11;
-    MemoryResult memory = 12;
+    ServiceQueryResultMsg service_query_result = 12;
   }
 }
 
@@ -313,44 +284,8 @@ message ConfigMsg {
   string config = 1;
 }
 
-message EntityInfo {
-  string entity_type = 1;
-  string key = 2;
-  string value = 3;
-  uint64 created_at = 4;
-}
-
-message RelationInfo {
-  string source_id = 1;
-  string relation = 2;
-  string target_id = 3;
-  uint64 created_at = 4;
-}
-
-message JournalInfo {
-  string summary = 1;
-  string agent = 2;
-  uint64 created_at = 3;
-}
-
-message MemoryResult {
-  oneof result {
-    EntityList entities = 1;
-    RelationList relations = 2;
-    JournalList journals = 3;
-  }
-}
-
-message EntityList {
-  repeated EntityInfo entities = 1;
-}
-
-message RelationList {
-  repeated RelationInfo relations = 1;
-}
-
-message JournalList {
-  repeated JournalInfo journals = 1;
+message ServiceQueryResultMsg {
+  string result = 1;
 }
 
 // ── WHS (Walrus Hook Service) Protocol ───────────────────────────
@@ -363,6 +298,9 @@ message WhsRequest {
     WhsServiceQuery service_query = 4;
     WhsShutdown shutdown = 5;
     WhsConfigure configure = 6;
+    WhsBuildAgent build_agent = 7;
+    WhsBeforeRun before_run = 8;
+    WhsCompact compact = 9;
   }
 }
 
@@ -396,6 +334,9 @@ message WhsResponse {
     WhsServiceQueryResult service_query_result = 4;
     WhsError error = 5;
     WhsConfigured configured = 6;
+    WhsBuildAgentResult build_agent_result = 7;
+    WhsBeforeRunResult before_run_result = 8;
+    WhsCompactResult compact_result = 9;
   }
 }
 
@@ -409,6 +350,9 @@ message Capability {
   oneof cap {
     ToolsList tools = 1;
     QueryCap query = 2;
+    BuildAgentCap build_agent = 3;
+    BeforeRunCap before_run = 4;
+    CompactCap compact = 5;
   }
 }
 
@@ -439,4 +383,44 @@ message WhsServiceQueryResult {
 
 message WhsError {
   string message = 1;
+}
+
+// ── WHS Lifecycle Messages ──────────────────────────────────────
+
+message SimpleMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message BuildAgentCap {}
+message BeforeRunCap {}
+message CompactCap {}
+
+message WhsBuildAgent {
+  string name = 1;
+  string description = 2;
+  string system_prompt = 3;
+}
+
+message WhsBuildAgentResult {
+  string prompt_addition = 1;
+  repeated ToolDef tools = 2;
+}
+
+message WhsBeforeRun {
+  string agent = 1;
+  repeated SimpleMessage history = 2;
+}
+
+message WhsBeforeRunResult {
+  repeated SimpleMessage messages = 1;
+}
+
+message WhsCompact {
+  string agent = 1;
+  string prompt = 2;
+}
+
+message WhsCompactResult {
+  string addition = 1;
 }
