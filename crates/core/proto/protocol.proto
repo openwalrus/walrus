@@ -15,7 +15,6 @@ message ClientMessage {
     Tasks tasks = 7;
     KillTaskMsg kill_task = 8;
     ApproveMsg approve = 9;
-    EvaluateMsg evaluate = 10;
     SubscribeTasks subscribe_tasks = 11;
     Downloads downloads = 12;
     SubscribeDownloads subscribe_downloads = 13;
@@ -70,13 +69,6 @@ message ApproveMsg {
   string response = 2;
 }
 
-message EvaluateMsg {
-  string agent = 1;
-  string content = 2;
-  optional uint64 session = 3;
-  optional string sender = 4;
-}
-
 message SetConfigMsg {
   string config = 1;
 }
@@ -99,7 +91,6 @@ message ServerMessage {
     DownloadList downloads = 7;
     TaskList tasks = 8;
     TaskEvent task = 9;
-    EvaluationMsg evaluation = 10;
     ConfigMsg config = 11;
     ServiceQueryResultMsg service_query_result = 12;
   }
@@ -274,10 +265,6 @@ message TaskCompleted {
   string status = 2;
   optional string result = 3;
   optional string error = 4;
-}
-
-message EvaluationMsg {
-  bool respond = 1;
 }
 
 message ConfigMsg {

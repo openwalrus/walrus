@@ -1,10 +1,9 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    ClientMessage, ConfigMsg, DownloadEvent, DownloadInfo, DownloadList, ErrorMsg, EvaluationMsg,
-    HubAction, Pong, SendMsg, SendResponse, ServerMessage, ServiceQueryResultMsg, SessionInfo,
-    SessionList, StreamEvent, StreamMsg, TaskEvent, TaskInfo, TaskList, client_message,
-    server_message,
+    ClientMessage, ConfigMsg, DownloadEvent, DownloadInfo, DownloadList, ErrorMsg, HubAction, Pong,
+    SendMsg, SendResponse, ServerMessage, ServiceQueryResultMsg, SessionInfo, SessionList,
+    StreamEvent, StreamMsg, TaskEvent, TaskInfo, TaskList, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -76,9 +75,6 @@ pub trait Server: Sync {
         task_id: u64,
         response: String,
     ) -> impl std::future::Future<Output = Result<bool>> + Send;
-
-    /// Handle `Evaluate` — decide whether the agent should respond (DD#39).
-    fn evaluate(&self, req: SendMsg) -> impl std::future::Future<Output = Result<bool>> + Send;
 
     /// Handle `SubscribeTasks` — stream task lifecycle events.
     fn subscribe_tasks(&self) -> impl Stream<Item = Result<TaskEvent>> + Send;
@@ -182,20 +178,6 @@ pub trait Server: Sync {
                             404,
                             format!("task {} not found or not blocked", approve_msg.task_id),
                         ),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
-                client_message::Msg::Evaluate(eval_msg) => {
-                    let req = SendMsg {
-                        agent: eval_msg.agent,
-                        content: eval_msg.content,
-                        session: eval_msg.session,
-                        sender: eval_msg.sender,
-                    };
-                    yield match self.evaluate(req).await {
-                        Ok(respond) => ServerMessage {
-                            msg: Some(server_message::Msg::Evaluation(EvaluationMsg { respond })),
-                        },
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
