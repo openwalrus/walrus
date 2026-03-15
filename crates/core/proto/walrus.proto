@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package walrus.protocol;
 
+option swift_prefix = "WalrusProto_";
+
 // ── Client Messages ──────────────────────────────────────────────
 
 message ClientMessage {
