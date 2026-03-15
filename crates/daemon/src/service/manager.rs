@@ -199,7 +199,6 @@ impl Hook for ServiceRegistry {
 
     fn on_compact(&self, agent: &str, prompt: &mut String) {
         let agent = agent.to_owned();
-        let prompt_clone = prompt.clone();
         let additions = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let mut additions = Vec::new();
@@ -207,7 +206,7 @@ impl Hook for ServiceRegistry {
                     let req = WhsRequest {
                         msg: Some(whs_request::Msg::Compact(WhsCompact {
                             agent: agent.clone(),
-                            prompt: prompt_clone.clone(),
+                            prompt: prompt.clone(),
                         })),
                     };
                     match time::timeout(std::time::Duration::from_secs(10), handle.request(&req))
@@ -246,18 +245,7 @@ impl Hook for ServiceRegistry {
 
     fn on_before_run(&self, agent: &str, history: &[Message]) -> Vec<Message> {
         let agent = agent.to_owned();
-        let simple_history: Vec<SimpleMessage> = history
-            .iter()
-            .map(|m| SimpleMessage {
-                role: match m.role {
-                    Role::User => "user".to_owned(),
-                    Role::Assistant => "assistant".to_owned(),
-                    Role::System => "system".to_owned(),
-                    Role::Tool => "tool".to_owned(),
-                },
-                content: m.content.clone(),
-            })
-            .collect();
+        let simple_history = to_simple_messages(history);
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let mut messages = Vec::new();
@@ -277,10 +265,10 @@ impl Hook for ServiceRegistry {
                             })) = resp.msg
                             {
                                 for sm in whs_msgs {
-                                    let msg = if sm.role == "assistant" {
-                                        Message::assistant(sm.content, None, None)
-                                    } else {
-                                        Message::user(sm.content)
+                                    let msg = match sm.role.as_str() {
+                                        "assistant" => Message::assistant(sm.content, None, None),
+                                        "system" => Message::system(&sm.content),
+                                        _ => Message::user(sm.content),
                                     };
                                     messages.push(msg);
                                 }
@@ -309,18 +297,7 @@ impl Hook for ServiceRegistry {
         if self.after_run.is_empty() {
             return;
         }
-        let simple_history: Vec<SimpleMessage> = history
-            .iter()
-            .map(|m| SimpleMessage {
-                role: match m.role {
-                    Role::User => "user".to_owned(),
-                    Role::Assistant => "assistant".to_owned(),
-                    Role::System => "system".to_owned(),
-                    Role::Tool => "tool".to_owned(),
-                },
-                content: m.content.clone(),
-            })
-            .collect();
+        let simple_history = to_simple_messages(history);
         let agent = agent.to_owned();
         let system_prompt = system_prompt.to_owned();
         let model = self.model.clone();
@@ -432,6 +409,22 @@ impl CompactHook for ServiceRegistry {
     fn on_compact(&self, agent: &str, prompt: &mut String) {
         <Self as Hook>::on_compact(self, agent, prompt);
     }
+}
+
+/// Convert core `Message` history to proto `SimpleMessage` for WHS transport.
+fn to_simple_messages(history: &[Message]) -> Vec<SimpleMessage> {
+    history
+        .iter()
+        .map(|m| SimpleMessage {
+            role: match m.role {
+                Role::User => "user".to_owned(),
+                Role::Assistant => "assistant".to_owned(),
+                Role::System => "system".to_owned(),
+                Role::Tool => "tool".to_owned(),
+            },
+            content: m.content.clone(),
+        })
+        .collect()
 }
 
 /// Infer fulfillment: mini agent loop using the host agent's model.

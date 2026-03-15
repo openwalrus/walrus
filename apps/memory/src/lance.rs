@@ -324,27 +324,6 @@ impl LanceStore {
         Ok(())
     }
 
-    /// Semantic search on journal entries by vector similarity.
-    pub async fn search_journals(
-        &self,
-        query_vector: &[f32],
-        agent: &str,
-        limit: usize,
-    ) -> Result<Vec<JournalResult>> {
-        let filter = format!("agent = '{}'", escape_sql(agent));
-        let batches: Vec<RecordBatch> = self
-            .journals
-            .query()
-            .nearest_to(query_vector)?
-            .only_if(filter)
-            .limit(limit)
-            .execute()
-            .await?
-            .try_collect()
-            .await?;
-        batches_to_journals(&batches)
-    }
-
     /// Query most recent journal entries, optionally filtered by agent.
     pub async fn list_journals(
         &self,
