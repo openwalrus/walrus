@@ -8,95 +8,68 @@ use wcore::{
 };
 
 #[derive(Deserialize, JsonSchema)]
-pub struct Remember {
-    /// Entity type (e.g. "fact", "preference", "identity", "profile").
-    pub entity_type: String,
-    /// Human-readable key/name for the entity.
-    pub key: String,
-    /// Value/content to store.
-    pub value: String,
-}
-
-impl ToolDescription for Remember {
-    const DESCRIPTION: &'static str = "Store a memory entity.";
-}
-
-#[derive(Deserialize, JsonSchema)]
 pub struct Recall {
-    /// Search query for relevant entities.
-    pub query: String,
-    /// Optional entity type filter.
-    pub entity_type: Option<String>,
-    /// Maximum number of results (default: 10).
+    /// Batch of search queries to run against memory.
+    pub queries: Vec<String>,
+    /// Maximum number of results per query (default: 5).
     pub limit: Option<u32>,
 }
 
 impl ToolDescription for Recall {
     const DESCRIPTION: &'static str =
-        "Search memory entities by query, optionally filtered by type.";
+        "Search memory by one or more queries. Returns relevant entities and graph connections.";
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct Relate {
+pub struct Extract {
+    /// Entities to upsert.
+    pub entities: Vec<ExtractEntity>,
+    /// Relations to upsert.
+    pub relations: Vec<ExtractRelation>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ExtractEntity {
+    /// Human-readable key/name for the entity.
+    pub key: String,
+    /// Value/content to store.
+    pub value: String,
+    /// Optional entity type (e.g. "fact", "person", "preference").
+    pub entity_type: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ExtractRelation {
     /// Key of the source entity.
-    pub source_key: String,
-    /// Relation type (e.g. "knows", "prefers", "related_to", "caused_by").
+    pub source: String,
+    /// Relation label (e.g. "knows", "prefers", "related_to").
     pub relation: String,
     /// Key of the target entity.
-    pub target_key: String,
+    pub target: String,
 }
 
-impl ToolDescription for Relate {
-    const DESCRIPTION: &'static str = "Create a directed relation between two entities by key.";
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct Connections {
-    /// Key of the entity to find connections for.
-    pub key: String,
-    /// Optional relation type filter.
-    pub relation: Option<String>,
-    /// Direction: "outgoing" (default), "incoming", or "both".
-    pub direction: Option<String>,
-    /// Maximum number of results (default: config value, max: 100).
-    pub limit: Option<u32>,
-}
-
-impl ToolDescription for Connections {
+impl ToolDescription for Extract {
     const DESCRIPTION: &'static str =
-        "Find entities connected to a given entity (1-hop graph traversal).";
+        "Batch upsert entities and relations into memory. Internal tool for extraction.";
 }
 
-#[derive(Deserialize, JsonSchema)]
-pub struct Compact {}
-
-impl ToolDescription for Compact {
-    const DESCRIPTION: &'static str = "Trigger context compaction. Summarizes the conversation, stores a journal entry, and replaces history with the summary.";
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct Distill {
-    /// Semantic search query over journal entries.
-    pub query: String,
-    /// Maximum number of results (default: 5).
-    pub limit: Option<u32>,
-}
-
-impl ToolDescription for Distill {
-    const DESCRIPTION: &'static str = "Search journal entries by semantic similarity. Returns past conversation summaries. Use `remember`/`relate` to extract durable facts.";
-}
-
-/// Build proto `ToolDef` messages for all memory tools.
+/// Build agent-visible tool defs: only `recall`.
 pub fn tool_defs() -> Vec<ToolDef> {
-    let tools = [
-        Remember::as_tool(),
-        Recall::as_tool(),
-        Relate::as_tool(),
-        Connections::as_tool(),
-        Compact::as_tool(),
-        Distill::as_tool(),
-    ];
-    tools
+    let t = Recall::as_tool();
+    vec![ToolDef {
+        name: t.name.to_string(),
+        description: t.description.to_string(),
+        parameters: serde_json::to_vec(&t.parameters).expect("schema serialization"),
+        strict: t.strict,
+    }]
+}
+
+/// Build all tool defs including internal ones (for WHS RegisterTools response).
+///
+/// The daemon needs `extract` in the ToolSchemas so `infer_fulfill` can
+/// provide it to the extraction LLM.
+pub fn all_tool_defs() -> Vec<ToolDef> {
+    [Recall::as_tool(), Extract::as_tool()]
         .into_iter()
         .map(|t| ToolDef {
             name: t.name.to_string(),

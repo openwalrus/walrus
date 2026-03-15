@@ -2,12 +2,13 @@
 
 use crate::model::{Message, Model, Request};
 
-const COMPACT_PROMPT: &str = include_str!("../../prompts/compact.md");
+pub(crate) const COMPACT_PROMPT: &str = include_str!("../../prompts/compact.md");
 
 impl<M: Model> super::Agent<M> {
     /// Summarize the conversation history using the LLM.
     ///
-    /// Sends the history with the compact prompt as system message.
+    /// Builds the base compact prompt, lets the `compact_hook` (if any) enrich
+    /// it, then sends the history with the enriched prompt as system message.
     /// Returns the summary text, or `None` if the model produces no content.
     pub(crate) async fn compact(&self, history: &[Message]) -> Option<String> {
         let model_name = self
@@ -16,8 +17,13 @@ impl<M: Model> super::Agent<M> {
             .clone()
             .unwrap_or_else(|| self.model.active_model());
 
+        let mut prompt = COMPACT_PROMPT.to_owned();
+        if let Some(ref hook) = self.compact_hook {
+            hook.on_compact(&self.config.name, &mut prompt);
+        }
+
         let mut messages = Vec::with_capacity(2 + history.len());
-        messages.push(Message::system(COMPACT_PROMPT));
+        messages.push(Message::system(&prompt));
         // Include the agent's system prompt as identity context so the
         // compaction LLM preserves <self>, <identity>, and <profile> info.
         if !self.config.system_prompt.is_empty() {
@@ -36,5 +42,23 @@ impl<M: Model> super::Agent<M> {
                 None
             }
         }
+    }
+
+    /// Estimate the token count of conversation history.
+    ///
+    /// Uses a simple heuristic: ~4 characters per token. Counts content,
+    /// reasoning_content, and tool call arguments.
+    pub(crate) fn estimate_tokens(history: &[Message]) -> usize {
+        let total_chars: usize = history
+            .iter()
+            .map(|m| {
+                let mut chars = m.content.len() + m.reasoning_content.len();
+                for tc in &m.tool_calls {
+                    chars += tc.function.arguments.len();
+                }
+                chars
+            })
+            .sum();
+        total_chars / 4
     }
 }

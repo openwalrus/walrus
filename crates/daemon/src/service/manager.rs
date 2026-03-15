@@ -3,6 +3,7 @@
 use crate::service::config::{ServiceConfig, ServiceKind};
 use anyhow::{Context, Result, bail};
 use compact_str::CompactString;
+use model::ProviderManager;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -15,16 +16,17 @@ use tokio::{
     time,
 };
 use wcore::{
-    AgentConfig, Hook, ToolRegistry,
-    model::{Message, Role, Tool},
+    AgentConfig, CompactHook, Hook, ToolRegistry,
+    model::{Message, Model, Request, Role, Tool},
     protocol::{
         PROTOCOL_VERSION,
         codec::{read_message, write_message},
         whs::{
-            Capability, SimpleMessage, ToolsList, WhsBeforeRun, WhsBeforeRunResult, WhsBuildAgent,
-            WhsBuildAgentResult, WhsCompact, WhsCompactResult, WhsConfigure, WhsConfigured,
-            WhsError, WhsEvent, WhsHello, WhsReady, WhsRegisterTools, WhsRequest, WhsResponse,
-            WhsToolCall, WhsToolResult, WhsToolSchemas, capability, whs_request, whs_response,
+            Capability, SimpleMessage, ToolsList, WhsAfterRun, WhsBeforeRun, WhsBeforeRunResult,
+            WhsBuildAgent, WhsBuildAgentResult, WhsCompact, WhsCompactResult, WhsConfigure,
+            WhsConfigured, WhsError, WhsEvent, WhsHello, WhsInferResult, WhsReady,
+            WhsRegisterTools, WhsRequest, WhsResponse, WhsToolCall, WhsToolResult, WhsToolSchemas,
+            capability, whs_request, whs_response,
         },
     },
 };
@@ -77,9 +79,18 @@ pub struct ServiceRegistry {
     pub compact: Vec<Arc<ServiceHandle>>,
     /// Services that declared EventObserver capability.
     pub event_observer: Vec<Arc<ServiceHandle>>,
+    /// Services that declared AfterRun capability.
+    pub after_run: Vec<Arc<ServiceHandle>>,
+    /// Model for Infer fulfillment (set after runtime construction).
+    model: Option<ProviderManager>,
 }
 
 impl ServiceRegistry {
+    /// Set the model for Infer fulfillment.
+    pub fn set_model(&mut self, model: ProviderManager) {
+        self.model = Some(model);
+    }
+
     /// Fire-and-forget event to all EventObserver services.
     pub async fn fire_event(&self, agent: &str, event: &str) {
         let req = WhsRequest {
@@ -186,7 +197,8 @@ impl Hook for ServiceRegistry {
         config
     }
 
-    fn on_compact(&self, prompt: &mut String) {
+    fn on_compact(&self, agent: &str, prompt: &mut String) {
+        let agent = agent.to_owned();
         let prompt_clone = prompt.clone();
         let additions = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
@@ -194,7 +206,7 @@ impl Hook for ServiceRegistry {
                 for handle in &self.compact {
                     let req = WhsRequest {
                         msg: Some(whs_request::Msg::Compact(WhsCompact {
-                            agent: String::new(),
+                            agent: agent.clone(),
                             prompt: prompt_clone.clone(),
                         })),
                     };
@@ -293,9 +305,254 @@ impl Hook for ServiceRegistry {
         })
     }
 
+    fn on_after_run(&self, agent: &str, history: &[Message], system_prompt: &str) {
+        if self.after_run.is_empty() {
+            return;
+        }
+        let simple_history: Vec<SimpleMessage> = history
+            .iter()
+            .map(|m| SimpleMessage {
+                role: match m.role {
+                    Role::User => "user".to_owned(),
+                    Role::Assistant => "assistant".to_owned(),
+                    Role::System => "system".to_owned(),
+                    Role::Tool => "tool".to_owned(),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+        let agent = agent.to_owned();
+        let system_prompt = system_prompt.to_owned();
+        let model = self.model.clone();
+        let all_tool_schemas = &self.tool_schemas;
+        let all_tool_handles = &self.tools;
+
+        for handle in &self.after_run {
+            let handle = Arc::clone(handle);
+            // Filter tools to only those owned by this service.
+            let service_tools: Arc<Vec<Tool>> = Arc::new(
+                all_tool_schemas
+                    .iter()
+                    .filter(|t| {
+                        all_tool_handles
+                            .get(t.name.as_str())
+                            .is_some_and(|h| h.name == handle.name)
+                    })
+                    .cloned()
+                    .collect(),
+            );
+            let tool_handles: Arc<BTreeMap<String, Arc<ServiceHandle>>> = Arc::new(
+                all_tool_handles
+                    .iter()
+                    .filter(|(_, h)| h.name == handle.name)
+                    .map(|(k, v)| (k.clone(), Arc::clone(v)))
+                    .collect(),
+            );
+            let agent = agent.clone();
+            let history = simple_history.clone();
+            let system_prompt = system_prompt.clone();
+            let model = model.clone();
+            tokio::spawn(async move {
+                let req = WhsRequest {
+                    msg: Some(whs_request::Msg::AfterRun(WhsAfterRun {
+                        agent: agent.clone(),
+                        history,
+                        system_prompt: system_prompt.clone(),
+                    })),
+                };
+                match time::timeout(std::time::Duration::from_secs(30), handle.request(&req)).await
+                {
+                    Ok(Ok(resp)) => match resp.msg {
+                        Some(whs_response::Msg::AfterRunResult(_)) => {
+                            tracing::debug!(service = %handle.name, "AfterRun complete");
+                        }
+                        Some(whs_response::Msg::InferRequest(infer_req)) => {
+                            if let Some(ref model) = model {
+                                if let Err(e) = infer_fulfill(
+                                    model,
+                                    &handle,
+                                    &agent,
+                                    &system_prompt,
+                                    infer_req.messages,
+                                    &service_tools,
+                                    &tool_handles,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(
+                                        service = %handle.name,
+                                        error = %e,
+                                        "Infer fulfillment failed"
+                                    );
+                                }
+                            } else {
+                                tracing::warn!(
+                                    service = %handle.name,
+                                    "Infer requested but no model available"
+                                );
+                            }
+                        }
+                        Some(whs_response::Msg::Error(WhsError { message })) => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                error = %message,
+                                "AfterRun service error"
+                            );
+                        }
+                        other => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                "unexpected AfterRun response: {other:?}"
+                            );
+                        }
+                    },
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            service = %handle.name, error = %e,
+                            "AfterRun dispatch failed"
+                        );
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            service = %handle.name,
+                            "AfterRun dispatch timeout"
+                        );
+                    }
+                }
+            });
+        }
+    }
+
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
         tools.insert_all(self.tool_schemas.clone());
     }
+}
+
+impl CompactHook for ServiceRegistry {
+    fn on_compact(&self, agent: &str, prompt: &mut String) {
+        <Self as Hook>::on_compact(self, agent, prompt);
+    }
+}
+
+/// Infer fulfillment: mini agent loop using the host agent's model.
+///
+/// Takes the service's messages, builds an LLM request with the host agent's
+/// model and system prompt, auto-attaches service's tools, loops until final text.
+/// Tool calls are dispatched back to the owning service.
+async fn infer_fulfill(
+    model: &ProviderManager,
+    handle: &ServiceHandle,
+    agent: &str,
+    system_prompt: &str,
+    initial_messages: Vec<SimpleMessage>,
+    service_tools: &[Tool],
+    tool_handles: &BTreeMap<String, Arc<ServiceHandle>>,
+) -> Result<()> {
+    let model_name = model.active_model();
+
+    // Convert SimpleMessage → Message.
+    // If the service provides its own system message, use that instead of
+    // the host agent's system prompt to avoid conflicting instructions.
+    let has_system = initial_messages.iter().any(|m| m.role == "system");
+    let mut messages: Vec<Message> = Vec::with_capacity(1 + initial_messages.len());
+    if !has_system && !system_prompt.is_empty() {
+        messages.push(Message::system(system_prompt));
+    }
+    for sm in &initial_messages {
+        let msg = match sm.role.as_str() {
+            "assistant" => Message::assistant(&sm.content, None, None),
+            "system" => Message::system(&sm.content),
+            _ => Message::user(&sm.content),
+        };
+        messages.push(msg);
+    }
+
+    // Collect only the service's tools (tools owned by any service handle).
+    let tools: Vec<Tool> = service_tools.to_vec();
+
+    const MAX_INFER_ITERATIONS: usize = 10;
+    for _ in 0..MAX_INFER_ITERATIONS {
+        let request = Request::new(model_name.clone())
+            .with_messages(messages.clone())
+            .with_tools(tools.clone());
+
+        let response = model.send(&request).await.context("infer LLM call")?;
+        let msg = response
+            .message()
+            .ok_or_else(|| anyhow::anyhow!("no message in LLM response"))?;
+
+        let tool_calls = msg.tool_calls.to_vec();
+        messages.push(msg);
+
+        if tool_calls.is_empty() {
+            // Final text response — extract content and send InferResult.
+            let content = messages
+                .last()
+                .map(|m| m.content.clone())
+                .unwrap_or_default();
+            let result_req = WhsRequest {
+                msg: Some(whs_request::Msg::InferResult(WhsInferResult { content })),
+            };
+            // Read the final response from the service after sending InferResult.
+            let _final_resp = time::timeout(
+                std::time::Duration::from_secs(30),
+                handle.request(&result_req),
+            )
+            .await
+            .context("InferResult timeout")?
+            .context("InferResult send")?;
+            tracing::debug!(service = %handle.name, %agent, "Infer fulfillment complete");
+            return Ok(());
+        }
+
+        // Dispatch tool calls back to the owning service.
+        for tc in &tool_calls {
+            let tool_name = tc.function.name.as_str();
+            let tool_handle = tool_handles
+                .get(tool_name)
+                .ok_or_else(|| anyhow::anyhow!("tool '{tool_name}' not in registry"))?;
+            let tool_req = WhsRequest {
+                msg: Some(whs_request::Msg::ToolCall(WhsToolCall {
+                    name: tool_name.to_owned(),
+                    args: tc.function.arguments.clone(),
+                    agent: agent.to_owned(),
+                    task_id: None,
+                })),
+            };
+            let tool_resp = time::timeout(
+                std::time::Duration::from_secs(30),
+                tool_handle.request(&tool_req),
+            )
+            .await
+            .context("tool call timeout")?
+            .context("tool call")?;
+            let result = match tool_resp.msg {
+                Some(whs_response::Msg::ToolResult(WhsToolResult { result })) => result,
+                Some(whs_response::Msg::Error(WhsError { message })) => {
+                    format!("service error: {message}")
+                }
+                other => format!("unexpected tool response: {other:?}"),
+            };
+            messages.push(Message::tool(result, tc.id.clone()));
+        }
+    }
+
+    tracing::warn!(
+        service = %handle.name,
+        "Infer hit max iterations ({MAX_INFER_ITERATIONS})"
+    );
+    // Send an InferResult so the service doesn't deadlock waiting for a response.
+    let result_req = WhsRequest {
+        msg: Some(whs_request::Msg::InferResult(WhsInferResult {
+            content: format!("infer fulfillment exceeded max iterations ({MAX_INFER_ITERATIONS})"),
+        })),
+    };
+    let _ = time::timeout(
+        std::time::Duration::from_secs(5),
+        handle.request(&result_req),
+    )
+    .await;
+    Ok(())
 }
 
 /// Entry tracking a spawned service process.
@@ -574,6 +831,12 @@ impl ServiceManager {
                 }
                 Some(capability::Cap::EventObserver(_)) => {
                     registry.event_observer.push(Arc::clone(handle));
+                }
+                Some(capability::Cap::AfterRun(_)) => {
+                    registry.after_run.push(Arc::clone(handle));
+                }
+                Some(capability::Cap::Infer(_)) => {
+                    // Response-side capability — not stored in registry.
                 }
                 None => {}
             }

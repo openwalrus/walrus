@@ -40,7 +40,7 @@ impl Daemon {
             tcp_join.await?;
             anyhow::Ok(())
         });
-        if let Err(_) = grace.await {
+        if grace.await.is_err() {
             tracing::warn!("graceful shutdown timed out, forcing exit");
         }
         let _ = std::fs::remove_file(socket_path);

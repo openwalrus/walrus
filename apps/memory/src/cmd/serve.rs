@@ -1,27 +1,20 @@
 //! WHS serve command — run walrus-memory as a hook service over UDS.
 
-use crate::{
-    config::MemoryConfig,
-    dispatch::{MemoryService, truncate_utf8},
-    lance::Direction,
-    tool,
-};
+use crate::{config::MemoryConfig, dispatch::MemoryService, tool};
 use std::path::Path;
-use wcore::{
-    agent::AsTool,
-    model::Tool,
-    protocol::{
-        PROTOCOL_VERSION,
-        codec::{read_message, write_message},
-        whs::{
-            BeforeRunCap, BuildAgentCap, Capability, CompactCap, EventObserverCap, QueryCap,
-            SimpleMessage, ToolDef, ToolsList, WhsBeforeRunResult, WhsBuildAgentResult,
-            WhsCompactResult, WhsConfigured, WhsError, WhsReady, WhsRequest, WhsResponse,
-            WhsServiceQueryResult, WhsToolResult, WhsToolSchemas, capability, whs_request,
-            whs_response,
-        },
+use wcore::protocol::{
+    PROTOCOL_VERSION,
+    codec::{read_message, write_message},
+    whs::{
+        AfterRunCap, BeforeRunCap, BuildAgentCap, Capability, CompactCap, EventObserverCap,
+        InferCap, QueryCap, SimpleMessage, ToolsList, WhsAfterRunResult, WhsBeforeRunResult,
+        WhsBuildAgentResult, WhsCompactResult, WhsConfigured, WhsError, WhsInferRequest, WhsReady,
+        WhsRequest, WhsResponse, WhsServiceQueryResult, WhsToolResult, WhsToolSchemas, capability,
+        whs_request, whs_response,
     },
 };
+
+const EXTRACT_PROMPT: &str = include_str!("../../prompts/extract.md");
 
 pub async fn run(socket: &Path) -> anyhow::Result<()> {
     // Clean up stale socket from a previous run.
@@ -42,15 +35,7 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
         other => anyhow::bail!("expected Hello, got {other:?}"),
     }
 
-    let tool_names = vec![
-        "remember".to_owned(),
-        "recall".to_owned(),
-        "relate".to_owned(),
-        "connections".to_owned(),
-        "compact".to_owned(),
-        "distill".to_owned(),
-        "__journal__".to_owned(),
-    ];
+    let tool_names = vec!["recall".to_owned(), "extract".to_owned()];
 
     let ready = WhsResponse {
         msg: Some(whs_response::Msg::Ready(WhsReady {
@@ -74,6 +59,12 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
                 },
                 Capability {
                     cap: Some(capability::Cap::EventObserver(EventObserverCap {})),
+                },
+                Capability {
+                    cap: Some(capability::Cap::AfterRun(AfterRunCap {})),
+                },
+                Capability {
+                    cap: Some(capability::Cap::Infer(InferCap {})),
                 },
             ],
         })),
@@ -111,8 +102,9 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
     let memory_dir = wcore::paths::CONFIG_DIR.join("memory");
     let svc = MemoryService::open(&memory_dir, &config).await?;
 
-    // Build tool defs with dynamic descriptions for remember and relate.
-    let tools = build_tool_defs(&svc);
+    // All tools including internal `extract` (needed by infer_fulfill).
+    // Agent-visible filtering happens via BuildAgent response (tool_defs).
+    let tools = tool::all_tool_defs();
     let schemas = WhsResponse {
         msg: Some(whs_response::Msg::ToolSchemas(WhsToolSchemas { tools })),
     };
@@ -149,16 +141,35 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
                 }
             }
             Some(whs_request::Msg::BeforeRun(br)) => {
-                let result = handle_before_run(&svc, &br.agent, &br.history).await;
+                let result = handle_before_run(&svc, &br.history).await;
                 WhsResponse {
                     msg: Some(whs_response::Msg::BeforeRunResult(result)),
                 }
             }
-            Some(whs_request::Msg::Compact(_c)) => WhsResponse {
-                msg: Some(whs_response::Msg::CompactResult(WhsCompactResult {
-                    addition: String::new(),
-                })),
-            },
+            Some(whs_request::Msg::AfterRun(ar)) => {
+                let messages = build_extraction_messages(&ar.history);
+                // Respond with InferRequest — daemon runs extraction LLM loop,
+                // dispatching recall/extract tool calls back to this service.
+                WhsResponse {
+                    msg: Some(whs_response::Msg::InferRequest(WhsInferRequest {
+                        messages,
+                    })),
+                }
+            }
+            Some(whs_request::Msg::InferResult(_)) => {
+                // Infer complete — extraction tool calls already dispatched.
+                WhsResponse {
+                    msg: Some(whs_response::Msg::AfterRunResult(WhsAfterRunResult {})),
+                }
+            }
+            Some(whs_request::Msg::Compact(c)) => {
+                let addition = handle_compact(&svc, &c.agent).await;
+                WhsResponse {
+                    msg: Some(whs_response::Msg::CompactResult(WhsCompactResult {
+                        addition,
+                    })),
+                }
+            }
             Some(whs_request::Msg::ServiceQuery(sq)) => {
                 let result = handle_service_query(&svc, &sq.query).await;
                 WhsResponse {
@@ -203,61 +214,19 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
     }
 }
 
-/// Build tool defs with dynamic descriptions for remember and relate.
-fn build_tool_defs(svc: &MemoryService) -> Vec<ToolDef> {
-    let remember = Tool {
-        description: format!(
-            "Store a memory entity. Types: {}.",
-            svc.allowed_entities.join(", ")
-        )
-        .into(),
-        ..tool::Remember::as_tool()
-    };
-    let relate = Tool {
-        description: format!(
-            "Create a directed relation between two entities by key. Relations: {}.",
-            svc.allowed_relations.join(", ")
-        )
-        .into(),
-        ..tool::Relate::as_tool()
-    };
-    let static_tools = [
-        tool::Recall::as_tool(),
-        tool::Connections::as_tool(),
-        tool::Compact::as_tool(),
-        tool::Distill::as_tool(),
-    ];
-
-    let mut defs = Vec::with_capacity(6);
-    for t in [remember, relate].into_iter().chain(static_tools) {
-        defs.push(ToolDef {
-            name: t.name.to_string(),
-            description: t.description.to_string(),
-            parameters: serde_json::to_vec(&t.parameters).expect("schema serialization"),
-            strict: t.strict,
-        });
-    }
-    defs
-}
-
 /// Dispatch a tool call to the appropriate MemoryService method.
-async fn dispatch_tool(svc: &MemoryService, name: &str, args: &str, agent: &str) -> String {
+async fn dispatch_tool(svc: &MemoryService, name: &str, args: &str, _agent: &str) -> String {
     match name {
-        "remember" => svc.dispatch_remember(args).await,
         "recall" => svc.dispatch_recall(args).await,
-        "relate" => svc.dispatch_relate(args).await,
-        "connections" => svc.dispatch_connections(args).await,
-        "compact" => svc.dispatch_compact(agent).await,
-        "distill" => svc.dispatch_distill(args, agent).await,
-        "__journal__" => svc.dispatch_journal(args, agent).await,
+        "extract" => svc.dispatch_extract(args).await,
         _ => format!("unknown tool: {name}"),
     }
 }
 
 /// Handle the BuildAgent lifecycle event.
 ///
-/// Builds prompt additions: `<self>`, `<identity>`, `<profile>`, `<journal>`
-/// blocks plus the memory prompt. Returns tools for registration.
+/// Builds prompt additions: `<self>`, `<identity>`, `<profile>` blocks
+/// plus the memory prompt. Returns agent-visible tools only.
 async fn handle_build_agent(
     svc: &MemoryService,
     name: &str,
@@ -296,39 +265,20 @@ async fn handle_build_agent(
         buf.push_str("</profile>");
     }
 
-    // Inject recent journal entries (agent-scoped).
-    if let Ok(journals) = lance.recent_journals(name, 3).await
-        && !journals.is_empty()
-    {
-        buf.push_str("\n\n<journal>\n");
-        for j in &journals {
-            let ts = chrono::DateTime::from_timestamp(j.created_at as i64, 0)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                .unwrap_or_else(|| j.created_at.to_string());
-            let summary = truncate_utf8(&j.summary, 500);
-            buf.push_str(&format!("- **{ts}**: {summary}\n"));
-        }
-        buf.push_str("</journal>");
-    }
-
     // Append memory prompt.
     buf.push_str(&format!("\n\n{}", MemoryService::memory_prompt()));
 
     WhsBuildAgentResult {
         prompt_addition: buf,
-        tools: build_tool_defs(svc),
+        tools: tool::tool_defs(),
     }
 }
 
 /// Handle the BeforeRun lifecycle event.
 ///
-/// Auto-recalls relevant entities, connections, and journal entries based on
-/// the last user message via semantic search.
-async fn handle_before_run(
-    svc: &MemoryService,
-    agent: &str,
-    history: &[SimpleMessage],
-) -> WhsBeforeRunResult {
+/// Auto-recalls relevant entities and graph connections based on
+/// the last user message via unified semantic search.
+async fn handle_before_run(svc: &MemoryService, history: &[SimpleMessage]) -> WhsBeforeRunResult {
     if !svc.auto_recall {
         return WhsBeforeRunResult {
             messages: Vec::new(),
@@ -350,62 +300,16 @@ async fn handle_before_run(
         }
     };
 
-    let lance = &svc.lance;
-    let mut lines = Vec::new();
-
-    // Embed the user message once; reuse for entities + journals.
-    let vector = match svc.embed(&query).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("auto-recall embed failed: {e}");
+    let result = match svc.unified_search(&query, 5).await {
+        Some(r) => r,
+        None => {
             return WhsBeforeRunResult {
                 messages: Vec::new(),
             };
         }
     };
 
-    // Semantic entity search.
-    let entities = lance
-        .search_entities_semantic(&vector, None, 5)
-        .await
-        .unwrap_or_default();
-    for e in &entities {
-        lines.push(format!("[{}] {}: {}", e.entity_type, e.key, e.value));
-    }
-
-    // 1-hop connections for top-3 matched entities.
-    for e in entities.iter().take(3) {
-        if let Ok(rels) = lance
-            .find_connections(&e.id, None, Direction::Both, 5)
-            .await
-        {
-            for r in &rels {
-                let line = format!("{} -[{}]-> {}", r.source, r.relation, r.target);
-                if !lines.contains(&line) {
-                    lines.push(line);
-                }
-            }
-        }
-    }
-
-    // Semantic journal search (reuse same embedding vector).
-    if let Ok(journals) = lance.search_journals(&vector, agent, 2).await {
-        for j in &journals {
-            let ts = chrono::DateTime::from_timestamp(j.created_at as i64, 0)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                .unwrap_or_else(|| j.created_at.to_string());
-            let summary = truncate_utf8(&j.summary, 300);
-            lines.push(format!("[journal {ts}] {summary}"));
-        }
-    }
-
-    if lines.is_empty() {
-        return WhsBeforeRunResult {
-            messages: Vec::new(),
-        };
-    }
-
-    let block = format!("<recall>\n{}\n</recall>", lines.join("\n"));
+    let block = format!("<recall>\n{result}\n</recall>");
     WhsBeforeRunResult {
         messages: vec![SimpleMessage {
             role: "user".to_owned(),
@@ -537,4 +441,49 @@ async fn handle_service_query(svc: &MemoryService, query: &str) -> String {
         }
         _ => format!("unknown op: '{op}'. supported: entities, relations, journals, search"),
     }
+}
+
+/// Handle the Compact lifecycle event — inject recent journals into the prompt.
+async fn handle_compact(svc: &MemoryService, agent: &str) -> String {
+    let mut addition = String::new();
+    if let Ok(journals) = svc.lance.recent_journals(agent, 3).await
+        && !journals.is_empty()
+    {
+        addition.push_str("\n\nRecent conversation journals (preserve key context):\n");
+        for j in &journals {
+            let ts = chrono::DateTime::from_timestamp(j.created_at as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| j.created_at.to_string());
+            addition.push_str(&format!("- [{ts}] {}\n", j.summary));
+        }
+    }
+    addition
+}
+
+/// Build extraction messages for the Infer LLM from conversation history.
+///
+/// Returns `[system(extract prompt), user(conversation summary)]` for the
+/// daemon to proxy through the host agent's model.
+fn build_extraction_messages(history: &[SimpleMessage]) -> Vec<SimpleMessage> {
+    // Build a condensed conversation for the extraction LLM.
+    let mut conversation = String::new();
+    for msg in history {
+        let role = msg.role.as_str();
+        // Skip auto-recall injections and tool messages.
+        if msg.content.starts_with("<recall>") || role == "tool" {
+            continue;
+        }
+        conversation.push_str(&format!("[{role}] {}\n\n", msg.content));
+    }
+
+    vec![
+        SimpleMessage {
+            role: "system".to_owned(),
+            content: EXTRACT_PROMPT.to_owned(),
+        },
+        SimpleMessage {
+            role: "user".to_owned(),
+            content: format!("Extract memories from this conversation:\n\n{conversation}"),
+        },
+    ]
 }

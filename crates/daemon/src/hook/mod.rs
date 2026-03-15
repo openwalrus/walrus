@@ -15,7 +15,7 @@ use crate::{
 use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
-use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry};
+use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
 
 pub mod mcp;
 pub mod os;
@@ -42,7 +42,7 @@ pub struct DaemonHook {
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
     /// External hook service registry (tools + queries).
-    pub(crate) registry: Option<ServiceRegistry>,
+    pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
 
 /// OS tool names — bypass permission check when running in sandbox mode.
@@ -76,7 +76,7 @@ impl DaemonHook {
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
-        registry: Option<ServiceRegistry>,
+        registry: Option<Arc<ServiceRegistry>>,
     ) -> Self {
         Self {
             skills,
@@ -294,9 +294,9 @@ impl Hook for DaemonHook {
         config
     }
 
-    fn on_compact(&self, prompt: &mut String) {
+    fn on_compact(&self, agent: &str, prompt: &mut String) {
         if let Some(ref registry) = self.registry {
-            registry.on_compact(prompt);
+            registry.on_compact(agent, prompt);
         }
     }
 
@@ -318,6 +318,12 @@ impl Hook for DaemonHook {
         tools.insert_all(task::tool::tools());
         if let Some(ref registry) = self.registry {
             registry.on_register_tools(tools).await;
+        }
+    }
+
+    fn on_after_run(&self, agent: &str, history: &[Message], system_prompt: &str) {
+        if let Some(ref registry) = self.registry {
+            registry.on_after_run(agent, history, system_prompt);
         }
     }
 
