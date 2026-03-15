@@ -71,7 +71,7 @@ GPL-3.0
 [crates]: https://crates.io/crates/openwalrus
 [docs-badge]: https://img.shields.io/badge/docs-openwalrus.xyz-blue
 [docs]: https://openwalrus.xyz/docs/walrus
-[discord-badge]: https://img.shields.io/discord/1234567890?label=discord
+[discord-badge]: https://img.shields.io/discord/1481168707391852659?label=discord
 [discord]: https://discord.gg/XxyxfNX3Fn
 
 <!-- docs -->
