@@ -1,6 +1,8 @@
 # Walrus
 
-[![Crates.io](https://img.shields.io/crates/v/openwalrus.svg)](https://crates.io/crates/openwalrus)
+[![Crates.io][crates-badge]][crates]
+[![Docs][docs-badge]][docs]
+[![Discord][discord-badge]][discord]
 
 **The composable agent runtime.** Compact daemon core. Memory, channels,
 tools — all hooks. Use what you need, skip what you don't.
@@ -9,11 +11,7 @@ tools — all hooks. Use what you need, skip what you don't.
 curl -fsSL https://openwalrus.xyz/install.sh | sh
 ```
 
-Or install with Cargo:
-
-```bash
-cargo install openwalrus
-```
+Or `cargo install openwalrus`. See the [installation guide][install] for details.
 
 ## Quick Start
 
@@ -25,65 +23,71 @@ walrus daemon
 walrus attach
 ```
 
-Configure in `~/.openwalrus/walrus.toml`:
+Point it at any LLM — [Ollama][providers], [OpenAI, Anthropic, DeepSeek][remote], or any OpenAI-compatible API.
 
 ```toml
 [walrus]
-model = "qwen3"
+model = "qwen3:4b"
 
-# Ollama (no API key needed)
 [model.qwen3]
 base_url = "http://localhost:11434/v1"
-
-# Or a cloud provider
-[model.deepseek-chat]
-api_key = "${DEEPSEEK_API_KEY}"
 ```
+
+Full config reference: [configuration][config].
 
 ## How It Works
 
-Walrus is a daemon that runs agents and dispatches tools. That's the core —
-everything else plugs in via **Walrus Hook Services (WHS)**.
+Walrus is a daemon that runs [agents] and dispatches tools. The daemon
+ships with built-in [tools] (file I/O, shell, task delegation),
+[MCP][mcp] server integration, and [skills] (Markdown prompt files).
 
-| Capability | How it works |
-|---|---|
-| Memory | WHS — graph memory with LanceDB + semantic embeddings |
-| Search | WHS — meta-search aggregator (DuckDuckGo, Wikipedia) |
-| Channels | Gateway adapters — Telegram, Discord |
-| Tools | Built-in file I/O, shell, MCP servers, task delegation |
-| Skills | Markdown prompt files — no code needed |
+Heavier capabilities live outside the daemon as [WHS services][services] —
+managed child processes you add or remove in config:
 
-Services are managed child processes. Add them in config, remove what you
-don't need. The daemon stays small.
+| Service            | What it does                                 |
+| ------------------ | -------------------------------------------- |
+| [Memory][memory]   | Graph memory — LanceDB + semantic embeddings |
+| [Search][search]   | Meta-search aggregator                       |
+| [Gateway][gateway] | Telegram, Discord adapters                   |
 
-```toml
-[services.memory]
-command = "wmemory"
+The daemon stays small. Services scale independently.
 
-[services.search]
-command = "wsearch"
-```
+## Learn More
 
-## Providers
-
-Any OpenAI-compatible API or Anthropic. Ollama, vLLM, OpenAI, DeepSeek,
-Grok — any model name works.
-
-```toml
-# OpenAI
-[model.gpt-4o]
-api_key = "${OPENAI_API_KEY}"
-
-# Anthropic
-[model.claude-sonnet-4-20250514]
-api_key = "${ANTHROPIC_API_KEY}"
-standard = "anthropic"
-
-# Self-hosted
-[model.local-llama]
-base_url = "http://localhost:8000/v1"
-```
+- [Quickstart][quickstart] — first agent in 2 minutes
+- [Configuration][config] — walrus.toml reference
+- [Providers][providers] — connect any LLM
+- [WHS Services][services] — how hooks work
+- [Architecture][runtime] — runtime, event loop, hooks
+- [Why we built OpenWalrus][blog]
 
 ## License
 
 GPL-3.0
+
+<!-- badges -->
+
+[crates-badge]: https://img.shields.io/crates/v/openwalrus.svg
+[crates]: https://crates.io/crates/openwalrus
+[docs-badge]: https://img.shields.io/badge/docs-openwalrus.xyz-blue
+[docs]: https://openwalrus.xyz/docs/walrus
+[discord-badge]: https://img.shields.io/discord/1234567890?label=discord
+[discord]: https://discord.gg/5rU22pMEgE
+
+<!-- docs -->
+
+[install]: https://openwalrus.xyz/docs/walrus/getting-started/installation
+[quickstart]: https://openwalrus.xyz/docs/walrus/getting-started/quickstart
+[config]: https://openwalrus.xyz/docs/walrus/getting-started/configuration
+[providers]: https://openwalrus.xyz/docs/walrus/models/providers
+[remote]: https://openwalrus.xyz/docs/walrus/models/remote
+[agents]: https://openwalrus.xyz/docs/development/concepts/agents
+[runtime]: https://openwalrus.xyz/docs/development/concepts/runtime
+[services]: https://openwalrus.xyz/docs/walrus/services
+[memory]: https://openwalrus.xyz/docs/walrus/services/memory
+[search]: https://openwalrus.xyz/docs/walrus/services/search
+[gateway]: https://openwalrus.xyz/docs/walrus/services/gateway
+[tools]: https://openwalrus.xyz/docs/development/tools/built-in
+[mcp]: https://openwalrus.xyz/docs/development/tools/mcp
+[skills]: https://openwalrus.xyz/docs/development/tools/skills
+[blog]: https://openwalrus.xyz/blog/why-we-built-openwalrus

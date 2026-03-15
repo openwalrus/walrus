@@ -3,7 +3,8 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/openwalrus/walrus/main/install.sh | sh
-#   curl -fsSL ... | sh -s -- --yes      # non-interactive (prebuilt binary)
+#   curl -fsSL ... | sh -s -- --yes         # non-interactive (prebuilt binary)
+#   curl -fsSL ... | sh -s -- --services    # also install WHS services
 #
 # Environment variables:
 #   WALRUS_INSTALL_DIR  Override binary installation directory
@@ -14,7 +15,12 @@ REPO="openwalrus/walrus"
 BINARY_NAME="walrus"
 CARGO_CRATE="openwalrus"
 AUTO_YES=0
+INSTALL_SERVICES=0
 TMPDIR_PATH=""
+
+# WHS service binaries and their cargo crate names.
+SERVICE_BINS="walrus-memory walrus-search walrus-telegram walrus-discord"
+SERVICE_CRATES="walrus-memory walrus-search walrus-gateway"
 
 # --- Utility functions ---
 
@@ -78,6 +84,9 @@ parse_args() {
             --yes | -y)
                 AUTO_YES=1
                 ;;
+            --services | -s)
+                INSTALL_SERVICES=1
+                ;;
             --help | -h)
                 cat <<'EOF'
 Install walrus — composable primitives for agentic workflows in Rust.
@@ -86,8 +95,9 @@ Usage:
   install.sh [OPTIONS]
 
 Options:
-  -y, --yes    Skip all confirmation prompts (downloads prebuilt binary)
-  -h, --help   Show this help message
+  -y, --yes        Skip all confirmation prompts (downloads prebuilt binary)
+  -s, --services   Also install WHS services (wmemory, wsearch, wgateway)
+  -h, --help       Show this help message
 
 Environment variables:
   WALRUS_INSTALL_DIR   Override binary installation directory
@@ -187,37 +197,42 @@ ensure_cargo() {
     info "cargo installed successfully"
 }
 
-install_prebuilt() {
+# Download and install a prebuilt binary from GitHub releases.
+# Usage: install_binary <binary_name>
+install_binary() {
+    _bin="$1"
     TMPDIR_PATH="$(mktemp -d)"
 
-    TARBALL="${BINARY_NAME}-${VERSION}-${OS}-${ARCH}.tar.gz"
-    URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+    _tarball="${_bin}-${VERSION}-${OS}-${ARCH}.tar.gz"
+    _url="https://github.com/${REPO}/releases/download/${VERSION}/${_tarball}"
 
-    info "downloading ${TARBALL}..."
-    curl -fL# "$URL" -o "${TMPDIR_PATH}/${TARBALL}"
+    info "downloading ${_tarball}..."
+    curl -fL# "$_url" -o "${TMPDIR_PATH}/${_tarball}"
 
     info "extracting..."
-    tar -xzf "${TMPDIR_PATH}/${TARBALL}" -C "${TMPDIR_PATH}"
+    tar -xzf "${TMPDIR_PATH}/${_tarball}" -C "${TMPDIR_PATH}"
 
-    if [ ! -f "${TMPDIR_PATH}/${BINARY_NAME}" ]; then
-        err "expected binary '${BINARY_NAME}' not found in tarball"
+    if [ ! -f "${TMPDIR_PATH}/${_bin}" ]; then
+        err "expected binary '${_bin}' not found in tarball"
     fi
 
     # Place binary in install dir, handling permissions.
     if [ -w "$INSTALL_DIR" ]; then
-        cp "${TMPDIR_PATH}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
-        chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+        cp "${TMPDIR_PATH}/${_bin}" "${INSTALL_DIR}/${_bin}"
+        chmod +x "${INSTALL_DIR}/${_bin}"
     elif confirm "use sudo to install to ${INSTALL_DIR}?"; then
-        sudo cp "${TMPDIR_PATH}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
-        sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+        sudo cp "${TMPDIR_PATH}/${_bin}" "${INSTALL_DIR}/${_bin}"
+        sudo chmod +x "${INSTALL_DIR}/${_bin}"
     else
         INSTALL_DIR="${HOME}/.local/bin"
         mkdir -p "$INSTALL_DIR"
-        cp "${TMPDIR_PATH}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
-        chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+        cp "${TMPDIR_PATH}/${_bin}" "${INSTALL_DIR}/${_bin}"
+        chmod +x "${INSTALL_DIR}/${_bin}"
     fi
 
-    info "installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
+    info "installed ${_bin} to ${INSTALL_DIR}/${_bin}"
+    rm -rf "$TMPDIR_PATH"
+    TMPDIR_PATH=""
 }
 
 post_install() {
@@ -282,7 +297,12 @@ main() {
     # --- Prebuilt binary path ---
     if has_prebuilt; then
         get_latest_version
-        install_prebuilt
+        install_binary "$BINARY_NAME"
+        if [ "$INSTALL_SERVICES" = "1" ]; then
+            for svc in $SERVICE_BINS; do
+                install_binary "$svc"
+            done
+        fi
         post_install
         return
     fi
@@ -292,6 +312,10 @@ main() {
     info "falling back to cargo install..."
     ensure_cargo
     cargo install "$CARGO_CRATE"
+    if [ "$INSTALL_SERVICES" = "1" ]; then
+        # shellcheck disable=SC2086
+        cargo install $SERVICE_CRATES
+    fi
     post_install
 }
 

@@ -1,4 +1,4 @@
-//! WHS serve command — run wmemory as a hook service over UDS.
+//! WHS serve command — run walrus-memory as a hook service over UDS.
 
 use crate::{
     config::MemoryConfig,

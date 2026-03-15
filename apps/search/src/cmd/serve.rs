@@ -1,4 +1,4 @@
-//! WHS serve command — run wsearch as a hook service over UDS.
+//! WHS serve command — run walrus-search as a hook service over UDS.
 
 use crate::{
     aggregator::Aggregator,
