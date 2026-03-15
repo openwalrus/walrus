@@ -72,7 +72,7 @@ GPL-3.0
 [docs-badge]: https://img.shields.io/badge/docs-openwalrus.xyz-blue
 [docs]: https://openwalrus.xyz/docs/walrus
 [discord-badge]: https://img.shields.io/discord/1234567890?label=discord
-[discord]: https://discord.gg/5rU22pMEgE
+[discord]: https://discord.gg/XxyxfNX3Fn
 
 <!-- docs -->
 
