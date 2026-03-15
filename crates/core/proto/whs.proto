@@ -17,6 +17,8 @@ message WhsRequest {
     WhsCompact compact = 9;
     WhsEvent event = 10;
     WhsGetSchema get_schema = 11;
+    WhsAfterRun after_run = 12;
+    WhsInferResult infer_result = 13;
   }
 }
 
@@ -63,6 +65,8 @@ message WhsResponse {
     WhsBeforeRunResult before_run_result = 8;
     WhsCompactResult compact_result = 9;
     WhsSchemaResult schema_result = 10;
+    WhsAfterRunResult after_run_result = 11;
+    WhsInferRequest infer_request = 12;
   }
 }
 
@@ -80,6 +84,8 @@ message Capability {
     BeforeRunCap before_run = 4;
     CompactCap compact = 5;
     EventObserverCap event_observer = 6;
+    AfterRunCap after_run = 7;
+    InferCap infer = 8;
   }
 }
 
@@ -161,3 +167,22 @@ message WhsCompact {
 message WhsCompactResult {
   string addition = 1;
 }
+
+message WhsAfterRun {
+  string agent = 1;
+  repeated SimpleMessage history = 2;
+  string system_prompt = 3;
+}
+
+message WhsAfterRunResult {}
+
+message WhsInferRequest {
+  repeated SimpleMessage messages = 1;
+}
+
+message WhsInferResult {
+  string content = 1;
+}
+
+message AfterRunCap {}
+message InferCap {}

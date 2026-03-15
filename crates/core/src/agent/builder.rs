@@ -1,10 +1,10 @@
 //! Fluent builder for constructing an [`Agent`].
 
-use super::tool::ToolSender;
 use crate::{
-    agent::{Agent, config::AgentConfig},
+    agent::{Agent, CompactHook, config::AgentConfig, tool::ToolSender},
     model::{Model, Tool},
 };
+use std::sync::Arc;
 
 /// Fluent builder for [`Agent<M>`].
 ///
@@ -15,6 +15,7 @@ pub struct AgentBuilder<M: Model> {
     model: M,
     tools: Vec<Tool>,
     tool_tx: Option<ToolSender>,
+    compact_hook: Option<Arc<dyn CompactHook>>,
 }
 
 impl<M: Model> AgentBuilder<M> {
@@ -25,6 +26,7 @@ impl<M: Model> AgentBuilder<M> {
             model,
             tools: Vec::new(),
             tool_tx: None,
+            compact_hook: None,
         }
     }
 
@@ -46,6 +48,12 @@ impl<M: Model> AgentBuilder<M> {
         self
     }
 
+    /// Set the compact hook for auto-compaction.
+    pub fn compact_hook(mut self, hook: Arc<dyn CompactHook>) -> Self {
+        self.compact_hook = Some(hook);
+        self
+    }
+
     /// Build the [`Agent`].
     pub fn build(self) -> Agent<M> {
         Agent {
@@ -53,6 +61,7 @@ impl<M: Model> AgentBuilder<M> {
             model: self.model,
             tools: self.tools,
             tool_tx: self.tool_tx,
+            compact_hook: self.compact_hook,
         }
     }
 }

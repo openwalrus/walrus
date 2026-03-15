@@ -30,12 +30,22 @@ impl Daemon {
 
         tokio::signal::ctrl_c().await?;
         tracing::info!("received ctrl-c, shutting down");
-        handle.shutdown().await?;
-        socket_join.await?;
-        tcp_join.await?;
+
+        // Give graceful shutdown 5 seconds, then force-exit. In-flight tasks
+        // (LLM streams, tool calls, per-connection readers) are orphaned and
+        // can keep the tokio runtime alive indefinitely without this.
+        let grace = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            handle.shutdown().await?;
+            socket_join.await?;
+            tcp_join.await?;
+            anyhow::Ok(())
+        });
+        if grace.await.is_err() {
+            tracing::warn!("graceful shutdown timed out, forcing exit");
+        }
         let _ = std::fs::remove_file(socket_path);
         let _ = std::fs::remove_file(&*TCP_PORT_FILE);
         tracing::info!("walrusd shut down");
-        Ok(())
+        std::process::exit(0)
     }
 }

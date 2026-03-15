@@ -397,6 +397,12 @@ impl Server for Daemon {
                         Some(wcore::protocol::whs::capability::Cap::EventObserver(_)) => {
                             Some("event_observer".into())
                         }
+                        Some(wcore::protocol::whs::capability::Cap::AfterRun(_)) => {
+                            Some("after_run".into())
+                        }
+                        Some(wcore::protocol::whs::capability::Cap::Infer(_)) => {
+                            Some("infer".into())
+                        }
                         None => None,
                     })
                     .collect();

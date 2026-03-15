@@ -29,7 +29,6 @@ candle-nn.workspace = true
 candle-transformers.workspace = true
 chrono.workspace = true
 clap = { workspace = true, optional = true }
-compact_str.workspace = true
 futures.workspace = true
 hf-hub.workspace = true
 lance-graph.workspace = true

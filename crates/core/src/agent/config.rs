@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 /// Default maximum iterations for agent execution.
 const DEFAULT_MAX_ITERATIONS: usize = 16;
 
+/// Default compact threshold in estimated tokens (~100k).
+const DEFAULT_COMPACT_THRESHOLD: usize = 100_000;
+
 /// Serializable agent configuration.
 ///
 /// Contains all parameters for an agent: identity, system prompt, model,
@@ -53,10 +56,19 @@ pub struct AgentConfig {
     /// Computed tool whitelist. Empty = all tools. Not serialized.
     #[serde(skip)]
     pub tools: Vec<CompactString>,
+    /// Token count threshold for automatic context compaction.
+    /// When history exceeds this, the agent compacts automatically.
+    /// None = disabled. Defaults to 100_000.
+    #[serde(default = "default_compact_threshold")]
+    pub compact_threshold: Option<usize>,
 }
 
 fn default_max_iterations() -> usize {
     DEFAULT_MAX_ITERATIONS
+}
+
+fn default_compact_threshold() -> Option<usize> {
+    Some(DEFAULT_COMPACT_THRESHOLD)
 }
 
 impl Default for AgentConfig {
@@ -74,6 +86,7 @@ impl Default for AgentConfig {
             skills: Vec::new(),
             mcps: Vec::new(),
             tools: Vec::new(),
+            compact_threshold: default_compact_threshold(),
         }
     }
 }

@@ -47,7 +47,7 @@ pub trait Hook: Send + Sync {
     /// the base prompt from `compact.md`; hooks mutate it in place.
     ///
     /// Default: no-op.
-    fn on_compact(&self, _prompt: &mut String) {}
+    fn on_compact(&self, _agent: &str, _prompt: &mut String) {}
 
     /// Called by Runtime before each agent run (send_to / stream_to).
     ///
@@ -59,6 +59,15 @@ pub trait Hook: Send + Sync {
     fn on_before_run(&self, _agent: &str, _history: &[Message]) -> Vec<Message> {
         Vec::new()
     }
+
+    /// Called by Runtime after agent execution completes (send_to / stream_to).
+    ///
+    /// Receives the agent name, final conversation history, and system prompt.
+    /// Synchronous — implementations that need async work should spawn
+    /// their own background tasks internally.
+    ///
+    /// Default: no-op.
+    fn on_after_run(&self, _agent: &str, _history: &[Message], _system_prompt: &str) {}
 }
 
 impl Hook for () {}

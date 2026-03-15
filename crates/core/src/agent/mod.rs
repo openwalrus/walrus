@@ -18,6 +18,7 @@ pub use config::AgentConfig;
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
 use futures_util::StreamExt;
+use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 pub use tool::{AsTool, ToolDescription, ToolRequest, ToolSender};
 
@@ -37,6 +38,15 @@ fn last_sender(history: &[Message]) -> compact_str::CompactString {
         .unwrap_or_default()
 }
 
+/// Callback interface for compaction hooks.
+///
+/// Allows the agent to call back to the runtime's hook during auto-compaction
+/// without requiring Agent to be generic over the Hook type.
+pub trait CompactHook: Send + Sync {
+    /// Enrich the compaction prompt before sending to the LLM.
+    fn on_compact(&self, agent: &str, prompt: &mut String);
+}
+
 /// An immutable agent definition.
 ///
 /// Generic over `M: Model` — stores the model provider alongside config,
@@ -53,6 +63,8 @@ pub struct Agent<M: Model> {
     tools: Vec<Tool>,
     /// Sender for dispatching tool calls to the runtime. None = no tools.
     tool_tx: Option<ToolSender>,
+    /// Compact hook for auto-compaction enrichment.
+    compact_hook: Option<Arc<dyn CompactHook>>,
 }
 
 impl<M: Model> Agent<M> {
@@ -293,7 +305,6 @@ impl<M: Model> Agent<M> {
 
                 // Dispatch tool calls if any.
                 let mut tool_results = Vec::new();
-                let mut compact_triggered = false;
                 if has_tool_calls {
                     let sender = last_sender(history);
                     yield AgentEvent::ToolCallsStart(tool_calls.clone());
@@ -301,9 +312,6 @@ impl<M: Model> Agent<M> {
                         let result = self
                             .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender)
                             .await;
-                        if tc.function.name == "compact" {
-                            compact_triggered = true;
-                        }
                         let msg = Message::tool(&result, tc.id.clone());
                         history.push(msg.clone());
                         tool_results.push(msg);
@@ -315,18 +323,16 @@ impl<M: Model> Agent<M> {
                     yield AgentEvent::ToolCallsComplete;
                 }
 
-                // Handle compaction: summarize history, store journal, replace.
-                if compact_triggered {
+                // Auto-compaction: check token estimate after each step.
+                if let Some(threshold) = self.config.compact_threshold
+                    && Self::estimate_tokens(history) > threshold
+                {
                     if let Some(summary) = self.compact(history).await {
-                        // Store journal entry via internal tool dispatch.
-                        let _ = self.dispatch_tool("__journal__", &summary, "").await;
-                        // Replace history with the summary.
                         *history = vec![Message::user(&summary)];
                         yield AgentEvent::TextDelta(
                             "\n[context compacted]\n".to_owned(),
                         );
                     }
-                    // Continue the agent loop with compact context.
                     continue;
                 }
 

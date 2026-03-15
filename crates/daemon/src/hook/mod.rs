@@ -15,7 +15,7 @@ use crate::{
 use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
-use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry};
+use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
 
 pub mod mcp;
 pub mod os;
@@ -42,14 +42,11 @@ pub struct DaemonHook {
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
     /// External hook service registry (tools + queries).
-    pub(crate) registry: Option<ServiceRegistry>,
+    pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
 
-/// OS tool names — bypass permission check when running in sandbox mode.
-const OS_TOOLS: &[&str] = &["read", "write", "edit", "bash"];
-
-/// Base tools always included in every agent's whitelist (OS tools).
-/// Memory tools come from the external WHS service.
+/// Base tools always included in every agent's whitelist.
+/// Also bypass permission check when running in sandbox mode.
 const BASE_TOOLS: &[&str] = &["read", "write", "edit", "bash"];
 
 /// Skill discovery/loading tools.
@@ -76,7 +73,7 @@ impl DaemonHook {
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
-        registry: Option<ServiceRegistry>,
+        registry: Option<Arc<ServiceRegistry>>,
     ) -> Self {
         Self {
             skills,
@@ -113,7 +110,7 @@ impl DaemonHook {
         task_id: Option<u64>,
     ) -> Option<String> {
         // OS tools bypass permission when running in sandbox mode.
-        if self.sandboxed && OS_TOOLS.contains(&name) {
+        if self.sandboxed && BASE_TOOLS.contains(&name) {
             return None;
         }
         use crate::hook::os::ToolPermission;
@@ -173,7 +170,6 @@ impl DaemonHook {
         args: &str,
         agent: &str,
         task_id: Option<u64>,
-        _sender: &str,
     ) -> String {
         if let Some(denied) = self.check_perm(name, args, agent, task_id).await {
             return denied;
@@ -294,9 +290,9 @@ impl Hook for DaemonHook {
         config
     }
 
-    fn on_compact(&self, prompt: &mut String) {
+    fn on_compact(&self, agent: &str, prompt: &mut String) {
         if let Some(ref registry) = self.registry {
-            registry.on_compact(prompt);
+            registry.on_compact(agent, prompt);
         }
     }
 
@@ -318,6 +314,12 @@ impl Hook for DaemonHook {
         tools.insert_all(task::tool::tools());
         if let Some(ref registry) = self.registry {
             registry.on_register_tools(tools).await;
+        }
+    }
+
+    fn on_after_run(&self, agent: &str, history: &[Message], system_prompt: &str) {
+        if let Some(ref registry) = self.registry {
+            registry.on_after_run(agent, history, system_prompt);
         }
     }
 
