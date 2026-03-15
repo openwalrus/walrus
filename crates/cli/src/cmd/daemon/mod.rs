@@ -82,7 +82,7 @@ async fn start() -> Result<()> {
 
 /// Interactive provider setup for first-time daemon start.
 pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
-    use crate::cmd::model::PRESETS;
+    use crate::cmd::auth::PRESETS;
     use std::io::{BufRead, Write};
     use toml_edit::{Array, DocumentMut, Item, Table, value};
 
