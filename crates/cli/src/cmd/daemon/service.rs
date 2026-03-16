@@ -2,19 +2,22 @@
 
 use anyhow::Result;
 use std::path::Path;
-use wcore::paths::LOGS_DIR;
+use wcore::paths::{HOME_DIR, LOGS_DIR};
 
 #[cfg(target_os = "macos")]
 const LAUNCHD_TEMPLATE: &str = include_str!("launchd.plist");
 #[cfg(target_os = "linux")]
 const SYSTEMD_TEMPLATE: &str = include_str!("systemd.service");
 
-/// Render a template by replacing `{binary}` and `{logs_dir}` placeholders.
+/// Render a template by replacing placeholder tokens.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn render_template(template: &str, binary: &Path) -> String {
+    let path = std::env::var("PATH").unwrap_or_default();
     template
         .replace("{binary}", &binary.display().to_string())
         .replace("{logs_dir}", &LOGS_DIR.display().to_string())
+        .replace("{home_dir}", &HOME_DIR.display().to_string())
+        .replace("{path}", &path)
 }
 
 #[cfg(target_os = "macos")]
@@ -23,6 +26,7 @@ pub fn install() -> Result<()> {
     let plist = render_template(LAUNCHD_TEMPLATE, &binary);
 
     std::fs::create_dir_all(&*LOGS_DIR)?;
+    std::fs::create_dir_all(&*HOME_DIR)?;
 
     let plist_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
@@ -103,6 +107,8 @@ pub fn install() -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
         .join(".config/systemd/user");
     std::fs::create_dir_all(&unit_dir)?;
+    std::fs::create_dir_all(&*LOGS_DIR)?;
+    std::fs::create_dir_all(&*HOME_DIR)?;
 
     let unit_path = unit_dir.join("walrus-daemon.service");
     std::fs::write(&unit_path, unit)?;

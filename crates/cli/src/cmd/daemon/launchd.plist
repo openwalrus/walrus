@@ -11,6 +11,13 @@
         <string>start</string>
         <string>-v</string>
     </array>
+    <key>WorkingDirectory</key>
+    <string>{home_dir}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{path}</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

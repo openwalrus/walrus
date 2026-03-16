@@ -23,6 +23,11 @@ impl McpHandler {
             for (k, v) in &server_config.env {
                 cmd.env(k, v);
             }
+            tracing::info!(
+                server = %server_config.name,
+                command = %server_config.command,
+                "connecting MCP server"
+            );
             match bridge
                 .connect_stdio_named(server_config.name.clone(), cmd)
                 .await
@@ -35,7 +40,11 @@ impl McpHandler {
                     );
                 }
                 Err(e) => {
-                    tracing::warn!("failed to connect MCP server '{}': {e}", server_config.name);
+                    tracing::warn!(
+                        "failed to connect MCP server '{}' (command: {}): {e}",
+                        server_config.name,
+                        server_config.command
+                    );
                 }
             }
         }

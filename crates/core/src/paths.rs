@@ -22,6 +22,9 @@ pub static TCP_PORT_FILE: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("
 /// Logs directory (`~/.openwalrus/logs/`).
 pub static LOGS_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("logs"));
 
+/// Agent working directory (`~/.openwalrus/home/`).
+pub static HOME_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("home"));
+
 /// Agents subdirectory (contains *.md files).
 pub const AGENTS_DIR: &str = "agents";
 /// Skills subdirectory.
