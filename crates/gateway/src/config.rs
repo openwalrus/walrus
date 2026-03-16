@@ -3,15 +3,20 @@
 use serde::{Deserialize, Serialize};
 
 /// Telegram bot configuration.
-#[cfg(feature = "telegram")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
     /// Bot token from @BotFather.
     pub token: String,
+    /// Optional whitelist of Telegram user IDs.
+    ///
+    /// When non-empty only messages from these users are processed;
+    /// everyone else is silently ignored. When empty or omitted the
+    /// bot responds to all users.
+    #[serde(default)]
+    pub allowed_users: Vec<i64>,
 }
 
 /// Discord bot configuration.
-#[cfg(feature = "discord")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscordConfig {
     /// Bot token from the Discord developer portal.
@@ -24,9 +29,7 @@ pub struct DiscordConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatewayConfig {
     /// Telegram bot config. Absent means no Telegram bot.
-    #[cfg(feature = "telegram")]
     pub telegram: Option<TelegramConfig>,
     /// Discord bot config. Absent means no Discord bot.
-    #[cfg(feature = "discord")]
     pub discord: Option<DiscordConfig>,
 }

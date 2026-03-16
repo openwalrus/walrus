@@ -2,25 +2,31 @@
 
 use anyhow::Result;
 use std::path::Path;
-use wcore::paths::CONFIG_DIR;
+use wcore::paths::{HOME_DIR, LOGS_DIR};
 
 #[cfg(target_os = "macos")]
 const LAUNCHD_TEMPLATE: &str = include_str!("launchd.plist");
 #[cfg(target_os = "linux")]
 const SYSTEMD_TEMPLATE: &str = include_str!("systemd.service");
 
-/// Render a template by replacing `{binary}` and `{log_dir}` placeholders.
+/// Render a template by replacing placeholder tokens.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-fn render_template(template: &str, binary: &Path, log_dir: &Path) -> String {
+fn render_template(template: &str, binary: &Path) -> String {
+    let path = std::env::var("PATH").unwrap_or_default();
     template
         .replace("{binary}", &binary.display().to_string())
-        .replace("{log_dir}", &log_dir.display().to_string())
+        .replace("{logs_dir}", &LOGS_DIR.display().to_string())
+        .replace("{home_dir}", &HOME_DIR.display().to_string())
+        .replace("{path}", &path)
 }
 
 #[cfg(target_os = "macos")]
 pub fn install() -> Result<()> {
     let binary = std::env::current_exe()?;
-    let plist = render_template(LAUNCHD_TEMPLATE, &binary, &CONFIG_DIR);
+    let plist = render_template(LAUNCHD_TEMPLATE, &binary);
+
+    std::fs::create_dir_all(&*LOGS_DIR)?;
+    std::fs::create_dir_all(&*HOME_DIR)?;
 
     let plist_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
@@ -40,6 +46,31 @@ pub fn install() -> Result<()> {
         println!("service loaded and started");
     } else {
         anyhow::bail!("launchctl load failed (exit {})", status);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn restart() -> Result<()> {
+    let plist_path = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist");
+
+    if !plist_path.exists() {
+        anyhow::bail!(
+            "service not installed — run `walrus daemon install` first, \
+             or stop and start the daemon manually"
+        );
+    }
+
+    // KeepAlive is true in the plist, so launchd restarts the process after stop.
+    let status = std::process::Command::new("launchctl")
+        .args(["stop", "xyz.openwalrus.walrus"])
+        .status()?;
+    if status.success() {
+        println!("daemon restarted");
+    } else {
+        anyhow::bail!("launchctl stop failed (exit {})", status);
     }
     Ok(())
 }
@@ -70,12 +101,14 @@ pub fn uninstall() -> Result<()> {
 #[cfg(target_os = "linux")]
 pub fn install() -> Result<()> {
     let binary = std::env::current_exe()?;
-    let unit = render_template(SYSTEMD_TEMPLATE, &binary, &CONFIG_DIR);
+    let unit = render_template(SYSTEMD_TEMPLATE, &binary);
 
     let unit_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
         .join(".config/systemd/user");
     std::fs::create_dir_all(&unit_dir)?;
+    std::fs::create_dir_all(&*LOGS_DIR)?;
+    std::fs::create_dir_all(&*HOME_DIR)?;
 
     let unit_path = unit_dir.join("walrus-daemon.service");
     std::fs::write(&unit_path, unit)?;
@@ -88,6 +121,30 @@ pub fn install() -> Result<()> {
         println!("service enabled and started");
     } else {
         anyhow::bail!("systemctl enable failed (exit {})", status);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn restart() -> Result<()> {
+    let unit_path = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+        .join(".config/systemd/user/walrus-daemon.service");
+
+    if !unit_path.exists() {
+        anyhow::bail!(
+            "service not installed — run `walrus daemon install` first, \
+             or stop and start the daemon manually"
+        );
+    }
+
+    let status = std::process::Command::new("systemctl")
+        .args(["--user", "restart", "walrus-daemon.service"])
+        .status()?;
+    if status.success() {
+        println!("daemon restarted");
+    } else {
+        anyhow::bail!("systemctl restart failed (exit {})", status);
     }
     Ok(())
 }
@@ -117,6 +174,11 @@ pub fn uninstall() -> Result<()> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn install() -> Result<()> {
     anyhow::bail!("service install is only supported on macOS and Linux")
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub fn restart() -> Result<()> {
+    anyhow::bail!("service restart is only supported on macOS and Linux")
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]

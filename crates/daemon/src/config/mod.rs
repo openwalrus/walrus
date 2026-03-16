@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use wcore::{
     AgentConfig, HeartbeatConfig,
-    paths::{AGENTS_DIR, CONFIG_DIR, DATA_DIR, MEMORY_DB, SKILLS_DIR, SOCKET_PATH},
+    paths::{AGENTS_DIR, CONFIG_DIR, DATA_DIR, HOME_DIR, MEMORY_DB, SKILLS_DIR, SOCKET_PATH},
 };
 
 mod loader;

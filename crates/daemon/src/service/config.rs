@@ -39,7 +39,7 @@ pub struct ServiceConfig {
     pub kind: ServiceKind,
     /// Cargo package name (e.g. "walrus-memory"). Used as binary name and for
     /// `cargo install` during hub installation.
-    #[serde(rename = "crate")]
+    #[serde(rename = "crate", alias = "krate")]
     pub krate: String,
     /// Restart policy.
     #[serde(default)]

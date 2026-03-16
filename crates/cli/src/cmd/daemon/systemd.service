@@ -4,7 +4,9 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart={binary} daemon start
+WorkingDirectory={home_dir}
+Environment=PATH={path}
+ExecStart={binary} daemon start -v
 Restart=always
 RestartSec=3
 
