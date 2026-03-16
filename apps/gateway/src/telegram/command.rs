@@ -23,12 +23,14 @@ pub(crate) async fn dispatch_command(
             msg: Some(client_message::Msg::Hub(HubMsg {
                 package,
                 action: HubAction::Install as i32,
+                filters: vec![],
             })),
         },
         BotCommand::HubUninstall { package } => ClientMessage {
             msg: Some(client_message::Msg::Hub(HubMsg {
                 package,
                 action: HubAction::Uninstall as i32,
+                filters: vec![],
             })),
         },
     };

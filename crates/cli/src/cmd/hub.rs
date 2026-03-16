@@ -32,17 +32,59 @@ pub enum HubCommand {
 pub struct HubPackage {
     /// Package identifier in `scope/name` format.
     pub package: String,
+
+    /// Install only specific skills by name.
+    #[arg(long)]
+    pub skill: Vec<String>,
+
+    /// Install only specific MCP servers by name.
+    #[arg(long)]
+    pub mcp: Vec<String>,
+
+    /// Install only specific services by name.
+    #[arg(long)]
+    pub service: Vec<String>,
+
+    /// Install only specific agents by name.
+    #[arg(long)]
+    pub agent: Vec<String>,
+}
+
+impl HubPackage {
+    /// Build protocol-level filter strings from the CLI flags.
+    fn filters(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for s in &self.skill {
+            out.push(format!("skill:{s}"));
+        }
+        for s in &self.mcp {
+            out.push(format!("mcp:{s}"));
+        }
+        for s in &self.service {
+            out.push(format!("service:{s}"));
+        }
+        for s in &self.agent {
+            out.push(format!("agent:{s}"));
+        }
+        out
+    }
 }
 
 impl Hub {
     /// Run the hub command.
     pub async fn run(self, runner: &mut Runner) -> Result<()> {
-        let (package, action) = match self.command {
-            HubCommand::Install(p) => (p.package, HubAction::Install),
-            HubCommand::Uninstall(p) => (p.package, HubAction::Uninstall),
+        let (package, action, filters) = match self.command {
+            HubCommand::Install(p) => {
+                let filters = p.filters();
+                (p.package, HubAction::Install, filters)
+            }
+            HubCommand::Uninstall(p) => {
+                let filters = p.filters();
+                (p.package, HubAction::Uninstall, filters)
+            }
         };
         let completed = {
-            let stream = runner.hub_stream(&package, action);
+            let stream = runner.hub_stream(&package, action, filters);
             futures_util::pin_mut!(stream);
             let mut completed = false;
             while let Some(result) = stream.next().await {

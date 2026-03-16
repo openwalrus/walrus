@@ -52,10 +52,14 @@ pub trait Server: Sync {
     fn ping(&self) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Handle `Hub` — install or uninstall a hub package.
+    ///
+    /// `filters` restricts which components to install. Format: `"kind:name"`
+    /// (e.g. `"skill:playwright-cli"`, `"mcp:playwright"`). Empty = install all.
     fn hub(
         &self,
         package: String,
         action: HubAction,
+        filters: Vec<String>,
     ) -> impl Stream<Item = Result<DownloadEvent>> + Send;
 
     /// Handle `Sessions` — list active sessions.
@@ -156,7 +160,7 @@ pub trait Server: Sync {
                 }
                 client_message::Msg::Hub(hub_msg) => {
                     let action = hub_msg.action();
-                    let s = self.hub(hub_msg.package, action);
+                    let s = self.hub(hub_msg.package, action, hub_msg.filters);
                     tokio::pin!(s);
                     while let Some(result) = s.next().await {
                         yield result_to_msg(result);

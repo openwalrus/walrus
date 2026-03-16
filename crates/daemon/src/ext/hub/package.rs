@@ -3,6 +3,7 @@
 use crate::ext::hub::{DownloadRegistry, manifest};
 use anyhow::{Context, Result};
 use compact_str::CompactString;
+use std::collections::BTreeSet;
 use std::path::Path;
 use tokio::process::Command;
 use wcore::paths::CONFIG_DIR;
@@ -13,14 +14,75 @@ use wcore::protocol::message::{
 /// Remote URL of the walrus hub repository.
 const WALRUS_HUB: &str = "https://github.com/openwalrus/hub";
 
+/// Parsed filters for selective install/uninstall.
+///
+/// When all sets are empty, everything is included (no filtering).
+/// Filter format: `"kind:name"` — e.g. `"skill:playwright-cli"`.
+struct HubFilter {
+    mcps: BTreeSet<String>,
+    services: BTreeSet<String>,
+    skills: BTreeSet<String>,
+    agents: BTreeSet<String>,
+}
+
+impl HubFilter {
+    fn parse(filters: &[String]) -> Self {
+        let mut f = Self {
+            mcps: BTreeSet::new(),
+            services: BTreeSet::new(),
+            skills: BTreeSet::new(),
+            agents: BTreeSet::new(),
+        };
+        for raw in filters {
+            if let Some((kind, name)) = raw.split_once(':') {
+                let set = match kind {
+                    "mcp" => &mut f.mcps,
+                    "service" => &mut f.services,
+                    "skill" => &mut f.skills,
+                    "agent" => &mut f.agents,
+                    _ => continue,
+                };
+                set.insert(name.to_string());
+            }
+        }
+        f
+    }
+
+    fn is_empty(&self) -> bool {
+        self.mcps.is_empty()
+            && self.services.is_empty()
+            && self.skills.is_empty()
+            && self.agents.is_empty()
+    }
+
+    fn wants_mcp(&self, name: &str) -> bool {
+        self.is_empty() || self.mcps.contains(name)
+    }
+
+    fn wants_service(&self, name: &str) -> bool {
+        self.is_empty() || self.services.contains(name)
+    }
+
+    fn wants_skill(&self, name: &str) -> bool {
+        self.is_empty() || self.skills.contains(name)
+    }
+
+    fn wants_agent(&self, name: &str) -> bool {
+        self.is_empty() || self.agents.contains(name)
+    }
+}
+
 /// Install a hub package, streaming unified download events.
 ///
 /// Syncs the hub repo, reads the manifest, merges MCP servers and services
 /// into `walrus.toml`, copies skill directories into `~/.openwalrus/skills/`,
 /// and installs agents (prompt files + their declared skills).
+///
+/// When `filters` is non-empty, only matching components are installed.
 pub fn install(
     package: CompactString,
     registry: std::sync::Arc<tokio::sync::Mutex<DownloadRegistry>>,
+    filters: Vec<String>,
 ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> {
     async_stream::try_stream! {
         let id = registry
@@ -35,6 +97,8 @@ pub fn install(
             })),
         };
 
+        let filter = HubFilter::parse(&filters);
+
         // Sync hub repo (clone or update).
         let hub_dir = CONFIG_DIR.join("hub");
         git_sync(WALRUS_HUB, &hub_dir).await.context("failed to sync hub repo")?;
@@ -43,18 +107,28 @@ pub fn install(
         let manifest = read_manifest(scope, name)?;
 
         // Merge MCP servers.
-        if !manifest.mcp_servers.is_empty() {
+        let wanted_mcps: Vec<_> = manifest
+            .mcp_servers
+            .iter()
+            .filter(|(k, _)| filter.wants_mcp(k.as_str()))
+            .collect();
+        if !wanted_mcps.is_empty() {
             let msg = "adding MCP servers…".to_string();
             registry.lock().await.step(id, msg.clone());
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
-            merge_mcp_servers(&manifest)?;
+            merge_mcp_servers_filtered(&wanted_mcps)?;
         }
 
         // Install service binaries and merge configs.
-        if !manifest.services.is_empty() {
-            for (key, cfg) in &manifest.services {
+        let wanted_services: Vec<_> = manifest
+            .services
+            .iter()
+            .filter(|(k, _)| filter.wants_service(k.as_str()))
+            .collect();
+        if !wanted_services.is_empty() {
+            for (key, cfg) in &wanted_services {
                 if let Some(install) = &cfg.install {
                     let msg = format!("installing {key}…");
                     registry.lock().await.step(id, msg.clone());
@@ -77,22 +151,27 @@ pub fn install(
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
-            merge_services(&manifest)?;
+            merge_services_filtered(&wanted_services)?;
         }
 
-        // Collect skill keys referenced by agents so they are installed too.
-        let mut agent_skill_keys: std::collections::BTreeSet<&CompactString> =
-            std::collections::BTreeSet::new();
-        for agent in manifest.agents.values() {
+        // Collect skill keys from wanted agents.
+        let wanted_agents: Vec<_> = manifest
+            .agents
+            .iter()
+            .filter(|(k, _)| filter.wants_agent(k.as_str()))
+            .collect();
+        let mut agent_skill_keys: BTreeSet<&CompactString> = BTreeSet::new();
+        for (_, agent) in &wanted_agents {
             for sk in &agent.skills {
                 agent_skill_keys.insert(sk);
             }
         }
 
-        // Install skills (top-level + agent-referenced).
-        let all_skill_keys: std::collections::BTreeSet<&CompactString> = manifest
+        // Install skills (top-level wanted + agent-referenced).
+        let all_skill_keys: BTreeSet<&CompactString> = manifest
             .skills
             .keys()
+            .filter(|k| filter.wants_skill(k.as_str()))
             .chain(agent_skill_keys.iter().copied())
             .collect();
 
@@ -133,13 +212,13 @@ pub fn install(
         }
 
         // Install agents (copy prompt .md files).
-        if !manifest.agents.is_empty() {
+        if !wanted_agents.is_empty() {
             let msg = "installing agents…".to_string();
             registry.lock().await.step(id, msg.clone());
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
-            install_agents(scope, &manifest)?;
+            install_agents_filtered(scope, &wanted_agents)?;
         }
 
         registry.lock().await.complete(id);
@@ -154,9 +233,12 @@ pub fn install(
 /// Reads the manifest from the local hub repo (no network sync), removes MCP
 /// servers and services from `walrus.toml`, deletes skill directories and
 /// agent prompt files.
+///
+/// When `filters` is non-empty, only matching components are removed.
 pub fn uninstall(
     package: CompactString,
     registry: std::sync::Arc<tokio::sync::Mutex<DownloadRegistry>>,
+    filters: Vec<String>,
 ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> {
     async_stream::try_stream! {
         let id = registry
@@ -171,35 +253,52 @@ pub fn uninstall(
             })),
         };
 
+        let filter = HubFilter::parse(&filters);
+
         let (scope, name) = parse_package(&package)?;
         let manifest = read_manifest(scope, name)?;
 
-        if !manifest.mcp_servers.is_empty() {
+        let mcp_keys: Vec<_> = manifest
+            .mcp_servers
+            .keys()
+            .filter(|k| filter.wants_mcp(k.as_str()))
+            .collect();
+        if !mcp_keys.is_empty() {
             let msg = "removing MCP servers…".to_string();
             registry.lock().await.step(id, msg.clone());
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
-            remove_mcp_servers(&manifest)?;
+            remove_keys_from_section("mcps", &mcp_keys)?;
         }
 
-        if !manifest.services.is_empty() {
+        let service_keys: Vec<_> = manifest
+            .services
+            .keys()
+            .filter(|k| filter.wants_service(k.as_str()))
+            .collect();
+        if !service_keys.is_empty() {
             let msg = "removing services…".to_string();
             registry.lock().await.step(id, msg.clone());
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
-            remove_services(&manifest)?;
+            remove_keys_from_section("services", &service_keys)?;
         }
 
-        if !manifest.skills.is_empty() {
+        let skill_keys: Vec<_> = manifest
+            .skills
+            .keys()
+            .filter(|k| filter.wants_skill(k.as_str()))
+            .collect();
+        if !skill_keys.is_empty() {
             let msg = "removing skills…".to_string();
             registry.lock().await.step(id, msg.clone());
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
             let skills_dir = CONFIG_DIR.join("skills");
-            for key in manifest.skills.keys() {
+            for key in &skill_keys {
                 let dst = skills_dir.join(key.as_str());
                 if dst.exists() {
                     std::fs::remove_dir_all(&dst)
@@ -208,13 +307,25 @@ pub fn uninstall(
             }
         }
 
-        if !manifest.agents.is_empty() {
+        let agent_keys: Vec<_> = manifest
+            .agents
+            .keys()
+            .filter(|k| filter.wants_agent(k.as_str()))
+            .collect();
+        if !agent_keys.is_empty() {
             let msg = "removing agents…".to_string();
             registry.lock().await.step(id, msg.clone());
             yield DownloadEvent {
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
-            remove_agents(&manifest)?;
+            let agents_dir = CONFIG_DIR.join(wcore::paths::AGENTS_DIR);
+            for name in &agent_keys {
+                let dst = agents_dir.join(format!("{name}.md"));
+                if dst.exists() {
+                    std::fs::remove_file(&dst)
+                        .with_context(|| format!("failed to remove agent prompt {}", dst.display()))?;
+                }
+            }
         }
 
         registry.lock().await.complete(id);
@@ -285,8 +396,10 @@ fn read_manifest(scope: &str, name: &str) -> Result<manifest::Manifest> {
     toml::from_str(&content).with_context(|| format!("invalid manifest at {}", path.display()))
 }
 
-/// Merge MCP server entries from a manifest into `walrus.toml`.
-fn merge_mcp_servers(manifest: &manifest::Manifest) -> Result<()> {
+/// Merge selected MCP server entries into `walrus.toml`.
+fn merge_mcp_servers_filtered(
+    entries: &[(&CompactString, &wcore::config::mcp::McpServerConfig)],
+) -> Result<()> {
     use toml_edit::DocumentMut;
 
     let config_path = CONFIG_DIR.join("walrus.toml");
@@ -302,7 +415,7 @@ fn merge_mcp_servers(manifest: &manifest::Manifest) -> Result<()> {
         .as_table_mut()
         .context("mcps is not a table")?;
 
-    for (key, cfg) in &manifest.mcp_servers {
+    for (key, cfg) in entries {
         let doc = toml_edit::ser::to_document(cfg)
             .with_context(|| format!("failed to serialize McpServerConfig for {key}"))?;
         let item = toml_edit::Item::Table(doc.as_table().clone());
@@ -314,33 +427,10 @@ fn merge_mcp_servers(manifest: &manifest::Manifest) -> Result<()> {
     Ok(())
 }
 
-/// Remove MCP server entries listed in a manifest from `walrus.toml`.
-fn remove_mcp_servers(manifest: &manifest::Manifest) -> Result<()> {
-    use toml_edit::DocumentMut;
-
-    let config_path = CONFIG_DIR.join("walrus.toml");
-    let content = std::fs::read_to_string(&config_path)
-        .with_context(|| format!("cannot read {}", config_path.display()))?;
-    let mut doc: DocumentMut = content
-        .parse()
-        .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
-
-    if let Some(table) = doc.get_mut("mcps").and_then(|v| v.as_table_mut()) {
-        for key in manifest.mcp_servers.keys() {
-            table.remove(key.as_str());
-        }
-    }
-
-    std::fs::write(&config_path, doc.to_string())
-        .with_context(|| format!("failed to write {}", config_path.display()))?;
-    Ok(())
-}
-
-/// Merge service entries from a manifest into `walrus.toml`.
-///
-/// Strips install-time fields (`install`, `description`) before writing —
-/// they are hub metadata, not runtime config.
-fn merge_services(manifest: &manifest::Manifest) -> Result<()> {
+/// Merge selected service entries into `walrus.toml`.
+fn merge_services_filtered(
+    entries: &[(&CompactString, &crate::service::config::ServiceConfig)],
+) -> Result<()> {
     use toml_edit::DocumentMut;
 
     let config_path = CONFIG_DIR.join("walrus.toml");
@@ -356,8 +446,8 @@ fn merge_services(manifest: &manifest::Manifest) -> Result<()> {
         .as_table_mut()
         .context("services is not a table")?;
 
-    for (key, cfg) in &manifest.services {
-        let mut runtime = cfg.clone();
+    for (key, cfg) in entries {
+        let mut runtime = (*cfg).clone();
         runtime.install = None;
         runtime.description = None;
         let doc = toml_edit::ser::to_document(&runtime)
@@ -371,8 +461,8 @@ fn merge_services(manifest: &manifest::Manifest) -> Result<()> {
     Ok(())
 }
 
-/// Remove service entries listed in a manifest from `walrus.toml`.
-fn remove_services(manifest: &manifest::Manifest) -> Result<()> {
+/// Remove keys from a TOML section in `walrus.toml`.
+fn remove_keys_from_section(section: &str, keys: &[&CompactString]) -> Result<()> {
     use toml_edit::DocumentMut;
 
     let config_path = CONFIG_DIR.join("walrus.toml");
@@ -382,8 +472,8 @@ fn remove_services(manifest: &manifest::Manifest) -> Result<()> {
         .parse()
         .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
-    if let Some(table) = doc.get_mut("services").and_then(|v| v.as_table_mut()) {
-        for key in manifest.services.keys() {
+    if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
+        for key in keys {
             table.remove(key.as_str());
         }
     }
@@ -393,13 +483,16 @@ fn remove_services(manifest: &manifest::Manifest) -> Result<()> {
     Ok(())
 }
 
-/// Install agent prompt files from the hub repo to `~/.openwalrus/agents/`.
-fn install_agents(scope: &str, manifest: &manifest::Manifest) -> Result<()> {
+/// Install selected agent prompt files from the hub repo.
+fn install_agents_filtered(
+    scope: &str,
+    agents: &[(&CompactString, &manifest::AgentResource)],
+) -> Result<()> {
     let agents_dir = CONFIG_DIR.join(wcore::paths::AGENTS_DIR);
     std::fs::create_dir_all(&agents_dir).context("failed to create agents directory")?;
 
     let hub_dir = CONFIG_DIR.join("hub");
-    for (name, agent) in &manifest.agents {
+    for (name, agent) in agents {
         let src = hub_dir.join(scope).join(agent.prompt.as_str());
         let dst = agents_dir.join(format!("{name}.md"));
         std::fs::copy(&src, &dst).with_context(|| {
@@ -409,19 +502,6 @@ fn install_agents(scope: &str, manifest: &manifest::Manifest) -> Result<()> {
                 dst.display()
             )
         })?;
-    }
-    Ok(())
-}
-
-/// Remove agent prompt files installed by a manifest.
-fn remove_agents(manifest: &manifest::Manifest) -> Result<()> {
-    let agents_dir = CONFIG_DIR.join(wcore::paths::AGENTS_DIR);
-    for name in manifest.agents.keys() {
-        let dst = agents_dir.join(format!("{name}.md"));
-        if dst.exists() {
-            std::fs::remove_file(&dst)
-                .with_context(|| format!("failed to remove agent prompt {}", dst.display()))?;
-        }
     }
     Ok(())
 }

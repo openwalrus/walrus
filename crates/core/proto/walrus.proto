@@ -57,6 +57,9 @@ message GetConfig {}
 message HubMsg {
   string package = 1;
   HubAction action = 2;
+  // Optional filters: "skill:name", "mcp:name", "service:name", "agent:name".
+  // If empty, all components are installed/uninstalled.
+  repeated string filters = 3;
 }
 
 enum HubAction {

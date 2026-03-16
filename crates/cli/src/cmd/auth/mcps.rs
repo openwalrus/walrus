@@ -1,12 +1,12 @@
 use crate::{
-    cmd::auth::{AuthState, Focus, Tab},
+    cmd::auth::{AuthState, Focus, McpData, Tab},
     tui::{border_dim, border_focused, char_to_byte, handle_text_input, mask_token},
 };
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
@@ -41,6 +41,22 @@ pub(crate) fn handle_mcps_key(
                         state.cursor = val.chars().count();
                         state.edit_buf = val;
                         state.focus = Focus::Editing;
+                    }
+                }
+                KeyCode::Char('n') => {
+                    state.mcp_add_step = 0;
+                    state.edit_buf = String::new();
+                    state.cursor = 0;
+                    state.focus = Focus::AddMcp;
+                }
+                KeyCode::Char('d') | KeyCode::Delete => {
+                    if !state.mcps.is_empty() {
+                        state.mcps.remove(state.mcp_selected);
+                        if state.mcp_selected >= state.mcps.len() && !state.mcps.is_empty() {
+                            state.mcp_selected = state.mcps.len() - 1;
+                        }
+                        state.mcp_env_selected = 0;
+                        state.status = String::from("MCP deleted");
                     }
                 }
                 _ => {}
@@ -102,7 +118,73 @@ pub(crate) fn handle_mcps_key(
             }
             Ok(None)
         }
+        Focus::AddMcp => {
+            handle_add_mcp(key, state);
+            Ok(None)
+        }
         _ => Ok(None),
+    }
+}
+
+fn handle_add_mcp(key: crossterm::event::KeyEvent, state: &mut AuthState) {
+    match key.code {
+        KeyCode::Esc => {
+            // Cancel: remove partially added MCP if we already created one.
+            if state.mcp_add_step > 0 {
+                state.mcps.pop();
+                if state.mcp_selected >= state.mcps.len() && !state.mcps.is_empty() {
+                    state.mcp_selected = state.mcps.len() - 1;
+                }
+            }
+            state.focus = Focus::List;
+        }
+        KeyCode::Enter => {
+            let buf = state.edit_buf.trim().to_string();
+            match state.mcp_add_step {
+                0 => {
+                    // Name step.
+                    if buf.is_empty() {
+                        state.status = String::from("Name cannot be empty");
+                        return;
+                    }
+                    state.mcps.push(McpData {
+                        name: buf,
+                        command: String::new(),
+                        args: Vec::new(),
+                        env: Vec::new(),
+                    });
+                    state.mcp_selected = state.mcps.len() - 1;
+                    state.mcp_add_step = 1;
+                    state.edit_buf = String::new();
+                    state.cursor = 0;
+                    state.status = String::from("Enter command");
+                }
+                1 => {
+                    // Command step.
+                    if let Some(mcp) = state.mcps.last_mut() {
+                        mcp.command = buf;
+                    }
+                    state.mcp_add_step = 2;
+                    state.edit_buf = String::new();
+                    state.cursor = 0;
+                    state.status = String::from("Enter args (space-separated)");
+                }
+                2 => {
+                    // Args step.
+                    if let Some(mcp) = state.mcps.last_mut() {
+                        mcp.args = if buf.is_empty() {
+                            Vec::new()
+                        } else {
+                            buf.split_whitespace().map(String::from).collect()
+                        };
+                    }
+                    state.focus = Focus::List;
+                    state.status = String::from("MCP added");
+                }
+                _ => {}
+            }
+        }
+        _ => handle_text_input(key.code, &mut state.edit_buf, &mut state.cursor),
     }
 }
 
@@ -117,10 +199,69 @@ fn commit_mcp_edit(state: &mut AuthState) {
 // ── MCPs rendering ──────────────────────────────────────────────────
 
 pub(crate) fn render_mcps(frame: &mut Frame, state: &AuthState, area: Rect) {
+    if state.focus == Focus::AddMcp {
+        render_add_mcp(frame, state, area);
+        return;
+    }
+    if state.mcps.is_empty() {
+        let block = Block::default()
+            .title(" MCP Servers ")
+            .borders(Borders::ALL)
+            .border_style(border_dim());
+        let text = Paragraph::new(vec![
+            Line::raw(""),
+            Line::styled("No MCPs configured.", Style::default().fg(Color::DarkGray)),
+            Line::raw(""),
+            Line::styled(
+                "Press n to add one, or find one at",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Line::styled(
+                "https://openwalrus.xyz/hub?type=mcp",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::ITALIC),
+            ),
+        ])
+        .alignment(Alignment::Center)
+        .block(block);
+        frame.render_widget(text, area);
+        return;
+    }
     let horiz =
         Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)]).split(area);
     render_mcp_list(frame, state, horiz[0]);
     render_mcp_detail(frame, state, horiz[1]);
+}
+
+fn render_add_mcp(frame: &mut Frame, state: &AuthState, area: Rect) {
+    let step_label = match state.mcp_add_step {
+        0 => "Name",
+        1 => "Command",
+        2 => "Args (space-separated)",
+        _ => "",
+    };
+    let block = Block::default()
+        .title(format!(" Add MCP — {step_label} "))
+        .borders(Borders::ALL)
+        .border_style(border_focused());
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let byte_pos = char_to_byte(&state.edit_buf, state.cursor);
+    let mut s = state.edit_buf.clone();
+    s.insert(byte_pos, '|');
+
+    let line = Line::from(vec![
+        Span::styled(
+            format!(" {step_label}: "),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(s, Style::default().fg(Color::Green)),
+    ]);
+    frame.render_widget(Paragraph::new(line), inner);
 }
 
 fn render_mcp_list(frame: &mut Frame, state: &AuthState, area: Rect) {
@@ -169,7 +310,7 @@ fn render_mcp_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
             .borders(Borders::ALL)
             .border_style(border_dim());
         frame.render_widget(
-            Paragraph::new("Install a hub package with MCP servers").block(block),
+            Paragraph::new("Press n to add an MCP server").block(block),
             area,
         );
         return;
@@ -186,28 +327,46 @@ fn render_mcp_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if mcp.env.is_empty() {
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                "  (no env vars)",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            )),
-            inner,
-        );
-        return;
-    }
+    let label_style = Style::default()
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let dim_style = Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::ITALIC);
 
-    let lines: Vec<Line> = mcp
-        .env
-        .iter()
-        .enumerate()
-        .map(|(ei, (key, val))| {
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Command.
+    let cmd_val = if mcp.command.is_empty() {
+        Span::styled("(none)", dim_style)
+    } else {
+        Span::styled(&mcp.command, Style::default().fg(Color::White))
+    };
+    lines.push(Line::from(vec![
+        Span::styled(" command: ", label_style),
+        cmd_val,
+    ]));
+
+    // Args.
+    let args_display = if mcp.args.is_empty() {
+        Span::styled("(none)", dim_style)
+    } else {
+        Span::styled(mcp.args.join(" "), Style::default().fg(Color::White))
+    };
+    lines.push(Line::from(vec![
+        Span::styled("    args: ", label_style),
+        args_display,
+    ]));
+
+    // Separator.
+    lines.push(Line::raw(""));
+
+    // Env vars.
+    if mcp.env.is_empty() {
+        lines.push(Line::from(Span::styled("  (no env vars)", dim_style)));
+    } else {
+        for (ei, (key, val)) in mcp.env.iter().enumerate() {
             let is_editing = editing && ei == state.mcp_env_selected;
-            let label_style = Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD);
             let label_span = Span::styled(format!(" {key}: "), label_style);
 
             let value_span = if is_editing {
@@ -216,24 +375,19 @@ fn render_mcp_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
                 s.insert(byte_pos, '|');
                 Span::styled(s, Style::default().fg(Color::Green))
             } else if val.is_empty() {
-                Span::styled(
-                    "(empty)",
-                    Style::default()
-                        .fg(Color::DarkGray)
-                        .add_modifier(Modifier::ITALIC),
-                )
+                Span::styled("(empty)", dim_style)
             } else {
                 Span::styled(mask_token(val), Style::default().fg(Color::White))
             };
 
             let indicator = if is_editing { " <" } else { "" };
-            Line::from(vec![
+            lines.push(Line::from(vec![
                 label_span,
                 value_span,
                 Span::styled(indicator, Style::default().fg(Color::Yellow)),
-            ])
-        })
-        .collect();
+            ]));
+        }
+    }
 
     frame.render_widget(Paragraph::new(lines), inner);
 }

@@ -190,6 +190,7 @@ impl Server for Daemon {
         &self,
         package: String,
         action: HubAction,
+        filters: Vec<String>,
     ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> + Send {
         let runtime = self.runtime.clone();
         async_stream::try_stream! {
@@ -198,14 +199,14 @@ impl Server for Daemon {
             let package = compact_str::CompactString::from(package.as_str());
             match action {
                 HubAction::Install => {
-                    let s = crate::ext::hub::package::install(package, registry);
+                    let s = crate::ext::hub::package::install(package, registry, filters);
                     pin_mut!(s);
                     while let Some(event) = s.next().await {
                         yield event?;
                     }
                 }
                 HubAction::Uninstall => {
-                    let s = crate::ext::hub::package::uninstall(package, registry);
+                    let s = crate::ext::hub::package::uninstall(package, registry, filters);
                     pin_mut!(s);
                     while let Some(event) = s.next().await {
                         yield event?;

@@ -71,11 +71,11 @@ pub(crate) const PRESETS: &[Preset] = &[
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tab {
     Providers,
-    Gateways,
     Mcps,
+    Gateways,
 }
 
-const TAB_TITLES: &[&str] = &["Providers", "Gateways", "MCPs"];
+const TAB_TITLES: &[&str] = &["Providers", "MCPs", "Gateways"];
 
 // ── Tree items (providers tab) ───────────────────────────────────────
 
@@ -94,10 +94,16 @@ pub(crate) struct ProviderData {
 }
 
 pub(crate) const PROVIDER_FIELDS: &[&str] = &["api_key", "base_url", "standard"];
-pub(crate) const GATEWAY_NAMES: &[&str] = &["Telegram", "Discord"];
+
+pub(crate) struct GatewayData {
+    pub(crate) name: String,
+    pub(crate) token: String,
+}
 
 pub(crate) struct McpData {
     pub(crate) name: String,
+    pub(crate) command: String,
+    pub(crate) args: Vec<String>,
     pub(crate) env: Vec<(String, String)>,
 }
 
@@ -109,6 +115,7 @@ pub(crate) enum Focus {
     Editing,
     PresetSelector,
     AddModel,
+    AddMcp,
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -125,12 +132,13 @@ pub(crate) struct AuthState {
     pub(crate) edit_buf: String,
     pub(crate) preset_idx: usize,
     // Gateways.
+    pub(crate) gateways: Vec<GatewayData>,
     pub(crate) gateway_selected: usize,
-    pub(crate) gateway_tokens: [String; 2],
     // MCPs.
     pub(crate) mcps: Vec<McpData>,
     pub(crate) mcp_selected: usize,
     pub(crate) mcp_env_selected: usize,
+    pub(crate) mcp_add_step: usize, // 0=name, 1=command, 2=args
     // Shared.
     pub(crate) status: String,
 }
@@ -140,7 +148,7 @@ impl AuthState {
         let config_path = wcore::paths::CONFIG_DIR.join("walrus.toml");
         let mut providers = Vec::new();
         let mut active_model = String::new();
-        let mut gateway_tokens = [String::new(), String::new()];
+        let mut gateways = Vec::new();
         let mut mcps = Vec::new();
 
         if config_path.exists() {
@@ -194,20 +202,18 @@ impl AuthState {
                 }
             }
 
-            if let Some(gateway) = doc.get("gateway").and_then(|c| c.as_table()) {
-                if let Some(tg) = gateway.get("telegram").and_then(|t| t.as_table()) {
-                    gateway_tokens[0] = tg
-                        .get("token")
+            if let Some(gateway_table) = doc.get("gateway").and_then(|c| c.as_table()) {
+                for (name, item) in gateway_table.iter() {
+                    let token = item
+                        .as_table()
+                        .and_then(|t| t.get("token"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                }
-                if let Some(dc) = gateway.get("discord").and_then(|t| t.as_table()) {
-                    gateway_tokens[1] = dc
-                        .get("token")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                    gateways.push(GatewayData {
+                        name: name.to_string(),
+                        token,
+                    });
                 }
             }
 
@@ -216,6 +222,19 @@ impl AuthState {
                     let Some(tbl) = item.as_table() else {
                         continue;
                     };
+                    let command = tbl
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let mut args = Vec::new();
+                    if let Some(arr) = tbl.get("args").and_then(|v| v.as_array()) {
+                        for a in arr.iter() {
+                            if let Some(s) = a.as_str() {
+                                args.push(s.to_string());
+                            }
+                        }
+                    }
                     let mut env = Vec::new();
                     if let Some(env_tbl) = tbl.get("env").and_then(|e| e.as_table()) {
                         for (k, v) in env_tbl.iter() {
@@ -225,6 +244,8 @@ impl AuthState {
                     }
                     mcps.push(McpData {
                         name: name.to_string(),
+                        command,
+                        args,
                         env,
                     });
                 }
@@ -241,11 +262,12 @@ impl AuthState {
             cursor: 0,
             edit_buf: String::new(),
             preset_idx: 0,
+            gateways,
             gateway_selected: 0,
-            gateway_tokens,
             mcps,
             mcp_selected: 0,
             mcp_env_selected: 0,
+            mcp_add_step: 0,
             status: String::from("Ready"),
         })
     }
@@ -304,38 +326,43 @@ impl AuthState {
         // [gateway.*]
         doc.remove("gateway");
         let mut gateway_table = Table::new();
-        if !self.gateway_tokens[0].is_empty() {
-            let mut tg = Table::new();
-            tg.insert("token", value(&self.gateway_tokens[0]));
-            gateway_table.insert("telegram", Item::Table(tg));
-        }
-        if !self.gateway_tokens[1].is_empty() {
-            let mut dc = Table::new();
-            dc.insert("token", value(&self.gateway_tokens[1]));
-            gateway_table.insert("discord", Item::Table(dc));
+        for gw in &self.gateways {
+            if !gw.token.is_empty() {
+                let mut tbl = Table::new();
+                tbl.insert("token", value(&gw.token));
+                gateway_table.insert(&gw.name, Item::Table(tbl));
+            }
         }
         if !gateway_table.is_empty() {
             doc.insert("gateway", Item::Table(gateway_table));
         }
 
-        // [mcps.*.env] — surgical update, only touch env values.
-        for mcp in &self.mcps {
-            if let Some(server) = doc
-                .get_mut("mcps")
-                .and_then(|m| m.as_table_mut())
-                .and_then(|t| t.get_mut(&mcp.name))
-                .and_then(|s| s.as_table_mut())
-            {
-                let env_table = server
-                    .entry("env")
-                    .or_insert(Item::Table(Table::new()))
-                    .as_table_mut();
-                if let Some(env_table) = env_table {
-                    for (k, v) in &mcp.env {
-                        env_table.insert(k, value(v));
-                    }
+        // [mcps.*]
+        doc.remove("mcps");
+        if !self.mcps.is_empty() {
+            let mut mcps_table = Table::new();
+            for mcp in &self.mcps {
+                let mut tbl = Table::new();
+                if !mcp.command.is_empty() {
+                    tbl.insert("command", value(&mcp.command));
                 }
+                if !mcp.args.is_empty() {
+                    let mut arr = Array::new();
+                    for a in &mcp.args {
+                        arr.push(a.as_str());
+                    }
+                    tbl.insert("args", Item::Value(arr.into()));
+                }
+                if !mcp.env.is_empty() {
+                    let mut env_tbl = Table::new();
+                    for (k, v) in &mcp.env {
+                        env_tbl.insert(k, value(v));
+                    }
+                    tbl.insert("env", Item::Table(env_tbl));
+                }
+                mcps_table.insert(&mcp.name, Item::Table(tbl));
             }
+            doc.insert("mcps", Item::Table(mcps_table));
         }
 
         std::fs::write(&config_path, doc.to_string())
@@ -422,17 +449,17 @@ fn handle_key(
     // Tab switching only in list focus.
     if key.code == KeyCode::Tab && state.focus == Focus::List {
         state.tab = match state.tab {
-            Tab::Providers => Tab::Gateways,
-            Tab::Gateways => Tab::Mcps,
-            Tab::Mcps => Tab::Providers,
+            Tab::Providers => Tab::Mcps,
+            Tab::Mcps => Tab::Gateways,
+            Tab::Gateways => Tab::Providers,
         };
         return Ok(None);
     }
 
     match state.tab {
         Tab::Providers => handle_providers_key(key, state),
-        Tab::Gateways => handle_gateways_key(key, state),
         Tab::Mcps => handle_mcps_key(key, state),
+        Tab::Gateways => handle_gateways_key(key, state),
     }
 }
 
@@ -476,8 +503,8 @@ fn render(frame: &mut Frame, state: &AuthState) {
     // Tab bar.
     let tab_idx = match state.tab {
         Tab::Providers => 0,
-        Tab::Gateways => 1,
-        Tab::Mcps => 2,
+        Tab::Mcps => 1,
+        Tab::Gateways => 2,
     };
     let tabs = Tabs::new(TAB_TITLES.iter().map(|t| Line::from(*t)))
         .select(tab_idx)
@@ -491,8 +518,8 @@ fn render(frame: &mut Frame, state: &AuthState) {
 
     match state.tab {
         Tab::Providers => render_providers(frame, state, vert[1]),
-        Tab::Gateways => render_gateways(frame, state, vert[1]),
         Tab::Mcps => render_mcps(frame, state, vert[1]),
+        Tab::Gateways => render_gateways(frame, state, vert[1]),
     }
 
     render_status(frame, state, vert[2]);
@@ -569,12 +596,23 @@ fn render_status(frame: &mut Frame, state: &AuthState, area: Rect) {
         (Tab::Mcps, Focus::List) => Line::from(vec![
             Span::styled(" Tab ", Style::default().fg(Color::Cyan)),
             Span::raw("Switch  "),
+            Span::styled("n ", Style::default().fg(Color::Cyan)),
+            Span::raw("New  "),
             Span::styled("Enter ", Style::default().fg(Color::Cyan)),
             Span::raw("Edit  "),
+            Span::styled("d ", Style::default().fg(Color::Cyan)),
+            Span::raw("Delete  "),
             Span::styled("Ctrl+S ", Style::default().fg(Color::Cyan)),
             Span::raw("Save  "),
             Span::styled("q ", Style::default().fg(Color::Cyan)),
             Span::raw("Quit  "),
+            status_span(state),
+        ]),
+        (_, Focus::AddMcp) => Line::from(vec![
+            Span::styled(" Enter ", Style::default().fg(Color::Cyan)),
+            Span::raw("Next  "),
+            Span::styled("Esc ", Style::default().fg(Color::Cyan)),
+            Span::raw("Cancel  "),
             status_span(state),
         ]),
         (Tab::Gateways, Focus::List) => Line::from(vec![

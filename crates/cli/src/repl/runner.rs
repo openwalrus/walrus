@@ -172,12 +172,14 @@ impl Runner {
         &mut self,
         package: &str,
         action: HubAction,
+        filters: Vec<String>,
     ) -> impl Stream<Item = Result<download_event::Event>> + '_ {
         self.transport
             .request_stream(ClientMessage {
                 msg: Some(client_message::Msg::Hub(HubMsg {
                     package: package.to_string(),
                     action: action.into(),
+                    filters,
                 })),
             })
             .take_while(|r| {

@@ -32,6 +32,7 @@ pub(crate) fn handle_providers_key(
             handle_add_model(key, state);
             Ok(None)
         }
+        _ => Ok(None),
     }
 }
 
