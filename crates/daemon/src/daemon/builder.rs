@@ -189,7 +189,7 @@ impl Daemon {
 
         // Built-in walrus agent.
         let mut walrus_config = config.walrus.clone();
-        walrus_config.name = CompactString::from("walrus");
+        walrus_config.name = CompactString::from(wcore::paths::DEFAULT_AGENT);
         walrus_config.system_prompt = SYSTEM_AGENT.to_owned();
         runtime.add_agent(walrus_config);
 

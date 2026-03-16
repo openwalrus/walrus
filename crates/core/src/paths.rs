@@ -31,3 +31,6 @@ pub const DATA_DIR: &str = "data";
 
 /// SQLite memory database filename.
 pub const MEMORY_DB: &str = "memory.db";
+
+/// Default agent name used when no custom agents are configured.
+pub const DEFAULT_AGENT: &str = "walrus";

@@ -34,10 +34,10 @@ pub enum StreamResult {
 }
 
 /// Read the agents directory and return the first agent name found,
-/// falling back to "assistant".
+/// falling back to [`wcore::paths::DEFAULT_AGENT`].
 pub fn resolve_default_agent(agents_dir: &Path) -> CompactString {
     let Ok(entries) = std::fs::read_dir(agents_dir) else {
-        return CompactString::from("assistant");
+        return CompactString::from(wcore::paths::DEFAULT_AGENT);
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -47,5 +47,5 @@ pub fn resolve_default_agent(agents_dir: &Path) -> CompactString {
             return CompactString::from(stem);
         }
     }
-    CompactString::from("assistant")
+    CompactString::from(wcore::paths::DEFAULT_AGENT)
 }

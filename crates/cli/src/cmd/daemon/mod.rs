@@ -24,6 +24,8 @@ pub enum DaemonCommand {
     },
     /// Trigger a hot-reload of the running daemon.
     Reload,
+    /// Restart the daemon (requires system service).
+    Restart,
     /// Install walrus as a system service (launchd/systemd).
     Install,
     /// Uninstall the walrus system service.
@@ -35,6 +37,7 @@ impl Daemon {
         match self.command {
             DaemonCommand::Start { .. } => start::start().await,
             DaemonCommand::Reload => reload(socket_path).await,
+            DaemonCommand::Restart => service::restart(),
             DaemonCommand::Install => service::install(),
             DaemonCommand::Uninstall => service::uninstall(),
         }

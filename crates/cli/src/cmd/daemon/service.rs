@@ -47,6 +47,31 @@ pub fn install() -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+pub fn restart() -> Result<()> {
+    let plist_path = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist");
+
+    if !plist_path.exists() {
+        anyhow::bail!(
+            "service not installed — run `walrus daemon install` first, \
+             or stop and start the daemon manually"
+        );
+    }
+
+    // KeepAlive is true in the plist, so launchd restarts the process after stop.
+    let status = std::process::Command::new("launchctl")
+        .args(["stop", "xyz.openwalrus.walrus"])
+        .status()?;
+    if status.success() {
+        println!("daemon restarted");
+    } else {
+        anyhow::bail!("launchctl stop failed (exit {})", status);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 pub fn uninstall() -> Result<()> {
     let plist_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
@@ -95,6 +120,30 @@ pub fn install() -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
+pub fn restart() -> Result<()> {
+    let unit_path = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+        .join(".config/systemd/user/walrus-daemon.service");
+
+    if !unit_path.exists() {
+        anyhow::bail!(
+            "service not installed — run `walrus daemon install` first, \
+             or stop and start the daemon manually"
+        );
+    }
+
+    let status = std::process::Command::new("systemctl")
+        .args(["--user", "restart", "walrus-daemon.service"])
+        .status()?;
+    if status.success() {
+        println!("daemon restarted");
+    } else {
+        anyhow::bail!("systemctl restart failed (exit {})", status);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 pub fn uninstall() -> Result<()> {
     let unit_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
@@ -119,6 +168,11 @@ pub fn uninstall() -> Result<()> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn install() -> Result<()> {
     anyhow::bail!("service install is only supported on macOS and Linux")
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub fn restart() -> Result<()> {
+    anyhow::bail!("service restart is only supported on macOS and Linux")
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]

@@ -593,7 +593,24 @@ impl ServiceManager {
                 let _ = std::fs::remove_file(&entry.socket_path);
             }
 
-            let mut cmd = tokio::process::Command::new(&entry.config.krate);
+            // Resolve binary: try ~/.cargo/bin/<krate> first (launchd/systemd
+            // don't inherit the user's shell PATH), fall back to bare name.
+            let cargo_bin = std::env::var("HOME").ok().map(|h| {
+                PathBuf::from(h)
+                    .join(".cargo/bin")
+                    .join(&entry.config.krate)
+            });
+            let binary = match cargo_bin {
+                Some(ref p) if p.exists() => p.as_path(),
+                _ => Path::new(&entry.config.krate),
+            };
+            tracing::info!(
+                service = %name,
+                binary = %binary.display(),
+                kind = ?entry.config.kind,
+                "spawning service"
+            );
+            let mut cmd = tokio::process::Command::new(binary);
             for (k, v) in &entry.config.env {
                 cmd.env(k, v);
             }
@@ -626,9 +643,9 @@ impl ServiceManager {
             }
 
             cmd.kill_on_drop(true);
-            let child = cmd
-                .spawn()
-                .with_context(|| format!("spawn service '{name}'"))?;
+            let child = cmd.spawn().with_context(|| {
+                format!("spawn service '{name}' (binary: {})", binary.display())
+            })?;
             tracing::info!(service = %name, pid = child.id(), log = %log_path.display(), "spawned service");
             entry.child = Some(child);
         }

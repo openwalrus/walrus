@@ -9,6 +9,7 @@
         <string>{binary}</string>
         <string>daemon</string>
         <string>start</string>
+        <string>-v</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
