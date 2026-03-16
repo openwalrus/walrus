@@ -31,6 +31,24 @@ pub struct Cli {
 }
 
 impl Cli {
+    /// Build a `RUST_LOG`-style filter string from the `-v` count on `daemon start`.
+    ///
+    /// Returns `None` when no `-v` flag is present (fall back to `RUST_LOG` env).
+    pub fn log_filter(&self) -> Option<&'static str> {
+        if let Command::Daemon(ref d) = self.command
+            && let daemon::DaemonCommand::Start { verbose } = d.command
+            && verbose > 0
+        {
+            Some(match verbose {
+                1 => "walrus=info",
+                2 => "walrus=debug",
+                _ => "walrus=trace",
+            })
+        } else {
+            None
+        }
+    }
+
     /// Resolve the agent name from CLI flags or fall back to "assistant".
     pub fn resolve_agent(&self) -> CompactString {
         self.agent.clone().unwrap_or_else(|| "walrus".into())

@@ -15,8 +15,8 @@
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>{log_dir}/walrus-daemon.log</string>
+    <string>{logs_dir}/daemon.log</string>
     <key>StandardErrorPath</key>
-    <string>{log_dir}/walrus-daemon.log</string>
+    <string>{logs_dir}/daemon.log</string>
 </dict>
 </plist>

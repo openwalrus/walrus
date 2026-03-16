@@ -2,25 +2,27 @@
 
 use anyhow::Result;
 use std::path::Path;
-use wcore::paths::CONFIG_DIR;
+use wcore::paths::LOGS_DIR;
 
 #[cfg(target_os = "macos")]
 const LAUNCHD_TEMPLATE: &str = include_str!("launchd.plist");
 #[cfg(target_os = "linux")]
 const SYSTEMD_TEMPLATE: &str = include_str!("systemd.service");
 
-/// Render a template by replacing `{binary}` and `{log_dir}` placeholders.
+/// Render a template by replacing `{binary}` and `{logs_dir}` placeholders.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-fn render_template(template: &str, binary: &Path, log_dir: &Path) -> String {
+fn render_template(template: &str, binary: &Path) -> String {
     template
         .replace("{binary}", &binary.display().to_string())
-        .replace("{log_dir}", &log_dir.display().to_string())
+        .replace("{logs_dir}", &LOGS_DIR.display().to_string())
 }
 
 #[cfg(target_os = "macos")]
 pub fn install() -> Result<()> {
     let binary = std::env::current_exe()?;
-    let plist = render_template(LAUNCHD_TEMPLATE, &binary, &CONFIG_DIR);
+    let plist = render_template(LAUNCHD_TEMPLATE, &binary);
+
+    std::fs::create_dir_all(&*LOGS_DIR)?;
 
     let plist_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
@@ -70,7 +72,7 @@ pub fn uninstall() -> Result<()> {
 #[cfg(target_os = "linux")]
 pub fn install() -> Result<()> {
     let binary = std::env::current_exe()?;
-    let unit = render_template(SYSTEMD_TEMPLATE, &binary, &CONFIG_DIR);
+    let unit = render_template(SYSTEMD_TEMPLATE, &binary);
 
     let unit_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?

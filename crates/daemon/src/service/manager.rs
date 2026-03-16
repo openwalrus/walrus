@@ -584,6 +584,8 @@ impl ServiceManager {
     /// can connect back to the daemon.
     pub async fn spawn_all(&mut self) -> Result<()> {
         std::fs::create_dir_all(&self.services_dir).context("create services dir")?;
+        let logs_dir = &*wcore::paths::LOGS_DIR;
+        std::fs::create_dir_all(logs_dir).context("create logs dir")?;
 
         for (name, entry) in &mut self.entries {
             // Clean up stale socket.
@@ -596,6 +598,21 @@ impl ServiceManager {
                 cmd.env(k, v);
             }
 
+            // Forward RUST_LOG so child services inherit the daemon's log level.
+            if !entry.config.env.contains_key("RUST_LOG")
+                && let Ok(rust_log) = std::env::var("RUST_LOG")
+            {
+                cmd.env("RUST_LOG", rust_log);
+            }
+
+            // Redirect stdout/stderr to per-service log files.
+            let log_path = logs_dir.join(format!("{name}.log"));
+            let log_file = std::fs::File::create(&log_path)
+                .with_context(|| format!("create log file for '{name}'"))?;
+            cmd.stdout(log_file.try_clone()?);
+            cmd.stderr(log_file);
+
+            cmd.arg("serve");
             match entry.config.kind {
                 ServiceKind::Extension => {
                     cmd.arg("--socket").arg(&entry.socket_path);
@@ -612,7 +629,7 @@ impl ServiceManager {
             let child = cmd
                 .spawn()
                 .with_context(|| format!("spawn service '{name}'"))?;
-            tracing::info!(service = %name, pid = child.id(), "spawned service");
+            tracing::info!(service = %name, pid = child.id(), log = %log_path.display(), "spawned service");
             entry.child = Some(child);
         }
 

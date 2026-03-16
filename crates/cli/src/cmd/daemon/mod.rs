@@ -17,7 +17,11 @@ pub struct Daemon {
 #[derive(Subcommand, Debug)]
 pub enum DaemonCommand {
     /// Start the daemon in the foreground.
-    Start,
+    Start {
+        /// Increase log verbosity (-v = info, -vv = debug, -vvv = trace).
+        #[arg(short, long, action = clap::ArgAction::Count)]
+        verbose: u8,
+    },
     /// Trigger a hot-reload of the running daemon.
     Reload,
     /// Install walrus as a system service (launchd/systemd).
@@ -29,7 +33,7 @@ pub enum DaemonCommand {
 impl Daemon {
     pub async fn run(self, socket_path: &Path) -> Result<()> {
         match self.command {
-            DaemonCommand::Start => start::start().await,
+            DaemonCommand::Start { .. } => start::start().await,
             DaemonCommand::Reload => reload(socket_path).await,
             DaemonCommand::Install => service::install(),
             DaemonCommand::Uninstall => service::uninstall(),

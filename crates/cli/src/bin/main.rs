@@ -7,9 +7,18 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    let cli = Cli::parse();
 
-    Cli::parse().run().await
+    let filter = match cli.log_filter() {
+        Some(f) => {
+            // Set RUST_LOG so spawned child services inherit the same level.
+            // SAFETY: called in main before spawning any threads.
+            unsafe { std::env::set_var("RUST_LOG", f) };
+            EnvFilter::new(f)
+        }
+        None => EnvFilter::from_default_env(),
+    };
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    cli.run().await
 }
