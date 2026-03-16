@@ -11,8 +11,8 @@ pub enum ServiceKind {
     /// Hook service — speaks WHS protocol over UDS.
     #[default]
     Hook,
-    /// Client service — speaks existing walrus protocol (gateways).
-    Client,
+    /// Gateway service — speaks existing walrus protocol (e.g. Telegram, Discord).
+    Gateway,
     /// Arbitrary process — no walrus protocol (e.g. llama-server).
     Process,
 }

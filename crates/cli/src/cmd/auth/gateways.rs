@@ -1,5 +1,5 @@
 use crate::{
-    cmd::auth::{AuthState, CHANNEL_NAMES, Focus, Tab},
+    cmd::auth::{AuthState, Focus, GATEWAY_NAMES, Tab},
     tui::{border_dim, border_focused, char_to_byte, handle_text_input, mask_token},
 };
 use anyhow::Result;
@@ -12,9 +12,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-// ── Channels key handling ───────────────────────────────────────────
+// ── Gateways key handling ───────────────────────────────────────────
 
-pub(crate) fn handle_channels_key(
+pub(crate) fn handle_gateways_key(
     key: crossterm::event::KeyEvent,
     state: &mut AuthState,
 ) -> Result<Option<Result<()>>> {
@@ -23,21 +23,21 @@ pub(crate) fn handle_channels_key(
             match key.code {
                 KeyCode::Char('q') => return Ok(Some(Ok(()))),
                 KeyCode::Up | KeyCode::Char('k') => {
-                    state.channel_selected = state.channel_selected.saturating_sub(1);
+                    state.gateway_selected = state.gateway_selected.saturating_sub(1);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if state.channel_selected < CHANNEL_NAMES.len() - 1 {
-                        state.channel_selected += 1;
+                    if state.gateway_selected < GATEWAY_NAMES.len() - 1 {
+                        state.gateway_selected += 1;
                     }
                 }
                 KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
                     state.focus = Focus::Editing;
-                    let token = &state.channel_tokens[state.channel_selected];
+                    let token = &state.gateway_tokens[state.gateway_selected];
                     state.cursor = token.chars().count();
                     state.edit_buf = token.clone();
                 }
                 KeyCode::Char('x') | KeyCode::Delete => {
-                    state.channel_tokens[state.channel_selected].clear();
+                    state.gateway_tokens[state.gateway_selected].clear();
                 }
                 _ => {}
             }
@@ -46,7 +46,7 @@ pub(crate) fn handle_channels_key(
         Focus::Editing => {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => {
-                    state.channel_tokens[state.channel_selected] = state.edit_buf.clone();
+                    state.gateway_tokens[state.gateway_selected] = state.edit_buf.clone();
                     state.focus = Focus::List;
                 }
                 _ => handle_text_input(key.code, &mut state.edit_buf, &mut state.cursor),
@@ -57,19 +57,19 @@ pub(crate) fn handle_channels_key(
     }
 }
 
-// ── Channels rendering ──────────────────────────────────────────────
+// ── Gateways rendering ──────────────────────────────────────────────
 
-pub(crate) fn render_channels(frame: &mut Frame, state: &AuthState, area: Rect) {
+pub(crate) fn render_gateways(frame: &mut Frame, state: &AuthState, area: Rect) {
     let horiz =
         Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)]).split(area);
-    render_channel_list(frame, state, horiz[0]);
-    render_channel_detail(frame, state, horiz[1]);
+    render_gateway_list(frame, state, horiz[0]);
+    render_gateway_detail(frame, state, horiz[1]);
 }
 
-fn render_channel_list(frame: &mut Frame, state: &AuthState, area: Rect) {
-    let focused = state.tab == Tab::Channels && state.focus == Focus::List;
+fn render_gateway_list(frame: &mut Frame, state: &AuthState, area: Rect) {
+    let focused = state.tab == Tab::Gateways && state.focus == Focus::List;
     let block = Block::default()
-        .title(" Channels ")
+        .title(" Gateways ")
         .borders(Borders::ALL)
         .border_style(if focused {
             border_focused()
@@ -77,22 +77,22 @@ fn render_channel_list(frame: &mut Frame, state: &AuthState, area: Rect) {
             border_dim()
         });
 
-    let lines: Vec<Line> = CHANNEL_NAMES
+    let lines: Vec<Line> = GATEWAY_NAMES
         .iter()
         .enumerate()
         .map(|(i, name)| {
-            let marker = if i == state.channel_selected {
+            let marker = if i == state.gateway_selected {
                 "> "
             } else {
                 "  "
             };
-            let configured = if state.channel_tokens[i].is_empty() {
+            let configured = if state.gateway_tokens[i].is_empty() {
                 ""
             } else {
                 " *"
             };
             let text = format!("{marker}{name}{configured}");
-            let style = if i == state.channel_selected {
+            let style = if i == state.gateway_selected {
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD)
@@ -106,16 +106,16 @@ fn render_channel_list(frame: &mut Frame, state: &AuthState, area: Rect) {
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
-fn render_channel_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
-    let name = CHANNEL_NAMES[state.channel_selected];
-    let token = &state.channel_tokens[state.channel_selected];
-    let editing = state.tab == Tab::Channels && state.focus == Focus::Editing;
+fn render_gateway_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
+    let name = GATEWAY_NAMES[state.gateway_selected];
+    let token = &state.gateway_tokens[state.gateway_selected];
+    let editing = state.tab == Tab::Gateways && state.focus == Focus::Editing;
 
     let hints = [
         "https://core.telegram.org/bots#botfather",
         "https://discord.com/developers/applications",
     ];
-    let hint = hints[state.channel_selected];
+    let hint = hints[state.gateway_selected];
 
     let block = Block::default()
         .title(format!(" {name} "))

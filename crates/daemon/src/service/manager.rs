@@ -538,7 +538,7 @@ struct ServiceEntry {
 pub struct ServiceManager {
     entries: BTreeMap<String, ServiceEntry>,
     services_dir: PathBuf,
-    /// Daemon UDS socket path — passed to client services via `--daemon`.
+    /// Daemon UDS socket path — passed to gateway services via `--daemon`.
     daemon_socket: PathBuf,
 }
 
@@ -547,7 +547,7 @@ const HANDSHAKE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
 impl ServiceManager {
     /// Create a new manager from config. Does not spawn anything yet.
     ///
-    /// `daemon_socket` is the daemon's UDS path — forwarded to client services
+    /// `daemon_socket` is the daemon's UDS path — forwarded to gateway services
     /// so they can connect back.
     pub fn new(
         configs: &BTreeMap<String, ServiceConfig>,
@@ -580,7 +580,7 @@ impl ServiceManager {
     /// Spawn all enabled services.
     ///
     /// Hook services get `--socket <path>` so they bind a UDS listener.
-    /// Client services get `--daemon <path>` and `--config <json>` so they
+    /// Gateway services get `--daemon <path>` and `--config <json>` so they
     /// can connect back to the daemon.
     pub async fn spawn_all(&mut self) -> Result<()> {
         std::fs::create_dir_all(&self.services_dir).context("create services dir")?;
@@ -601,7 +601,7 @@ impl ServiceManager {
                 ServiceKind::Hook => {
                     cmd.arg("--socket").arg(&entry.socket_path);
                 }
-                ServiceKind::Client => {
+                ServiceKind::Gateway => {
                     cmd.arg("--daemon").arg(&self.daemon_socket);
                     let config_json = serde_json::to_string(&entry.config.config)
                         .unwrap_or_else(|_| "{}".to_owned());
