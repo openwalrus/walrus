@@ -42,9 +42,6 @@ pub struct Package {
     /// Source repository URL.
     #[serde(default)]
     pub repository: CompactString,
-    /// Project homepage URL.
-    #[serde(default)]
-    pub homepage: CompactString,
     /// Searchable keywords (for hub discovery).
     #[serde(default)]
     pub keywords: Vec<CompactString>,
