@@ -233,6 +233,11 @@ impl Hook for DaemonHook {
             None => config,
         };
 
+        // Inject environment context (OS, working directory, sandbox state).
+        config
+            .system_prompt
+            .push_str(&os::environment_block(self.sandboxed));
+
         // Inject built-in memory prompt if active.
         if let Some(ref mem) = self.memory {
             let prompt = mem.build_prompt();
