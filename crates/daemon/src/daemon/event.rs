@@ -76,65 +76,14 @@ impl Daemon {
         });
     }
 
-    /// Handle a heartbeat tick for a specific agent: deliver queued create_task
-    /// entries and promote spawn_task entries.
-    fn handle_heartbeat(&self, agent: CompactString) {
+    /// Handle a heartbeat tick for a specific agent: promote queued tasks.
+    fn handle_heartbeat(&self, _agent: CompactString) {
         let daemon = self.clone();
         tokio::spawn(async move {
-            tracing::debug!(agent = %agent, "heartbeat tick");
             let rt = daemon.runtime.read().await.clone();
             let tasks_arc = rt.hook.tasks.clone();
-
-            // Gather queued create_task entries for this agent.
-            let task_entries = {
-                let registry = tasks_arc.lock().await;
-                registry.queued_create_tasks_for(&agent)
-            };
-
-            if !task_entries.is_empty() {
-                let task_context: String = task_entries
-                    .iter()
-                    .map(|(id, desc)| format!("- Task #{id}: {desc}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                let prompt = daemon
-                    .agents_config
-                    .get(agent.as_str())
-                    .map(|a| a.heartbeat.prompt.as_str())
-                    .unwrap_or("");
-                let content = if prompt.is_empty() {
-                    format!("You have pending tasks:\n{task_context}")
-                } else {
-                    format!("{prompt}\n\nPending tasks:\n{task_context}")
-                };
-
-                // Mark tasks InProgress.
-                {
-                    let mut registry = tasks_arc.lock().await;
-                    for (id, _) in &task_entries {
-                        registry.set_status(*id, crate::hook::system::task::TaskStatus::InProgress);
-                    }
-                }
-
-                let msg = ClientMessage::from(wcore::protocol::message::SendMsg {
-                    agent: agent.to_string(),
-                    content,
-                    session: None,
-                    sender: None,
-                });
-                let (reply_tx, _reply_rx) = mpsc::unbounded_channel();
-                let _ = daemon.event_tx.send(DaemonEvent::Message {
-                    msg,
-                    reply: reply_tx,
-                });
-            }
-
-            // Promote queued spawn_task entries.
-            {
-                let reg = tasks_arc.clone();
-                tasks_arc.lock().await.promote_next(reg);
-            }
+            let reg = tasks_arc.clone();
+            tasks_arc.lock().await.promote_next(reg);
         });
     }
 

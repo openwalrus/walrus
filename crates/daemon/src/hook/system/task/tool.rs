@@ -69,23 +69,6 @@ impl DaemonHook {
         serde_json::to_string(&entries).unwrap_or_else(|e| format!("serialization error: {e}"))
     }
 
-    pub(crate) async fn dispatch_create_task(&self, args: &str, agent: &str) -> String {
-        let input: CreateTask = match serde_json::from_str(args) {
-            Ok(v) => v,
-            Err(e) => return format!("invalid arguments: {e}"),
-        };
-        let mut registry = self.tasks.lock().await;
-        let task_id = registry.create(
-            input.agent.into(),
-            input.description,
-            agent.into(),
-            None,
-            TaskStatus::Queued,
-            false,
-        );
-        serde_json::json!({ "task_id": task_id, "status": "queued" }).to_string()
-    }
-
     pub(crate) async fn dispatch_ask_user(&self, args: &str, task_id: Option<u64>) -> String {
         let input: AskUser = match serde_json::from_str(args) {
             Ok(v) => v,
@@ -188,7 +171,6 @@ pub(crate) fn tools() -> Vec<Tool> {
     vec![
         SpawnTask::as_tool(),
         CheckTasks::as_tool(),
-        CreateTask::as_tool(),
         AskUser::as_tool(),
         AwaitTasks::as_tool(),
     ]
@@ -221,19 +203,6 @@ pub(crate) struct CheckTasks {
 
 impl ToolDescription for CheckTasks {
     const DESCRIPTION: &'static str = "Query the task registry. Filterable by agent, status, parent_id. Returns up to 16 most recent tasks.";
-}
-
-#[derive(Deserialize, schemars::JsonSchema)]
-pub(crate) struct CreateTask {
-    /// Target agent name.
-    pub agent: String,
-    /// Human-readable task description.
-    pub description: String,
-}
-
-impl ToolDescription for CreateTask {
-    const DESCRIPTION: &'static str =
-        "Queue a task for later pickup (heartbeat or manual). Always starts as queued.";
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]

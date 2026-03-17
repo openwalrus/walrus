@@ -67,13 +67,7 @@ const MCP_TOOLS: &[&str] = &["search_mcp", "call_mcp_tool"];
 const MEMORY_TOOLS: &[&str] = &["recall", "memory", "user_memory"];
 
 /// Task delegation tools.
-const TASK_TOOLS: &[&str] = &[
-    "spawn_task",
-    "check_tasks",
-    "create_task",
-    "ask_user",
-    "await_tasks",
-];
+const TASK_TOOLS: &[&str] = &["spawn_task", "check_tasks", "ask_user", "await_tasks"];
 
 impl DaemonHook {
     /// Create a new DaemonHook with the given backends.
@@ -207,7 +201,6 @@ impl DaemonHook {
             "bash" => self.dispatch_bash(args).await,
             "spawn_task" => self.dispatch_spawn_task(args, agent, task_id).await,
             "check_tasks" => self.dispatch_check_tasks(args).await,
-            "create_task" => self.dispatch_create_task(args, agent).await,
             "ask_user" => self.dispatch_ask_user(args, task_id).await,
             "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
             "recall" => self.dispatch_recall(args).await,

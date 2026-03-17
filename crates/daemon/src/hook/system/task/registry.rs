@@ -85,7 +85,6 @@ impl TaskRegistry {
         created_by: CompactString,
         parent_id: Option<u64>,
         status: TaskStatus,
-        spawned: bool,
     ) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (status_tx, _) = watch::channel(status);
@@ -104,7 +103,6 @@ impl TaskRegistry {
             completion_tokens: 0,
             created_at: Instant::now(),
             abort_handle: None,
-            spawned,
             status_tx,
         };
         self.tasks.insert(id, task);
@@ -200,7 +198,6 @@ impl TaskRegistry {
             created_by,
             parent_id,
             initial_status,
-            true,
         );
 
         if under_limit {
@@ -366,38 +363,6 @@ impl TaskRegistry {
             task.prompt_tokens += prompt;
             task.completion_tokens += completion;
         }
-    }
-
-    /// Collect queued `create_task` entries grouped by agent.
-    ///
-    /// Returns `(agent, [(task_id, description)])` pairs, capped at
-    /// `max_concurrent` tasks per agent to avoid context overflow.
-    pub fn queued_create_tasks(&self) -> BTreeMap<CompactString, Vec<(u64, String)>> {
-        let mut groups: BTreeMap<CompactString, Vec<(u64, String)>> = BTreeMap::new();
-        for task in self.tasks.values() {
-            if task.status == TaskStatus::Queued && !task.spawned {
-                let entry = groups.entry(task.agent.clone()).or_default();
-                if entry.len() < self.max_concurrent {
-                    entry.push((task.id, task.description.clone()));
-                }
-            }
-        }
-        groups
-    }
-
-    /// Collect queued `create_task` entries for a single agent, capped at
-    /// `max_concurrent`.
-    pub fn queued_create_tasks_for(&self, agent: &str) -> Vec<(u64, String)> {
-        let mut entries = Vec::new();
-        for task in self.tasks.values() {
-            if task.status == TaskStatus::Queued && !task.spawned && task.agent == agent {
-                entries.push((task.id, task.description.clone()));
-                if entries.len() >= self.max_concurrent {
-                    break;
-                }
-            }
-        }
-        entries
     }
 }
 
