@@ -40,7 +40,6 @@ impl Daemon {
                 runtime: Arc::new(RwLock::new(Arc::new(runtime))),
                 config_dir: config_dir.to_path_buf(),
                 event_tx,
-                agents_config: config.agents.clone(),
             },
             service_manager,
         ))

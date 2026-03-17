@@ -14,12 +14,10 @@ use ::socket::server::accept_loop;
 use anyhow::Result;
 use model::ProviderRegistry;
 use std::{
-    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
-use wcore::AgentConfig;
 use wcore::Runtime;
 
 pub(crate) mod builder;

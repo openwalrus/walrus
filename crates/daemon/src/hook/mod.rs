@@ -49,6 +49,8 @@ pub struct DaemonHook {
     pub memory: Option<BuiltinMemory>,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
+    /// Sub-agent descriptions for catalog injection into the walrus agent.
+    pub(crate) agent_descriptions: BTreeMap<CompactString, CompactString>,
     /// External extension service registry (tools + queries).
     pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
@@ -91,12 +93,17 @@ impl DaemonHook {
             sandboxed,
             memory,
             scopes: BTreeMap::new(),
+            agent_descriptions: BTreeMap::new(),
             registry,
         }
     }
 
     /// Register an agent's scope for dispatch enforcement.
     pub(crate) fn register_scope(&mut self, name: CompactString, config: &AgentConfig) {
+        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
+            self.agent_descriptions
+                .insert(name.clone(), config.description.clone());
+        }
         self.scopes.insert(
             name,
             AgentScope {
@@ -334,6 +341,14 @@ impl Hook for DaemonHook {
             Some(ref registry) => registry.on_before_run(agent, history),
             None => Vec::new(),
         };
+        if agent == wcore::paths::DEFAULT_AGENT && !self.agent_descriptions.is_empty() {
+            let mut block = String::from("<agents>\n");
+            for (name, desc) in &self.agent_descriptions {
+                block.push_str(&format!("- {name}: {desc}\n"));
+            }
+            block.push_str("</agents>");
+            messages.push(Message::user(block));
+        }
         if let Some(ref mem) = self.memory {
             messages.extend(mem.before_run(history));
         }
