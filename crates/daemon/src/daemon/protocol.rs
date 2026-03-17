@@ -127,7 +127,7 @@ impl Server for Daemon {
         let tasks = registry.list(None, None, None);
         Ok(tasks
             .into_iter()
-            .map(|t| crate::hook::system::task::TaskRegistry::task_info(t))
+            .map(crate::hook::system::task::TaskRegistry::task_info)
             .collect())
     }
 
