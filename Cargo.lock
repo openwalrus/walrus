@@ -1522,7 +1522,9 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-core"
-version = "0.0.5"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c029270a19a4260515dce195f546aff4e420279912def5201ad9c0c74b15c69c"
 dependencies = [
  "serde",
  "serde_json",
@@ -1530,7 +1532,9 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-provider"
-version = "0.0.5"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02f4fb474085cdb08dabfafdc480206dbd83ce3d6496051382f0bbd116aba1"
 dependencies = [
  "bytes",
  "crabtalk-core",

@@ -60,8 +60,8 @@ pub fn build_provider(def: &ProviderDef, model: &str, client: reqwest::Client) -
         inner,
         client,
         model: CompactString::from(model),
-        max_retries: def.max_retries,
-        timeout: Duration::from_secs(def.timeout),
+        max_retries: def.max_retries.unwrap_or(2),
+        timeout: Duration::from_secs(def.timeout.unwrap_or(30)),
     })
 }
 

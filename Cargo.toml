@@ -21,8 +21,8 @@ wcore = { path = "crates/core", package = "walrus-core", version = "0.0.9" }
 wsearch = { path = "apps/search", package = "walrus-search", version = "0.0.9", default-features = false }
 
 # crabtalk
-crabtalk-core = { path = "../../crabtalk/crates/core" }
-crabtalk-provider = { path = "../../crabtalk/crates/provider" }
+crabtalk-core = "0.0.6"
+crabtalk-provider = "0.0.6"
 
 # crates.io
 anyhow = "1"
