@@ -288,13 +288,18 @@ impl AuthState {
             .parse()
             .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
-        // [walrus].model
+        // [system.walrus].model
         if !self.active_model.is_empty() {
-            if doc.get("walrus").is_none() {
-                doc.insert("walrus", Item::Table(Table::new()));
+            if doc.get("system").is_none() {
+                doc.insert("system", Item::Table(Table::new()));
             }
-            if let Some(walrus) = doc.get_mut("walrus").and_then(|w| w.as_table_mut()) {
-                walrus.insert("model", value(&self.active_model));
+            if let Some(system) = doc.get_mut("system").and_then(|s| s.as_table_mut()) {
+                if system.get("walrus").is_none() {
+                    system.insert("walrus", Item::Table(Table::new()));
+                }
+                if let Some(walrus) = system.get_mut("walrus").and_then(|w| w.as_table_mut()) {
+                    walrus.insert("model", value(&self.active_model));
+                }
             }
         }
 

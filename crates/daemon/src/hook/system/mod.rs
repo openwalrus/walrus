@@ -12,6 +12,8 @@ pub mod task;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SystemConfig {
+    /// The default system agent config (model, heartbeat, thinking).
+    pub walrus: wcore::AgentConfig,
     /// Task executor pool configuration (`[system.tasks]`).
     pub tasks: TasksConfig,
     /// Built-in memory configuration (`[system.memory]`).

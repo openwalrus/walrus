@@ -26,7 +26,7 @@ walrus attach
 Point it at any LLM — [Ollama][providers], [OpenAI, Anthropic, DeepSeek][remote], or any OpenAI-compatible API.
 
 ```toml
-[walrus]
+[system.walrus]
 model = "qwen3:4b"
 
 [model.qwen3]

@@ -86,10 +86,11 @@ impl Daemon {
     /// Builds remote providers from config and sets the active model.
     async fn build_providers(config: &DaemonConfig) -> Result<ProviderManager> {
         let active_model = config
+            .system
             .walrus
             .model
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("walrus.model is required in walrus.toml"))?;
+            .ok_or_else(|| anyhow::anyhow!("system.walrus.model is required in walrus.toml"))?;
         let manager = ProviderManager::from_providers(active_model, &config.provider).await?;
 
         tracing::info!(
@@ -205,7 +206,7 @@ impl Daemon {
         let prompt_map: std::collections::BTreeMap<String, String> = prompts.into_iter().collect();
 
         // Built-in walrus agent.
-        let mut walrus_config = config.walrus.clone();
+        let mut walrus_config = config.system.walrus.clone();
         walrus_config.name = CompactString::from(wcore::paths::DEFAULT_AGENT);
         walrus_config.system_prompt = SYSTEM_AGENT.to_owned();
         runtime.add_agent(walrus_config);
@@ -224,7 +225,7 @@ impl Daemon {
         }
 
         // Also register agents that have .md files but no TOML entry (defaults).
-        let default_think = config.walrus.thinking;
+        let default_think = config.system.walrus.thinking;
         for (stem, prompt) in &prompt_map {
             if config.agents.contains_key(stem) {
                 continue;

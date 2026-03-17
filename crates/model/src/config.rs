@@ -12,7 +12,7 @@ pub use wcore::config::provider::{ApiStandard, ProviderDef};
 /// Model configuration for the daemon.
 ///
 /// Providers are configured as `[provider.<name>]` sections, each owning
-/// a list of model names. The active model name lives in `[walrus].model`.
+/// a list of model names. The active model name lives in `[system.walrus].model`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelConfig {
     /// Optional embedding model.

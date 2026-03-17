@@ -21,9 +21,6 @@ mod loader;
 /// Top-level daemon configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DaemonConfig {
-    /// The walrus daemon's own agent config (model, heartbeat).
-    #[serde(default)]
-    pub walrus: AgentConfig,
     /// Provider definitions (`[provider.<name>]`).
     #[serde(default)]
     pub provider: BTreeMap<CompactString, ProviderDef>,
@@ -56,8 +53,8 @@ impl DaemonConfig {
                 server.name = name.clone().into();
             }
         });
-        if config.walrus.model.is_none() {
-            config.walrus.model = Some(::model::default_model().into());
+        if config.system.walrus.model.is_none() {
+            config.system.walrus.model = Some(::model::default_model().into());
         }
         ModelConfig::validate(&config.provider)?;
         Ok(config)
