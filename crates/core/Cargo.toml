@@ -11,6 +11,8 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
+# crabtalk
+crabtalk-core.workspace = true
 # crates.io
 anyhow.workspace = true
 dirs.workspace = true

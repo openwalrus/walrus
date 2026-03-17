@@ -235,7 +235,7 @@ impl<M: Model> Agent<M> {
                                     yield AgentEvent::ThinkingDelta(reason.to_owned());
                                 }
                                 if let Some(r) = chunk.reason() {
-                                    finish_reason = Some(*r);
+                                    finish_reason = Some(r.clone());
                                 }
                                 last_meta = chunk.meta.clone();
                                 if chunk.usage.is_some() {

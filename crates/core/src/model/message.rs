@@ -2,12 +2,13 @@
 
 use crate::model::{StreamChunk, ToolCall};
 use compact_str::CompactString;
+pub use crabtalk_core::Role;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::BTreeMap;
 
 /// A message in the chat
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Message {
     /// The role of the message
     pub role: Role,
@@ -169,20 +170,15 @@ impl MessageBuilder {
     }
 }
 
-/// The role of a message
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
-pub enum Role {
-    /// The user role
-    #[serde(rename = "user")]
-    #[default]
-    User,
-    /// The assistant role
-    #[serde(rename = "assistant")]
-    Assistant,
-    /// The system role
-    #[serde(rename = "system")]
-    System,
-    /// The tool role
-    #[serde(rename = "tool")]
-    Tool,
+impl Default for Message {
+    fn default() -> Self {
+        Self {
+            role: Role::User,
+            content: String::new(),
+            reasoning_content: String::new(),
+            tool_call_id: CompactString::default(),
+            tool_calls: SmallVec::new(),
+            sender: CompactString::default(),
+        }
+    }
 }

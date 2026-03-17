@@ -17,7 +17,7 @@ use tokio::{
 };
 use wcore::{
     AgentConfig, CompactHook, Hook, ToolRegistry,
-    model::{Message, Model, Request, Role, Tool},
+    model::{Message, Model, Request, Tool},
     protocol::{
         PROTOCOL_VERSION,
         codec::{read_message, write_message},
@@ -438,12 +438,7 @@ fn to_simple_messages(history: &[Message]) -> Vec<SimpleMessage> {
     history
         .iter()
         .map(|m| SimpleMessage {
-            role: match m.role {
-                Role::User => "user".to_owned(),
-                Role::Assistant => "assistant".to_owned(),
-                Role::System => "system".to_owned(),
-                Role::Tool => "tool".to_owned(),
-            },
+            role: m.role.as_str().to_owned(),
             content: m.content.clone(),
         })
         .collect()

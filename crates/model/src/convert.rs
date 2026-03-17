@@ -1,15 +1,18 @@
 //! Type conversion between wcore model types and crabtalk-core wire types.
+//!
+//! Role and FinishReason are shared (re-exported from crabtalk-core in wcore).
+//! Structural differences remain: String vs Option<Value> content, flat vs
+//! envelope Tool, CompactString vs String, SmallVec vs Vec.
 
 use compact_str::CompactString;
 use crabtalk_core::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
-    Delta as CtDelta, FinishReason as CtFinishReason, FunctionCall as CtFunctionCall, FunctionDef,
-    Message as CtMessage, Role as CtRole, Tool as CtTool, ToolCall as CtToolCall, ToolType,
-    Usage as CtUsage,
+    Delta as CtDelta, FunctionCall as CtFunctionCall, FunctionDef, Message as CtMessage,
+    Tool as CtTool, ToolCall as CtToolCall, ToolType, Usage as CtUsage,
 };
 use wcore::model::{
-    Choice, CompletionMeta, CompletionTokensDetails, Delta, FinishReason, FunctionCall, Message,
-    Request, Response, Role, StreamChunk, Tool, ToolCall, ToolChoice, Usage,
+    Choice, CompletionMeta, CompletionTokensDetails, Delta, FunctionCall, Message, Request,
+    Response, StreamChunk, Tool, ToolCall, ToolChoice, Usage,
 };
 
 /// Convert a wcore Request into a crabtalk ChatCompletionRequest.
@@ -41,8 +44,6 @@ pub fn to_ct_request(req: &Request) -> ChatCompletionRequest {
 }
 
 fn to_ct_message(msg: &Message) -> CtMessage {
-    let role = convert_role(&msg.role);
-
     let content = if msg.content.is_empty() {
         None
     } else {
@@ -68,7 +69,7 @@ fn to_ct_message(msg: &Message) -> CtMessage {
     };
 
     CtMessage {
-        role,
+        role: msg.role.clone(),
         content,
         tool_calls,
         tool_call_id,
@@ -130,7 +131,7 @@ pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
             .map(|c| Choice {
                 index: c.index,
                 delta: from_ct_message_delta(&c.message),
-                finish_reason: c.finish_reason.map(convert_finish_reason),
+                finish_reason: c.finish_reason,
                 logprobs: None,
             })
             .collect(),
@@ -161,7 +162,7 @@ fn from_ct_chunk_choice(c: ChunkChoice) -> Choice {
     Choice {
         index: c.index,
         delta: from_ct_delta(&c.delta),
-        finish_reason: c.finish_reason.map(convert_finish_reason),
+        finish_reason: c.finish_reason,
         logprobs: None,
     }
 }
@@ -198,7 +199,7 @@ fn from_ct_message_delta(msg: &CtMessage) -> Delta {
 
 fn from_ct_delta(d: &CtDelta) -> Delta {
     Delta {
-        role: d.role.as_ref().map(convert_ct_role),
+        role: d.role.clone(),
         content: d.content.clone(),
         reasoning_content: d.reasoning_content.clone(),
         tool_calls: d.tool_calls.as_ref().map(|tcs| {
@@ -248,34 +249,5 @@ fn from_ct_usage(u: CtUsage) -> Usage {
             .map(|d| CompletionTokensDetails {
                 reasoning_tokens: d.reasoning_tokens,
             }),
-    }
-}
-
-fn convert_role(role: &Role) -> CtRole {
-    match role {
-        Role::User => CtRole::User,
-        Role::Assistant => CtRole::Assistant,
-        Role::System => CtRole::System,
-        Role::Tool => CtRole::Tool,
-    }
-}
-
-fn convert_ct_role(role: &CtRole) -> Role {
-    match role {
-        CtRole::User => Role::User,
-        CtRole::Assistant => Role::Assistant,
-        CtRole::System => Role::System,
-        CtRole::Tool => Role::Tool,
-        CtRole::Developer | CtRole::Custom(_) => Role::User,
-    }
-}
-
-fn convert_finish_reason(reason: CtFinishReason) -> FinishReason {
-    match reason {
-        CtFinishReason::Stop => FinishReason::Stop,
-        CtFinishReason::Length => FinishReason::Length,
-        CtFinishReason::ToolCalls => FinishReason::ToolCalls,
-        CtFinishReason::ContentFilter => FinishReason::ContentFilter,
-        CtFinishReason::Custom(_) => FinishReason::Stop,
     }
 }

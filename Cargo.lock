@@ -8741,6 +8741,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "compact_str 0.8.1",
+ "crabtalk-core",
  "dirs",
  "futures-core",
  "futures-util",

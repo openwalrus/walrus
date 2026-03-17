@@ -2,6 +2,7 @@
 
 use crate::model::{Message, Role, tool::ToolCall};
 use compact_str::CompactString;
+pub use crabtalk_core::FinishReason;
 use serde::{Deserialize, Serialize};
 
 /// Common metadata shared between streaming and non-streaming completions
@@ -109,26 +110,6 @@ pub struct Choice {
 
     /// Log probability information
     pub logprobs: Option<LogProbs>,
-}
-
-/// The reason the model stopped generating
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FinishReason {
-    /// The model finished naturally
-    Stop,
-
-    /// The model hit the max token limit
-    Length,
-
-    /// Content was filtered
-    ContentFilter,
-
-    /// The model is making tool calls
-    ToolCalls,
-
-    /// Insufficient system resources
-    InsufficientSystemResource,
 }
 
 /// Token usage statistics
