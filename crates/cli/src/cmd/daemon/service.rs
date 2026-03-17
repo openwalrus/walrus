@@ -21,40 +21,65 @@ fn render_template(template: &str, binary: &Path) -> String {
 }
 
 #[cfg(target_os = "macos")]
+fn launchctl_domain() -> String {
+    let uid = std::process::Command::new("id")
+        .arg("-u")
+        .output()
+        .expect("failed to run `id -u`");
+    let uid = String::from_utf8_lossy(&uid.stdout).trim().to_string();
+    format!("gui/{uid}")
+}
+
+#[cfg(target_os = "macos")]
+fn launchctl_service_target() -> String {
+    format!("{}/xyz.openwalrus.walrus", launchctl_domain())
+}
+
+#[cfg(target_os = "macos")]
+fn plist_path() -> Result<std::path::PathBuf> {
+    Ok(dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist"))
+}
+
+#[cfg(target_os = "macos")]
 pub fn install() -> Result<()> {
+    let plist_path = plist_path()?;
+
+    // Clean up existing installation if present.
+    if plist_path.exists() {
+        uninstall()?;
+    }
+
     let binary = std::env::current_exe()?;
     let plist = render_template(LAUNCHD_TEMPLATE, &binary);
 
     std::fs::create_dir_all(&*LOGS_DIR)?;
     std::fs::create_dir_all(&*HOME_DIR)?;
 
-    let plist_path = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist");
-
     if let Some(parent) = plist_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+
     std::fs::write(&plist_path, plist)?;
     println!("wrote {}", plist_path.display());
 
-    let status = std::process::Command::new("launchctl")
-        .args(["load", "-w"])
+    let output = std::process::Command::new("launchctl")
+        .args(["bootstrap", &launchctl_domain()])
         .arg(&plist_path)
-        .status()?;
-    if status.success() {
+        .output()?;
+    if output.status.success() {
         println!("service loaded and started");
     } else {
-        anyhow::bail!("launchctl load failed (exit {})", status);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("launchctl bootstrap failed: {stderr}");
     }
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
 pub fn restart() -> Result<()> {
-    let plist_path = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist");
+    let plist_path = plist_path()?;
 
     if !plist_path.exists() {
         anyhow::bail!(
@@ -63,34 +88,31 @@ pub fn restart() -> Result<()> {
         );
     }
 
-    // KeepAlive is true in the plist, so launchd restarts the process after stop.
+    // kickstart -k kills the running instance; launchd restarts it (KeepAlive).
     let status = std::process::Command::new("launchctl")
-        .args(["stop", "xyz.openwalrus.walrus"])
+        .args(["kickstart", "-k", &launchctl_service_target()])
         .status()?;
     if status.success() {
         println!("daemon restarted");
     } else {
-        anyhow::bail!("launchctl stop failed (exit {})", status);
+        anyhow::bail!("launchctl kickstart failed (exit {})", status);
     }
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
 pub fn uninstall() -> Result<()> {
-    let plist_path = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist");
+    let plist_path = plist_path()?;
 
     if !plist_path.exists() {
         anyhow::bail!("service not installed ({})", plist_path.display());
     }
 
     let status = std::process::Command::new("launchctl")
-        .args(["unload", "-w"])
-        .arg(&plist_path)
+        .args(["bootout", &launchctl_service_target()])
         .status()?;
     if !status.success() {
-        eprintln!("warning: launchctl unload exited with {}", status);
+        eprintln!("warning: launchctl bootout exited with {}", status);
     }
 
     std::fs::remove_file(&plist_path)?;
