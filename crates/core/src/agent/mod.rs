@@ -328,6 +328,7 @@ impl<M: Model> Agent<M> {
                     && Self::estimate_tokens(history) > threshold
                 {
                     if let Some(summary) = self.compact(history).await {
+                        yield AgentEvent::Compact { summary: summary.clone() };
                         *history = vec![Message::user(&summary)];
                         yield AgentEvent::TextDelta(
                             "\n[context compacted]\n".to_owned(),

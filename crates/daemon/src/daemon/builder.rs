@@ -9,7 +9,10 @@ use crate::{
     Daemon, DaemonConfig,
     daemon::event::{DaemonEvent, DaemonEventSender},
     ext::hub::DownloadRegistry,
-    hook::{self, DaemonHook, task::TaskRegistry},
+    hook::{
+        self, DaemonHook,
+        system::{memory::BuiltinMemory, task::TaskRegistry},
+    },
     service::ServiceManager,
 };
 use anyhow::Result;
@@ -96,8 +99,8 @@ impl Daemon {
         Ok(manager)
     }
 
-    /// Build the daemon hook with all backends (skills, MCP, tasks, downloads).
-    /// Memory is handled by an external extension service.
+    /// Build the daemon hook with all backends (skills, MCP, tasks, downloads, memory).
+    /// Built-in memory is active unless the walrus-memory extension provides `recall`.
     /// Returns the hook and an optional ServiceManager for child service lifecycle.
     async fn build_hook(
         config: &DaemonConfig,
@@ -117,9 +120,9 @@ impl Daemon {
         let mcp_handler = hook::mcp::McpHandler::load(&mcp_servers).await;
 
         let tasks = Arc::new(Mutex::new(TaskRegistry::new(
-            config.tasks.max_concurrent,
-            config.tasks.viewable_window,
-            std::time::Duration::from_secs(config.tasks.task_timeout),
+            config.system.tasks.max_concurrent,
+            config.system.tasks.viewable_window,
+            std::time::Duration::from_secs(config.system.tasks.task_timeout),
             event_tx.clone(),
         )));
 
@@ -141,6 +144,19 @@ impl Daemon {
             (Some(Arc::new(registry)), Some(sm))
         };
 
+        // Construct built-in memory unless the walrus-memory extension provides "recall".
+        let has_ext_memory = registry
+            .as_ref()
+            .is_some_and(|r| r.tools.contains_key("recall"));
+        let memory = if !has_ext_memory {
+            Some(BuiltinMemory::open(
+                config_dir.join("memory"),
+                config.system.memory.clone(),
+            ))
+        } else {
+            None
+        };
+
         Ok((
             DaemonHook::new(
                 skills,
@@ -149,6 +165,7 @@ impl Daemon {
                 downloads,
                 config.permissions.clone(),
                 sandboxed,
+                memory,
                 registry,
             ),
             service_manager,

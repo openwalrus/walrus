@@ -19,6 +19,7 @@ message ExtRequest {
     ExtGetSchema get_schema = 11;
     ExtAfterRun after_run = 12;
     ExtInferResult infer_result = 13;
+    ExtAfterCompact after_compact = 14;
   }
 }
 
@@ -67,6 +68,7 @@ message ExtResponse {
     ExtSchemaResult schema_result = 10;
     ExtAfterRunResult after_run_result = 11;
     ExtInferRequest infer_request = 12;
+    ExtAfterCompactResult after_compact_result = 13;
   }
 }
 
@@ -86,6 +88,7 @@ message Capability {
     EventObserverCap event_observer = 6;
     AfterRunCap after_run = 7;
     InferCap infer = 8;
+    AfterCompactCap after_compact = 9;
   }
 }
 
@@ -186,3 +189,11 @@ message ExtInferResult {
 
 message AfterRunCap {}
 message InferCap {}
+
+message ExtAfterCompact {
+  string agent = 1;
+  string summary = 2;
+}
+
+message ExtAfterCompactResult {}
+message AfterCompactCap {}

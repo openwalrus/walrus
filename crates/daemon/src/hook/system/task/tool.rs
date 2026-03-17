@@ -1,6 +1,6 @@
 //! Tool dispatch and schema registration for task tools.
 
-use crate::hook::{DaemonHook, task::TaskStatus};
+use crate::hook::{DaemonHook, system::task::TaskStatus};
 use serde::Deserialize;
 use wcore::{
     agent::{AsTool, ToolDescription},

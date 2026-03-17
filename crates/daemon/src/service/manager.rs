@@ -22,11 +22,11 @@ use wcore::{
         PROTOCOL_VERSION,
         codec::{read_message, write_message},
         ext::{
-            Capability, ExtAfterRun, ExtBeforeRun, ExtBeforeRunResult, ExtBuildAgent,
-            ExtBuildAgentResult, ExtCompact, ExtCompactResult, ExtConfigure, ExtConfigured,
-            ExtError, ExtEvent, ExtHello, ExtInferResult, ExtReady, ExtRegisterTools, ExtRequest,
-            ExtResponse, ExtToolCall, ExtToolResult, ExtToolSchemas, SimpleMessage, ToolsList,
-            capability, ext_request, ext_response,
+            Capability, ExtAfterCompact, ExtAfterRun, ExtBeforeRun, ExtBeforeRunResult,
+            ExtBuildAgent, ExtBuildAgentResult, ExtCompact, ExtCompactResult, ExtConfigure,
+            ExtConfigured, ExtError, ExtEvent, ExtHello, ExtInferResult, ExtReady,
+            ExtRegisterTools, ExtRequest, ExtResponse, ExtToolCall, ExtToolResult, ExtToolSchemas,
+            SimpleMessage, ToolsList, capability, ext_request, ext_response,
         },
     },
 };
@@ -81,6 +81,8 @@ pub struct ServiceRegistry {
     pub event_observer: Vec<Arc<ServiceHandle>>,
     /// Services that declared AfterRun capability.
     pub after_run: Vec<Arc<ServiceHandle>>,
+    /// Services that declared AfterCompact capability.
+    pub after_compact: Vec<Arc<ServiceHandle>>,
     /// Model for Infer fulfillment (set after runtime construction).
     model: Option<ProviderManager>,
 }
@@ -373,6 +375,47 @@ impl Hook for ServiceRegistry {
                             service = %handle.name,
                             "unexpected AfterRun response: {other:?}"
                         );
+                    }
+                }
+            });
+        }
+    }
+
+    fn on_after_compact(&self, agent: &str, summary: &str) {
+        if self.after_compact.is_empty() {
+            return;
+        }
+        let agent = agent.to_owned();
+        let summary = summary.to_owned();
+        for handle in &self.after_compact {
+            let handle = Arc::clone(handle);
+            let agent = agent.clone();
+            let summary = summary.clone();
+            tokio::spawn(async move {
+                let req = ExtRequest {
+                    msg: Some(ext_request::Msg::AfterCompact(ExtAfterCompact {
+                        agent: agent.clone(),
+                        summary,
+                    })),
+                };
+                if let Some(resp) = send_with_timeout(&handle, &req, 30, "AfterCompact").await {
+                    match resp.msg {
+                        Some(ext_response::Msg::AfterCompactResult(_)) => {
+                            tracing::debug!(service = %handle.name, %agent, "AfterCompact complete");
+                        }
+                        Some(ext_response::Msg::Error(ExtError { message })) => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                error = %message,
+                                "AfterCompact service error"
+                            );
+                        }
+                        other => {
+                            tracing::warn!(
+                                service = %handle.name,
+                                "unexpected AfterCompact response: {other:?}"
+                            );
+                        }
                     }
                 }
             });
@@ -841,6 +884,9 @@ impl ServiceManager {
                 }
                 Some(capability::Cap::AfterRun(_)) => {
                     registry.after_run.push(Arc::clone(handle));
+                }
+                Some(capability::Cap::AfterCompact(_)) => {
+                    registry.after_compact.push(Arc::clone(handle));
                 }
                 Some(capability::Cap::Infer(_)) => {
                     // Response-side capability — not stored in registry.

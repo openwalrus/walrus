@@ -113,7 +113,7 @@ impl Daemon {
                 {
                     let mut registry = tasks_arc.lock().await;
                     for (id, _) in &task_entries {
-                        registry.set_status(*id, crate::hook::task::TaskStatus::InProgress);
+                        registry.set_status(*id, crate::hook::system::task::TaskStatus::InProgress);
                     }
                 }
 

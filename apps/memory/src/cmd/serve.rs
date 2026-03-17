@@ -6,11 +6,11 @@ use wcore::protocol::{
     PROTOCOL_VERSION,
     codec::{read_message, write_message},
     ext::{
-        AfterRunCap, BeforeRunCap, BuildAgentCap, Capability, CompactCap, EventObserverCap,
-        ExtAfterRunResult, ExtBeforeRunResult, ExtBuildAgentResult, ExtCompactResult,
-        ExtConfigured, ExtError, ExtInferRequest, ExtReady, ExtRequest, ExtResponse,
-        ExtServiceQueryResult, ExtToolResult, ExtToolSchemas, InferCap, QueryCap, SimpleMessage,
-        ToolsList, capability, ext_request, ext_response,
+        AfterCompactCap, AfterRunCap, BeforeRunCap, BuildAgentCap, Capability, CompactCap,
+        EventObserverCap, ExtAfterCompactResult, ExtAfterRunResult, ExtBeforeRunResult,
+        ExtBuildAgentResult, ExtCompactResult, ExtConfigured, ExtError, ExtInferRequest, ExtReady,
+        ExtRequest, ExtResponse, ExtServiceQueryResult, ExtToolResult, ExtToolSchemas, InferCap,
+        QueryCap, SimpleMessage, ToolsList, capability, ext_request, ext_response,
     },
 };
 
@@ -62,6 +62,9 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
                 },
                 Capability {
                     cap: Some(capability::Cap::AfterRun(AfterRunCap {})),
+                },
+                Capability {
+                    cap: Some(capability::Cap::AfterCompact(AfterCompactCap {})),
                 },
                 Capability {
                     cap: Some(capability::Cap::Infer(InferCap {})),
@@ -148,11 +151,16 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
             }
             Some(ext_request::Msg::AfterRun(ar)) => {
                 let conversation = build_conversation_summary(&ar.history);
-                // Store a journal entry from the conversation for future compaction context.
+                // Store a journal entry — extraction moved to on_after_compact.
                 let _ = svc.dispatch_journal(&conversation, &ar.agent).await;
-                let messages = extraction_messages_from(&conversation);
-                // Respond with InferRequest — daemon runs extraction LLM loop,
-                // dispatching recall/extract tool calls back to this service.
+                ExtResponse {
+                    msg: Some(ext_response::Msg::AfterRunResult(ExtAfterRunResult {})),
+                }
+            }
+            Some(ext_request::Msg::AfterCompact(ac)) => {
+                // Store journal from compact summary, then request extraction LLM loop.
+                let _ = svc.dispatch_journal(&ac.summary, &ac.agent).await;
+                let messages = extraction_messages_from(&ac.summary);
                 ExtResponse {
                     msg: Some(ext_response::Msg::InferRequest(ExtInferRequest {
                         messages,
@@ -162,7 +170,9 @@ pub async fn run(socket: &Path) -> anyhow::Result<()> {
             Some(ext_request::Msg::InferResult(_)) => {
                 // Infer complete — extraction tool calls already dispatched.
                 ExtResponse {
-                    msg: Some(ext_response::Msg::AfterRunResult(ExtAfterRunResult {})),
+                    msg: Some(ext_response::Msg::AfterCompactResult(
+                        ExtAfterCompactResult {},
+                    )),
                 }
             }
             Some(ext_request::Msg::Compact(c)) => {

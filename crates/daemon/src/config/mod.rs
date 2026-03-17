@@ -3,7 +3,7 @@
 pub use crate::hook::{
     mcp::McpServerConfig,
     os::{PermissionConfig, ToolPermission},
-    task::TasksConfig,
+    system::SystemConfig,
 };
 pub use ::model::{ModelConfig, ProviderDef, ProviderManager};
 use anyhow::Result;
@@ -33,9 +33,9 @@ pub struct DaemonConfig {
     /// MCP server configurations.
     #[serde(default)]
     pub mcps: BTreeMap<String, McpServerConfig>,
-    /// Task executor pool configuration.
+    /// System configuration (tasks + memory).
     #[serde(default)]
-    pub tasks: TasksConfig,
+    pub system: SystemConfig,
     /// Per-agent configurations (name → config).
     #[serde(default)]
     pub agents: BTreeMap<String, AgentConfig>,

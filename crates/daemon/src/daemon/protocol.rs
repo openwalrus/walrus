@@ -77,6 +77,9 @@ impl Server for Daemon {
                     AgentEvent::ToolCallsComplete => {
                         yield StreamEvent { event: Some(stream_event::Event::ToolsComplete(ToolsCompleteEvent {})) };
                     }
+                    AgentEvent::Compact { .. } => {
+                        // Compact events are handled by on_event in the hook layer.
+                    }
                     AgentEvent::Done(resp) => {
                         if let wcore::AgentStopReason::Error(e) = &resp.stop_reason {
                             if is_new {
@@ -149,11 +152,12 @@ impl Server for Daemon {
             return Ok(false);
         };
         match task.status {
-            crate::hook::task::TaskStatus::InProgress | crate::hook::task::TaskStatus::Blocked => {
+            crate::hook::system::task::TaskStatus::InProgress
+            | crate::hook::system::task::TaskStatus::Blocked => {
                 if let Some(handle) = &task.abort_handle {
                     handle.abort();
                 }
-                registry.set_status(task_id, crate::hook::task::TaskStatus::Failed);
+                registry.set_status(task_id, crate::hook::system::task::TaskStatus::Failed);
                 if let Some(task) = registry.get_mut(task_id) {
                     task.error = Some("killed by user".into());
                 }
@@ -168,7 +172,7 @@ impl Server for Daemon {
                 }
                 Ok(true)
             }
-            crate::hook::task::TaskStatus::Queued => {
+            crate::hook::system::task::TaskStatus::Queued => {
                 registry.remove(task_id);
                 Ok(true)
             }
@@ -364,6 +368,8 @@ impl Server for Daemon {
                 .chain(reg.before_run.iter())
                 .chain(reg.compact.iter())
                 .chain(reg.event_observer.iter())
+                .chain(reg.after_run.iter())
+                .chain(reg.after_compact.iter())
                 .chain(reg.query.values())
                 .chain(reg.tools.values())
                 .collect();
@@ -399,6 +405,9 @@ impl Server for Daemon {
                         }
                         Some(wcore::protocol::ext::capability::Cap::Infer(_)) => {
                             Some("infer".into())
+                        }
+                        Some(wcore::protocol::ext::capability::Cap::AfterCompact(_)) => {
+                            Some("after_compact".into())
                         }
                         None => None,
                     })

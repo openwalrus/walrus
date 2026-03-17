@@ -1,7 +1,7 @@
 //! Task registry — concurrency control, dispatch, and lifecycle.
 
 use crate::daemon::event::{DaemonEvent, DaemonEventSender};
-use crate::hook::task::{InboxItem, Task, TaskStatus};
+use crate::hook::system::task::{InboxItem, Task, TaskStatus};
 use compact_str::CompactString;
 use std::{
     collections::BTreeMap,

@@ -1,15 +1,21 @@
 //! Stateful Hook implementation for the daemon.
 //!
-//! [`DaemonHook`] composes skill, MCP, and OS sub-hooks plus external extension
-//! services. Memory is handled by an external extension service.
-//! `on_build_agent` delegates to skills and extension services;
+//! [`DaemonHook`] composes skill, MCP, OS, and built-in memory sub-hooks plus
+//! external extension services. Built-in memory is active by default; when
+//! the walrus-memory extension registers `recall`, built-in tools are skipped.
+//! `on_build_agent` delegates to skills, memory, and extension services;
 //! `on_register_tools` delegates to all sub-hooks in sequence.
 //! `dispatch_tool` routes every agent tool call by name — the single
 //! entry point from `event.rs`.
 
 use crate::{
     ext::hub::DownloadRegistry,
-    hook::{mcp::McpHandler, os::PermissionConfig, skill::SkillHandler, task::TaskRegistry},
+    hook::{
+        mcp::McpHandler,
+        os::PermissionConfig,
+        skill::SkillHandler,
+        system::{memory::BuiltinMemory, task::TaskRegistry},
+    },
     service::ServiceRegistry,
 };
 use compact_str::CompactString;
@@ -20,7 +26,7 @@ use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
 pub mod mcp;
 pub mod os;
 pub mod skill;
-pub mod task;
+pub mod system;
 
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
@@ -39,6 +45,8 @@ pub struct DaemonHook {
     pub permissions: PermissionConfig,
     /// Whether the daemon is running as the `walrus` OS user (sandbox active).
     pub sandboxed: bool,
+    /// Built-in memory (None if disabled or overridden by walrus-memory extension).
+    pub memory: Option<BuiltinMemory>,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
     /// External extension service registry (tools + queries).
@@ -55,6 +63,9 @@ const SKILL_TOOLS: &[&str] = &["search_skill", "load_skill"];
 /// MCP discovery/call tools.
 const MCP_TOOLS: &[&str] = &["search_mcp", "call_mcp_tool"];
 
+/// Memory tools.
+const MEMORY_TOOLS: &[&str] = &["recall", "memory", "user_memory"];
+
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &[
     "spawn_task",
@@ -66,6 +77,7 @@ const TASK_TOOLS: &[&str] = &[
 
 impl DaemonHook {
     /// Create a new DaemonHook with the given backends.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         skills: SkillHandler,
         mcp: McpHandler,
@@ -73,6 +85,7 @@ impl DaemonHook {
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
+        memory: Option<BuiltinMemory>,
         registry: Option<Arc<ServiceRegistry>>,
     ) -> Self {
         Self {
@@ -82,6 +95,7 @@ impl DaemonHook {
             downloads,
             permissions,
             sandboxed,
+            memory,
             scopes: BTreeMap::new(),
             registry,
         }
@@ -195,6 +209,9 @@ impl DaemonHook {
             "create_task" => self.dispatch_create_task(args, agent).await,
             "ask_user" => self.dispatch_ask_user(args, task_id).await,
             "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
+            "recall" => self.dispatch_recall(args).await,
+            "memory" => self.dispatch_memory(args).await,
+            "user_memory" => self.dispatch_user_memory(args).await,
             // External extension services, then MCP bridge as final fallback.
             name => {
                 if let Some(result) = self.dispatch_external(name, args, agent, task_id).await {
@@ -216,6 +233,14 @@ impl Hook for DaemonHook {
             None => config,
         };
 
+        // Inject built-in memory prompt if active.
+        if let Some(ref mem) = self.memory {
+            let prompt = mem.build_prompt();
+            if !prompt.is_empty() {
+                config.system_prompt.push_str(&prompt);
+            }
+        }
+
         // Walrus agent (empty scoping) gets all tools, no scope injection.
         let has_scoping =
             !config.skills.is_empty() || !config.mcps.is_empty() || !config.members.is_empty();
@@ -223,9 +248,14 @@ impl Hook for DaemonHook {
             return config;
         }
 
-        // Compute tool whitelist — base tools + external service tools always included.
+        // Compute tool whitelist — base tools + memory + external service tools always included.
         let mut whitelist: Vec<CompactString> =
             BASE_TOOLS.iter().map(|&s| CompactString::from(s)).collect();
+        if self.memory.is_some() {
+            for &t in MEMORY_TOOLS {
+                whitelist.push(CompactString::from(t));
+            }
+        }
         if let Some(ref registry) = self.registry {
             for tool_name in registry.tools.keys() {
                 whitelist.push(CompactString::from(tool_name.as_str()));
@@ -301,25 +331,42 @@ impl Hook for DaemonHook {
         agent: &str,
         history: &[wcore::model::Message],
     ) -> Vec<wcore::model::Message> {
-        match self.registry {
+        let mut messages = match self.registry {
             Some(ref registry) => registry.on_before_run(agent, history),
             None => Vec::new(),
+        };
+        if let Some(ref mem) = self.memory {
+            messages.extend(mem.before_run(history));
         }
+        messages
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
         self.mcp.on_register_tools(tools).await;
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
-        tools.insert_all(task::tool::tools());
+        tools.insert_all(system::task::tool::tools());
         if let Some(ref registry) = self.registry {
             registry.on_register_tools(tools).await;
+        }
+        // Register built-in memory tools only if no extension provides "recall".
+        if self.memory.is_some() && !tools.contains("recall") {
+            tools.insert_all(system::memory::tool::tools());
         }
     }
 
     fn on_after_run(&self, agent: &str, history: &[Message], system_prompt: &str) {
         if let Some(ref registry) = self.registry {
             registry.on_after_run(agent, history, system_prompt);
+        }
+    }
+
+    fn on_after_compact(&self, agent: &str, summary: &str) {
+        if let Some(ref registry) = self.registry {
+            registry.on_after_compact(agent, summary);
+        }
+        if let Some(ref mem) = self.memory {
+            mem.after_compact(agent, summary);
         }
     }
 
@@ -340,6 +387,10 @@ impl Hook for DaemonHook {
             AgentEvent::ToolCallsComplete => {
                 tracing::debug!(%agent, "agent tool calls complete");
             }
+            AgentEvent::Compact { summary } => {
+                tracing::info!(%agent, summary_len = summary.len(), "context compacted");
+                self.on_after_compact(agent, summary);
+            }
             AgentEvent::Done(response) => {
                 tracing::info!(
                     %agent,
@@ -358,7 +409,11 @@ impl Hook for DaemonHook {
                     && let Ok(mut registry) = self.tasks.try_lock()
                 {
                     let tid = registry
-                        .list(Some(agent), Some(task::TaskStatus::InProgress), None)
+                        .list(
+                            Some(agent),
+                            Some(system::task::TaskStatus::InProgress),
+                            None,
+                        )
                         .first()
                         .map(|t| t.id);
                     if let Some(tid) = tid {

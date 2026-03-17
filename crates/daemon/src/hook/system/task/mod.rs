@@ -8,10 +8,8 @@ use tokio::sync::{oneshot, watch};
 use tokio::task::AbortHandle;
 use tokio::time::Instant;
 
-pub use config::TasksConfig;
 pub use registry::TaskRegistry;
 
-pub mod config;
 mod registry;
 pub(crate) mod tool;
 

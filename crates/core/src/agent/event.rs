@@ -30,6 +30,8 @@ pub enum AgentEvent {
     },
     /// All tools completed, continuing to next iteration.
     ToolCallsComplete,
+    /// Context was compacted — carries the compaction summary.
+    Compact { summary: String },
     /// Agent finished with final response.
     Done(AgentResponse),
 }
