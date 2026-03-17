@@ -71,161 +71,6 @@ const MEMORY_TOOLS: &[&str] = &["recall", "memory", "user_memory"];
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &["spawn_task", "check_tasks", "ask_user", "await_tasks"];
 
-impl DaemonHook {
-    /// Create a new DaemonHook with the given backends.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        skills: SkillHandler,
-        mcp: McpHandler,
-        tasks: Arc<Mutex<TaskRegistry>>,
-        downloads: Arc<Mutex<DownloadRegistry>>,
-        permissions: PermissionConfig,
-        sandboxed: bool,
-        memory: Option<BuiltinMemory>,
-        registry: Option<Arc<ServiceRegistry>>,
-    ) -> Self {
-        Self {
-            skills,
-            mcp,
-            tasks,
-            downloads,
-            permissions,
-            sandboxed,
-            memory,
-            scopes: BTreeMap::new(),
-            agent_descriptions: BTreeMap::new(),
-            registry,
-        }
-    }
-
-    /// Register an agent's scope for dispatch enforcement.
-    pub(crate) fn register_scope(&mut self, name: CompactString, config: &AgentConfig) {
-        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
-            self.agent_descriptions
-                .insert(name.clone(), config.description.clone());
-        }
-        self.scopes.insert(
-            name,
-            AgentScope {
-                tools: config.tools.clone(),
-                members: config.members.clone(),
-                skills: config.skills.clone(),
-                mcps: config.mcps.clone(),
-            },
-        );
-    }
-
-    /// Check tool permission. Returns `Some(denied_message)` if denied,
-    /// `None` if allowed.
-    async fn check_perm(
-        &self,
-        name: &str,
-        args: &str,
-        agent: &str,
-        task_id: Option<u64>,
-    ) -> Option<String> {
-        // OS tools bypass permission when running in sandbox mode.
-        if self.sandboxed && BASE_TOOLS.contains(&name) {
-            return None;
-        }
-        use crate::hook::os::ToolPermission;
-        match self.permissions.resolve(agent, name) {
-            ToolPermission::Deny => Some(format!("permission denied: {name}")),
-            ToolPermission::Ask => {
-                if let Some(tid) = task_id {
-                    let summary = if args.len() > 200 {
-                        format!("{}…", &args[..200])
-                    } else {
-                        args.to_string()
-                    };
-                    let question = format!("{name}: {summary}");
-                    let rx = self.tasks.lock().await.block(tid, question);
-                    if let Some(rx) = rx {
-                        match rx.await {
-                            Ok(resp) if resp == "denied" => {
-                                return Some(format!("permission denied: {name}"));
-                            }
-                            Err(_) => {
-                                return Some(format!("permission denied: {name} (inbox dropped)"));
-                            }
-                            _ => {} // approved → proceed
-                        }
-                    }
-                }
-                // No task_id → can't block, treat as Allow.
-                None
-            }
-            ToolPermission::Allow => None,
-        }
-    }
-
-    /// Dispatch to an external extension service if the tool is registered.
-    /// Returns `None` if the tool is not in the registry (fall through to in-process).
-    async fn dispatch_external(
-        &self,
-        name: &str,
-        args: &str,
-        agent: &str,
-        task_id: Option<u64>,
-    ) -> Option<String> {
-        self.registry
-            .as_ref()?
-            .dispatch_tool(name, args, agent, task_id)
-            .await
-    }
-
-    /// Route a tool call by name to the appropriate handler.
-    ///
-    /// This is the single dispatch entry point — `event.rs` calls this
-    /// and never matches on tool names itself. Unrecognised names are
-    /// forwarded to the MCP bridge after a warn-level log.
-    pub async fn dispatch_tool(
-        &self,
-        name: &str,
-        args: &str,
-        agent: &str,
-        task_id: Option<u64>,
-    ) -> String {
-        if let Some(denied) = self.check_perm(name, args, agent, task_id).await {
-            return denied;
-        }
-        // Dispatch enforcement: reject tools not in the agent's whitelist.
-        if let Some(scope) = self.scopes.get(agent)
-            && !scope.tools.is_empty()
-            && !scope.tools.iter().any(|t| t.as_str() == name)
-        {
-            return format!("tool not available: {name}");
-        }
-        match name {
-            "search_mcp" => self.dispatch_search_mcp(args, agent).await,
-            "call_mcp_tool" => self.dispatch_call_mcp_tool(args, agent).await,
-            "search_skill" => self.dispatch_search_skill(args, agent).await,
-            "load_skill" => self.dispatch_load_skill(args, agent).await,
-            "save_skill" => self.dispatch_save_skill(args).await,
-            "read" => self.dispatch_read(args).await,
-            "write" => self.dispatch_write(args).await,
-            "edit" => self.dispatch_edit(args).await,
-            "bash" => self.dispatch_bash(args).await,
-            "spawn_task" => self.dispatch_spawn_task(args, agent, task_id).await,
-            "check_tasks" => self.dispatch_check_tasks(args).await,
-            "ask_user" => self.dispatch_ask_user(args, task_id).await,
-            "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
-            "recall" => self.dispatch_recall(args).await,
-            "memory" => self.dispatch_memory(args).await,
-            "user_memory" => self.dispatch_user_memory(args).await,
-            // External extension services, then MCP bridge as final fallback.
-            name => {
-                if let Some(result) = self.dispatch_external(name, args, agent, task_id).await {
-                    return result;
-                }
-                tracing::debug!(tool = name, "forwarding tool to MCP bridge");
-                let bridge = self.mcp.bridge().await;
-                bridge.call(name, args).await
-            }
-        }
-    }
-}
-
 impl Hook for DaemonHook {
     fn on_build_agent(&self, config: AgentConfig) -> AgentConfig {
         // Delegate to extension services first (prompt enrichment).
@@ -247,82 +92,8 @@ impl Hook for DaemonHook {
             }
         }
 
-        // Walrus agent (empty scoping) gets all tools, no scope injection.
-        let has_scoping =
-            !config.skills.is_empty() || !config.mcps.is_empty() || !config.members.is_empty();
-        if !has_scoping {
-            return config;
-        }
-
-        // Compute tool whitelist — base tools + memory + external service tools always included.
-        let mut whitelist: Vec<CompactString> =
-            BASE_TOOLS.iter().map(|&s| CompactString::from(s)).collect();
-        if self.memory.is_some() {
-            for &t in MEMORY_TOOLS {
-                whitelist.push(CompactString::from(t));
-            }
-        }
-        if let Some(ref registry) = self.registry {
-            for tool_name in registry.tools.keys() {
-                whitelist.push(CompactString::from(tool_name.as_str()));
-            }
-        }
-        let mut scope_lines = Vec::new();
-
-        // Skill tools if skills non-empty.
-        if !config.skills.is_empty() {
-            for &t in SKILL_TOOLS {
-                whitelist.push(CompactString::from(t));
-            }
-            scope_lines.push(format!("skills: {}", config.skills.join(", ")));
-        }
-
-        // MCP tools if mcps non-empty.
-        if !config.mcps.is_empty() {
-            for &t in MCP_TOOLS {
-                whitelist.push(CompactString::from(t));
-            }
-            // Also include tools from named MCP servers.
-            let mcp_servers = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(self.mcp.list())
-            });
-            let mut mcp_info = Vec::new();
-            for (server_name, tool_names) in &mcp_servers {
-                if config.mcps.iter().any(|m| m == server_name.as_str()) {
-                    for tn in tool_names {
-                        whitelist.push(tn.clone());
-                    }
-                    mcp_info.push(format!(
-                        "  - {}: {}",
-                        server_name,
-                        tool_names
-                            .iter()
-                            .map(|t| t.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
-                }
-            }
-            if !mcp_info.is_empty() {
-                scope_lines.push(format!("mcp servers:\n{}", mcp_info.join("\n")));
-            }
-        }
-
-        // Task tools if members non-empty.
-        if !config.members.is_empty() {
-            for &t in TASK_TOOLS {
-                whitelist.push(CompactString::from(t));
-            }
-            scope_lines.push(format!("members: {}", config.members.join(", ")));
-        }
-
-        // Inject scope info into system prompt.
-        if !scope_lines.is_empty() {
-            let scope_block = format!("\n\n<scope>\n{}\n</scope>", scope_lines.join("\n"));
-            config.system_prompt.push_str(&scope_block);
-        }
-
-        config.tools = whitelist;
+        // Apply scoped tool whitelist + prompt for sub-agents.
+        self.apply_scope(&mut config);
         config
     }
 
@@ -438,3 +209,235 @@ impl Hook for DaemonHook {
         }
     }
 }
+
+
+impl DaemonHook {
+    /// Create a new DaemonHook with the given backends.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        skills: SkillHandler,
+        mcp: McpHandler,
+        tasks: Arc<Mutex<TaskRegistry>>,
+        downloads: Arc<Mutex<DownloadRegistry>>,
+        permissions: PermissionConfig,
+        sandboxed: bool,
+        memory: Option<BuiltinMemory>,
+        registry: Option<Arc<ServiceRegistry>>,
+    ) -> Self {
+        Self {
+            skills,
+            mcp,
+            tasks,
+            downloads,
+            permissions,
+            sandboxed,
+            memory,
+            scopes: BTreeMap::new(),
+            agent_descriptions: BTreeMap::new(),
+            registry,
+        }
+    }
+
+    /// Register an agent's scope for dispatch enforcement.
+    pub(crate) fn register_scope(&mut self, name: CompactString, config: &AgentConfig) {
+        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
+            self.agent_descriptions
+                .insert(name.clone(), config.description.clone());
+        }
+        self.scopes.insert(
+            name,
+            AgentScope {
+                tools: config.tools.clone(),
+                members: config.members.clone(),
+                skills: config.skills.clone(),
+                mcps: config.mcps.clone(),
+            },
+        );
+    }
+
+    /// Apply scoped tool whitelist and scope prompt for sub-agents.
+    /// No-op for the walrus agent (empty scoping = all tools).
+    fn apply_scope(&self, config: &mut AgentConfig) {
+        let has_scoping =
+            !config.skills.is_empty() || !config.mcps.is_empty() || !config.members.is_empty();
+        if !has_scoping {
+            return;
+        }
+
+        // Base tools + memory + external service tools always included.
+        let mut whitelist: Vec<CompactString> =
+            BASE_TOOLS.iter().map(|&s| CompactString::from(s)).collect();
+        if self.memory.is_some() {
+            for &t in MEMORY_TOOLS {
+                whitelist.push(CompactString::from(t));
+            }
+        }
+        if let Some(ref registry) = self.registry {
+            for tool_name in registry.tools.keys() {
+                whitelist.push(CompactString::from(tool_name.as_str()));
+            }
+        }
+        let mut scope_lines = Vec::new();
+
+        if !config.skills.is_empty() {
+            for &t in SKILL_TOOLS {
+                whitelist.push(CompactString::from(t));
+            }
+            scope_lines.push(format!("skills: {}", config.skills.join(", ")));
+        }
+
+        if !config.mcps.is_empty() {
+            for &t in MCP_TOOLS {
+                whitelist.push(CompactString::from(t));
+            }
+            let mcp_servers = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(self.mcp.list())
+            });
+            let mut mcp_info = Vec::new();
+            for (server_name, tool_names) in &mcp_servers {
+                if config.mcps.iter().any(|m| m == server_name.as_str()) {
+                    for tn in tool_names {
+                        whitelist.push(tn.clone());
+                    }
+                    mcp_info.push(format!(
+                        "  - {}: {}",
+                        server_name,
+                        tool_names
+                            .iter()
+                            .map(|t| t.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+            }
+            if !mcp_info.is_empty() {
+                scope_lines.push(format!("mcp servers:\n{}", mcp_info.join("\n")));
+            }
+        }
+
+        if !config.members.is_empty() {
+            for &t in TASK_TOOLS {
+                whitelist.push(CompactString::from(t));
+            }
+            scope_lines.push(format!("members: {}", config.members.join(", ")));
+        }
+
+        if !scope_lines.is_empty() {
+            let scope_block = format!("\n\n<scope>\n{}\n</scope>", scope_lines.join("\n"));
+            config.system_prompt.push_str(&scope_block);
+        }
+
+        config.tools = whitelist;
+    }
+
+    /// Check tool permission. Returns `Some(denied_message)` if denied,
+    /// `None` if allowed.
+    async fn check_perm(
+        &self,
+        name: &str,
+        args: &str,
+        agent: &str,
+        task_id: Option<u64>,
+    ) -> Option<String> {
+        // OS tools bypass permission when running in sandbox mode.
+        if self.sandboxed && BASE_TOOLS.contains(&name) {
+            return None;
+        }
+        use crate::hook::os::ToolPermission;
+        match self.permissions.resolve(agent, name) {
+            ToolPermission::Deny => Some(format!("permission denied: {name}")),
+            ToolPermission::Ask => {
+                if let Some(tid) = task_id {
+                    let summary = if args.len() > 200 {
+                        format!("{}…", &args[..200])
+                    } else {
+                        args.to_string()
+                    };
+                    let question = format!("{name}: {summary}");
+                    let rx = self.tasks.lock().await.block(tid, question);
+                    if let Some(rx) = rx {
+                        match rx.await {
+                            Ok(resp) if resp == "denied" => {
+                                return Some(format!("permission denied: {name}"));
+                            }
+                            Err(_) => {
+                                return Some(format!("permission denied: {name} (inbox dropped)"));
+                            }
+                            _ => {} // approved → proceed
+                        }
+                    }
+                }
+                // No task_id → can't block, treat as Allow.
+                None
+            }
+            ToolPermission::Allow => None,
+        }
+    }
+
+    /// Dispatch to an external extension service if the tool is registered.
+    /// Returns `None` if the tool is not in the registry (fall through to in-process).
+    async fn dispatch_external(
+        &self,
+        name: &str,
+        args: &str,
+        agent: &str,
+        task_id: Option<u64>,
+    ) -> Option<String> {
+        self.registry
+            .as_ref()?
+            .dispatch_tool(name, args, agent, task_id)
+            .await
+    }
+
+    /// Route a tool call by name to the appropriate handler.
+    ///
+    /// This is the single dispatch entry point — `event.rs` calls this
+    /// and never matches on tool names itself. Unrecognised names are
+    /// forwarded to the MCP bridge after a warn-level log.
+    pub async fn dispatch_tool(
+        &self,
+        name: &str,
+        args: &str,
+        agent: &str,
+        task_id: Option<u64>,
+    ) -> String {
+        if let Some(denied) = self.check_perm(name, args, agent, task_id).await {
+            return denied;
+        }
+        // Dispatch enforcement: reject tools not in the agent's whitelist.
+        if let Some(scope) = self.scopes.get(agent)
+            && !scope.tools.is_empty()
+            && !scope.tools.iter().any(|t| t.as_str() == name)
+        {
+            return format!("tool not available: {name}");
+        }
+        match name {
+            "search_mcp" => self.dispatch_search_mcp(args, agent).await,
+            "call_mcp_tool" => self.dispatch_call_mcp_tool(args, agent).await,
+            "search_skill" => self.dispatch_search_skill(args, agent).await,
+            "load_skill" => self.dispatch_load_skill(args, agent).await,
+            "save_skill" => self.dispatch_save_skill(args).await,
+            "read" => self.dispatch_read(args).await,
+            "write" => self.dispatch_write(args).await,
+            "edit" => self.dispatch_edit(args).await,
+            "bash" => self.dispatch_bash(args).await,
+            "spawn_task" => self.dispatch_spawn_task(args, agent, task_id).await,
+            "check_tasks" => self.dispatch_check_tasks(args).await,
+            "ask_user" => self.dispatch_ask_user(args, task_id).await,
+            "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
+            "recall" => self.dispatch_recall(args).await,
+            "memory" => self.dispatch_memory(args).await,
+            "user_memory" => self.dispatch_user_memory(args).await,
+            // External extension services, then MCP bridge as final fallback.
+            name => {
+                if let Some(result) = self.dispatch_external(name, args, agent, task_id).await {
+                    return result;
+                }
+                tracing::debug!(tool = name, "forwarding tool to MCP bridge");
+                let bridge = self.mcp.bridge().await;
+                bridge.call(name, args).await
+            }
+        }
+    }
+}
+
