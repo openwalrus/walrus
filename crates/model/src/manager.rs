@@ -1,4 +1,4 @@
-//! `ProviderManager` — concurrent-safe named provider registry with model
+//! `ProviderRegistry` — concurrent-safe named provider registry with model
 //! routing and active-provider swapping.
 
 use crate::{Provider, ProviderDef, build_provider};
@@ -16,7 +16,7 @@ use wcore::model::{Model, Response, StreamChunk, default_context_limit};
 /// All methods that read or mutate the inner state acquire the `RwLock`.
 /// `active()` returns a clone of the current `Provider` — callers do not
 /// hold the lock while performing LLM calls.
-pub struct ProviderManager {
+pub struct ProviderRegistry {
     inner: Arc<RwLock<Inner>>,
 }
 
@@ -38,7 +38,7 @@ pub struct ProviderEntry {
     pub active: bool,
 }
 
-impl ProviderManager {
+impl ProviderRegistry {
     /// Create an empty manager with the given active model name.
     ///
     /// Use `add_provider()` or `add_model()` to populate.
@@ -52,19 +52,19 @@ impl ProviderManager {
         }
     }
 
-    /// Build a manager from a map of provider definitions and an active model.
+    /// Build a registry from a map of provider definitions and an active model.
     ///
     /// Iterates each provider def, building a `Provider` instance per model
     /// in its `models` list.
-    pub async fn from_providers(
+    pub fn from_providers(
         active: CompactString,
         providers: &BTreeMap<CompactString, ProviderDef>,
     ) -> Result<Self> {
-        let manager = Self::new(active);
+        let registry = Self::new(active);
         for def in providers.values() {
-            manager.add_def(def).await?;
+            registry.add_def(def)?;
         }
-        Ok(manager)
+        Ok(registry)
     }
 
     /// Add a pre-built provider directly (e.g. local models from registry).
@@ -78,7 +78,7 @@ impl ProviderManager {
     }
 
     /// Add all models from a provider definition. Builds a `Provider` per model.
-    pub async fn add_def(&self, def: &ProviderDef) -> Result<()> {
+    pub fn add_def(&self, def: &ProviderDef) -> Result<()> {
         let client = {
             let inner = self
                 .inner
@@ -87,7 +87,7 @@ impl ProviderManager {
             inner.client.clone()
         };
         for model_name in &def.models {
-            let provider = build_provider(def, model_name, client.clone()).await?;
+            let provider = build_provider(def, model_name, client.clone())?;
             let mut inner = self
                 .inner
                 .write()
@@ -183,7 +183,7 @@ impl ProviderManager {
     }
 }
 
-impl Model for ProviderManager {
+impl Model for ProviderRegistry {
     async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
         let provider = self.provider_for(&request.model)?;
         provider.send(request).await
@@ -204,7 +204,7 @@ impl Model for ProviderManager {
     }
 
     fn context_limit(&self, model: &str) -> usize {
-        ProviderManager::context_limit(self, model)
+        ProviderRegistry::context_limit(self, model)
     }
 
     fn active_model(&self) -> CompactString {
@@ -213,23 +213,23 @@ impl Model for ProviderManager {
     }
 }
 
-impl std::fmt::Debug for ProviderManager {
+impl std::fmt::Debug for ProviderRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.inner.read() {
             Ok(inner) => f
-                .debug_struct("ProviderManager")
+                .debug_struct("ProviderRegistry")
                 .field("active", &inner.active)
                 .field("count", &inner.providers.len())
                 .finish(),
             Err(_) => f
-                .debug_struct("ProviderManager")
+                .debug_struct("ProviderRegistry")
                 .field("error", &"lock poisoned")
                 .finish(),
         }
     }
 }
 
-impl Clone for ProviderManager {
+impl Clone for ProviderRegistry {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),

@@ -1,90 +1,135 @@
-//! Provider implementation.
+//! Provider implementation backed by crabtalk-provider.
 //!
-//! Unified `Provider` enum with enum dispatch over concrete backends.
-//! `build_provider()` constructs the appropriate variant based on `ApiStandard`.
+//! Wraps `crabtalk_provider::Provider` behind wcore's `Model` trait with
+//! type conversion and retry logic.
 
 use crate::{
     config::{ApiStandard, ProviderDef},
-    remote::{
-        claude::{self, Claude},
-        openai::{self, OpenAI},
-    },
+    convert,
 };
 use anyhow::Result;
 use async_stream::try_stream;
 use compact_str::CompactString;
+use crabtalk_provider::Provider as CtProvider;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use rand::Rng;
+use std::time::Duration;
 use wcore::model::{Model, Response, StreamChunk};
 
-/// Unified LLM provider enum.
-///
-/// The gateway constructs the appropriate variant based on `ApiStandard`
-/// from the provider config.
+/// Unified LLM provider wrapping a crabtalk provider instance.
 #[derive(Clone)]
-pub enum Provider {
-    /// OpenAI-compatible API (covers OpenAI, DeepSeek, Grok, Qwen, Kimi, Ollama).
-    OpenAI(OpenAI),
-    /// Anthropic Messages API.
-    Claude(Claude),
+pub struct Provider {
+    inner: CtProvider,
+    client: reqwest::Client,
+    model: CompactString,
+    max_retries: u32,
+    timeout: Duration,
+}
+
+impl Provider {
+    /// Get the model name this provider was constructed for.
+    pub fn model_name(&self) -> &CompactString {
+        &self.model
+    }
 }
 
 /// Construct a `Provider` from a provider definition and model name.
-///
-/// Uses `effective_standard()` to pick the API protocol (OpenAI or Anthropic).
-pub async fn build_provider(
-    def: &ProviderDef,
-    model: &str,
-    client: reqwest::Client,
-) -> Result<Provider> {
+pub fn build_provider(def: &ProviderDef, model: &str, client: reqwest::Client) -> Result<Provider> {
     let api_key = def.api_key.as_deref().unwrap_or("");
 
-    match def.effective_standard() {
-        ApiStandard::Anthropic => {
-            let url = def.base_url.as_deref().unwrap_or(claude::ENDPOINT);
-            Ok(Provider::Claude(Claude::custom(
-                client, api_key, url, model,
-            )?))
+    let inner = match def.effective_standard() {
+        ApiStandard::Anthropic => CtProvider::Anthropic {
+            api_key: api_key.to_string(),
+        },
+        ApiStandard::Google => CtProvider::Google {
+            api_key: api_key.to_string(),
+        },
+        ApiStandard::Azure => {
+            let base_url = def.base_url.as_deref().unwrap_or("").to_string();
+            let api_version = def
+                .api_version
+                .as_deref()
+                .unwrap_or("2024-02-15-preview")
+                .to_string();
+            CtProvider::Azure {
+                base_url,
+                api_key: api_key.to_string(),
+                api_version,
+            }
+        }
+        ApiStandard::Bedrock => CtProvider::Bedrock {
+            region: def.region.clone().unwrap_or_default(),
+            access_key: def.access_key.clone().unwrap_or_default(),
+            secret_key: def.secret_key.clone().unwrap_or_default(),
+        },
+        ApiStandard::Ollama => {
+            let base_url = def
+                .base_url
+                .as_deref()
+                .unwrap_or("http://localhost:11434/v1")
+                .to_string();
+            CtProvider::OpenAiCompat {
+                base_url,
+                api_key: api_key.to_string(),
+            }
         }
         ApiStandard::OpenAI => {
-            let url = def.base_url.as_deref().unwrap_or(openai::endpoint::OPENAI);
-            let provider = if api_key.is_empty() {
-                OpenAI::no_auth(client, url, model)
-            } else {
-                OpenAI::custom(client, api_key, url, model)?
-            };
-            Ok(Provider::OpenAI(provider))
+            let base_url = def
+                .base_url
+                .as_deref()
+                .unwrap_or("https://api.openai.com/v1")
+                .to_string();
+            CtProvider::OpenAiCompat {
+                base_url,
+                api_key: api_key.to_string(),
+            }
         }
-    }
+    };
+
+    Ok(Provider {
+        inner,
+        client,
+        model: CompactString::from(model),
+        max_retries: def.max_retries,
+        timeout: Duration::from_secs(def.timeout),
+    })
 }
 
 impl Model for Provider {
     async fn send(&self, request: &wcore::model::Request) -> Result<Response> {
-        match self {
-            Self::OpenAI(p) => p.send(request).await,
-            Self::Claude(p) => p.send(request).await,
-        }
+        let mut ct_req = convert::to_ct_request(request);
+        ct_req.stream = Some(false);
+        send_with_retry(
+            &self.inner,
+            &self.client,
+            &ct_req,
+            self.max_retries,
+            self.timeout,
+        )
+        .await
     }
 
     fn stream(
         &self,
         request: wcore::model::Request,
     ) -> impl Stream<Item = Result<StreamChunk>> + Send {
-        let this = self.clone();
+        let inner = self.inner.clone();
+        let client = self.client.clone();
+        let timeout = self.timeout;
         try_stream! {
-            match this {
-                Provider::OpenAI(p) => {
-                    let mut stream = std::pin::pin!(p.stream(request));
-                    while let Some(chunk) = stream.next().await {
-                        yield chunk?;
-                    }
-                }
-                Provider::Claude(p) => {
-                    let mut stream = std::pin::pin!(p.stream(request));
-                    while let Some(chunk) = stream.next().await {
-                        yield chunk?;
-                    }
-                }
+            let mut ct_req = convert::to_ct_request(&request);
+            ct_req.stream = Some(true);
+
+            let boxed = tokio::time::timeout(timeout, inner.chat_completion_stream(&client, &ct_req))
+                .await
+                .map_err(|_| anyhow::anyhow!("stream connection timed out"))?
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let mut stream = std::pin::pin!(boxed);
+            while let Some(chunk) = stream.next().await {
+                let ct_chunk = chunk.map_err(|e| anyhow::anyhow!("{e}"))?;
+                yield convert::from_ct_chunk(ct_chunk);
             }
         }
     }
@@ -94,9 +139,51 @@ impl Model for Provider {
     }
 
     fn active_model(&self) -> CompactString {
-        match self {
-            Self::OpenAI(p) => p.active_model(),
-            Self::Claude(p) => p.active_model(),
+        self.model.clone()
+    }
+}
+
+/// Send a non-streaming request with exponential backoff retry on transient errors.
+async fn send_with_retry(
+    provider: &CtProvider,
+    client: &reqwest::Client,
+    request: &crabtalk_core::ChatCompletionRequest,
+    max_retries: u32,
+    timeout: Duration,
+) -> Result<Response> {
+    let mut backoff = Duration::from_millis(100);
+    let mut last_err = None;
+
+    for _ in 0..=max_retries {
+        let result = if timeout.is_zero() {
+            provider.chat_completion(client, request).await
+        } else {
+            tokio::time::timeout(timeout, provider.chat_completion(client, request))
+                .await
+                .map_err(|_| crabtalk_core::Error::Timeout)?
+        };
+
+        match result {
+            Ok(resp) => return Ok(convert::from_ct_response(resp)),
+            Err(e) if e.is_transient() => {
+                last_err = Some(e);
+                let jitter = jittered(backoff);
+                tokio::time::sleep(jitter).await;
+                backoff *= 2;
+            }
+            Err(e) => return Err(anyhow::anyhow!("{e}")),
         }
     }
+
+    Err(anyhow::anyhow!("{}", last_err.unwrap()))
+}
+
+/// Full jitter: random duration in [backoff/2, backoff].
+fn jittered(backoff: Duration) -> Duration {
+    let lo = backoff.as_millis() as u64 / 2;
+    let hi = backoff.as_millis() as u64;
+    if lo >= hi {
+        return backoff;
+    }
+    Duration::from_millis(rand::rng().random_range(lo..=hi))
 }

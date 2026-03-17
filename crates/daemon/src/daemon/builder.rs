@@ -17,7 +17,7 @@ use crate::{
 };
 use anyhow::Result;
 use compact_str::CompactString;
-use model::ProviderManager;
+use model::ProviderRegistry;
 use std::{path::Path, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 use wcore::{AgentConfig, Runtime, ToolRequest};
@@ -67,8 +67,11 @@ impl Daemon {
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-    ) -> Result<(Runtime<ProviderManager, DaemonHook>, Option<ServiceManager>)> {
-        let manager = Self::build_providers(config).await?;
+    ) -> Result<(
+        Runtime<ProviderRegistry, DaemonHook>,
+        Option<ServiceManager>,
+    )> {
+        let manager = Self::build_providers(config)?;
         let (hook, service_manager) =
             Self::build_hook(config, config_dir, event_tx, &manager).await?;
         let tool_tx = Self::build_tool_sender(event_tx);
@@ -81,23 +84,23 @@ impl Daemon {
         Ok((runtime, service_manager))
     }
 
-    /// Construct the provider manager from config.
+    /// Construct the provider registry from config.
     ///
     /// Builds remote providers from config and sets the active model.
-    async fn build_providers(config: &DaemonConfig) -> Result<ProviderManager> {
+    fn build_providers(config: &DaemonConfig) -> Result<ProviderRegistry> {
         let active_model = config
             .system
             .walrus
             .model
             .clone()
             .ok_or_else(|| anyhow::anyhow!("system.walrus.model is required in walrus.toml"))?;
-        let manager = ProviderManager::from_providers(active_model, &config.provider).await?;
+        let registry = ProviderRegistry::from_providers(active_model, &config.provider)?;
 
         tracing::info!(
-            "provider manager initialized — active model: {}",
-            manager.active_model_name().unwrap_or_default()
+            "provider registry initialized — active model: {}",
+            registry.active_model_name().unwrap_or_default()
         );
-        Ok(manager)
+        Ok(registry)
     }
 
     /// Build the daemon hook with all backends (skills, MCP, tasks, downloads, memory).
@@ -107,7 +110,7 @@ impl Daemon {
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-        manager: &ProviderManager,
+        manager: &ProviderRegistry,
     ) -> Result<(DaemonHook, Option<ServiceManager>)> {
         let downloads = Arc::new(Mutex::new(DownloadRegistry::new()));
 
@@ -197,7 +200,7 @@ impl Daemon {
     /// loaded by iterating TOML `[agents.*]` entries and matching each to a
     /// `.md` prompt file from the agents directory.
     fn load_agents(
-        runtime: &mut Runtime<ProviderManager, DaemonHook>,
+        runtime: &mut Runtime<ProviderRegistry, DaemonHook>,
         config_dir: &Path,
         config: &DaemonConfig,
     ) -> Result<()> {

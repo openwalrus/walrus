@@ -20,6 +20,10 @@ tcp = { path = "crates/tcp", package = "walrus-tcp", version = "0.0.8" }
 wcore = { path = "crates/core", package = "walrus-core", version = "0.0.8" }
 wsearch = { path = "apps/search", package = "walrus-search", version = "0.0.8", default-features = false }
 
+# crabtalk
+crabtalk-core = { path = "../../crabtalk/crates/core" }
+crabtalk-provider = { path = "../../crabtalk/crates/provider" }
+
 # crates.io
 anyhow = "1"
 arrow-array = "56"

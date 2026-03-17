@@ -25,7 +25,7 @@ mod tool;
 /// Unified LLM provider trait.
 ///
 /// Abstracts any LLM provider — single-backend (DeepSeek, Claude) or
-/// multi-model registry (ProviderManager). All implementations take
+/// multi-model registry (ProviderRegistry). All implementations take
 /// `&Request` directly; no associated config type.
 ///
 /// Constructors are inherent methods on each provider — never called

@@ -5,7 +5,7 @@ pub use crate::hook::{
     os::{PermissionConfig, ToolPermission},
     system::SystemConfig,
 };
-pub use ::model::{ModelConfig, ProviderDef, ProviderManager};
+pub use ::model::{ModelConfig, ProviderDef, ProviderRegistry};
 use anyhow::Result;
 use compact_str::CompactString;
 pub use loader::{load_agents_dir, scaffold_config_dir};

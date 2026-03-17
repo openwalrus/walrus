@@ -1,17 +1,14 @@
-//! Model crate — LLM provider implementations, enum dispatch, configuration,
-//! construction, and runtime management.
+//! Model crate — LLM provider implementations via crabtalk, enum dispatch,
+//! configuration, construction, and runtime management.
 //!
-//! Merges all provider backends (OpenAI, Claude, Local) with the `Provider`
-//! enum, `ProviderManager`, and `ProviderDef` into a single crate.
-//! `ProviderDef` describes a provider (api_key, base_url, standard, models).
-//! Each `[provider.<name>]` in TOML becomes one `ProviderDef`.
+//! Uses `crabtalk-provider` for the actual LLM backends (OpenAI, Anthropic,
+//! Google, Bedrock, Azure). Wraps them behind wcore's `Model` trait with
+//! type conversion and retry logic.
 
 pub mod config;
+mod convert;
 pub mod manager;
 mod provider;
-
-#[path = "../remote/mod.rs"]
-pub mod remote;
 
 /// Default model name when none is configured.
 pub fn default_model() -> &'static str {
@@ -19,6 +16,6 @@ pub fn default_model() -> &'static str {
 }
 
 pub use config::{ApiStandard, ModelConfig, ProviderDef};
-pub use manager::ProviderManager;
+pub use manager::ProviderRegistry;
 pub use provider::{Provider, build_provider};
 pub use reqwest::Client;

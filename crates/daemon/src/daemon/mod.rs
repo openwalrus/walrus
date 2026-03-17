@@ -12,7 +12,7 @@ use crate::{
 };
 use ::socket::server::accept_loop;
 use anyhow::Result;
-use model::ProviderManager;
+use model::ProviderRegistry;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -34,7 +34,7 @@ mod protocol;
 #[derive(Clone)]
 pub struct Daemon {
     /// The walrus runtime, swappable via [`Daemon::reload`].
-    pub runtime: Arc<RwLock<Arc<Runtime<ProviderManager, DaemonHook>>>>,
+    pub runtime: Arc<RwLock<Arc<Runtime<ProviderRegistry, DaemonHook>>>>,
     /// Config directory — stored so [`Daemon::reload`] can re-read config from disk.
     pub(crate) config_dir: PathBuf,
     /// Sender for the daemon event loop — cloned into `Runtime` as `ToolSender`

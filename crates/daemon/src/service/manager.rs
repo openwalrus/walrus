@@ -3,7 +3,7 @@
 use crate::service::config::{ServiceConfig, ServiceKind};
 use anyhow::{Context, Result, bail};
 use compact_str::CompactString;
-use model::ProviderManager;
+use model::ProviderRegistry;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -84,12 +84,12 @@ pub struct ServiceRegistry {
     /// Services that declared AfterCompact capability.
     pub after_compact: Vec<Arc<ServiceHandle>>,
     /// Model for Infer fulfillment (set after runtime construction).
-    model: Option<ProviderManager>,
+    model: Option<ProviderRegistry>,
 }
 
 impl ServiceRegistry {
     /// Set the model for Infer fulfillment.
-    pub fn set_model(&mut self, model: ProviderManager) {
+    pub fn set_model(&mut self, model: ProviderRegistry) {
         self.model = Some(model);
     }
 
@@ -455,7 +455,7 @@ fn to_simple_messages(history: &[Message]) -> Vec<SimpleMessage> {
 /// model and system prompt, auto-attaches service's tools, loops until final text.
 /// Tool calls are dispatched back to the owning service.
 async fn infer_fulfill(
-    model: &ProviderManager,
+    model: &ProviderRegistry,
     handle: &ServiceHandle,
     agent: &str,
     system_prompt: &str,

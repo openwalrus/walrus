@@ -132,7 +132,7 @@ pub enum FinishReason {
 }
 
 /// Token usage statistics
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct Usage {
     /// Number of tokens in the prompt
     pub prompt_tokens: u32,
