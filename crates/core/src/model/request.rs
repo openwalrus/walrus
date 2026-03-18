@@ -1,7 +1,6 @@
 //! Chat request type.
 
 use crate::model::{Message, Tool, ToolChoice};
-use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 /// A chat completion request.
@@ -12,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Request {
     /// The model to use.
-    pub model: CompactString,
+    pub model: String,
 
     /// The conversation messages.
     #[serde(default)]
@@ -35,7 +34,7 @@ pub struct Request {
 
 impl Request {
     /// Create a new request for the given model.
-    pub fn new(model: impl Into<CompactString>) -> Self {
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
             messages: Vec::new(),

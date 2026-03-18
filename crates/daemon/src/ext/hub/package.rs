@@ -2,7 +2,6 @@
 
 use crate::ext::hub::{DownloadRegistry, manifest};
 use anyhow::{Context, Result};
-use compact_str::CompactString;
 use std::collections::BTreeSet;
 use std::path::Path;
 use tokio::process::Command;
@@ -80,7 +79,7 @@ impl HubFilter {
 ///
 /// When `filters` is non-empty, only matching components are installed.
 pub fn install(
-    package: CompactString,
+    package: String,
     registry: std::sync::Arc<tokio::sync::Mutex<DownloadRegistry>>,
     filters: Vec<String>,
 ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> {
@@ -181,7 +180,7 @@ pub fn install(
             .iter()
             .filter(|(k, _)| filter.wants_agent(k.as_str()))
             .collect();
-        let mut agent_skill_keys: BTreeSet<&CompactString> = BTreeSet::new();
+        let mut agent_skill_keys: BTreeSet<&String> = BTreeSet::new();
         for (_, agent) in &wanted_agents {
             for sk in &agent.skills {
                 agent_skill_keys.insert(sk);
@@ -189,7 +188,7 @@ pub fn install(
         }
 
         // Install skills (top-level wanted + agent-referenced).
-        let all_skill_keys: BTreeSet<&CompactString> = manifest
+        let all_skill_keys: BTreeSet<&String> = manifest
             .skills
             .keys()
             .filter(|k| filter.wants_skill(k.as_str()))
@@ -257,7 +256,7 @@ pub fn install(
 ///
 /// When `filters` is non-empty, only matching components are removed.
 pub fn uninstall(
-    package: CompactString,
+    package: String,
     registry: std::sync::Arc<tokio::sync::Mutex<DownloadRegistry>>,
     filters: Vec<String>,
 ) -> impl futures_core::Stream<Item = Result<DownloadEvent>> {
@@ -419,7 +418,7 @@ fn read_manifest(scope: &str, name: &str) -> Result<manifest::Manifest> {
 
 /// Merge selected MCP server entries into `walrus.toml`.
 fn merge_mcp_servers_filtered(
-    entries: &[(&CompactString, &wcore::config::mcp::McpServerConfig)],
+    entries: &[(&String, &wcore::config::mcp::McpServerConfig)],
 ) -> Result<()> {
     use toml_edit::DocumentMut;
 
@@ -450,7 +449,7 @@ fn merge_mcp_servers_filtered(
 
 /// Merge selected service entries into `walrus.toml`.
 fn merge_services_filtered(
-    entries: &[(&CompactString, &crate::service::config::ServiceConfig)],
+    entries: &[(&String, &crate::service::config::ServiceConfig)],
 ) -> Result<()> {
     use toml_edit::DocumentMut;
 
@@ -482,7 +481,7 @@ fn merge_services_filtered(
 }
 
 /// Remove keys from a TOML section in `walrus.toml`.
-fn remove_keys_from_section(section: &str, keys: &[&CompactString]) -> Result<()> {
+fn remove_keys_from_section(section: &str, keys: &[&String]) -> Result<()> {
     use toml_edit::DocumentMut;
 
     let config_path = CONFIG_DIR.join("walrus.toml");
@@ -506,7 +505,7 @@ fn remove_keys_from_section(section: &str, keys: &[&CompactString]) -> Result<()
 /// Install selected agent prompt files from the hub repo.
 fn install_agents_filtered(
     scope: &str,
-    agents: &[(&CompactString, &manifest::AgentResource)],
+    agents: &[(&String, &manifest::AgentResource)],
 ) -> Result<()> {
     let agents_dir = CONFIG_DIR.join(wcore::paths::AGENTS_DIR);
     std::fs::create_dir_all(&agents_dir).context("failed to create agents directory")?;

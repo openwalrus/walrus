@@ -1,6 +1,5 @@
 //! Tool abstractions for the unified LLM Interfaces
 
-use compact_str::CompactString;
 use schemars::Schema;
 use serde::{Deserialize, Serialize};
 
@@ -8,10 +7,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Tool {
     /// The name of the tool
-    pub name: CompactString,
+    pub name: String,
 
     /// The description of the tool
-    pub description: CompactString,
+    pub description: String,
 
     /// The parameters of the tool
     pub parameters: Schema,
@@ -24,8 +23,8 @@ pub struct Tool {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ToolCall {
     /// The ID of the tool call
-    #[serde(default, skip_serializing_if = "CompactString::is_empty")]
-    pub id: CompactString,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
 
     /// The index of the tool call (used in streaming)
     #[serde(default, skip_serializing)]
@@ -33,7 +32,7 @@ pub struct ToolCall {
 
     /// The type of tool (currently only "function")
     #[serde(default, rename = "type")]
-    pub call_type: CompactString,
+    pub call_type: String,
 
     /// The function to call
     pub function: FunctionCall,
@@ -59,8 +58,8 @@ impl ToolCall {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct FunctionCall {
     /// The name of the function to call
-    #[serde(default, skip_serializing_if = "CompactString::is_empty")]
-    pub name: CompactString,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
 
     /// The arguments to pass to the function (JSON string)
     #[serde(skip_serializing_if = "String::is_empty")]

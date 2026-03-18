@@ -1,10 +1,10 @@
 # walrus-daemon
 
-The Walrus daemon (`walrusd`).
+The Walrus daemon.
 
-Runs as a background service, exposing agents over a Unix domain socket.
-Manages agent configuration, skills, MCP servers, memory tools, channels,
-and cron-scheduled tasks.
+Runs as a background service, exposing agents over UDS and TCP. Manages
+agent configuration, skills, MCP servers, built-in memory, task delegation,
+and extension services.
 
 ## License
 

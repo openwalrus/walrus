@@ -1,7 +1,6 @@
 //! //! Walrus MCP bridge — connects to MCP servers and dispatches tool calls.
 
 use anyhow::Result;
-use compact_str::CompactString;
 use rmcp::{
     ServiceExt,
     model::{CallToolRequestParams, RawContent},
@@ -14,9 +13,9 @@ use wcore::model::Tool;
 
 /// A connected MCP server peer with its tool names.
 struct ConnectedPeer {
-    name: CompactString,
+    name: String,
     peer: RunningService<RoleClient, ()>,
-    tools: Vec<CompactString>,
+    tools: Vec<String>,
 }
 
 /// Bridge to one or more MCP servers via the rmcp SDK.
@@ -26,7 +25,7 @@ struct ConnectedPeer {
 pub struct McpBridge {
     peers: Mutex<Vec<ConnectedPeer>>,
     /// Cache of converted tools keyed by name.
-    tool_cache: Mutex<BTreeMap<CompactString, Tool>>,
+    tool_cache: Mutex<BTreeMap<String, Tool>>,
 }
 
 impl Default for McpBridge {
@@ -51,8 +50,7 @@ impl McpBridge {
             .get_program()
             .to_string_lossy()
             .into_owned();
-        self.connect_stdio_named(CompactString::from(name), command)
-            .await?;
+        self.connect_stdio_named(name, command).await?;
         Ok(())
     }
 
@@ -61,9 +59,9 @@ impl McpBridge {
     /// Returns the list of tool names registered by this server.
     pub async fn connect_stdio_named(
         &self,
-        name: CompactString,
+        name: String,
         command: tokio::process::Command,
-    ) -> Result<Vec<CompactString>> {
+    ) -> Result<Vec<String>> {
         let transport = TokioChildProcess::new(command)?;
         let peer: RunningService<RoleClient, ()> = ().serve(transport).await?;
 
@@ -74,8 +72,8 @@ impl McpBridge {
             let mut cache = self.tool_cache.lock().await;
             for mcp_tool in &mcp_tools {
                 let walrus_tool = self::convert_tool(mcp_tool);
-                tool_names.push(walrus_tool.name.clone());
-                cache.insert(walrus_tool.name.clone(), walrus_tool);
+                tool_names.push(walrus_tool.name.to_string());
+                cache.insert(walrus_tool.name.to_string(), walrus_tool);
             }
         }
 
@@ -95,7 +93,7 @@ impl McpBridge {
     }
 
     /// Remove a server by name, returning the tool names that were removed.
-    pub async fn remove_server(&self, name: &str) -> Vec<CompactString> {
+    pub async fn remove_server(&self, name: &str) -> Vec<String> {
         let mut peers = self.peers.lock().await;
         let mut removed_tools = Vec::new();
 
@@ -117,7 +115,7 @@ impl McpBridge {
     }
 
     /// List all connected servers with their tool names.
-    pub async fn list_servers(&self) -> Vec<(CompactString, Vec<CompactString>)> {
+    pub async fn list_servers(&self) -> Vec<(String, Vec<String>)> {
         self.peers
             .lock()
             .await
@@ -187,13 +185,12 @@ fn convert_tool(mcp_tool: &rmcp::model::Tool) -> Tool {
         serde_json::from_value(schema_value).unwrap_or_else(|_| schemars::schema_for!(String));
 
     Tool {
-        name: CompactString::from(mcp_tool.name.as_ref()),
+        name: mcp_tool.name.as_ref().to_owned(),
         description: mcp_tool
             .description
             .as_ref()
             .map(|d| d.to_string())
-            .unwrap_or_default()
-            .into(),
+            .unwrap_or_default(),
         parameters,
         strict: false,
     }

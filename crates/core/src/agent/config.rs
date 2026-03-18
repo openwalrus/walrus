@@ -4,7 +4,6 @@
 //! Used by [`super::AgentBuilder`] to construct an [`super::Agent`].
 
 use crate::model::ToolChoice;
-use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 /// Default maximum iterations for agent execution.
@@ -22,16 +21,16 @@ const DEFAULT_COMPACT_THRESHOLD: usize = 100_000;
 pub struct AgentConfig {
     /// Agent identifier. Derived from TOML key, not stored in TOML.
     #[serde(skip)]
-    pub name: CompactString,
+    pub name: String,
     /// Human-readable description.
     #[serde(default)]
-    pub description: CompactString,
+    pub description: String,
     /// System prompt sent before each LLM request. Loaded from .md file.
     #[serde(skip)]
     pub system_prompt: String,
     /// Model to use from the registry. None = registry's active/default.
     #[serde(default)]
-    pub model: Option<CompactString>,
+    pub model: Option<String>,
     /// Maximum iterations before stopping.
     #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
@@ -55,7 +54,7 @@ pub struct AgentConfig {
     pub mcps: Vec<String>,
     /// Computed tool whitelist. Empty = all tools. Not serialized.
     #[serde(skip)]
-    pub tools: Vec<CompactString>,
+    pub tools: Vec<String>,
     /// Token count threshold for automatic context compaction.
     /// When history exceeds this, the agent compacts automatically.
     /// None = disabled. Defaults to 100_000.
@@ -74,8 +73,8 @@ fn default_compact_threshold() -> Option<usize> {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            name: CompactString::default(),
-            description: CompactString::default(),
+            name: String::new(),
+            description: String::new(),
             system_prompt: String::new(),
             model: None,
             max_iterations: DEFAULT_MAX_ITERATIONS,
@@ -93,7 +92,7 @@ impl Default for AgentConfig {
 
 impl AgentConfig {
     /// Create a new config with the given name and defaults for everything else.
-    pub fn new(name: impl Into<CompactString>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             ..Default::default()
@@ -107,13 +106,13 @@ impl AgentConfig {
     }
 
     /// Set the description.
-    pub fn description(mut self, desc: impl Into<CompactString>) -> Self {
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = desc.into();
         self
     }
 
     /// Set the model to use from the registry.
-    pub fn model(mut self, name: impl Into<CompactString>) -> Self {
+    pub fn model(mut self, name: impl Into<String>) -> Self {
         self.model = Some(name.into());
         self
     }

@@ -155,7 +155,6 @@ impl Server for Daemon {
         async_stream::try_stream! {
             let rt = runtime.read().await.clone();
             let registry = rt.hook.downloads.clone();
-            let package = compact_str::CompactString::from(package.as_str());
             match action {
                 HubAction::Install => {
                     let s = crate::ext::hub::package::install(package, registry, filters);

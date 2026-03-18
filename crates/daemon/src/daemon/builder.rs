@@ -16,7 +16,6 @@ use crate::{
     service::ServiceManager,
 };
 use anyhow::Result;
-use compact_str::CompactString;
 use model::ProviderRegistry;
 use std::{path::Path, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
@@ -89,7 +88,7 @@ impl Daemon {
             .model
             .clone()
             .ok_or_else(|| anyhow::anyhow!("system.walrus.model is required in walrus.toml"))?;
-        let registry = ProviderRegistry::from_providers(active_model, &config.provider)?;
+        let registry = ProviderRegistry::from_providers(active_model.clone(), &config.provider)?;
 
         tracing::info!(
             "provider registry initialized — active model: {}",
@@ -190,7 +189,7 @@ impl Daemon {
 
         // Built-in walrus agent. Read soul from memory (Walrus.md), fall back to compiled-in.
         let mut walrus_config = config.system.walrus.clone();
-        walrus_config.name = CompactString::from(wcore::paths::DEFAULT_AGENT);
+        walrus_config.name = wcore::paths::DEFAULT_AGENT.to_owned();
         walrus_config.system_prompt = runtime
             .hook
             .memory
@@ -202,7 +201,7 @@ impl Daemon {
         // Built-in skill-master agent.
         let mut skill_master = AgentConfig::new("skill-master");
         skill_master.system_prompt = SKILL_MASTER_AGENT.to_owned();
-        skill_master.description = CompactString::from("Interactive skill recorder");
+        skill_master.description = "Interactive skill recorder".to_owned();
         skill_master.thinking = config.system.walrus.thinking;
         runtime.add_agent(skill_master);
 
@@ -213,7 +212,7 @@ impl Daemon {
                 continue;
             };
             let mut agent = agent_config.clone();
-            agent.name = CompactString::from(name.as_str());
+            agent.name = name.clone();
             agent.system_prompt = prompt.clone();
             tracing::info!("registered agent '{name}' (thinking={})", agent.thinking);
             runtime.add_agent(agent);

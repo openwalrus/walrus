@@ -17,20 +17,10 @@ Or `cargo install openwalrus`. See the [installation guide][install] for details
 
 ```bash
 # Start the daemon
-walrus daemon
+walrus daemon install
 
 # Chat with your agent
 walrus attach
-```
-
-Point it at any LLM — [Ollama][providers], [OpenAI, Anthropic, DeepSeek][remote], or any OpenAI-compatible API.
-
-```toml
-[system.walrus]
-model = "qwen3:4b"
-
-[model.qwen3]
-base_url = "http://localhost:11434/v1"
 ```
 
 Full config reference: [configuration][config].
@@ -38,7 +28,7 @@ Full config reference: [configuration][config].
 ## How It Works
 
 Walrus is a daemon that runs [agents] and dispatches tools. The daemon
-ships with built-in [tools] (file I/O, shell, task delegation),
+ships with built-in [tools] (shell, task delegation, memory),
 [MCP][mcp] server integration, and [skills] (Markdown prompt files).
 
 Heavier capabilities live outside the daemon as [extensions][services] —
@@ -46,9 +36,8 @@ managed child processes you add or remove in config:
 
 | Service            | What it does                                 |
 | ------------------ | -------------------------------------------- |
-| [Memory][memory]   | Graph memory — LanceDB + semantic embeddings |
 | [Search][search]   | Meta-search aggregator                       |
-| [Gateway][gateway] | Telegram, Discord adapters                   |
+| [Gateway][gateway] | Telegram adapter                             |
 
 The daemon stays small. Services scale independently.
 
@@ -84,7 +73,6 @@ GPL-3.0
 [agents]: https://openwalrus.xyz/docs/development/concepts/agents
 [runtime]: https://openwalrus.xyz/docs/development/concepts/runtime
 [services]: https://openwalrus.xyz/docs/walrus/extensions
-[memory]: https://openwalrus.xyz/docs/walrus/extensions/memory
 [search]: https://openwalrus.xyz/docs/walrus/extensions/search
 [gateway]: https://openwalrus.xyz/docs/walrus/extensions/gateway
 [tools]: https://openwalrus.xyz/docs/development/tools/built-in

@@ -7,7 +7,6 @@
 //! - [`AgentStopReason`]: why the agent stopped.
 
 use crate::model::{Message, Response, ToolCall};
-use compact_str::CompactString;
 
 /// A fine-grained event emitted during agent execution.
 ///
@@ -24,7 +23,7 @@ pub enum AgentEvent {
     /// A single tool completed execution.
     ToolResult {
         /// The tool call ID this result belongs to.
-        call_id: CompactString,
+        call_id: String,
         /// The output from the tool.
         output: String,
     },

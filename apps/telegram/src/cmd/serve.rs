@@ -1,6 +1,5 @@
 //! Telegram gateway serve command.
 
-use compact_str::CompactString;
 use gateway::{
     COMMAND_HINT, DaemonClient, GatewayConfig, GatewayMessage, KnownBots, StreamAccumulator,
     StreamResult, attachment_summary, parse_command,
@@ -48,7 +47,7 @@ pub async fn run(daemon_socket: &str, config_json: &str) -> anyhow::Result<()> {
 async fn spawn_telegram(
     token: &str,
     allowed_users: &[i64],
-    agent: CompactString,
+    agent: String,
     client: Arc<DaemonClient>,
     known_bots: KnownBots,
 ) {
@@ -56,7 +55,7 @@ async fn spawn_telegram(
 
     match bot.get_me().await {
         Ok(me) => {
-            let bot_sender: CompactString = format!("tg:{}", me.id.0).into();
+            let bot_sender = format!("tg:{}", me.id.0);
             tracing::info!(platform = "telegram", %bot_sender, "registered bot identity");
             known_bots.write().await.insert(bot_sender);
         }
@@ -100,7 +99,7 @@ async fn spawn_telegram(
 async fn telegram_loop(
     mut rx: mpsc::UnboundedReceiver<GatewayMessage>,
     bot: Bot,
-    agent: CompactString,
+    agent: String,
     client: Arc<DaemonClient>,
     known_bots: KnownBots,
     allowed_users: std::collections::HashSet<i64>,
@@ -109,7 +108,7 @@ async fn telegram_loop(
     while let Some(msg) = rx.recv().await {
         let chat_id = msg.chat_id;
         let content = msg.content.clone();
-        let sender: CompactString = format!("tg:{}", msg.sender_id).into();
+        let sender = format!("tg:{}", msg.sender_id);
 
         if known_bots.read().await.contains(&sender) {
             tracing::debug!(%sender, chat_id, "dropping message from known bot");

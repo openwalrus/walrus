@@ -2,9 +2,8 @@
 //!
 //! Role and FinishReason are shared (re-exported from crabtalk-core in wcore).
 //! Structural differences remain: String vs Option<Value> content, flat vs
-//! envelope Tool, CompactString vs String, SmallVec vs Vec.
+//! envelope Tool.
 
-use compact_str::CompactString;
 use crabtalk_core::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
     Delta as CtDelta, FunctionCall as CtFunctionCall, FunctionDef, Message as CtMessage,
@@ -44,11 +43,18 @@ pub fn to_ct_request(req: &Request) -> ChatCompletionRequest {
 }
 
 fn to_ct_message(msg: &Message) -> CtMessage {
-    let content = if msg.content.is_empty() {
-        None
+    // Always include `content` — the OpenAI API requires the field on
+    // every message. Assistant messages accept `null`; all other roles
+    // require a string.
+    let content = Some(if msg.content.is_empty() {
+        if msg.role == crabtalk_core::Role::Assistant {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(String::new())
+        }
     } else {
-        Some(serde_json::Value::String(msg.content.clone()))
-    };
+        serde_json::Value::String(msg.content.clone())
+    });
 
     let tool_calls = if msg.tool_calls.is_empty() {
         None
@@ -105,14 +111,15 @@ fn to_ct_tool_call(tc: &ToolCall) -> CtToolCall {
 
 /// Convert a crabtalk ChatCompletionResponse into a wcore Response.
 pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
+    let meta = CompletionMeta {
+        id: resp.id,
+        object: resp.object,
+        created: resp.created,
+        model: resp.model,
+        system_fingerprint: resp.system_fingerprint,
+    };
     Response {
-        meta: CompletionMeta {
-            id: CompactString::from(&resp.id),
-            object: CompactString::from(&resp.object),
-            created: resp.created,
-            model: CompactString::from(&resp.model),
-            system_fingerprint: resp.system_fingerprint.map(|s| CompactString::from(&*s)),
-        },
+        meta,
         choices: resp
             .choices
             .into_iter()
@@ -129,14 +136,15 @@ pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
 
 /// Convert a crabtalk ChatCompletionChunk into a wcore StreamChunk.
 pub fn from_ct_chunk(chunk: ChatCompletionChunk) -> StreamChunk {
+    let meta = CompletionMeta {
+        id: chunk.id,
+        object: chunk.object,
+        created: chunk.created,
+        model: chunk.model,
+        system_fingerprint: chunk.system_fingerprint,
+    };
     StreamChunk {
-        meta: CompletionMeta {
-            id: CompactString::from(&chunk.id),
-            object: CompactString::from(&chunk.object),
-            created: chunk.created,
-            model: CompactString::from(&chunk.model),
-            system_fingerprint: chunk.system_fingerprint.map(|s| CompactString::from(&*s)),
-        },
+        meta,
         choices: chunk
             .choices
             .into_iter()
@@ -172,11 +180,11 @@ fn from_ct_message_delta(msg: &CtMessage) -> Delta {
         tool_calls: msg.tool_calls.as_ref().map(|tcs| {
             tcs.iter()
                 .map(|tc| ToolCall {
-                    id: CompactString::from(&tc.id),
+                    id: tc.id.clone(),
                     index: tc.index.unwrap_or(0),
-                    call_type: CompactString::from("function"),
+                    call_type: "function".to_owned(),
                     function: FunctionCall {
-                        name: CompactString::from(&tc.function.name),
+                        name: tc.function.name.clone(),
                         arguments: tc.function.arguments.clone(),
                     },
                 })
@@ -193,29 +201,22 @@ fn from_ct_delta(d: &CtDelta) -> Delta {
         tool_calls: d.tool_calls.as_ref().map(|tcs| {
             tcs.iter()
                 .map(|tc| ToolCall {
-                    id: tc
-                        .id
-                        .as_ref()
-                        .map(|s| CompactString::from(&**s))
-                        .unwrap_or_default(),
+                    id: tc.id.as_ref().map(|s| s.to_string()).unwrap_or_default(),
                     index: tc.index,
                     call_type: tc
                         .kind
                         .map(|k| {
-                            CompactString::from(match k {
+                            match k {
                                 ToolType::Function => "function",
-                            })
+                            }
+                            .to_owned()
                         })
                         .unwrap_or_default(),
                     function: tc
                         .function
                         .as_ref()
                         .map(|f| FunctionCall {
-                            name: f
-                                .name
-                                .as_ref()
-                                .map(|s| CompactString::from(&**s))
-                                .unwrap_or_default(),
+                            name: f.name.as_ref().map(|s| s.to_string()).unwrap_or_default(),
                             arguments: f.arguments.clone().unwrap_or_default(),
                         })
                         .unwrap_or_default(),

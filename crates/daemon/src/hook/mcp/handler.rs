@@ -1,7 +1,6 @@
 //! Walrus MCP handler — initial load and read access.
 
 use crate::hook::mcp::{McpBridge, config::McpServerConfig};
-use compact_str::CompactString;
 use std::sync::{Arc, RwLock as StdRwLock};
 use tokio::sync::RwLock;
 
@@ -13,7 +12,7 @@ use tokio::sync::RwLock;
 pub struct McpHandler {
     bridge: RwLock<Arc<McpBridge>>,
     /// Sync cache of server names → tool names, populated at load/reload.
-    server_cache: StdRwLock<Vec<(CompactString, Vec<CompactString>)>>,
+    server_cache: StdRwLock<Vec<(String, Vec<String>)>>,
 }
 
 impl McpHandler {
@@ -65,12 +64,12 @@ impl McpHandler {
     }
 
     /// List all connected servers with their tool names.
-    pub async fn list(&self) -> Vec<(CompactString, Vec<CompactString>)> {
+    pub async fn list(&self) -> Vec<(String, Vec<String>)> {
         self.bridge.read().await.list_servers().await
     }
 
     /// Sync access to the cached server→tools list (populated at load time).
-    pub fn cached_list(&self) -> Vec<(CompactString, Vec<CompactString>)> {
+    pub fn cached_list(&self) -> Vec<(String, Vec<String>)> {
         self.server_cache.read().unwrap().clone()
     }
 

@@ -3,7 +3,6 @@
 use crate::repl::runner::Runner;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use compact_str::CompactString;
 use std::path::PathBuf;
 use wcore::paths::TCP_PORT_FILE;
 
@@ -23,7 +22,7 @@ pub struct Cli {
 
     /// Agent name override.
     #[arg(long, global = true)]
-    pub agent: Option<CompactString>,
+    pub agent: Option<String>,
 
     /// Path to the walrusd socket.
     #[arg(long, global = true)]
@@ -50,8 +49,8 @@ impl Cli {
     }
 
     /// Resolve the agent name from CLI flags or fall back to "assistant".
-    pub fn resolve_agent(&self) -> CompactString {
-        self.agent.clone().unwrap_or_else(|| "walrus".into())
+    pub fn resolve_agent(&self) -> String {
+        self.agent.clone().unwrap_or_else(|| "walrus".to_owned())
     }
 
     /// Resolve the socket path from CLI flag or default.

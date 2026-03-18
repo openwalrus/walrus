@@ -18,13 +18,11 @@ anyhow.workspace = true
 dirs.workspace = true
 heck.workspace = true
 async-stream.workspace = true
-compact_str.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 prost.workspace = true
 schemars.workspace = true
 serde.workspace = true
-smallvec.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 

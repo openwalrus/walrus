@@ -11,11 +11,10 @@ keywords.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-compact_str.workspace = true
 futures-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-socket.workspace = true
+transport.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 wcore.workspace = true

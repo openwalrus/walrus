@@ -38,8 +38,7 @@ impl DaemonHook {
         let allowed_mcps = self.scopes.get(agent).map(|s| &s.mcps);
         let bridge = self.mcp.bridge().await;
         // If agent has MCP scope, resolve allowed tool names from server names.
-        let allowed_tools: Option<Vec<compact_str::CompactString>> = if let Some(mcps) =
-            allowed_mcps
+        let allowed_tools: Option<Vec<String>> = if let Some(mcps) = allowed_mcps
             && !mcps.is_empty()
         {
             let servers = bridge.list_servers().await;
@@ -59,7 +58,7 @@ impl DaemonHook {
             .filter(|t| {
                 // Filter by agent's MCP scope.
                 if let Some(allowed) = &allowed_tools
-                    && !allowed.contains(&t.name)
+                    && !allowed.iter().any(|a| a.as_str() == t.name.as_str())
                 {
                     return false;
                 }
@@ -86,7 +85,7 @@ impl DaemonHook {
         {
             let bridge = self.mcp.bridge().await;
             let servers = bridge.list_servers().await;
-            let allowed: Vec<compact_str::CompactString> = servers
+            let allowed: Vec<String> = servers
                 .into_iter()
                 .filter(|(name, _)| scope.mcps.iter().any(|m| m == name.as_str()))
                 .flat_map(|(_, tools)| tools)

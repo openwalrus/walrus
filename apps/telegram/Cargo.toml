@@ -21,7 +21,6 @@ cli = ["dep:clap", "dep:tracing-subscriber"]
 [dependencies]
 anyhow.workspace = true
 clap = { workspace = true, optional = true }
-compact_str.workspace = true
 futures-util.workspace = true
 gateway.workspace = true
 serde_json.workspace = true

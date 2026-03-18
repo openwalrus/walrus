@@ -8,7 +8,6 @@
 //! no tool name matching happens here.
 
 use crate::daemon::Daemon;
-use compact_str::CompactString;
 use futures_util::{StreamExt, pin_mut};
 use tokio::sync::mpsc;
 use wcore::{
@@ -32,7 +31,7 @@ pub enum DaemonEvent {
     /// A tool call from an agent, routed through `DaemonHook::dispatch_tool`.
     ToolCall(ToolRequest),
     /// Periodic heartbeat tick for a specific agent.
-    Heartbeat { agent: CompactString },
+    Heartbeat { agent: String },
     /// Graceful shutdown request.
     Shutdown,
 }
@@ -84,7 +83,7 @@ impl Daemon {
             let rt = runtime.read().await.clone();
             let result = rt
                 .hook
-                .dispatch_tool(&req.name, &req.args, &req.agent)
+                .dispatch_tool(&req.name, &req.args, &req.agent, &req.sender)
                 .await;
             let _ = req.reply.send(result);
         });

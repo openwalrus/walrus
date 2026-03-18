@@ -4,7 +4,6 @@
 //! `Message`, `Response`, `StreamChunk`, `Tool`, `Request`, and the `Model` trait.
 
 use anyhow::Result;
-use compact_str::CompactString;
 use futures_core::Stream;
 pub use limits::default_context_limit;
 pub use message::{Message, MessageBuilder, Role, estimate_tokens};
@@ -45,7 +44,7 @@ pub trait Model: Sized + Clone {
     }
 
     /// Get the active/default model name.
-    fn active_model(&self) -> CompactString;
+    fn active_model(&self) -> String;
 }
 
 /// `()` as a no-op Model for testing (panics on send/stream).
@@ -66,7 +65,7 @@ impl Model for () {
         0
     }
 
-    fn active_model(&self) -> CompactString {
-        CompactString::new("")
+    fn active_model(&self) -> String {
+        String::new()
     }
 }

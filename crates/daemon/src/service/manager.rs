@@ -2,7 +2,6 @@
 
 use crate::service::config::{ServiceConfig, ServiceKind};
 use anyhow::{Context, Result, bail};
-use compact_str::CompactString;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -30,7 +29,7 @@ use wcore::{
 
 /// Handle to a connected extension service.
 pub struct ServiceHandle {
-    pub name: CompactString,
+    pub name: String,
     pub capabilities: Vec<Capability>,
     writer: Mutex<OwnedWriteHalf>,
     reader: Mutex<OwnedReadHalf>,
@@ -338,7 +337,7 @@ impl ServiceManager {
         tracing::debug!(service = %service, "handshake Hello/Ready complete");
 
         let handle = ServiceHandle {
-            name: CompactString::from(service.as_str()),
+            name: service,
             capabilities,
             writer,
             reader,
@@ -386,8 +385,8 @@ impl ServiceManager {
         let tools: Vec<Tool> = tool_defs
             .into_iter()
             .map(|td| Tool {
-                name: CompactString::from(td.name.as_str()),
-                description: CompactString::from(td.description.as_str()),
+                name: td.name.to_string(),
+                description: td.description.to_string(),
                 parameters: serde_json::from_slice(&td.parameters).unwrap_or_else(|_| true.into()),
                 strict: td.strict,
             })

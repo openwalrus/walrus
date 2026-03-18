@@ -1,6 +1,5 @@
 //! MCP server configuration.
 
-use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -9,7 +8,7 @@ use std::collections::BTreeMap;
 #[serde(default)]
 pub struct McpServerConfig {
     /// Server name. If empty, the name will be the command.
-    pub name: CompactString,
+    pub name: String,
     /// Command to spawn.
     pub command: String,
     /// Command arguments.
@@ -23,7 +22,7 @@ pub struct McpServerConfig {
 impl Default for McpServerConfig {
     fn default() -> Self {
         Self {
-            name: CompactString::default(),
+            name: String::new(),
             command: String::new(),
             args: Vec::new(),
             env: BTreeMap::new(),

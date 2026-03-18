@@ -1,6 +1,5 @@
 //! Walrus skill registry — skill storage and lookup.
 
-use compact_str::CompactString;
 use std::collections::BTreeMap;
 
 /// A registry of loaded skills.
@@ -49,17 +48,17 @@ impl SkillRegistry {
 #[derive(Debug, Clone)]
 pub struct Skill {
     /// Skill identifier (lowercase, hyphens, 1-64 chars).
-    pub name: CompactString,
+    pub name: String,
     /// Human-readable description (1-1024 chars).
     pub description: String,
     /// License name or reference to a bundled license file.
-    pub license: Option<CompactString>,
+    pub license: Option<String>,
     /// Compatibility constraints (e.g. "Requires git, docker").
-    pub compatibility: Option<CompactString>,
+    pub compatibility: Option<String>,
     /// Arbitrary key-value metadata map.
-    pub metadata: BTreeMap<CompactString, String>,
+    pub metadata: BTreeMap<String, String>,
     /// Tool names this skill is pre-approved to use (experimental).
-    pub allowed_tools: Vec<CompactString>,
+    pub allowed_tools: Vec<String>,
     /// Skill body (Markdown instructions).
     pub body: String,
 }

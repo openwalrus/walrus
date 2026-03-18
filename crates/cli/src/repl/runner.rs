@@ -3,14 +3,14 @@
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use socket::{ClientConfig, Connection, WalrusClient};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
-use tcp::TcpConnection;
+use transport::tcp::TcpConnection;
+use transport::uds::{ClientConfig, Connection, WalrusClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        ApproveMsg, ClientMessage, HubAction, HubMsg, KillMsg, KillTaskMsg, SendMsg, SendResponse,
+        ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg, KillTaskMsg,
         ServerMessage, SessionInfo, StreamMsg, TaskInfo, client_message, download_event,
         server_message, stream_event,
     },
@@ -22,8 +22,10 @@ pub enum OutputChunk {
     Text(String),
     /// Thinking/reasoning content (displayed dimmed).
     Thinking(String),
-    /// Status message (tool calls, etc.).
-    Status(String),
+    /// Tool execution started with these tool calls (name, arguments JSON).
+    ToolStart(Vec<(String, String)>),
+    /// Tool execution completed (true = success, false = failure).
+    ToolDone(bool),
 }
 
 /// Transport-agnostic connection to walrusd.
@@ -90,21 +92,6 @@ impl Runner {
         })
     }
 
-    /// Send a one-shot message and return the response content.
-    pub async fn send(&mut self, agent: &str, content: &str) -> Result<String> {
-        let resp = self
-            .transport
-            .request(ClientMessage::from(SendMsg {
-                agent: agent.to_string(),
-                content: content.to_string(),
-                session: None,
-                sender: None,
-            }))
-            .await?;
-        let resp = SendResponse::try_from(resp)?;
-        Ok(resp.content)
-    }
-
     /// Stream a response, yielding typed output chunks.
     pub fn stream<'a>(
         &'a mut self,
@@ -138,15 +125,16 @@ impl Runner {
                             Some(Ok(OutputChunk::Thinking(t.content.clone())))
                         }
                         Some(stream_event::Event::ToolStart(ts)) => {
-                            let names: Vec<_> = ts.calls.iter().map(|c| c.name.as_str()).collect();
-                            Some(Ok(OutputChunk::Status(format!(
-                                "\n[calling {}...]\n",
-                                names.join(", ")
-                            ))))
+                            let calls: Vec<_> = ts
+                                .calls
+                                .iter()
+                                .map(|c| (c.name.clone(), c.arguments.clone()))
+                                .collect();
+                            Some(Ok(OutputChunk::ToolStart(calls)))
                         }
                         Some(stream_event::Event::ToolResult(_)) => None,
                         Some(stream_event::Event::ToolsComplete(_)) => {
-                            Some(Ok(OutputChunk::Status("[done]\n".to_string())))
+                            Some(Ok(OutputChunk::ToolDone(true)))
                         }
                         Some(stream_event::Event::Start(_)) => None,
                         Some(stream_event::Event::End(_)) => None,
@@ -287,21 +275,15 @@ impl Runner {
         }
     }
 
-    /// Approve a blocked task. Returns true if the task was blocked and approved.
-    pub async fn approve_task(&mut self, task_id: u64, response: String) -> Result<bool> {
+    /// Get the daemon config as JSON string.
+    pub async fn get_config(&mut self) -> Result<String> {
         let msg = ClientMessage {
-            msg: Some(client_message::Msg::Approve(ApproveMsg {
-                task_id,
-                response,
-            })),
+            msg: Some(client_message::Msg::GetConfig(GetConfig {})),
         };
         match self.transport.request(msg).await? {
             ServerMessage {
-                msg: Some(server_message::Msg::Pong(_)),
-            } => Ok(true),
-            ServerMessage {
-                msg: Some(server_message::Msg::Error(e)),
-            } if e.code == 404 => Ok(false),
+                msg: Some(server_message::Msg::Config(ConfigMsg { config })),
+            } => Ok(config),
             ServerMessage {
                 msg: Some(server_message::Msg::Error(e)),
             } => {

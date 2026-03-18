@@ -38,12 +38,20 @@ impl Console {
             runner,
         };
 
+        let mut idle_ticks: u8 = 0;
         let result = loop {
             terminal.draw(|frame| render(frame, &state))?;
-            if let Some(key) = tui::poll_key()?
-                && let Some(result) = handle_key(key, &mut state).await?
-            {
-                break result;
+            if let Some(key) = tui::poll_key()? {
+                idle_ticks = 0;
+                if let Some(result) = handle_key(key, &mut state).await? {
+                    break result;
+                }
+            } else {
+                idle_ticks = idle_ticks.saturating_add(1);
+                if idle_ticks >= 4 {
+                    idle_ticks = 0;
+                    state.refresh().await;
+                }
             }
         };
 

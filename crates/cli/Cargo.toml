@@ -16,8 +16,7 @@ path = "src/bin/main.rs"
 
 [dependencies]
 daemon.workspace = true
-socket.workspace = true
-tcp.workspace = true
+transport.workspace = true
 wcore.workspace = true
 
 # crates.io
@@ -25,14 +24,17 @@ anyhow.workspace = true
 dirs.workspace = true
 async-stream.workspace = true
 clap.workspace = true
+console.workspace = true
 crossterm.workspace = true
 dialoguer.workspace = true
-openssl-sys.workspace = true
-compact_str.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
+heck.workspace = true
 ratatui.workspace = true
 rustyline.workspace = true
+serde_json.workspace = true
+syntect.workspace = true
+textwrap.workspace = true
 tokio.workspace = true
 toml.workspace = true
 toml_edit.workspace = true

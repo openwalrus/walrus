@@ -33,7 +33,7 @@ impl DaemonClient {
     /// multiple platform loops can send concurrently without blocking.
     pub async fn send(&self, msg: ClientMessage) -> mpsc::UnboundedReceiver<ServerMessage> {
         let (tx, rx) = mpsc::unbounded_channel();
-        match socket::WalrusClient::new(socket::ClientConfig {
+        match transport::uds::WalrusClient::new(transport::uds::ClientConfig {
             socket_path: self.socket_path.clone(),
         })
         .connect()

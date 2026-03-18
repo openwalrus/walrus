@@ -17,7 +17,6 @@ use crate::{
     },
     service::ServiceRegistry,
 };
-use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
 use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
@@ -30,7 +29,7 @@ pub mod system;
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
 pub(crate) struct AgentScope {
-    pub(crate) tools: Vec<CompactString>,
+    pub(crate) tools: Vec<String>,
     pub(crate) members: Vec<String>,
     pub(crate) skills: Vec<String>,
     pub(crate) mcps: Vec<String>,
@@ -49,9 +48,9 @@ pub struct DaemonHook {
     /// Event channel for task dispatch.
     pub(crate) event_tx: DaemonEventSender,
     /// Per-agent scope maps, populated during load_agents.
-    pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
+    pub(crate) scopes: BTreeMap<String, AgentScope>,
     /// Sub-agent descriptions for catalog injection into the walrus agent.
-    pub(crate) agent_descriptions: BTreeMap<CompactString, CompactString>,
+    pub(crate) agent_descriptions: BTreeMap<String, String>,
     /// External extension service registry (tools + queries).
     pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
@@ -87,9 +86,40 @@ impl Hook for DaemonHook {
             }
         }
 
+        // Inject discoverable resource hints so the agent knows what's
+        // available without resorting to bash exploration.
+        let mut hints = Vec::new();
+        let mcp_servers = self.mcp.cached_list();
+        if !mcp_servers.is_empty() {
+            let names: Vec<&str> = mcp_servers.iter().map(|(n, _)| n.as_str()).collect();
+            hints.push(format!(
+                "MCP servers: {}. Use search_mcp to list tools, call_mcp_tool to invoke them.",
+                names.join(", ")
+            ));
+        }
+        if let Ok(reg) = self.skills.registry.try_lock() {
+            let skills: Vec<&str> = reg.skills().iter().map(|s| s.name.as_str()).collect();
+            if !skills.is_empty() {
+                hints.push(format!(
+                    "Skills: {}. Use search_skill to find skills, load_skill to activate one.",
+                    skills.join(", ")
+                ));
+            }
+        }
+        if !hints.is_empty() {
+            config.system_prompt.push_str(&format!(
+                "\n\n<resources>\n{}\n</resources>",
+                hints.join("\n")
+            ));
+        }
+
         // Apply scoped tool whitelist + prompt for sub-agents.
         self.apply_scope(&mut config);
         config
+    }
+
+    fn preprocess(&self, agent: &str, content: &str) -> String {
+        self.resolve_slash_skill(agent, content)
     }
 
     fn on_before_run(
@@ -120,7 +150,7 @@ impl Hook for DaemonHook {
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
-        self.mcp.register_tools(tools).await;
+        self.mcp.register_tools(tools);
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(system::task::tool::tools());
@@ -201,7 +231,7 @@ impl DaemonHook {
     }
 
     /// Register an agent's scope for dispatch enforcement.
-    pub(crate) fn register_scope(&mut self, name: CompactString, config: &AgentConfig) {
+    pub(crate) fn register_scope(&mut self, name: String, config: &AgentConfig) {
         if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
             self.agent_descriptions
                 .insert(name.clone(), config.description.clone());
@@ -227,57 +257,40 @@ impl DaemonHook {
         }
 
         // Base tools + memory + external service tools always included.
-        let mut whitelist: Vec<CompactString> =
-            BASE_TOOLS.iter().map(|&s| CompactString::from(s)).collect();
+        let mut whitelist: Vec<String> = BASE_TOOLS.iter().map(|&s| s.to_owned()).collect();
         if self.memory.is_some() {
             for &t in MEMORY_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
         }
         if let Some(ref registry) = self.registry {
             for tool_name in registry.tools.keys() {
-                whitelist.push(CompactString::from(tool_name.as_str()));
+                whitelist.push(tool_name.clone());
             }
         }
         let mut scope_lines = Vec::new();
 
         if !config.skills.is_empty() {
             for &t in SKILL_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
             scope_lines.push(format!("skills: {}", config.skills.join(", ")));
         }
 
         if !config.mcps.is_empty() {
             for &t in MCP_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
-            let mcp_servers = self.mcp.cached_list();
-            let mut mcp_info = Vec::new();
-            for (server_name, tool_names) in &mcp_servers {
-                if config.mcps.iter().any(|m| m == server_name.as_str()) {
-                    for tn in tool_names {
-                        whitelist.push(tn.clone());
-                    }
-                    mcp_info.push(format!(
-                        "  - {}: {}",
-                        server_name,
-                        tool_names
-                            .iter()
-                            .map(|t| t.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
-                }
-            }
-            if !mcp_info.is_empty() {
-                scope_lines.push(format!("mcp servers:\n{}", mcp_info.join("\n")));
-            }
+            let server_names: Vec<&str> = config.mcps.iter().map(|s| s.as_str()).collect();
+            scope_lines.push(format!(
+                "mcp servers: {}\nUse search_mcp to discover tools, call_mcp_tool to invoke them.",
+                server_names.join(", ")
+            ));
         }
 
         if !config.members.is_empty() {
             for &t in TASK_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
             scope_lines.push(format!("members: {}", config.members.join(", ")));
         }
@@ -292,16 +305,34 @@ impl DaemonHook {
 
     /// Check tool permission. Returns `Some(denied_message)` if denied,
     /// `None` if allowed.
-    fn check_perm(&self, name: &str, agent: &str) -> Option<String> {
+    ///
+    /// `Ask` permission: allowed for interactive sessions (sender is empty
+    /// or "user"), denied for non-interactive (gateways, sub-agents).
+    fn check_perm(&self, name: &str, agent: &str, sender: &str) -> Option<String> {
         // OS tools bypass permission when running in sandbox mode.
         if self.sandboxed && BASE_TOOLS.contains(&name) {
             return None;
         }
         use crate::hook::os::ToolPermission;
         match self.permissions.resolve(agent, name) {
+            ToolPermission::Allow => None,
             ToolPermission::Deny => Some(format!("permission denied: {name}")),
-            // Sub-agents are autonomous — Ask treated as Allow.
-            ToolPermission::Ask | ToolPermission::Allow => None,
+            ToolPermission::Ask => {
+                let interactive = sender.is_empty() || sender == "user";
+                if interactive {
+                    None
+                } else {
+                    tracing::warn!(
+                        tool = name,
+                        agent = agent,
+                        sender = sender,
+                        "tool requires approval — denied for non-interactive session"
+                    );
+                    Some(format!(
+                        "permission denied: {name} (requires interactive approval)"
+                    ))
+                }
+            }
         }
     }
 
@@ -314,13 +345,56 @@ impl DaemonHook {
             .await
     }
 
+    /// Scan content for `/skill-name` tokens, load each skill found, and
+    /// append their bodies to the end of the message.
+    /// Tokens that don't match a skill are left as-is.
+    fn resolve_slash_skill(&self, agent: &str, content: &str) -> String {
+        let scope = self.scopes.get(agent);
+        let mut appended = Vec::new();
+        let mut rest = content;
+
+        while let Some(slash) = rest.find('/') {
+            rest = &rest[slash + 1..];
+            // Extract the skill name token: [a-z][a-z0-9-]*
+            let end = rest
+                .find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-')
+                .unwrap_or(rest.len());
+            let name = &rest[..end];
+            rest = &rest[end..];
+
+            if name.is_empty() || name.contains("..") {
+                continue;
+            }
+            // Enforce skill scope.
+            if let Some(scope) = scope
+                && !scope.skills.is_empty()
+                && !scope.skills.iter().any(|s| s == name)
+            {
+                continue;
+            }
+            let skill_file = self.skills.skills_dir.join(name).join("SKILL.md");
+            let Ok(file_content) = std::fs::read_to_string(&skill_file) else {
+                continue;
+            };
+            let Ok(skill) = skill::loader::parse_skill_md(&file_content) else {
+                continue;
+            };
+            appended.push(skill.body);
+        }
+
+        if appended.is_empty() {
+            return content.to_owned();
+        }
+        format!("{}\n\n{}", content, appended.join("\n\n"))
+    }
+
     /// Route a tool call by name to the appropriate handler.
     ///
     /// This is the single dispatch entry point — `event.rs` calls this
     /// and never matches on tool names itself. Unrecognised names are
     /// forwarded to the MCP bridge after a warn-level log.
-    pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str) -> String {
-        if let Some(denied) = self.check_perm(name, agent) {
+    pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str, sender: &str) -> String {
+        if let Some(denied) = self.check_perm(name, agent, sender) {
             return denied;
         }
         // Dispatch enforcement: reject tools not in the agent's whitelist.
@@ -345,14 +419,12 @@ impl DaemonHook {
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
             "soul" => self.dispatch_soul(args).await,
-            // External extension services, then MCP bridge as final fallback.
+            // External extension services.
             name => {
                 if let Some(result) = self.dispatch_external(name, args, agent).await {
                     return result;
                 }
-                tracing::debug!(tool = name, "forwarding tool to MCP bridge");
-                let bridge = self.mcp.bridge().await;
-                bridge.call(name, args).await
+                format!("tool not available: {name}")
             }
         }
     }
