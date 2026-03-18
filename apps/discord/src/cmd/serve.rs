@@ -2,8 +2,8 @@
 
 use compact_str::CompactString;
 use gateway::{
-    BotCommand, COMMAND_HINT, DaemonClient, GatewayConfig, GatewayMessage, KnownBots,
-    StreamAccumulator, StreamResult, attachment_summary, parse_command,
+    COMMAND_HINT, DaemonClient, GatewayConfig, GatewayMessage, KnownBots, StreamAccumulator,
+    StreamResult, attachment_summary, parse_command,
 };
 use serenity::model::id::ChannelId;
 use std::{collections::HashMap, path::Path, sync::Arc};
@@ -74,8 +74,6 @@ async fn discord_loop(
     known_bots: KnownBots,
 ) {
     let mut sessions: HashMap<i64, u64> = HashMap::new();
-    let mut chat_agents: HashMap<i64, CompactString> = HashMap::new();
-
     while let Some(msg) = rx.recv().await {
         let chat_id = msg.chat_id;
         let channel_id = ChannelId::new(chat_id as u64);
@@ -87,18 +85,10 @@ async fn discord_loop(
             continue;
         }
 
-        let active_agent = chat_agents.get(&chat_id).unwrap_or(&agent);
-        tracing::info!(agent = %active_agent, chat_id, "discord dispatch");
+        tracing::info!(agent = %agent, chat_id, "discord dispatch");
 
         if content.starts_with('/') {
             match parse_command(&content) {
-                Some(BotCommand::Switch { agent: new_agent }) => {
-                    let new_agent: CompactString = new_agent.into();
-                    chat_agents.insert(chat_id, new_agent.clone());
-                    sessions.remove(&chat_id);
-                    let msg = format!("Switched to agent: {new_agent}");
-                    crate::discord::send_text(&http, channel_id, msg).await;
-                }
                 Some(cmd) => {
                     let h = http.clone();
                     let c = client.clone();
@@ -121,13 +111,7 @@ async fn discord_loop(
         };
 
         let result = dc_stream(
-            &http,
-            &client,
-            active_agent,
-            channel_id,
-            &content,
-            &sender,
-            session,
+            &http, &client, &agent, channel_id, &content, &sender, session,
         )
         .await;
 
@@ -136,18 +120,10 @@ async fn discord_loop(
                 sessions.insert(chat_id, session_id);
             }
             StreamResult::SessionError if session.is_some() => {
-                tracing::warn!(agent = %active_agent, chat_id, "session error, retrying");
+                tracing::warn!(agent = %&agent, chat_id, "session error, retrying");
                 sessions.remove(&chat_id);
-                let retry = dc_stream(
-                    &http,
-                    &client,
-                    active_agent,
-                    channel_id,
-                    &content,
-                    &sender,
-                    None,
-                )
-                .await;
+                let retry =
+                    dc_stream(&http, &client, &agent, channel_id, &content, &sender, None).await;
                 if let StreamResult::Ok { session_id } = retry {
                     sessions.insert(chat_id, session_id);
                 }

@@ -27,7 +27,6 @@ The bot token is obtained from the [Discord Developer Portal](https://discord.co
 ## Features
 
 - Streams AI responses and sends the final reply on completion
-- Per-chat agent selection via `/switch <agent>`
 - Hub install/uninstall commands via `/hub install|uninstall <package>`
 - Attachment forwarding (images, audio, video, files)
 - Automatic session management with error recovery
