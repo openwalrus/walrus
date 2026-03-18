@@ -236,6 +236,7 @@ impl Memory {
         vec![Message {
             role: Role::User,
             content: format!("<recall>\n{result}\n</recall>"),
+            auto_injected: true,
             ..Default::default()
         }]
     }

@@ -26,7 +26,7 @@ pub struct Auth;
 
 impl Auth {
     pub fn run(self) -> Result<()> {
-        tui::run_app(" Walrus Auth ", AuthState::load, render, handle_key)
+        tui::run_app(AuthState::load, render, handle_key)
     }
 }
 

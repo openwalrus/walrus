@@ -34,6 +34,11 @@ pub struct Message {
     /// Convention: empty = local/owner, `"tg:12345"` = Telegram user.
     #[serde(skip)]
     pub sender: CompactString,
+
+    /// Whether this message was auto-injected by the runtime (e.g. recall).
+    /// Auto-injected messages are stripped before each new run.
+    #[serde(skip)]
+    pub auto_injected: bool,
 }
 
 impl Message {
@@ -178,6 +183,7 @@ impl Default for Message {
             tool_call_id: CompactString::default(),
             tool_calls: SmallVec::new(),
             sender: CompactString::default(),
+            auto_injected: false,
         }
     }
 }

@@ -32,12 +32,19 @@ enum Transport {
     Tcp(TcpConnection),
 }
 
+/// Dispatch a method call to the inner connection regardless of variant.
+macro_rules! dispatch {
+    ($self:expr, |$c:ident| $body:expr) => {
+        match $self {
+            Transport::Uds($c) => $body,
+            Transport::Tcp($c) => $body,
+        }
+    };
+}
+
 impl Transport {
     async fn request(&mut self, msg: ClientMessage) -> Result<ServerMessage> {
-        match self {
-            Self::Uds(c) => c.request(msg).await,
-            Self::Tcp(c) => c.request(msg).await,
-        }
+        dispatch!(self, |c| c.request(msg).await)
     }
 
     fn request_stream(
@@ -45,22 +52,13 @@ impl Transport {
         msg: ClientMessage,
     ) -> impl Stream<Item = Result<ServerMessage>> + Send + '_ {
         async_stream::try_stream! {
-            match self {
-                Self::Uds(c) => {
-                    let s = c.request_stream(msg);
-                    tokio::pin!(s);
-                    while let Some(item) = s.next().await {
-                        yield item?;
-                    }
+            dispatch!(self, |c| {
+                let s = c.request_stream(msg);
+                tokio::pin!(s);
+                while let Some(item) = s.next().await {
+                    yield item?;
                 }
-                Self::Tcp(c) => {
-                    let s = c.request_stream(msg);
-                    tokio::pin!(s);
-                    while let Some(item) = s.next().await {
-                        yield item?;
-                    }
-                }
-            }
+            });
         }
     }
 }

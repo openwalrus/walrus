@@ -20,32 +20,14 @@ use std::io::Stdout;
 /// `draw` then `handle_key`. The loop exits when `handle_key` returns
 /// `Some(result)`.
 pub fn run_app<S>(
-    title: &str,
     init: impl FnOnce() -> Result<S>,
     draw: impl Fn(&mut ratatui::Frame, &S),
     handle_key: impl Fn(event::KeyEvent, &mut S) -> Result<Option<Result<()>>>,
 ) -> Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-
-    let original_hook = std::panic::take_hook();
-    let _title = title.to_string();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = disable_raw_mode();
-        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
-        original_hook(info);
-    }));
-
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = setup()?;
     let mut state = init()?;
     let result = event_loop(&mut terminal, &mut state, &draw, &handle_key);
-
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
+    teardown(&mut terminal)?;
     result
 }
 

@@ -9,7 +9,7 @@
 use crate::{
     Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason,
     agent::tool::{ToolRegistry, ToolSender},
-    model::{Message, Model, Role},
+    model::{Message, Model},
     runtime::hook::Hook,
 };
 use anyhow::{Result, bail};
@@ -146,10 +146,32 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     // --- Execution ---
 
+    /// Push the user message, strip old auto-injected messages, and inject
+    /// fresh ones via `on_before_run`. Returns the agent name.
+    fn prepare_history(&self, session: &mut Session, content: &str, sender: &str) -> CompactString {
+        if sender.is_empty() {
+            session.history.push(Message::user(content));
+        } else {
+            session
+                .history
+                .push(Message::user_with_sender(content, sender));
+        }
+
+        // Strip previous auto-injected messages to avoid accumulation.
+        session.history.retain(|m| !m.auto_injected);
+
+        let agent_name = session.agent.clone();
+        let recall_msgs = self.hook.on_before_run(&agent_name, &session.history);
+        if !recall_msgs.is_empty() {
+            let insert_pos = session.history.len().saturating_sub(1);
+            for (i, msg) in recall_msgs.into_iter().enumerate() {
+                session.history.insert(insert_pos + i, msg);
+            }
+        }
+        agent_name
+    }
+
     /// Send a message to a session and run to completion.
-    ///
-    /// Locks the session, looks up the agent, pushes the user message,
-    /// delegates to `agent.run()`, and forwards events to `hook.on_event()`.
     pub async fn send_to(
         &self,
         session_id: u64,
@@ -165,35 +187,13 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             .ok_or_else(|| anyhow::anyhow!("session {session_id} not found"))?;
 
         let mut session = session_mutex.lock().await;
+        let agent_name = self.prepare_history(&mut session, content, sender);
         let agent_ref = self
             .agents
             .get(&session.agent)
             .ok_or_else(|| anyhow::anyhow!("agent '{}' not registered", session.agent))?;
 
-        if sender.is_empty() {
-            session.history.push(Message::user(content));
-        } else {
-            session
-                .history
-                .push(Message::user_with_sender(content, sender));
-        }
-
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let agent_name = session.agent.clone();
-
-        // Strip previous auto-recall messages to avoid accumulation.
-        session
-            .history
-            .retain(|m| !(m.role == Role::User && m.content.starts_with("<recall>")));
-
-        let recall_msgs = self.hook.on_before_run(&agent_name, &session.history);
-        if !recall_msgs.is_empty() {
-            let insert_pos = session.history.len().saturating_sub(1);
-            for (i, msg) in recall_msgs.into_iter().enumerate() {
-                session.history.insert(insert_pos + i, msg);
-            }
-        }
-
         let response = agent_ref.run(&mut session.history, tx).await;
 
         while let Ok(event) = rx.try_recv() {
@@ -204,9 +204,6 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
     }
 
     /// Send a message to a session and stream response events.
-    ///
-    /// Locks the session, looks up the agent, pushes the user message, and
-    /// streams events forwarded to `hook.on_event()`.
     pub fn stream_to(
         &self,
         session_id: u64,
@@ -239,6 +236,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             let mut session = session_mutex.lock().await;
+            let agent_name = self.prepare_history(&mut session, &content, &sender);
             let agent_ref = match self.agents.get(&session.agent) {
                 Some(a) => a,
                 None => {
@@ -255,32 +253,10 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                 }
             };
 
-            if sender.is_empty() {
-                session.history.push(Message::user(&content));
-            } else {
-                session.history.push(Message::user_with_sender(&content, &sender));
-            }
-            let agent_name = session.agent.clone();
-
-            // Strip previous auto-recall messages to avoid accumulation.
-            session
-                .history
-                .retain(|m| !(m.role == Role::User && m.content.starts_with("<recall>")));
-
-            let recall_msgs = self.hook.on_before_run(&agent_name, &session.history);
-            if !recall_msgs.is_empty() {
-                let insert_pos = session.history.len().saturating_sub(1);
-                for (i, msg) in recall_msgs.into_iter().enumerate() {
-                    session.history.insert(insert_pos + i, msg);
-                }
-            }
-
-            {
-                let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history));
-                while let Some(event) = event_stream.next().await {
-                    self.hook.on_event(&agent_name, &event);
-                    yield event;
-                }
+            let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history));
+            while let Some(event) = event_stream.next().await {
+                self.hook.on_event(&agent_name, &event);
+                yield event;
             }
         }
     }

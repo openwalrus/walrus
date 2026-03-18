@@ -109,7 +109,9 @@ impl Hook for DaemonHook {
                 block.push_str(&format!("- {name}: {desc}\n"));
             }
             block.push_str("</agents>");
-            messages.push(Message::user(block));
+            let mut msg = Message::user(block);
+            msg.auto_injected = true;
+            messages.push(msg);
         }
         if let Some(ref mem) = self.memory {
             messages.extend(mem.before_run(history));
