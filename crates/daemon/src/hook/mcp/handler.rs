@@ -7,8 +7,8 @@ use tokio::sync::RwLock;
 
 /// MCP bridge owner.
 ///
-/// Implements [`Hook`] — `on_register_tools` registers MCP server tools on the
-/// Runtime tool registry. `on_build_agent` is a no-op.
+/// MCP bridge owner — `register_tools` registers MCP server tools on the
+/// Runtime tool registry.
 pub struct McpHandler {
     bridge: RwLock<Arc<McpBridge>>,
 }

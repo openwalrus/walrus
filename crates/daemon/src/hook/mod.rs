@@ -115,7 +115,7 @@ impl Hook for DaemonHook {
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
-        self.mcp.on_register_tools(tools).await;
+        self.mcp.register_tools(tools).await;
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(system::task::tool::tools());
@@ -168,6 +168,8 @@ impl Hook for DaemonHook {
                         c + u64::from(s.response.usage.completion_tokens),
                     )
                 });
+                // try_lock: intentionally drops token counts if contended —
+                // telemetry-only, not worth blocking the event observer.
                 if (prompt > 0 || completion > 0)
                     && let Ok(mut registry) = self.tasks.try_lock()
                 {
