@@ -11,7 +11,7 @@ use crate::{
     ext::hub::DownloadRegistry,
     hook::{
         self, DaemonHook,
-        system::{memory::BuiltinMemory, task::TaskRegistry},
+        system::{memory::Memory, task::TaskRegistry},
     },
     service::ServiceManager,
 };
@@ -138,9 +138,10 @@ impl Daemon {
             (Some(Arc::new(registry)), Some(sm))
         };
 
-        let memory = Some(BuiltinMemory::open(
+        let memory = Some(Memory::open(
             config_dir.join("memory"),
             config.system.memory.clone(),
+            Box::new(crate::hook::system::memory::storage::FsStorage),
         ));
 
         Ok((
@@ -192,10 +193,15 @@ impl Daemon {
         let prompts = crate::config::load_agents_dir(&config_dir.join(wcore::paths::AGENTS_DIR))?;
         let prompt_map: std::collections::BTreeMap<String, String> = prompts.into_iter().collect();
 
-        // Built-in walrus agent.
+        // Built-in walrus agent. Read soul from memory (Walrus.md), fall back to compiled-in.
         let mut walrus_config = config.system.walrus.clone();
         walrus_config.name = CompactString::from(wcore::paths::DEFAULT_AGENT);
-        walrus_config.system_prompt = SYSTEM_AGENT.to_owned();
+        walrus_config.system_prompt = runtime
+            .hook
+            .memory
+            .as_ref()
+            .map(|m| m.build_soul())
+            .unwrap_or_else(|| SYSTEM_AGENT.to_owned());
         runtime.add_agent(walrus_config);
 
         // Built-in skill-master agent.

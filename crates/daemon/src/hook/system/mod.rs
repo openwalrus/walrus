@@ -46,17 +46,17 @@ impl Default for TasksConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryConfig {
-    /// Maximum character limit for memory.md (default 2200).
-    pub memory_limit: usize,
-    /// Maximum character limit for user.md (default 1375).
-    pub user_limit: usize,
+    /// Maximum entries returned by auto-recall (default 5).
+    pub recall_limit: usize,
+    /// Whether the agent can edit Walrus.md via the soul tool (default true).
+    pub soul_editable: bool,
 }
 
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            memory_limit: 2200,
-            user_limit: 1375,
+            recall_limit: 5,
+            soul_editable: true,
         }
     }
 }

@@ -1,170 +1,211 @@
-//! Built-in memory — markdown file storage at `{config_dir}/memory/`.
+//! Built-in memory — file-per-entry storage at `{config_dir}/memory/`.
 //!
-//! [`BuiltinMemory`] manages four storage areas: `memory.md` (agent notes),
-//! `user.md` (user profile), `facts.toml` (structured facts), and `sessions/`
-//! (compact summaries). File contents are cached in-memory with write-through
-//! on modification. Thread-safe via `std::sync::RwLock`.
+//! [`Memory`] manages individual entry files under `entries/`, a curated
+//! `MEMORY.md` overview, and session summaries under `sessions/`. Entry
+//! recall uses BM25 ranking. All I/O goes through the [`Storage`] trait
+//! for testability.
 
 use crate::hook::system::MemoryConfig;
-use std::{path::PathBuf, sync::RwLock};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::RwLock,
+};
 use wcore::model::{Message, Role};
 
+pub mod bm25;
+pub mod entry;
+pub mod storage;
 pub(crate) mod tool;
 
+use entry::MemoryEntry;
+use storage::Storage;
+
 const MEMORY_PROMPT: &str = include_str!("../../../../prompts/memory.md");
-const EXTRACT_FACTS_PROMPT: &str = include_str!("../../../../prompts/extract-facts.md");
 
-/// In-memory cache of a single file's content.
-struct FileCache {
-    path: PathBuf,
-    content: String,
-}
+const DEFAULT_SOUL: &str = include_str!("../../../../prompts/walrus.md");
 
-impl FileCache {
-    /// Load from disk, or empty string if file doesn't exist.
-    fn load(path: PathBuf) -> Self {
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
-        Self { path, content }
-    }
-
-    /// Append text and flush to disk, respecting a character limit.
-    /// Returns `true` if the write succeeded.
-    fn append(&mut self, text: &str, limit: usize) -> bool {
-        if self.content.len() + text.len() > limit {
-            return false;
-        }
-        if !self.content.is_empty() && !self.content.ends_with('\n') {
-            self.content.push('\n');
-        }
-        self.content.push_str(text);
-        self.flush()
-    }
-
-    /// Overwrite content and flush to disk, respecting a character limit.
-    /// Returns `true` if the write succeeded.
-    fn write(&mut self, text: &str, limit: usize) -> bool {
-        if text.len() > limit {
-            return false;
-        }
-        self.content = text.to_owned();
-        self.flush()
-    }
-
-    /// Write content to disk.
-    fn flush(&self) -> bool {
-        std::fs::write(&self.path, &self.content).is_ok()
-    }
-}
-
-pub struct BuiltinMemory {
-    memory: RwLock<FileCache>,
-    user: RwLock<FileCache>,
-    facts: RwLock<FileCache>,
+pub struct Memory {
+    storage: Box<dyn Storage>,
+    entries: RwLock<HashMap<String, MemoryEntry>>,
+    index: RwLock<String>,
+    soul: RwLock<String>,
+    index_path: PathBuf,
+    soul_path: PathBuf,
+    entries_dir: PathBuf,
     sessions_dir: PathBuf,
     config: MemoryConfig,
 }
 
-impl BuiltinMemory {
+impl Memory {
     /// Open (or create) memory storage at the given directory.
-    pub fn open(dir: PathBuf, config: MemoryConfig) -> Self {
+    ///
+    /// `config_dir` is the parent config directory where `Walrus.md` lives.
+    /// `dir` is the memory-specific subdirectory (`{config_dir}/memory/`).
+    pub fn open(dir: PathBuf, config: MemoryConfig, storage: Box<dyn Storage>) -> Self {
+        let entries_dir = dir.join("entries");
         let sessions_dir = dir.join("sessions");
-        std::fs::create_dir_all(&sessions_dir).ok();
+        let index_path = dir.join("MEMORY.md");
+        // Walrus.md lives in the parent config dir, not inside memory/
+        let soul_path = dir
+            .parent()
+            .map(|p| p.join("Walrus.md"))
+            .unwrap_or_else(|| dir.join("Walrus.md"));
 
-        let memory = RwLock::new(FileCache::load(dir.join("memory.md")));
-        let user = RwLock::new(FileCache::load(dir.join("user.md")));
-        let facts = RwLock::new(FileCache::load(dir.join("facts.toml")));
+        storage.create_dir_all(&entries_dir).ok();
+        storage.create_dir_all(&sessions_dir).ok();
 
-        Self {
-            memory,
-            user,
-            facts,
+        // Seed Walrus.md if it doesn't exist
+        if !storage.exists(&soul_path) {
+            storage.write(&soul_path, DEFAULT_SOUL).ok();
+        }
+
+        let soul_content = storage
+            .read(&soul_path)
+            .unwrap_or_else(|_| DEFAULT_SOUL.to_owned());
+
+        let mem = Self {
+            storage,
+            entries: RwLock::new(HashMap::new()),
+            index: RwLock::new(String::new()),
+            soul: RwLock::new(soul_content),
+            index_path,
+            soul_path,
+            entries_dir,
             sessions_dir,
             config,
-        }
+        };
+
+        mem.migrate_legacy(&dir);
+        mem.load_entries();
+        mem.load_index();
+        mem
     }
 
-    /// Substring search across memory.md, user.md, and facts.toml.
-    /// Returns matching lines with source labels.
-    pub fn recall(&self, query: &str) -> String {
-        let query_lower = query.to_lowercase();
-        let mut results = Vec::new();
+    /// Load all entry files from the entries directory.
+    fn load_entries(&self) {
+        let paths = match self.storage.list(&self.entries_dir) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
 
-        let sources: &[(&str, &RwLock<FileCache>)] = &[
-            ("memory", &self.memory),
-            ("user", &self.user),
-            ("facts", &self.facts),
-        ];
-
-        for (label, cache) in sources {
-            let guard = cache.read().unwrap();
-            for line in guard.content.lines() {
-                if line.to_lowercase().contains(&query_lower) {
-                    results.push(format!("[{label}] {line}"));
+        let mut entries = self.entries.write().unwrap();
+        for path in paths {
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let raw = match self.storage.read(&path) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            match MemoryEntry::parse(path, &raw) {
+                Ok(entry) => {
+                    entries.insert(entry.name.clone(), entry);
+                }
+                Err(e) => {
+                    tracing::warn!("failed to parse memory entry: {e}");
                 }
             }
         }
+    }
 
+    /// Load MEMORY.md index content.
+    fn load_index(&self) {
+        if let Ok(content) = self.storage.read(&self.index_path) {
+            *self.index.write().unwrap() = content;
+        }
+    }
+
+    /// BM25-ranked recall over all entries.
+    pub fn recall(&self, query: &str, limit: usize) -> String {
+        let entries = self.entries.read().unwrap();
+        if entries.is_empty() {
+            return "no memories found".to_owned();
+        }
+
+        let docs: Vec<(usize, String)> = entries
+            .values()
+            .enumerate()
+            .map(|(i, e)| (i, e.search_text()))
+            .collect();
+        let doc_refs: Vec<(usize, &str)> = docs.iter().map(|(i, s)| (*i, s.as_str())).collect();
+
+        let results = bm25::score(&doc_refs, query, limit);
         if results.is_empty() {
-            "no matches found".to_owned()
-        } else {
-            results.join("\n")
+            return "no memories found".to_owned();
+        }
+
+        let entry_vec: Vec<&MemoryEntry> = entries.values().collect();
+        results
+            .iter()
+            .map(|(idx, _score)| {
+                let e = &entry_vec[*idx];
+                format!("## {}\n{}\n\n{}", e.name, e.description, e.content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n---\n")
+    }
+
+    /// Create or update a memory entry.
+    pub fn remember(&self, name: String, description: String, content: String) -> String {
+        let entry = MemoryEntry::new(name.clone(), description, content, &self.entries_dir);
+        if let Err(e) = entry.save(self.storage.as_ref()) {
+            return format!("failed to save entry: {e}");
+        }
+        self.entries.write().unwrap().insert(name.clone(), entry);
+        format!("remembered: {name}")
+    }
+
+    /// Delete a memory entry by name.
+    pub fn forget(&self, name: &str) -> String {
+        let mut entries = self.entries.write().unwrap();
+        match entries.remove(name) {
+            Some(entry) => {
+                if let Err(e) = entry.delete(self.storage.as_ref()) {
+                    tracing::warn!("failed to delete entry file: {e}");
+                }
+                format!("forgot: {name}")
+            }
+            None => format!("no entry named: {name}"),
         }
     }
 
-    /// Append to memory.md, respecting `memory_limit`.
-    pub fn write_memory(&self, content: &str) -> String {
-        let mut guard = self.memory.write().unwrap();
-        if guard.append(content, self.config.memory_limit) {
-            "written to memory".to_owned()
-        } else {
-            format!(
-                "memory limit reached ({} chars, {} used)",
-                self.config.memory_limit,
-                guard.content.len()
-            )
+    /// Overwrite MEMORY.md (the curated overview).
+    pub fn write_index(&self, content: &str) -> String {
+        if let Err(e) = self.storage.write(&self.index_path, content) {
+            return format!("failed to write MEMORY.md: {e}");
         }
+        *self.index.write().unwrap() = content.to_owned();
+        "MEMORY.md updated".to_owned()
     }
 
-    /// Write to user.md, respecting `user_limit`. Overwrites existing content.
-    pub fn write_user(&self, content: &str) -> String {
-        let mut guard = self.user.write().unwrap();
-        if guard.write(content, self.config.user_limit) {
-            "written to user profile".to_owned()
-        } else {
-            format!(
-                "user profile limit reached ({} chars)",
-                self.config.user_limit
-            )
+    /// Overwrite Walrus.md (the soul/identity file). Gated by `soul_editable`.
+    pub fn write_soul(&self, content: &str) -> String {
+        if !self.config.soul_editable {
+            return "soul editing is disabled in config".to_owned();
         }
+        if let Err(e) = self.storage.write(&self.soul_path, content) {
+            return format!("failed to write Walrus.md: {e}");
+        }
+        *self.soul.write().unwrap() = content.to_owned();
+        "Walrus.md updated".to_owned()
     }
 
-    /// Build XML blocks for system prompt injection.
+    /// Return the soul content for system prompt injection.
+    pub fn build_soul(&self) -> String {
+        self.soul.read().unwrap().clone()
+    }
+
+    /// Build system prompt block from MEMORY.md content.
     pub fn build_prompt(&self) -> String {
-        let mut blocks = Vec::new();
-
-        let mem = self.memory.read().unwrap();
-        if !mem.content.is_empty() {
-            blocks.push(format!("<memory>\n{}\n</memory>", mem.content));
+        let index = self.index.read().unwrap();
+        if index.is_empty() {
+            return format!("\n\n{MEMORY_PROMPT}");
         }
-
-        let usr = self.user.read().unwrap();
-        if !usr.content.is_empty() {
-            blocks.push(format!("<user>\n{}\n</user>", usr.content));
-        }
-
-        let facts = self.facts.read().unwrap();
-        if !facts.content.is_empty() {
-            blocks.push(format!("<facts>\n{}\n</facts>", facts.content));
-        }
-
-        if blocks.is_empty() {
-            String::new()
-        } else {
-            format!("\n\n{}\n\n{MEMORY_PROMPT}", blocks.join("\n\n"))
-        }
+        format!("\n\n<memory>\n{}\n</memory>\n\n{MEMORY_PROMPT}", *index)
     }
 
-    /// Recall from last user message, return as injected message.
+    /// Auto-recall from last user message, injected before each turn.
     pub fn before_run(&self, history: &[Message]) -> Vec<Message> {
         let last_user = history
             .iter()
@@ -175,7 +216,6 @@ impl BuiltinMemory {
             return Vec::new();
         };
 
-        // Use the first few words as a recall query.
         let query: String = msg
             .content
             .split_whitespace()
@@ -187,8 +227,9 @@ impl BuiltinMemory {
             return Vec::new();
         }
 
-        let result = self.recall(&query);
-        if result == "no matches found" {
+        let limit = self.config.recall_limit;
+        let result = self.recall(&query, limit);
+        if result == "no memories found" {
             return Vec::new();
         }
 
@@ -199,64 +240,91 @@ impl BuiltinMemory {
         }]
     }
 
-    /// Save a session summary after compaction. Runs synchronously.
-    /// Spawns facts extraction as a background task.
+    /// Save a session summary after compaction.
     pub fn after_compact(&self, agent: &str, summary: &str) {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
         let filename = format!("{agent}_{timestamp}.md");
         let path = self.sessions_dir.join(filename);
-        if let Err(e) = std::fs::write(&path, summary) {
+        if let Err(e) = self.storage.write(&path, summary) {
             tracing::warn!("failed to save session summary: {e}");
         }
-
-        // Extract facts synchronously (simple heuristic, no LLM).
-        self.extract_facts(summary);
     }
 
-    /// Lightweight facts extraction from a summary string.
-    /// Looks for "Name: Value", "Key = Value" patterns and appends to facts.toml.
-    pub fn extract_facts(&self, summary: &str) {
-        let mut new_facts = Vec::new();
-
-        for line in summary.lines() {
-            let trimmed = line.trim();
-            // Skip empty lines and headings.
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-
-            // Match "Key: Value" patterns (but not URLs like "https://").
-            if let Some((key, value)) = trimmed.split_once(": ") {
-                let key = key.trim();
-                let value = value.trim();
-                if !key.is_empty()
-                    && !value.is_empty()
-                    && !key.contains(' ')
-                    && !key.contains('/')
-                    && key.len() < 32
-                {
-                    let safe_key = key.to_lowercase().replace('-', "_");
-                    new_facts.push(format!("{safe_key} = {value:?}"));
-                }
-            }
-        }
-
-        if new_facts.is_empty() {
+    /// Migrate legacy files (memory.md, user.md, facts.toml) to entry format.
+    fn migrate_legacy(&self, dir: &Path) {
+        // Only migrate if entries dir is empty.
+        let existing = self.storage.list(&self.entries_dir).unwrap_or_default();
+        if !existing.is_empty() {
             return;
         }
 
-        let mut guard = self.facts.write().unwrap();
-        let addition = new_facts.join("\n");
-        if !guard.content.is_empty() && !guard.content.ends_with('\n') {
-            guard.content.push('\n');
+        let memory_path = dir.join("memory.md");
+        let user_path = dir.join("user.md");
+        let facts_path = dir.join("facts.toml");
+
+        let has_legacy = self.storage.exists(&memory_path)
+            || self.storage.exists(&user_path)
+            || self.storage.exists(&facts_path);
+
+        if !has_legacy {
+            return;
         }
-        guard.content.push_str(&addition);
-        if !guard.flush() {
-            tracing::warn!("failed to write facts.toml");
+
+        // memory.md → split by double-newline into entries + seed MEMORY.md
+        if let Ok(content) = self.storage.read(&memory_path)
+            && !content.trim().is_empty()
+        {
+            self.storage.write(&self.index_path, &content).ok();
+
+            for (i, chunk) in content.split("\n\n").enumerate() {
+                let chunk = chunk.trim();
+                if chunk.is_empty() {
+                    continue;
+                }
+                let name = format!("migrated-memory-{}", i + 1);
+                let entry = MemoryEntry::new(
+                    name,
+                    "Migrated from memory.md".to_owned(),
+                    chunk.to_owned(),
+                    &self.entries_dir,
+                );
+                entry.save(self.storage.as_ref()).ok();
+            }
+            self.storage
+                .rename(&memory_path, &dir.join("memory.md.bak"))
+                .ok();
+        }
+
+        // user.md → single entry
+        if let Ok(content) = self.storage.read(&user_path)
+            && !content.trim().is_empty()
+        {
+            let entry = MemoryEntry::new(
+                "user-profile".to_owned(),
+                "User profile migrated from user.md".to_owned(),
+                content,
+                &self.entries_dir,
+            );
+            entry.save(self.storage.as_ref()).ok();
+            self.storage
+                .rename(&user_path, &dir.join("user.md.bak"))
+                .ok();
+        }
+
+        // facts.toml → single entry
+        if let Ok(content) = self.storage.read(&facts_path)
+            && !content.trim().is_empty()
+        {
+            let entry = MemoryEntry::new(
+                "known-facts".to_owned(),
+                "Known facts migrated from facts.toml".to_owned(),
+                content,
+                &self.entries_dir,
+            );
+            entry.save(self.storage.as_ref()).ok();
+            self.storage
+                .rename(&facts_path, &dir.join("facts.toml.bak"))
+                .ok();
         }
     }
 }
-
-// Suppress unused warning for the extract-facts prompt — will be used when
-// LLM extraction is added.
-const _: &str = EXTRACT_FACTS_PROMPT;

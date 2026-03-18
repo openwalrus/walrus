@@ -13,7 +13,7 @@ use crate::{
         mcp::McpHandler,
         os::PermissionConfig,
         skill::SkillHandler,
-        system::{memory::BuiltinMemory, task::TaskRegistry},
+        system::{memory::Memory, task::TaskRegistry},
     },
     service::ServiceRegistry,
 };
@@ -45,7 +45,7 @@ pub struct DaemonHook {
     /// Whether the daemon is running as the `walrus` OS user (sandbox active).
     pub sandboxed: bool,
     /// Built-in memory.
-    pub memory: Option<BuiltinMemory>,
+    pub memory: Option<Memory>,
     /// Event channel for task dispatch.
     pub(crate) event_tx: DaemonEventSender,
     /// Per-task execution timeout.
@@ -69,7 +69,7 @@ const SKILL_TOOLS: &[&str] = &["search_skill", "load_skill", "save_skill"];
 const MCP_TOOLS: &[&str] = &["search_mcp", "call_mcp_tool"];
 
 /// Memory tools.
-const MEMORY_TOOLS: &[&str] = &["recall", "memory", "user_memory"];
+const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget", "soul"];
 
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &["spawn_task", "check_tasks", "ask_user", "await_tasks"];
@@ -198,7 +198,7 @@ impl DaemonHook {
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
-        memory: Option<BuiltinMemory>,
+        memory: Option<Memory>,
         registry: Option<Arc<ServiceRegistry>>,
         event_tx: DaemonEventSender,
         task_timeout: Duration,
@@ -407,8 +407,10 @@ impl DaemonHook {
             "ask_user" => self.dispatch_ask_user(args, task_id).await,
             "await_tasks" => self.dispatch_await_tasks(args, task_id).await,
             "recall" => self.dispatch_recall(args).await,
+            "remember" => self.dispatch_remember(args).await,
             "memory" => self.dispatch_memory(args).await,
-            "user_memory" => self.dispatch_user_memory(args).await,
+            "forget" => self.dispatch_forget(args).await,
+            "soul" => self.dispatch_soul(args).await,
             // External extension services, then MCP bridge as final fallback.
             name => {
                 if let Some(result) = self.dispatch_external(name, args, agent, task_id).await {
