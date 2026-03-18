@@ -345,40 +345,47 @@ impl DaemonHook {
             .await
     }
 
-    /// Resolve `/skill-name args` into skill body + args.
-    /// Returns content unchanged if not a slash command or skill not found.
+    /// Scan content for `/skill-name` tokens, load each skill found, and
+    /// append their bodies to the end of the message.
+    /// Tokens that don't match a skill are left as-is.
     fn resolve_slash_skill(&self, agent: &str, content: &str) -> String {
-        let content = content.trim();
-        if !content.starts_with('/') {
+        let scope = self.scopes.get(agent);
+        let mut appended = Vec::new();
+        let mut rest = content;
+
+        while let Some(slash) = rest.find('/') {
+            rest = &rest[slash + 1..];
+            // Extract the skill name token: [a-z][a-z0-9-]*
+            let end = rest
+                .find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-')
+                .unwrap_or(rest.len());
+            let name = &rest[..end];
+            rest = &rest[end..];
+
+            if name.is_empty() || name.contains("..") {
+                continue;
+            }
+            // Enforce skill scope.
+            if let Some(scope) = scope
+                && !scope.skills.is_empty()
+                && !scope.skills.iter().any(|s| s == name)
+            {
+                continue;
+            }
+            let skill_file = self.skills.skills_dir.join(name).join("SKILL.md");
+            let Ok(file_content) = std::fs::read_to_string(&skill_file) else {
+                continue;
+            };
+            let Ok(skill) = skill::loader::parse_skill_md(&file_content) else {
+                continue;
+            };
+            appended.push(skill.body);
+        }
+
+        if appended.is_empty() {
             return content.to_owned();
         }
-        let rest = &content[1..];
-        let (name, args) = match rest.find(' ') {
-            Some(pos) => (&rest[..pos], Some(rest[pos + 1..].trim())),
-            None => (rest, None),
-        };
-        // Guard against path traversal.
-        if name.is_empty() || name.contains("..") || name.contains('/') || name.contains('\\') {
-            return content.to_owned();
-        }
-        // Enforce skill scope.
-        if let Some(scope) = self.scopes.get(agent)
-            && !scope.skills.is_empty()
-            && !scope.skills.iter().any(|s| s == name)
-        {
-            return content.to_owned();
-        }
-        let skill_file = self.skills.skills_dir.join(name).join("SKILL.md");
-        let Ok(file_content) = std::fs::read_to_string(&skill_file) else {
-            return content.to_owned();
-        };
-        let Ok(skill) = skill::loader::parse_skill_md(&file_content) else {
-            return content.to_owned();
-        };
-        match args {
-            Some(a) if !a.is_empty() => format!("{}\n\n{a}", skill.body),
-            _ => skill.body,
-        }
+        format!("{}\n\n{}", content, appended.join("\n\n"))
     }
 
     /// Route a tool call by name to the appropriate handler.

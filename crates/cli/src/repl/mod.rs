@@ -8,7 +8,7 @@ use crate::repl::{
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
+use rustyline::{Editor, config::CompletionType, error::ReadlineError, history::DefaultHistory};
 use std::{path::PathBuf, pin::pin};
 
 pub mod command;
@@ -26,7 +26,10 @@ pub struct ChatRepl {
 impl ChatRepl {
     /// Create a new REPL with the given runner and agent name.
     pub fn new(runner: Runner, agent: String) -> Result<Self> {
-        let mut editor = Editor::new()?;
+        let config = rustyline::Config::builder()
+            .completion_type(CompletionType::List)
+            .build();
+        let mut editor = Editor::with_config(config)?;
         editor.set_helper(Some(ReplHelper));
         let history_path = history_file_path();
         if let Some(ref path) = history_path {

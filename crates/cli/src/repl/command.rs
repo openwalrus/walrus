@@ -4,14 +4,46 @@ use anyhow::Result;
 use rustyline::{
     Context,
     completion::{Completer, Pair},
+    highlight::Highlighter,
 };
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 pub const SLASH_COMMANDS: &[&str] = &["/help", "/switch"];
 
-/// Rustyline helper providing tab-completion for slash commands.
-#[derive(rustyline::Helper, rustyline::Hinter, rustyline::Highlighter, rustyline::Validator)]
+/// Rustyline helper providing tab-completion and highlighting for slash commands.
+#[derive(rustyline::Helper, rustyline::Hinter, rustyline::Validator)]
 pub struct ReplHelper;
+
+impl Highlighter for ReplHelper {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+        if !line.contains('/') {
+            return Cow::Borrowed(line);
+        }
+        let mut out = String::with_capacity(line.len() + 32);
+        let mut rest = line;
+        while let Some(slash) = rest.find('/') {
+            out.push_str(&rest[..slash]);
+            rest = &rest[slash..];
+            let end = rest[1..]
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                .map(|i| i + 1)
+                .unwrap_or(rest.len());
+            out.push_str(&console::style(&rest[..end]).dim().to_string());
+            rest = &rest[end..];
+        }
+        out.push_str(rest);
+        Cow::Owned(out)
+    }
+
+    fn highlight_char(
+        &self,
+        line: &str,
+        _pos: usize,
+        _kind: rustyline::highlight::CmdKind,
+    ) -> bool {
+        line.contains('/')
+    }
+}
 
 impl Completer for ReplHelper {
     type Candidate = Pair;
@@ -23,12 +55,14 @@ impl Completer for ReplHelper {
         _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
         let prefix = &line[..pos];
-        if !prefix.starts_with('/') {
+        let Some(slash) = prefix.find('/') else {
             return Ok((0, vec![]));
-        }
+        };
+        let typed = &prefix[slash..]; // e.g. "/hel" or "/my-sk"
+
         let mut candidates: Vec<Pair> = SLASH_COMMANDS
             .iter()
-            .filter(|cmd| cmd.starts_with(prefix))
+            .filter(|cmd| cmd.starts_with(typed))
             .map(|cmd| Pair {
                 display: cmd.to_string(),
                 replacement: cmd.to_string(),
@@ -36,10 +70,10 @@ impl Completer for ReplHelper {
             .collect();
 
         // Also complete skill names from disk.
-        let slash_prefix = &prefix[1..];
+        let skill_prefix = &typed[1..];
         if let Some(skills) = list_skill_names() {
             for name in skills {
-                if name.starts_with(slash_prefix) {
+                if name.starts_with(skill_prefix) {
                     let full = format!("/{name}");
                     candidates.push(Pair {
                         display: full.clone(),
@@ -49,7 +83,7 @@ impl Completer for ReplHelper {
             }
         }
 
-        Ok((0, candidates))
+        Ok((slash, candidates))
     }
 }
 
