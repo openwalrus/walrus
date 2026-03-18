@@ -119,7 +119,7 @@ impl Hook for DaemonHook {
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {
-        self.mcp.register_tools(tools).await;
+        self.mcp.register_tools(tools);
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(system::task::tool::tools());
@@ -250,27 +250,11 @@ impl DaemonHook {
             for &t in MCP_TOOLS {
                 whitelist.push(t.to_owned());
             }
-            let mcp_servers = self.mcp.cached_list();
-            let mut mcp_info = Vec::new();
-            for (server_name, tool_names) in &mcp_servers {
-                if config.mcps.iter().any(|m| m == server_name.as_str()) {
-                    for tn in tool_names {
-                        whitelist.push(tn.to_string());
-                    }
-                    mcp_info.push(format!(
-                        "  - {}: {}",
-                        server_name,
-                        tool_names
-                            .iter()
-                            .map(|t| t.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
-                }
-            }
-            if !mcp_info.is_empty() {
-                scope_lines.push(format!("mcp servers:\n{}", mcp_info.join("\n")));
-            }
+            let server_names: Vec<&str> = config.mcps.iter().map(|s| s.as_str()).collect();
+            scope_lines.push(format!(
+                "mcp servers: {}\nUse search_mcp to discover tools, call_mcp_tool to invoke them.",
+                server_names.join(", ")
+            ));
         }
 
         if !config.members.is_empty() {
@@ -290,16 +274,34 @@ impl DaemonHook {
 
     /// Check tool permission. Returns `Some(denied_message)` if denied,
     /// `None` if allowed.
-    fn check_perm(&self, name: &str, agent: &str) -> Option<String> {
+    ///
+    /// `Ask` permission: allowed for interactive sessions (sender is empty
+    /// or "user"), denied for non-interactive (gateways, sub-agents).
+    fn check_perm(&self, name: &str, agent: &str, sender: &str) -> Option<String> {
         // OS tools bypass permission when running in sandbox mode.
         if self.sandboxed && BASE_TOOLS.contains(&name) {
             return None;
         }
         use crate::hook::os::ToolPermission;
         match self.permissions.resolve(agent, name) {
+            ToolPermission::Allow => None,
             ToolPermission::Deny => Some(format!("permission denied: {name}")),
-            // Sub-agents are autonomous — Ask treated as Allow.
-            ToolPermission::Ask | ToolPermission::Allow => None,
+            ToolPermission::Ask => {
+                let interactive = sender.is_empty() || sender == "user";
+                if interactive {
+                    None
+                } else {
+                    tracing::warn!(
+                        tool = name,
+                        agent = agent,
+                        sender = sender,
+                        "tool requires approval — denied for non-interactive session"
+                    );
+                    Some(format!(
+                        "permission denied: {name} (requires interactive approval)"
+                    ))
+                }
+            }
         }
     }
 
@@ -317,8 +319,8 @@ impl DaemonHook {
     /// This is the single dispatch entry point — `event.rs` calls this
     /// and never matches on tool names itself. Unrecognised names are
     /// forwarded to the MCP bridge after a warn-level log.
-    pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str) -> String {
-        if let Some(denied) = self.check_perm(name, agent) {
+    pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str, sender: &str) -> String {
+        if let Some(denied) = self.check_perm(name, agent, sender) {
             return denied;
         }
         // Dispatch enforcement: reject tools not in the agent's whitelist.
@@ -343,14 +345,12 @@ impl DaemonHook {
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
             "soul" => self.dispatch_soul(args).await,
-            // External extension services, then MCP bridge as final fallback.
+            // External extension services.
             name => {
                 if let Some(result) = self.dispatch_external(name, args, agent).await {
                     return result;
                 }
-                tracing::debug!(tool = name, "forwarding tool to MCP bridge");
-                let bridge = self.mcp.bridge().await;
-                bridge.call(name, args).await
+                format!("tool not available: {name}")
             }
         }
     }

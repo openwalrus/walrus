@@ -1,16 +1,18 @@
 //! Interactive chat REPL with streaming output and persistent history.
 
 use crate::repl::{
-    command::{ReplHelper, handle_slash},
+    command::{ReplHelper, SlashResult, handle_slash},
+    render::{MarkdownRenderer, styled_prompt, welcome_banner},
     runner::{OutputChunk, Runner},
 };
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
-use std::{io::Write, path::PathBuf, pin::pin};
+use std::{path::PathBuf, pin::pin};
 
 pub mod command;
+pub mod render;
 pub mod runner;
 
 /// Interactive chat REPL.
@@ -40,22 +42,29 @@ impl ChatRepl {
 
     /// Run the interactive REPL loop.
     pub async fn run(&mut self) -> Result<()> {
-        println!("Walrus chat (Ctrl+D to exit, Ctrl+C to cancel)");
-        println!("---");
+        // Fetch model name for banner (best-effort).
+        let model = self.fetch_model_name().await;
+        println!("{}", welcome_banner(model.as_deref()));
+        println!();
 
+        let prompt = styled_prompt(&self.agent);
         loop {
-            match self.editor.readline("> ") {
+            match self.editor.readline(&prompt) {
                 Ok(line) => {
                     let line = line.trim().to_string();
                     if line.is_empty() {
                         continue;
                     }
                     let _ = self.editor.add_history_entry(&line);
-                    if handle_slash(&mut self.agent, &line).await? {
-                        continue;
-                    }
-                    let stream = self.runner.stream(&self.agent, &line);
+                    let content = match handle_slash(&mut self.agent, &line).await? {
+                        SlashResult::Handled => continue,
+                        SlashResult::NotSlash => line,
+                        SlashResult::Skill(content) => content,
+                    };
+                    println!();
+                    let stream = self.runner.stream(&self.agent, &content);
                     stream_to_terminal(stream).await?;
+                    println!();
                 }
                 Err(ReadlineError::Interrupted) => continue,
                 Err(ReadlineError::Eof) => break,
@@ -65,6 +74,17 @@ impl ChatRepl {
 
         self.save_history();
         Ok(())
+    }
+
+    /// Try to extract the model name from daemon config.
+    async fn fetch_model_name(&mut self) -> Option<String> {
+        let config_json = self.runner.get_config().await.ok()?;
+        let val: serde_json::Value = serde_json::from_str(&config_json).ok()?;
+        val.get("system")?
+            .get("walrus")?
+            .get("model")?
+            .as_str()
+            .map(|s| s.to_string())
     }
 
     /// Save readline history to disk.
@@ -83,51 +103,29 @@ fn history_file_path() -> Option<PathBuf> {
     Some(wcore::paths::CONFIG_DIR.join("history"))
 }
 
-/// ANSI escape: dim (gray) text.
-const DIM: &str = "\x1b[2m";
-/// ANSI escape: reset all attributes.
-const RESET: &str = "\x1b[0m";
-
-/// Consume a stream of output chunks and print them to stdout in real time.
-///
-/// Thinking chunks are rendered in dim/gray text.
-/// Handles Ctrl+C cancellation via `tokio::signal::ctrl_c()`.
+/// Consume a stream of output chunks and render them via `MarkdownRenderer`.
 async fn stream_to_terminal(stream: impl Stream<Item = Result<OutputChunk>>) -> Result<()> {
     let mut stream = pin!(stream);
-    let mut in_thinking = false;
+    let mut renderer = MarkdownRenderer::new();
 
     loop {
         tokio::select! {
             chunk = stream.next() => {
                 match chunk {
                     Some(Ok(OutputChunk::Text(text))) => {
-                        if in_thinking {
-                            print!("{RESET}");
-                            in_thinking = false;
-                        }
-                        print!("{text}");
-                        std::io::stdout().flush().ok();
+                        renderer.push_text(&text);
                     }
                     Some(Ok(OutputChunk::Thinking(text))) => {
-                        if !in_thinking {
-                            print!("{DIM}");
-                            in_thinking = true;
-                        }
-                        print!("{text}");
-                        std::io::stdout().flush().ok();
+                        renderer.push_thinking(&text);
                     }
-                    Some(Ok(OutputChunk::Status(text))) => {
-                        if in_thinking {
-                            print!("{RESET}");
-                            in_thinking = false;
-                        }
-                        print!("{text}");
-                        std::io::stdout().flush().ok();
+                    Some(Ok(OutputChunk::ToolStart(names))) => {
+                        renderer.push_tool_start(&names);
+                    }
+                    Some(Ok(OutputChunk::ToolDone)) => {
+                        renderer.push_tool_done();
                     }
                     Some(Err(e)) => {
-                        if in_thinking {
-                            print!("{RESET}");
-                        }
+                        renderer.finish();
                         eprintln!("\nError: {e}");
                         break;
                     }
@@ -135,18 +133,13 @@ async fn stream_to_terminal(stream: impl Stream<Item = Result<OutputChunk>>) -> 
                 }
             }
             _ = tokio::signal::ctrl_c() => {
-                if in_thinking {
-                    print!("{RESET}");
-                }
+                renderer.finish();
                 println!();
                 break;
             }
         }
     }
 
-    if in_thinking {
-        print!("{RESET}");
-    }
-    println!();
+    renderer.finish();
     Ok(())
 }

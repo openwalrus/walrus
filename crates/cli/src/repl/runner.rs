@@ -10,9 +10,9 @@ use transport::uds::{ClientConfig, Connection, WalrusClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        ApproveMsg, ClientMessage, HubAction, HubMsg, KillMsg, KillTaskMsg, SendMsg, SendResponse,
-        ServerMessage, SessionInfo, StreamMsg, TaskInfo, client_message, download_event,
-        server_message, stream_event,
+        ApproveMsg, ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg, KillTaskMsg,
+        SendMsg, SendResponse, ServerMessage, SessionInfo, StreamMsg, TaskInfo, client_message,
+        download_event, server_message, stream_event,
     },
 };
 
@@ -22,8 +22,10 @@ pub enum OutputChunk {
     Text(String),
     /// Thinking/reasoning content (displayed dimmed).
     Thinking(String),
-    /// Status message (tool calls, etc.).
-    Status(String),
+    /// Tool execution started with these tool names.
+    ToolStart(Vec<String>),
+    /// Tool execution completed.
+    ToolDone,
 }
 
 /// Transport-agnostic connection to walrusd.
@@ -138,15 +140,12 @@ impl Runner {
                             Some(Ok(OutputChunk::Thinking(t.content.clone())))
                         }
                         Some(stream_event::Event::ToolStart(ts)) => {
-                            let names: Vec<_> = ts.calls.iter().map(|c| c.name.as_str()).collect();
-                            Some(Ok(OutputChunk::Status(format!(
-                                "\n[calling {}...]\n",
-                                names.join(", ")
-                            ))))
+                            let names: Vec<_> = ts.calls.iter().map(|c| c.name.clone()).collect();
+                            Some(Ok(OutputChunk::ToolStart(names)))
                         }
                         Some(stream_event::Event::ToolResult(_)) => None,
                         Some(stream_event::Event::ToolsComplete(_)) => {
-                            Some(Ok(OutputChunk::Status("[done]\n".to_string())))
+                            Some(Ok(OutputChunk::ToolDone))
                         }
                         Some(stream_event::Event::Start(_)) => None,
                         Some(stream_event::Event::End(_)) => None,
@@ -278,6 +277,24 @@ impl Runner {
             ServerMessage {
                 msg: Some(server_message::Msg::Pong(_)),
             } => Ok(()),
+            ServerMessage {
+                msg: Some(server_message::Msg::Error(e)),
+            } => {
+                anyhow::bail!("server error ({}): {}", e.code, e.message)
+            }
+            other => anyhow::bail!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Get the daemon config as JSON string.
+    pub async fn get_config(&mut self) -> Result<String> {
+        let msg = ClientMessage {
+            msg: Some(client_message::Msg::GetConfig(GetConfig {})),
+        };
+        match self.transport.request(msg).await? {
+            ServerMessage {
+                msg: Some(server_message::Msg::Config(ConfigMsg { config })),
+            } => Ok(config),
             ServerMessage {
                 msg: Some(server_message::Msg::Error(e)),
             } => {

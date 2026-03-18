@@ -16,14 +16,11 @@ pub(crate) mod tool;
 
 impl McpHandler {
     /// Register MCP tool schemas into the registry.
-    pub async fn register_tools(&self, registry: &mut wcore::ToolRegistry) {
+    ///
+    /// Only `search_mcp` and `call_mcp_tool` are registered — individual MCP
+    /// tool schemas are not exposed. The agent must search first, then call.
+    pub fn register_tools(&self, registry: &mut wcore::ToolRegistry) {
         registry.insert(tool::SearchMcp::as_tool());
         registry.insert(tool::CallMcpTool::as_tool());
-        let Some(bridge) = self.try_bridge() else {
-            return;
-        };
-        for tool in bridge.tools().await {
-            registry.insert(tool);
-        }
     }
 }
