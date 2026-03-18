@@ -111,13 +111,13 @@ impl DaemonHook {
             return "skill name must be lowercase alphanumeric with hyphens".to_owned();
         }
 
-        // Serialize frontmatter via serde_yaml to prevent YAML injection.
+        // Serialize frontmatter via serde_yml to prevent YAML injection.
         let fm = SkillFrontmatter {
             name: name.clone(),
             description: input.description,
             allowed_tools: input.allowed_tools,
         };
-        let yaml = match serde_yaml::to_string(&fm) {
+        let yaml = match serde_yml::to_string(&fm) {
             Ok(y) => y,
             Err(e) => return format!("failed to serialize frontmatter: {e}"),
         };

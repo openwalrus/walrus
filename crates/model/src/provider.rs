@@ -6,7 +6,6 @@
 use crate::{config::ProviderDef, convert};
 use anyhow::Result;
 use async_stream::try_stream;
-use compact_str::CompactString;
 use crabtalk_provider::Provider as CtProvider;
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -19,14 +18,14 @@ use wcore::model::{Model, Response, StreamChunk};
 pub struct Provider {
     inner: CtProvider,
     client: reqwest::Client,
-    model: CompactString,
+    model: String,
     max_retries: u32,
     timeout: Duration,
 }
 
 impl Provider {
     /// Get the model name this provider was constructed for.
-    pub fn model_name(&self) -> &CompactString {
+    pub fn model_name(&self) -> &String {
         &self.model
     }
 }
@@ -59,7 +58,7 @@ pub fn build_provider(def: &ProviderDef, model: &str, client: reqwest::Client) -
     Ok(Provider {
         inner,
         client,
-        model: CompactString::from(model),
+        model: model.to_owned(),
         max_retries: def.max_retries.unwrap_or(2),
         timeout: Duration::from_secs(def.timeout.unwrap_or(30)),
     })
@@ -107,7 +106,7 @@ impl Model for Provider {
         wcore::model::default_context_limit(model)
     }
 
-    fn active_model(&self) -> CompactString {
+    fn active_model(&self) -> String {
         self.model.clone()
     }
 }

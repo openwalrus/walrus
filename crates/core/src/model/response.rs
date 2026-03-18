@@ -1,7 +1,6 @@
 //! Chat response abstractions for the unified LLM Interfaces
 
 use crate::model::{Message, Role, tool::ToolCall};
-use compact_str::CompactString;
 pub use crabtalk_core::{CompletionTokensDetails, FinishReason, Usage};
 use serde::{Deserialize, Serialize};
 
@@ -9,19 +8,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct CompletionMeta {
     /// A unique identifier for the chat completion
-    pub id: CompactString,
+    pub id: String,
 
     /// The object type
-    pub object: CompactString,
+    pub object: String,
 
     /// Unix timestamp (in seconds) of when the response was created
     pub created: u64,
 
     /// The model used for the completion
-    pub model: CompactString,
+    pub model: String,
 
     /// Backend configuration identifier
-    pub system_fingerprint: Option<CompactString>,
+    pub system_fingerprint: Option<String>,
 }
 
 /// Message content in a completion response

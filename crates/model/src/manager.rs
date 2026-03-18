@@ -4,7 +4,6 @@
 use crate::{Provider, ProviderDef, build_provider};
 use anyhow::{Result, anyhow, bail};
 use async_stream::try_stream;
-use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::collections::BTreeMap;
@@ -22,9 +21,9 @@ pub struct ProviderRegistry {
 
 struct Inner {
     /// Provider instances keyed by model name.
-    providers: BTreeMap<CompactString, Provider>,
+    providers: BTreeMap<String, Provider>,
     /// Model name of the currently active provider.
-    active: CompactString,
+    active: String,
     /// Shared HTTP client for constructing new providers.
     client: reqwest::Client,
 }
@@ -33,7 +32,7 @@ struct Inner {
 #[derive(Debug, Clone)]
 pub struct ProviderEntry {
     /// Provider model name (key).
-    pub name: CompactString,
+    pub name: String,
     /// Whether this is the active provider.
     pub active: bool,
 }
@@ -42,7 +41,7 @@ impl ProviderRegistry {
     /// Create an empty manager with the given active model name.
     ///
     /// Use `add_provider()` or `add_model()` to populate.
-    pub fn new(active: impl Into<CompactString>) -> Self {
+    pub fn new(active: impl Into<String>) -> Self {
         Self {
             inner: Arc::new(RwLock::new(Inner {
                 providers: BTreeMap::new(),
@@ -57,8 +56,8 @@ impl ProviderRegistry {
     /// Iterates each provider def, building a `Provider` instance per model
     /// in its `models` list.
     pub fn from_providers(
-        active: CompactString,
-        providers: &BTreeMap<CompactString, ProviderDef>,
+        active: String,
+        providers: &BTreeMap<String, ProviderDef>,
     ) -> Result<Self> {
         let registry = Self::new(active);
         for def in providers.values() {
@@ -68,7 +67,7 @@ impl ProviderRegistry {
     }
 
     /// Add a pre-built provider directly (e.g. local models from registry).
-    pub fn add_provider(&self, name: impl Into<CompactString>, provider: Provider) -> Result<()> {
+    pub fn add_provider(&self, name: impl Into<String>, provider: Provider) -> Result<()> {
         let mut inner = self
             .inner
             .write()
@@ -92,9 +91,7 @@ impl ProviderRegistry {
                 .inner
                 .write()
                 .map_err(|_| anyhow!("provider lock poisoned"))?;
-            inner
-                .providers
-                .insert(CompactString::from(model_name.as_str()), provider);
+            inner.providers.insert(model_name.to_string(), provider);
         }
         Ok(())
     }
@@ -109,7 +106,7 @@ impl ProviderRegistry {
     }
 
     /// Get the model name of the active provider (also its key).
-    pub fn active_model_name(&self) -> Result<CompactString> {
+    pub fn active_model_name(&self) -> Result<String> {
         let inner = self
             .inner
             .read()
@@ -127,7 +124,7 @@ impl ProviderRegistry {
         if !inner.providers.contains_key(model) {
             bail!("provider '{}' not found", model);
         }
-        inner.active = CompactString::from(model);
+        inner.active = model.to_owned();
         Ok(())
     }
 
@@ -209,9 +206,9 @@ impl Model for ProviderRegistry {
         ProviderRegistry::context_limit(self, model)
     }
 
-    fn active_model(&self) -> CompactString {
+    fn active_model(&self) -> String {
         self.active_model_name()
-            .unwrap_or_else(|_| CompactString::const_new("unknown"))
+            .unwrap_or_else(|_| "unknown".to_owned())
     }
 }
 

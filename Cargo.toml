@@ -25,22 +25,16 @@ crabtalk-provider = "0.0.6"
 
 # crates.io
 anyhow = "1"
-arrow-array = "56"
-arrow-schema = "56"
 async-stream = "0.3"
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
-compact_str = { version = "0.8", features = ["serde"] }
 crossterm = "0.28"
 dialoguer = "0.11"
 dirs = "6"
-dotenvy = "0.15"
 heck = "0.5"
-futures = "0.3"
 futures-core = "0.3"
 futures-util = "0.3"
 lru = "0.14"
-openssl-sys = { version = "0.9", features = ["vendored"] }
 percent-encoding = "2"
 rand = "0.9"
 ratatui = "0.29"
@@ -53,15 +47,12 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
 ] }
 rmcp = { version = "0.16", features = ["client", "transport-child-process"] }
-rusqlite = { version = "0.34", features = ["bundled"] }
 rustyline = { version = "15", features = ["derive"] }
 schemars = "1.1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
-smallvec = { version = "1", features = ["serde"] }
+serde_yml = "0.0.12"
 thiserror = "2"
-tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -73,11 +64,9 @@ tokio = { version = "1", features = [
 ] }
 teloxide = { version = "0.17", default-features = false, features = ["rustls"] }
 toml = "0.8"
-proc-macro2 = "1"
-quote = "1"
 toml_edit = "0.22"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = "0.3"
 url = "2"
 
 [profile.prod]

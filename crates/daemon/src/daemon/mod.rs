@@ -71,7 +71,7 @@ impl Daemon {
             if agent.heartbeat.interval == 0 {
                 continue;
             }
-            let agent_name = compact_str::CompactString::from(name.as_str());
+            let agent_name = name.clone();
             let heartbeat_tx = event_tx.clone();
             let mut heartbeat_shutdown = shutdown_tx.subscribe();
             let interval_secs = agent.heartbeat.interval * 60;

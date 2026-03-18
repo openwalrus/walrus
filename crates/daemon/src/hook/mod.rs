@@ -17,7 +17,6 @@ use crate::{
     },
     service::ServiceRegistry,
 };
-use compact_str::CompactString;
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
 use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
@@ -30,7 +29,7 @@ pub mod system;
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
 pub(crate) struct AgentScope {
-    pub(crate) tools: Vec<CompactString>,
+    pub(crate) tools: Vec<String>,
     pub(crate) members: Vec<String>,
     pub(crate) skills: Vec<String>,
     pub(crate) mcps: Vec<String>,
@@ -49,9 +48,9 @@ pub struct DaemonHook {
     /// Event channel for task dispatch.
     pub(crate) event_tx: DaemonEventSender,
     /// Per-agent scope maps, populated during load_agents.
-    pub(crate) scopes: BTreeMap<CompactString, AgentScope>,
+    pub(crate) scopes: BTreeMap<String, AgentScope>,
     /// Sub-agent descriptions for catalog injection into the walrus agent.
-    pub(crate) agent_descriptions: BTreeMap<CompactString, CompactString>,
+    pub(crate) agent_descriptions: BTreeMap<String, String>,
     /// External extension service registry (tools + queries).
     pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
@@ -201,7 +200,7 @@ impl DaemonHook {
     }
 
     /// Register an agent's scope for dispatch enforcement.
-    pub(crate) fn register_scope(&mut self, name: CompactString, config: &AgentConfig) {
+    pub(crate) fn register_scope(&mut self, name: String, config: &AgentConfig) {
         if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
             self.agent_descriptions
                 .insert(name.clone(), config.description.clone());
@@ -227,37 +226,36 @@ impl DaemonHook {
         }
 
         // Base tools + memory + external service tools always included.
-        let mut whitelist: Vec<CompactString> =
-            BASE_TOOLS.iter().map(|&s| CompactString::from(s)).collect();
+        let mut whitelist: Vec<String> = BASE_TOOLS.iter().map(|&s| s.to_owned()).collect();
         if self.memory.is_some() {
             for &t in MEMORY_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
         }
         if let Some(ref registry) = self.registry {
             for tool_name in registry.tools.keys() {
-                whitelist.push(CompactString::from(tool_name.as_str()));
+                whitelist.push(tool_name.clone());
             }
         }
         let mut scope_lines = Vec::new();
 
         if !config.skills.is_empty() {
             for &t in SKILL_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
             scope_lines.push(format!("skills: {}", config.skills.join(", ")));
         }
 
         if !config.mcps.is_empty() {
             for &t in MCP_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
             let mcp_servers = self.mcp.cached_list();
             let mut mcp_info = Vec::new();
             for (server_name, tool_names) in &mcp_servers {
                 if config.mcps.iter().any(|m| m == server_name.as_str()) {
                     for tn in tool_names {
-                        whitelist.push(tn.clone());
+                        whitelist.push(tn.to_string());
                     }
                     mcp_info.push(format!(
                         "  - {}: {}",
@@ -277,7 +275,7 @@ impl DaemonHook {
 
         if !config.members.is_empty() {
             for &t in TASK_TOOLS {
-                whitelist.push(CompactString::from(t));
+                whitelist.push(t.to_owned());
             }
             scope_lines.push(format!("members: {}", config.members.join(", ")));
         }

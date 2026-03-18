@@ -14,7 +14,6 @@ use crate::{
 };
 use anyhow::{Result, bail};
 use async_stream::stream;
-use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{
@@ -39,7 +38,7 @@ pub use session::Session;
 pub struct Runtime<M: Model, H: Hook> {
     pub model: M,
     pub hook: H,
-    agents: BTreeMap<CompactString, Agent<M>>,
+    agents: BTreeMap<String, Agent<M>>,
     sessions: RwLock<BTreeMap<u64, Arc<Mutex<Session>>>>,
     next_session_id: AtomicU64,
     tools: ToolRegistry,
@@ -148,7 +147,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Push the user message, strip old auto-injected messages, and inject
     /// fresh ones via `on_before_run`. Returns the agent name.
-    fn prepare_history(&self, session: &mut Session, content: &str, sender: &str) -> CompactString {
+    fn prepare_history(&self, session: &mut Session, content: &str, sender: &str) -> String {
         if sender.is_empty() {
             session.history.push(Message::user(content));
         } else {

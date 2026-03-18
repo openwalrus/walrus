@@ -4,7 +4,6 @@
 //! directories and builds a [`SkillRegistry`].
 
 use crate::hook::skill::{Skill, SkillRegistry};
-use compact_str::CompactString;
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::Path};
 use wcore::utils::split_yaml_frontmatter;
@@ -28,28 +27,24 @@ struct SkillFrontmatter {
 /// Parse a SKILL.md file (YAML frontmatter + Markdown body) into a [`Skill`].
 pub fn parse_skill_md(content: &str) -> anyhow::Result<Skill> {
     let (frontmatter, body) = split_yaml_frontmatter(content)?;
-    let fm: SkillFrontmatter = serde_yaml::from_str(frontmatter)?;
+    let fm: SkillFrontmatter = serde_yml::from_str(frontmatter)?;
 
     let allowed_tools = fm
         .allowed_tools
         .map(|s| {
             s.split_whitespace()
-                .map(CompactString::from)
+                .map(|s| s.to_owned())
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
-    let metadata = fm
-        .metadata
-        .into_iter()
-        .map(|(k, v)| (CompactString::from(k), v))
-        .collect();
+    let metadata = fm.metadata;
 
     Ok(Skill {
-        name: CompactString::from(fm.name),
+        name: fm.name,
         description: fm.description,
-        license: fm.license.map(CompactString::from),
-        compatibility: fm.compatibility.map(CompactString::from),
+        license: fm.license,
+        compatibility: fm.compatibility,
         metadata,
         allowed_tools,
         body: body.to_owned(),

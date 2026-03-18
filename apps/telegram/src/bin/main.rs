@@ -5,9 +5,19 @@ use walrus_telegram::cmd::{App, Command};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let level = std::env::var("RUST_LOG")
+        .ok()
+        .map(
+            |v| match v.rsplit('=').next().unwrap_or(&v).to_lowercase().as_str() {
+                "trace" => tracing::Level::TRACE,
+                "debug" => tracing::Level::DEBUG,
+                "info" => tracing::Level::INFO,
+                "error" => tracing::Level::ERROR,
+                _ => tracing::Level::WARN,
+            },
+        )
+        .unwrap_or(tracing::Level::WARN);
+    tracing_subscriber::fmt().with_max_level(level).init();
     let app = App::parse();
     match app.command {
         Command::Serve { daemon, config } => {

@@ -6,7 +6,6 @@
 pub mod command;
 pub mod markdown;
 
-use compact_str::CompactString;
 use futures_util::StreamExt;
 use gateway::message::{Attachment, AttachmentKind, GatewayMessage};
 use teloxide::prelude::*;
@@ -46,9 +45,7 @@ fn convert_update(update: Update) -> Option<GatewayMessage> {
     let chat_id = msg.chat.id.0;
     let sender = msg.from.as_ref();
     let sender_id = sender.map(|u| u.id.0 as i64).unwrap_or(0);
-    let sender_name = sender
-        .map(|u| CompactString::from(u.first_name.as_str()))
-        .unwrap_or_default();
+    let sender_name = sender.map(|u| u.first_name.clone()).unwrap_or_default();
     let is_bot = sender.is_some_and(|u| u.is_bot);
     let is_group = matches!(msg.chat.kind, ChatKind::Public(_));
     let content = msg.text().unwrap_or("").to_owned();

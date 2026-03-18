@@ -31,7 +31,7 @@ impl DaemonHook {
         }
 
         let mut tasks = self.tasks.lock().await;
-        let task_id = tasks.insert(input.agent.clone().into(), input.message.clone());
+        let task_id = tasks.insert(input.agent.clone(), input.message.clone());
 
         // Spawn agent via event channel and collect result in background.
         let (reply_tx, reply_rx) = mpsc::unbounded_channel();

@@ -5,7 +5,6 @@
 //! the agent sends a `ToolRequest` per tool call and awaits a `String` reply.
 
 use crate::model::Tool;
-use compact_str::CompactString;
 use heck::ToSnakeCase;
 use schemars::JsonSchema;
 use std::collections::BTreeMap;
@@ -33,7 +32,7 @@ pub struct ToolRequest {
     pub task_id: Option<u64>,
     /// Sender identity of the user who triggered this agent run.
     /// Empty for local/owner sessions.
-    pub sender: CompactString,
+    pub sender: String,
 }
 
 /// Schema-only registry of named tools.
@@ -43,7 +42,7 @@ pub struct ToolRequest {
 /// No handlers or closures are stored here.
 #[derive(Default, Clone)]
 pub struct ToolRegistry {
-    tools: BTreeMap<CompactString, Tool>,
+    tools: BTreeMap<String, Tool>,
 }
 
 impl ToolRegistry {
@@ -93,7 +92,7 @@ impl ToolRegistry {
     ///
     /// If `names` is empty, all tools are returned. Used by `Runtime::add_agent`
     /// to build the per-agent schema snapshot stored on `Agent`.
-    pub fn filtered_snapshot(&self, names: &[CompactString]) -> Vec<Tool> {
+    pub fn filtered_snapshot(&self, names: &[String]) -> Vec<Tool> {
         if names.is_empty() {
             return self.tools();
         }
@@ -123,7 +122,7 @@ where
 {
     fn as_tool() -> Tool {
         Tool {
-            name: T::schema_name().to_snake_case().into(),
+            name: T::schema_name().to_snake_case(),
             description: Self::DESCRIPTION.into(),
             parameters: schemars::schema_for!(T),
             strict: true,

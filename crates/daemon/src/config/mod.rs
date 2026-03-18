@@ -7,7 +7,6 @@ pub use crate::hook::{
 };
 pub use ::model::{ModelConfig, ProviderDef, ProviderRegistry};
 use anyhow::Result;
-use compact_str::CompactString;
 pub use loader::{load_agents_dir, scaffold_config_dir};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -23,7 +22,7 @@ mod loader;
 pub struct DaemonConfig {
     /// Provider definitions (`[provider.<name>]`).
     #[serde(default)]
-    pub provider: BTreeMap<CompactString, ProviderDef>,
+    pub provider: BTreeMap<String, ProviderDef>,
     /// Model configuration (embedding model).
     #[serde(default)]
     pub model: ModelConfig,
@@ -50,7 +49,7 @@ impl DaemonConfig {
         let mut config: Self = toml::from_str(toml_str)?;
         config.mcps.iter_mut().for_each(|(name, server)| {
             if server.name.is_empty() {
-                server.name = name.clone().into();
+                server.name = name.clone();
             }
         });
         if config.system.walrus.model.is_none() {

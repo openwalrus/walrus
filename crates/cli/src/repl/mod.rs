@@ -5,7 +5,6 @@ use crate::repl::{
     runner::{OutputChunk, Runner},
 };
 use anyhow::Result;
-use compact_str::CompactString;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
@@ -17,14 +16,14 @@ pub mod runner;
 /// Interactive chat REPL.
 pub struct ChatRepl {
     runner: Runner,
-    agent: CompactString,
+    agent: String,
     editor: Editor<ReplHelper, DefaultHistory>,
     history_path: Option<PathBuf>,
 }
 
 impl ChatRepl {
     /// Create a new REPL with the given runner and agent name.
-    pub fn new(runner: Runner, agent: CompactString) -> Result<Self> {
+    pub fn new(runner: Runner, agent: String) -> Result<Self> {
         let mut editor = Editor::new()?;
         editor.set_helper(Some(ReplHelper));
         let history_path = history_file_path();

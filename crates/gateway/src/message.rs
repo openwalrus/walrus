@@ -1,7 +1,5 @@
 //! Gateway message types.
 
-use compact_str::CompactString;
-
 /// A message received from or sent to a gateway.
 #[derive(Debug, Clone)]
 pub struct GatewayMessage {
@@ -12,7 +10,7 @@ pub struct GatewayMessage {
     /// Platform sender user ID.
     pub sender_id: i64,
     /// Display name of the sender.
-    pub sender_name: CompactString,
+    pub sender_name: String,
     /// Whether the sender is a bot.
     pub is_bot: bool,
     /// Whether this message is from a group chat (vs DM).

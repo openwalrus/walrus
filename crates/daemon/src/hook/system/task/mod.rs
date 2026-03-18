@@ -3,7 +3,6 @@
 //! Replaces the old TaskRegistry. A task is either running or done.
 //! No status state machine, no queuing, no approval inbox.
 
-use compact_str::CompactString;
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
@@ -19,7 +18,7 @@ pub struct Task {
     /// Unique task identifier.
     pub id: u64,
     /// Agent assigned to this task.
-    pub agent: CompactString,
+    pub agent: String,
     /// Human-readable task description / message.
     pub description: String,
     /// When this task was created.
@@ -88,7 +87,7 @@ impl TaskSet {
     }
 
     /// Insert a new task. Returns the task ID.
-    pub fn insert(&mut self, agent: CompactString, description: String) -> u64 {
+    pub fn insert(&mut self, agent: String, description: String) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.tasks.insert(
             id,

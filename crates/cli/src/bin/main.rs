@@ -3,22 +3,36 @@
 use anyhow::Result;
 use clap::Parser;
 use openwalrus::Cli;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let filter = match cli.log_filter() {
+    let level = match cli.log_filter() {
         Some(f) => {
             // Set RUST_LOG so spawned child services inherit the same level.
             // SAFETY: called in main before spawning any threads.
             unsafe { std::env::set_var("RUST_LOG", f) };
-            EnvFilter::new(f)
+            parse_level(f)
         }
-        None => EnvFilter::from_default_env(),
+        None => std::env::var("RUST_LOG")
+            .ok()
+            .map(|v| parse_level(&v))
+            .unwrap_or(tracing::Level::WARN),
     };
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    tracing_subscriber::fmt().with_max_level(level).init();
 
     cli.run().await
+}
+
+/// Extract the most specific level from a filter string like "walrus=debug".
+fn parse_level(s: &str) -> tracing::Level {
+    let level_str = s.rsplit('=').next().unwrap_or(s);
+    match level_str.to_lowercase().as_str() {
+        "trace" => tracing::Level::TRACE,
+        "debug" => tracing::Level::DEBUG,
+        "info" => tracing::Level::INFO,
+        "error" => tracing::Level::ERROR,
+        _ => tracing::Level::WARN,
+    }
 }

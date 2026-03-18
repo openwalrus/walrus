@@ -4,7 +4,6 @@ use crate::cmd::auth::PRESETS;
 use crate::repl::{ChatRepl, runner::Runner};
 use anyhow::Result;
 use clap::Args;
-use compact_str::CompactString;
 use dialoguer::{Input, Select, theme::ColorfulTheme};
 use std::path::Path;
 use toml_edit::{Array, DocumentMut, Item, Table, value};
@@ -21,7 +20,7 @@ pub struct Attach {
 
 impl Attach {
     /// Enter the interactive REPL with the given runner and agent.
-    pub async fn run(self, runner: Runner, agent: CompactString) -> Result<()> {
+    pub async fn run(self, runner: Runner, agent: String) -> Result<()> {
         let mut repl = ChatRepl::new(runner, agent)?;
         repl.run().await
     }

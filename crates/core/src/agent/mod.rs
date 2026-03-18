@@ -28,7 +28,7 @@ pub mod event;
 pub mod tool;
 
 /// Extract sender from the last user message in history.
-fn last_sender(history: &[Message]) -> compact_str::CompactString {
+fn last_sender(history: &[Message]) -> String {
     history
         .iter()
         .rev()

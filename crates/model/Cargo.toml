@@ -18,7 +18,6 @@ crabtalk-provider.workspace = true
 # crates.io
 anyhow.workspace = true
 async-stream.workspace = true
-compact_str.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 rand.workspace = true

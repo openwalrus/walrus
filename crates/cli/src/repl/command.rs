@@ -1,7 +1,6 @@
 //! Slash command parsing, dispatch, and tab-completion for the REPL.
 
 use anyhow::Result;
-use compact_str::CompactString;
 use rustyline::{
     Context,
     completion::{Completer, Pair},
@@ -39,7 +38,7 @@ impl Completer for ReplHelper {
 }
 
 /// Dispatch a slash command. Returns `true` if the line was handled.
-pub async fn handle_slash(agent: &mut CompactString, line: &str) -> Result<bool> {
+pub async fn handle_slash(agent: &mut String, line: &str) -> Result<bool> {
     if !line.starts_with('/') {
         return Ok(false);
     }
@@ -56,7 +55,7 @@ pub async fn handle_slash(agent: &mut CompactString, line: &str) -> Result<bool>
         }
         "switch" => match arg {
             Some(name) if !name.is_empty() => {
-                *agent = CompactString::from(name);
+                *agent = name.to_owned();
                 println!("Switched to agent '{name}'.");
             }
             _ => println!("Usage: /switch <agent-name>"),
