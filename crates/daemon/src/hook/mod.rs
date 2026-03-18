@@ -252,9 +252,7 @@ impl DaemonHook {
             for &t in MCP_TOOLS {
                 whitelist.push(CompactString::from(t));
             }
-            let mcp_servers = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(self.mcp.list())
-            });
+            let mcp_servers = self.mcp.cached_list();
             let mut mcp_info = Vec::new();
             for (server_name, tool_names) in &mcp_servers {
                 if config.mcps.iter().any(|m| m == server_name.as_str()) {

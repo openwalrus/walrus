@@ -56,12 +56,8 @@ pub struct Agent<M: Model> {
 }
 
 impl<M: Model> Agent<M> {
-    /// Perform a single LLM round: send request, dispatch tools, return step.
-    ///
-    /// Composes a [`Request`] from config state (system prompt + history +
-    /// tool schemas), calls the stored model, dispatches any tool calls via
-    /// the [`ToolSender`] channel, and appends results to history.
-    pub async fn step(&self, history: &mut Vec<Message>) -> Result<AgentStep> {
+    /// Build a request from config state (system prompt + history + tool schemas).
+    fn build_request(&self, history: &[Message]) -> Request {
         let model_name = self
             .config
             .model
@@ -81,7 +77,16 @@ impl<M: Model> Agent<M> {
         if !self.tools.is_empty() {
             request = request.with_tools(self.tools.clone());
         }
+        request
+    }
 
+    /// Perform a single LLM round: send request, dispatch tools, return step.
+    ///
+    /// Composes a [`Request`] from config state (system prompt + history +
+    /// tool schemas), calls the stored model, dispatches any tool calls via
+    /// the [`ToolSender`] channel, and appends results to history.
+    pub async fn step(&self, history: &mut Vec<Message>) -> Result<AgentStep> {
+        let request = self.build_request(history);
         let response = self.model.send(&request).await?;
         let tool_calls = response.tool_calls().unwrap_or_default().to_vec();
 
@@ -183,26 +188,7 @@ impl<M: Model> Agent<M> {
             let max = self.config.max_iterations;
 
             for _ in 0..max {
-                // Build the request (same logic as step()).
-                let model_name = self
-                    .config
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| self.model.active_model());
-
-                let mut messages = Vec::with_capacity(1 + history.len());
-                if !self.config.system_prompt.is_empty() {
-                    messages.push(Message::system(&self.config.system_prompt));
-                }
-                messages.extend(history.iter().cloned());
-
-                let mut request = Request::new(model_name)
-                    .with_messages(messages)
-                    .with_tool_choice(self.config.tool_choice.clone())
-                    .with_think(self.config.thinking);
-                if !self.tools.is_empty() {
-                    request = request.with_tools(self.tools.clone());
-                }
+                let request = self.build_request(history);
 
                 // Stream from the model, yielding text deltas as they arrive.
                 let mut builder = MessageBuilder::new(Role::Assistant);

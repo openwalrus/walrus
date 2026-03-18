@@ -123,8 +123,11 @@ impl Memory {
             return "no memories found".to_owned();
         }
 
-        let docs: Vec<(usize, String)> = entries
-            .values()
+        // Single vector for both scoring and result lookup — avoids HashMap
+        // iteration order aliasing between separate `.values()` calls.
+        let entry_vec: Vec<&MemoryEntry> = entries.values().collect();
+        let docs: Vec<(usize, String)> = entry_vec
+            .iter()
             .enumerate()
             .map(|(i, e)| (i, e.search_text()))
             .collect();
@@ -135,7 +138,6 @@ impl Memory {
             return "no memories found".to_owned();
         }
 
-        let entry_vec: Vec<&MemoryEntry> = entries.values().collect();
         results
             .iter()
             .map(|(idx, _score)| {

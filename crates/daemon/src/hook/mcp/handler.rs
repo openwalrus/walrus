@@ -2,15 +2,18 @@
 
 use crate::hook::mcp::{McpBridge, config::McpServerConfig};
 use compact_str::CompactString;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock as StdRwLock};
 use tokio::sync::RwLock;
 
 /// MCP bridge owner.
 ///
 /// MCP bridge owner — `register_tools` registers MCP server tools on the
-/// Runtime tool registry.
+/// Runtime tool registry. Maintains a sync-accessible cache of server→tools
+/// populated at load time so `apply_scope` never needs async bridging.
 pub struct McpHandler {
     bridge: RwLock<Arc<McpBridge>>,
+    /// Sync cache of server names → tool names, populated at load/reload.
+    server_cache: StdRwLock<Vec<(CompactString, Vec<CompactString>)>>,
 }
 
 impl McpHandler {
@@ -54,14 +57,21 @@ impl McpHandler {
     /// Load MCP servers from the given configs at startup.
     pub async fn load(configs: &[McpServerConfig]) -> Self {
         let bridge = Self::build_bridge(configs).await;
+        let servers = bridge.list_servers().await;
         Self {
             bridge: RwLock::new(Arc::new(bridge)),
+            server_cache: StdRwLock::new(servers),
         }
     }
 
     /// List all connected servers with their tool names.
     pub async fn list(&self) -> Vec<(CompactString, Vec<CompactString>)> {
         self.bridge.read().await.list_servers().await
+    }
+
+    /// Sync access to the cached server→tools list (populated at load time).
+    pub fn cached_list(&self) -> Vec<(CompactString, Vec<CompactString>)> {
+        self.server_cache.read().unwrap().clone()
     }
 
     /// Get a clone of the current bridge Arc.
