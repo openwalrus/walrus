@@ -43,8 +43,15 @@ pub fn to_ct_request(req: &Request) -> ChatCompletionRequest {
 }
 
 fn to_ct_message(msg: &Message) -> CtMessage {
+    // Always include `content` for assistant messages — the OpenAI API
+    // requires the field to be present (even as `null`) when tool_calls
+    // exist. For other roles an empty string is equally fine.
     let content = if msg.content.is_empty() {
-        None
+        if msg.role == crabtalk_core::Role::Assistant {
+            Some(serde_json::Value::Null)
+        } else {
+            None
+        }
     } else {
         Some(serde_json::Value::String(msg.content.clone()))
     };

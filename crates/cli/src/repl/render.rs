@@ -91,11 +91,14 @@ impl MarkdownRenderer {
         let _ = self.out.flush();
     }
 
-    /// Print tool call names as a dim line.
-    pub fn push_tool_start(&mut self, names: &[String]) {
+    /// Print tool call names as dim lines. For bash, show the command.
+    pub fn push_tool_start(&mut self, calls: &[(String, String)]) {
         self.flush_thinking();
-        let label = names.join(", ");
-        let _ = writeln!(self.out, "{}", S_DIM.apply_to(format!("  [{label}]")));
+        for (name, args) in calls {
+            let label = format_tool_label(name, args);
+            let _ = writeln!(self.out, "  * {}...", style(&label).bold().dim());
+        }
+        let _ = writeln!(self.out);
         let _ = self.out.flush();
     }
 
@@ -303,10 +306,12 @@ pub fn welcome_banner(model: Option<&str>) -> String {
     let title = format!("  Walrus{model_part} — Ctrl+D to exit");
     let width = title.len().min(60);
     let rule: String = "─".repeat(width);
+    let home = wcore::paths::HOME_DIR.display();
+    let home_line = style(format!("  ~ {home}")).bold().dim();
     format!(
-        "{}\n{}",
+        "{}\n{}\n{home_line}",
         S_BANNER.apply_to(&title),
-        S_DIM.apply_to(format!("  {rule}"))
+        S_DIM.apply_to(format!("  {rule}")),
     )
 }
 
@@ -351,4 +356,21 @@ fn find_closing(chars: &[char], start: usize, pattern: &str) -> Option<usize> {
 /// Find a single closing character in chars starting at `start`.
 fn find_closing_char(chars: &[char], start: usize, closing: char) -> Option<usize> {
     (start..chars.len()).find(|&i| chars[i] == closing)
+}
+
+/// Format a tool label for display. For bash, show the command inline.
+fn format_tool_label(name: &str, args: &str) -> String {
+    if name != "bash" {
+        return name.to_string();
+    }
+
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(args) else {
+        return name.to_string();
+    };
+
+    let Some(cmd) = v.get("command").and_then(|c| c.as_str()) else {
+        return name.to_string();
+    };
+
+    format!("bash({cmd})")
 }

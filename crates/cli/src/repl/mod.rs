@@ -125,8 +125,8 @@ async fn stream_to_terminal(stream: impl Stream<Item = Result<OutputChunk>>) -> 
                     Some(Ok(OutputChunk::Thinking(text))) => {
                         renderer.push_thinking(&text);
                     }
-                    Some(Ok(OutputChunk::ToolStart(names))) => {
-                        renderer.push_tool_start(&names);
+                    Some(Ok(OutputChunk::ToolStart(calls))) => {
+                        renderer.push_tool_start(&calls);
                     }
                     Some(Ok(OutputChunk::ToolDone)) => {
                         renderer.push_tool_done();

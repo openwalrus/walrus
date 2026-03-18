@@ -22,8 +22,8 @@ pub enum OutputChunk {
     Text(String),
     /// Thinking/reasoning content (displayed dimmed).
     Thinking(String),
-    /// Tool execution started with these tool names.
-    ToolStart(Vec<String>),
+    /// Tool execution started with these tool calls (name, arguments JSON).
+    ToolStart(Vec<(String, String)>),
     /// Tool execution completed.
     ToolDone,
 }
@@ -140,8 +140,12 @@ impl Runner {
                             Some(Ok(OutputChunk::Thinking(t.content.clone())))
                         }
                         Some(stream_event::Event::ToolStart(ts)) => {
-                            let names: Vec<_> = ts.calls.iter().map(|c| c.name.clone()).collect();
-                            Some(Ok(OutputChunk::ToolStart(names)))
+                            let calls: Vec<_> = ts
+                                .calls
+                                .iter()
+                                .map(|c| (c.name.clone(), c.arguments.clone()))
+                                .collect();
+                            Some(Ok(OutputChunk::ToolStart(calls)))
                         }
                         Some(stream_event::Event::ToolResult(_)) => None,
                         Some(stream_event::Event::ToolsComplete(_)) => {
