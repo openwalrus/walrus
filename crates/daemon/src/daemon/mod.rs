@@ -10,7 +10,7 @@ use crate::{
     hook::DaemonHook,
     service::ServiceManager,
 };
-use ::socket::server::accept_loop;
+use ::transport::uds::accept_loop;
 use anyhow::Result;
 use model::ProviderRegistry;
 use std::{
@@ -198,13 +198,13 @@ pub fn setup_tcp(
     shutdown_tx: &broadcast::Sender<()>,
     event_tx: &DaemonEventSender,
 ) -> Result<(tokio::task::JoinHandle<()>, u16)> {
-    let (std_listener, addr) = tcp::server::bind()?;
+    let (std_listener, addr) = transport::tcp::bind()?;
     let listener = tokio::net::TcpListener::from_std(std_listener)?;
     tracing::info!("daemon listening on tcp://{addr}");
 
     let tcp_shutdown = bridge_shutdown(shutdown_tx.subscribe());
     let tcp_tx = event_tx.clone();
-    let join = tokio::spawn(tcp::server::accept_loop(
+    let join = tokio::spawn(transport::tcp::accept_loop(
         listener,
         move |msg, reply| {
             let _ = tcp_tx.send(DaemonEvent::Message { msg, reply });

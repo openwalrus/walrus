@@ -1705,8 +1705,7 @@ dependencies = [
  "tracing-subscriber",
  "walrus-core",
  "walrus-daemon",
- "walrus-socket",
- "walrus-tcp",
+ "walrus-transport",
 ]
 
 [[package]]
@@ -3494,8 +3493,7 @@ dependencies = [
  "tracing",
  "walrus-core",
  "walrus-model",
- "walrus-socket",
- "walrus-tcp",
+ "walrus-transport",
 ]
 
 [[package]]
@@ -3510,7 +3508,7 @@ dependencies = [
  "tokio",
  "tracing",
  "walrus-core",
- "walrus-socket",
+ "walrus-transport",
 ]
 
 [[package]]
@@ -3558,30 +3556,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "walrus-socket"
-version = "0.0.10"
-dependencies = [
- "anyhow",
- "async-stream",
- "futures-core",
- "tokio",
- "tracing",
- "walrus-core",
-]
-
-[[package]]
-name = "walrus-tcp"
-version = "0.0.10"
-dependencies = [
- "anyhow",
- "async-stream",
- "futures-core",
- "tokio",
- "tracing",
- "walrus-core",
-]
-
-[[package]]
 name = "walrus-telegram"
 version = "0.0.10"
 dependencies = [
@@ -3596,6 +3570,18 @@ dependencies = [
  "tracing-subscriber",
  "walrus-core",
  "walrus-gateway",
+]
+
+[[package]]
+name = "walrus-transport"
+version = "0.0.10"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures-core",
+ "tokio",
+ "tracing",
+ "walrus-core",
 ]
 
 [[package]]

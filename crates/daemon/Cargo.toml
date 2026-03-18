@@ -12,8 +12,7 @@ keywords.workspace = true
 
 [dependencies]
 model.workspace = true
-socket.workspace = true
-tcp.workspace = true
+transport.workspace = true
 wcore.workspace = true
 
 # crates.io

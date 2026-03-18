@@ -3,10 +3,10 @@
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use socket::{ClientConfig, Connection, WalrusClient};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
-use tcp::TcpConnection;
+use transport::tcp::TcpConnection;
+use transport::uds::{ClientConfig, Connection, WalrusClient};
 use wcore::protocol::{
     api::Client,
     message::{
