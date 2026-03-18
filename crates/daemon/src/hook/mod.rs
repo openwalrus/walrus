@@ -58,7 +58,7 @@ pub struct DaemonHook {
 
 /// Base tools always included in every agent's whitelist.
 /// Also bypass permission check when running in sandbox mode.
-const BASE_TOOLS: &[&str] = &["read", "write", "edit", "bash"];
+const BASE_TOOLS: &[&str] = &["bash"];
 
 /// Skill discovery/loading tools.
 const SKILL_TOOLS: &[&str] = &["search_skill", "load_skill", "save_skill"];
@@ -336,9 +336,6 @@ impl DaemonHook {
             "search_skill" => self.dispatch_search_skill(args, agent).await,
             "load_skill" => self.dispatch_load_skill(args, agent).await,
             "save_skill" => self.dispatch_save_skill(args).await,
-            "read" => self.dispatch_read(args).await,
-            "write" => self.dispatch_write(args).await,
-            "edit" => self.dispatch_edit(args).await,
             "bash" => self.dispatch_bash(args).await,
             "delegate" => self.dispatch_delegate(args, agent).await,
             "collect" => self.dispatch_collect(args).await,

@@ -1,7 +1,7 @@
-//! OS hook — filesystem and shell tools for agents.
+//! OS hook — shell tool for agents.
 //!
-//! Registers `read`, `write`, and `bash` tool schemas. Dispatch methods live
-//! on [`DaemonHook`](crate::hook::DaemonHook). Access control is handled by
+//! Registers the `bash` tool schema. Dispatch method lives on
+//! [`DaemonHook`](crate::hook::DaemonHook). Access control is handled by
 //! the permission layer in `dispatch_tool`.
 
 use std::fmt::Write;
