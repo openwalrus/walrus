@@ -117,7 +117,6 @@ fn default_model_for(provider: &str) -> &str {
     match provider {
         "anthropic" => "claude-sonnet-4-5-20250514",
         "openai" => "gpt-4o",
-        "deepseek" => "deepseek-chat",
         "google" => "gemini-2.5-pro",
         "ollama" => "llama3",
         "azure" => "gpt-4o",

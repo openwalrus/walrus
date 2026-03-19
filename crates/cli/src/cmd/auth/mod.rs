@@ -50,11 +50,6 @@ pub(crate) const PRESETS: &[Preset] = &[
         standard: "openai_compat",
     },
     Preset {
-        name: "deepseek",
-        base_url: "https://api.deepseek.com/v1",
-        standard: "openai_compat",
-    },
-    Preset {
         name: "google",
         base_url: "",
         standard: "google",

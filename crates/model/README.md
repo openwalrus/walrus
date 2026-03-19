@@ -1,10 +1,9 @@
 # crabtalk-model
 
-LLM provider implementations for Crabtalk.
+LLM provider implementations for Crabtalk, powered by crabllm.
 
-Supports OpenAI-compatible APIs (DeepSeek, Grok, Qwen, Kimi, Ollama) and
-Anthropic Claude. Includes `ProviderManager` for multi-model routing and
-`ProviderDef` for configuration.
+Supports all major LLM providers. Includes `ProviderRegistry` for
+multi-model routing and `ProviderDef` for configuration.
 
 ## License
 

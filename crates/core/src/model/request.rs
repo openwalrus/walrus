@@ -73,7 +73,7 @@ impl Request {
 impl Default for Request {
     fn default() -> Self {
         Self {
-            model: "deepseek-chat".into(),
+            model: "claude-sonnet-4-5-20250514".into(),
             messages: Vec::new(),
             think: false,
             tools: None,

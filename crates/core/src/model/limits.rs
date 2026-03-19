@@ -32,10 +32,6 @@ pub fn default_context_limit(model_id: &str) -> usize {
     if model_id.starts_with("grok-") {
         return 131_072;
     }
-    // DeepSeek family
-    if model_id.starts_with("deepseek-") {
-        return 64_000;
-    }
     // Qwen family
     if model_id.starts_with("qwen-") || model_id.starts_with("qwq-") {
         return 32_768;

@@ -12,7 +12,7 @@ mod provider;
 
 /// Default model name when none is configured.
 pub fn default_model() -> &'static str {
-    "deepseek-chat"
+    "claude-sonnet-4-5-20250514"
 }
 
 pub use config::{ApiStandard, ModelConfig, ProviderDef};
