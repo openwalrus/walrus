@@ -373,10 +373,19 @@ fn render_provider_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
                     let label_span = Span::styled(format!(" {:>10}: ", label), label_style);
 
                     let value = if is_editing {
-                        let byte_pos = char_to_byte(&state.edit_buf, state.cursor);
-                        let mut s = state.edit_buf.clone();
-                        s.insert(byte_pos, '|');
-                        Span::styled(s, Style::default().fg(Color::Green))
+                        if fi == 0 {
+                            // Mask API key while editing — show * for each char, cursor as |.
+                            let char_count = state.edit_buf.chars().count();
+                            let mut s = "*".repeat(char_count);
+                            let byte_pos = state.cursor.min(char_count);
+                            s.insert(byte_pos, '|');
+                            Span::styled(s, Style::default().fg(Color::Green))
+                        } else {
+                            let byte_pos = char_to_byte(&state.edit_buf, state.cursor);
+                            let mut s = state.edit_buf.clone();
+                            s.insert(byte_pos, '|');
+                            Span::styled(s, Style::default().fg(Color::Green))
+                        }
                     } else {
                         let raw = state.provider_field_value(pi, fi);
                         if fi == 0 && !raw.is_empty() {

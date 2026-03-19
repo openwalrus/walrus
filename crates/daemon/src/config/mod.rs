@@ -49,9 +49,6 @@ impl DaemonConfig {
                 server.name = name.clone();
             }
         });
-        if config.system.crab.model.is_none() {
-            config.system.crab.model = Some(::model::default_model().into());
-        }
         ModelConfig::validate(&config.provider)?;
         Ok(config)
     }
