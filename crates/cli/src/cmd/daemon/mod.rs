@@ -17,50 +17,44 @@ pub struct Daemon {
 
 #[derive(Subcommand, Debug)]
 pub enum DaemonCommand {
-    /// Start the daemon in the foreground.
-    Start {
+    /// Run the daemon in the foreground.
+    Run {
         /// Increase log verbosity (-v = info, -vv = debug, -vvv = trace).
         #[arg(short, long, action = clap::ArgAction::Count)]
         verbose: u8,
     },
     /// Trigger a hot-reload of the running daemon.
     Reload,
-    /// Restart the daemon (requires system service).
-    Restart,
-    /// View daemon or service logs (delegates to `tail`).
+    /// View daemon logs (delegates to `tail`).
     ///
     /// Extra flags (e.g. `-f`, `-n 100`, `-t`) are passed through to `tail`.
     /// Defaults to `-n 50` if no flags are given.
     Logs {
-        /// Service name (e.g. "telegram"). Omit for the daemon log.
-        #[arg(long)]
-        service: Option<String>,
         /// Arguments passed through to `tail` (e.g. `-f`, `-n 100`).
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         tail_args: Vec<String>,
     },
-    /// Install crabtalk as a system service (launchd/systemd).
-    Install,
-    /// Uninstall the crabtalk system service.
-    Uninstall,
+    /// Install and start crabtalk as a system service (launchd/systemd).
+    Start,
+    /// Stop and uninstall the crabtalk system service.
+    Stop,
 }
 
 impl Daemon {
     pub async fn run(self, socket_path: &Path) -> Result<()> {
         match self.command {
-            DaemonCommand::Start { .. } => start::start().await,
+            DaemonCommand::Run { .. } => start::start().await,
             DaemonCommand::Reload => reload(socket_path).await,
-            DaemonCommand::Restart => service::restart(),
-            DaemonCommand::Logs { service, tail_args } => {
+            DaemonCommand::Logs { tail_args } => {
                 let args = if tail_args.is_empty() {
                     vec!["-n".to_owned(), "50".to_owned()]
                 } else {
                     tail_args
                 };
-                logs::logs(service.as_deref(), &args)
+                logs::logs(&args)
             }
-            DaemonCommand::Install => service::install(),
-            DaemonCommand::Uninstall => service::uninstall(),
+            DaemonCommand::Start => service::install(),
+            DaemonCommand::Stop => service::uninstall(),
         }
     }
 }

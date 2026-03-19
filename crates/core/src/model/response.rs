@@ -34,7 +34,7 @@ pub struct Delta {
     /// The content of the message
     pub content: Option<String>,
 
-    /// The reasoning content (for deepseek-reasoner model)
+    /// The reasoning content (for reasoning models)
     pub reasoning_content: Option<String>,
 
     /// Tool calls made by the model

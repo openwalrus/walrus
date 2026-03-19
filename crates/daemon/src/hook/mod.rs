@@ -1,20 +1,13 @@
 //! Stateful Hook implementation for the daemon.
 //!
-//! [`DaemonHook`] composes skill, MCP, OS, and built-in memory sub-hooks plus
-//! external extension services. `on_build_agent` delegates to skills, memory,
-//! and extension services; `on_register_tools` delegates to all sub-hooks in
-//! sequence. `dispatch_tool` routes every agent tool call by name — the single
-//! entry point from `event.rs`.
+//! [`DaemonHook`] composes skill, MCP, OS, and built-in memory sub-hooks.
+//! `on_build_agent` delegates to skills, memory; `on_register_tools` delegates
+//! to all sub-hooks in sequence. `dispatch_tool` routes every agent tool call
+//! by name — the single entry point from `event.rs`.
 
 use crate::{
     daemon::event::DaemonEventSender,
-    hook::{
-        mcp::McpHandler,
-        os::PermissionConfig,
-        skill::SkillHandler,
-        system::{memory::Memory, task::TaskSet},
-    },
-    service::ServiceRegistry,
+    hook::{mcp::McpHandler, os::PermissionConfig, skill::SkillHandler, system::memory::Memory},
 };
 use crabhub::DownloadRegistry;
 use std::{collections::BTreeMap, sync::Arc};
@@ -38,7 +31,6 @@ pub(crate) struct AgentScope {
 pub struct DaemonHook {
     pub skills: SkillHandler,
     pub mcp: McpHandler,
-    pub tasks: Arc<Mutex<TaskSet>>,
     pub downloads: Arc<Mutex<DownloadRegistry>>,
     pub permissions: PermissionConfig,
     /// Whether the daemon is running as the `crabtalk` OS user (sandbox active).
@@ -47,14 +39,12 @@ pub struct DaemonHook {
     pub cwd: std::path::PathBuf,
     /// Built-in memory.
     pub memory: Option<Memory>,
-    /// Event channel for task dispatch.
+    /// Event channel for task delegation.
     pub(crate) event_tx: DaemonEventSender,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<String, AgentScope>,
     /// Sub-agent descriptions for catalog injection into the crab agent.
     pub(crate) agent_descriptions: BTreeMap<String, String>,
-    /// External extension service registry (tools + queries).
-    pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
 
 /// Base tools always included in every agent's whitelist.
@@ -62,16 +52,16 @@ pub struct DaemonHook {
 const BASE_TOOLS: &[&str] = &["bash"];
 
 /// Skill discovery/loading tools.
-const SKILL_TOOLS: &[&str] = &["search_skill", "load_skill", "save_skill"];
+const SKILL_TOOLS: &[&str] = &["skill"];
 
 /// MCP discovery/call tools.
-const MCP_TOOLS: &[&str] = &["search_mcp", "call_mcp_tool"];
+const MCP_TOOLS: &[&str] = &["mcp"];
 
 /// Memory tools.
-const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget", "soul"];
+const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget"];
 
 /// Task delegation tools.
-const TASK_TOOLS: &[&str] = &["delegate", "collect", "check_tasks"];
+const TASK_TOOLS: &[&str] = &["delegate"];
 
 impl Hook for DaemonHook {
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
@@ -95,7 +85,7 @@ impl Hook for DaemonHook {
         if !mcp_servers.is_empty() {
             let names: Vec<&str> = mcp_servers.iter().map(|(n, _)| n.as_str()).collect();
             hints.push(format!(
-                "MCP servers: {}. Use search_mcp to list tools, call_mcp_tool to invoke them.",
+                "MCP servers: {}. Use the mcp tool to list or call tools.",
                 names.join(", ")
             ));
         }
@@ -103,7 +93,7 @@ impl Hook for DaemonHook {
             let skills: Vec<&str> = reg.skills().iter().map(|s| s.name.as_str()).collect();
             if !skills.is_empty() {
                 hints.push(format!(
-                    "Skills: {}. Use search_skill to find skills, load_skill to activate one.",
+                    "Skills: {}. Use the skill tool to load one by name.",
                     skills.join(", ")
                 ));
             }
@@ -156,9 +146,6 @@ impl Hook for DaemonHook {
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(system::task::tool::tools());
-        if let Some(ref registry) = self.registry {
-            registry.register_tools(tools).await;
-        }
         if self.memory.is_some() {
             tools.insert_all(system::memory::tool::tools());
         }
@@ -209,19 +196,16 @@ impl DaemonHook {
     pub fn new(
         skills: SkillHandler,
         mcp: McpHandler,
-        tasks: Arc<Mutex<TaskSet>>,
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
         cwd: std::path::PathBuf,
         memory: Option<Memory>,
-        registry: Option<Arc<ServiceRegistry>>,
         event_tx: DaemonEventSender,
     ) -> Self {
         Self {
             skills,
             mcp,
-            tasks,
             downloads,
             permissions,
             sandboxed,
@@ -230,7 +214,6 @@ impl DaemonHook {
             event_tx,
             scopes: BTreeMap::new(),
             agent_descriptions: BTreeMap::new(),
-            registry,
         }
     }
 
@@ -260,16 +243,11 @@ impl DaemonHook {
             return;
         }
 
-        // Base tools + memory + external service tools always included.
+        // Base tools + memory always included.
         let mut whitelist: Vec<String> = BASE_TOOLS.iter().map(|&s| s.to_owned()).collect();
         if self.memory.is_some() {
             for &t in MEMORY_TOOLS {
                 whitelist.push(t.to_owned());
-            }
-        }
-        if let Some(ref registry) = self.registry {
-            for tool_name in registry.tools.keys() {
-                whitelist.push(tool_name.clone());
             }
         }
         let mut scope_lines = Vec::new();
@@ -286,10 +264,7 @@ impl DaemonHook {
                 whitelist.push(t.to_owned());
             }
             let server_names: Vec<&str> = config.mcps.iter().map(|s| s.as_str()).collect();
-            scope_lines.push(format!(
-                "mcp servers: {}\nUse search_mcp to discover tools, call_mcp_tool to invoke them.",
-                server_names.join(", ")
-            ));
+            scope_lines.push(format!("mcp servers: {}", server_names.join(", ")));
         }
 
         if !config.members.is_empty() {
@@ -340,15 +315,6 @@ impl DaemonHook {
         }
     }
 
-    /// Dispatch to an external extension service if the tool is registered.
-    /// Returns `None` if the tool is not in the registry (fall through to in-process).
-    async fn dispatch_external(&self, name: &str, args: &str, agent: &str) -> Option<String> {
-        self.registry
-            .as_ref()?
-            .dispatch_tool(name, args, agent, None)
-            .await
-    }
-
     /// Scan content for `/skill-name` tokens, load each skill found, and
     /// append their bodies to the end of the message.
     /// Tokens that don't match a skill are left as-is.
@@ -395,8 +361,7 @@ impl DaemonHook {
     /// Route a tool call by name to the appropriate handler.
     ///
     /// This is the single dispatch entry point — `event.rs` calls this
-    /// and never matches on tool names itself. Unrecognised names are
-    /// forwarded to the MCP bridge after a warn-level log.
+    /// and never matches on tool names itself.
     pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str, sender: &str) -> String {
         if let Some(denied) = self.check_perm(name, agent, sender) {
             return denied;
@@ -409,27 +374,15 @@ impl DaemonHook {
             return format!("tool not available: {name}");
         }
         match name {
-            "search_mcp" => self.dispatch_search_mcp(args, agent).await,
-            "call_mcp_tool" => self.dispatch_call_mcp_tool(args, agent).await,
-            "search_skill" => self.dispatch_search_skill(args, agent).await,
-            "load_skill" => self.dispatch_load_skill(args, agent).await,
-            "save_skill" => self.dispatch_save_skill(args).await,
+            "mcp" => self.dispatch_mcp(args, agent).await,
+            "skill" => self.dispatch_skill(args, agent).await,
             "bash" => self.dispatch_bash(args).await,
             "delegate" => self.dispatch_delegate(args, agent).await,
-            "collect" => self.dispatch_collect(args).await,
-            "check_tasks" => self.dispatch_check_tasks(args).await,
             "recall" => self.dispatch_recall(args).await,
             "remember" => self.dispatch_remember(args).await,
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
-            "soul" => self.dispatch_soul(args).await,
-            // External extension services.
-            name => {
-                if let Some(result) = self.dispatch_external(name, args, agent).await {
-                    return result;
-                }
-                format!("tool not available: {name}")
-            }
+            name => format!("tool not available: {name}"),
         }
     }
 }

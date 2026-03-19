@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use wcore::{
     AgentConfig, HeartbeatConfig,
-    paths::{AGENTS_DIR, CONFIG_DIR, DATA_DIR, HOME_DIR, MEMORY_DB, SKILLS_DIR, SOCKET_PATH},
+    paths::{AGENTS_DIR, CONFIG_DIR, SKILLS_DIR, SOCKET_PATH},
 };
 
 mod loader;
@@ -38,9 +38,6 @@ pub struct DaemonConfig {
     /// Permission configuration: global defaults + per-agent overrides.
     #[serde(default)]
     pub permissions: PermissionConfig,
-    /// Managed child services (`[services.<name>]`).
-    #[serde(default)]
-    pub services: BTreeMap<String, crate::service::ServiceConfig>,
 }
 
 impl DaemonConfig {
@@ -52,9 +49,6 @@ impl DaemonConfig {
                 server.name = name.clone();
             }
         });
-        if config.system.crab.model.is_none() {
-            config.system.crab.model = Some(::model::default_model().into());
-        }
         ModelConfig::validate(&config.provider)?;
         Ok(config)
     }

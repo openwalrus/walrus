@@ -1,6 +1,6 @@
-//! Telegram gateway serve command.
+//! Telegram gateway serve logic.
 
-use gateway::{
+use crate::{
     COMMAND_HINT, DaemonClient, GatewayConfig, GatewayMessage, KnownBots, StreamAccumulator,
     StreamResult, attachment_summary, parse_command,
 };
@@ -11,12 +11,11 @@ use tokio::sync::mpsc;
 use wcore::protocol::message::{ClientMessage, ServerMessage, StreamMsg, server_message};
 
 /// Run the Telegram gateway service.
-pub async fn run(daemon_socket: &str, config_json: &str) -> anyhow::Result<()> {
-    let config: GatewayConfig = serde_json::from_str(config_json)?;
+pub async fn run(daemon_socket: &str, config: &GatewayConfig) -> anyhow::Result<()> {
     let client = Arc::new(DaemonClient::new(Path::new(daemon_socket)));
 
     let agents_dir = wcore::paths::CONFIG_DIR.join(wcore::paths::AGENTS_DIR);
-    let default_agent = gateway::resolve_default_agent(&agents_dir);
+    let default_agent = crate::resolve_default_agent(&agents_dir);
     tracing::info!(agent = %default_agent, "telegram gateway starting");
 
     let known_bots: KnownBots =

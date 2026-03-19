@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Contains everything needed to make an LLM call: model, messages, tools,
 /// and streaming hints. Provider implementations convert this to their
 /// wire format via `From<Request>`.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Request {
     /// The model to use.
     pub model: String,
@@ -67,18 +67,5 @@ impl Request {
     pub fn with_think(mut self, think: bool) -> Self {
         self.think = think;
         self
-    }
-}
-
-impl Default for Request {
-    fn default() -> Self {
-        Self {
-            model: "deepseek-chat".into(),
-            messages: Vec::new(),
-            think: false,
-            tools: None,
-            tool_choice: None,
-            usage: false,
-        }
     }
 }

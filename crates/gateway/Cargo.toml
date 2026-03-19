@@ -1,6 +1,6 @@
 [package]
 name = "crabtalk-gateway"
-description = "Shared gateway types for Crabtalk platform adapters"
+description = "Gateway library and binary for Crabtalk platform adapters"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -9,12 +9,22 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[[bin]]
+name = "crabtalk-gateway"
+path = "src/bin/main.rs"
+
 [dependencies]
 anyhow.workspace = true
+clap.workspace = true
+dialoguer.workspace = true
+dirs.workspace = true
 futures-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-transport.workspace = true
+teloxide.workspace = true
 tokio.workspace = true
+toml.workspace = true
+transport.workspace = true
 tracing.workspace = true
-wcore.workspace = true
+tracing-subscriber.workspace = true
+wcore = { workspace = true, features = ["service"] }

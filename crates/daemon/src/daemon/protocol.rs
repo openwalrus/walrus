@@ -9,8 +9,8 @@ use wcore::protocol::{
     api::Server,
     message::{
         DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse, SessionInfo, StreamChunk,
-        StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, TaskEvent, TaskInfo,
-        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
+        StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, ToolCallInfo,
+        ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
     },
 };
 
@@ -121,30 +121,6 @@ impl Server for Daemon {
         Ok(rt.close_session(session).await)
     }
 
-    async fn list_tasks(&self) -> Result<Vec<TaskInfo>> {
-        let rt = self.runtime.read().await.clone();
-        let tasks = rt.hook.tasks.lock().await;
-        Ok(tasks.list(16).iter().map(|t| t.to_info()).collect())
-    }
-
-    async fn kill_task(&self, task_id: u64) -> Result<bool> {
-        let rt = self.runtime.read().await.clone();
-        let session_id = {
-            let tasks = rt.hook.tasks.lock().await;
-            tasks.get(task_id).and_then(|t| t.session_id)
-        };
-        let killed = rt.hook.tasks.lock().await.kill(task_id);
-        if killed && let Some(sid) = session_id {
-            rt.close_session(sid).await;
-        }
-        Ok(killed)
-    }
-
-    async fn approve_task(&self, _task_id: u64, _response: String) -> Result<bool> {
-        // Approval system removed — sub-agents are autonomous.
-        Ok(false)
-    }
-
     fn hub(
         &self,
         package: String,
@@ -172,11 +148,6 @@ impl Server for Daemon {
                 }
             }
         }
-    }
-
-    fn subscribe_tasks(&self) -> impl futures_core::Stream<Item = Result<TaskEvent>> + Send {
-        // Task subscription removed — tasks are lightweight JoinHandles now.
-        futures_util::stream::empty()
     }
 
     async fn list_downloads(&self) -> Result<Vec<DownloadInfo>> {
@@ -212,146 +183,6 @@ impl Server for Daemon {
             serde_json::from_str(&config).context("invalid DaemonConfig JSON")?;
         let toml_str =
             toml::to_string_pretty(&parsed).context("failed to serialize config to TOML")?;
-        let config_path = self.config_dir.join("crab.toml");
-        std::fs::write(&config_path, toml_str)
-            .with_context(|| format!("failed to write {}", config_path.display()))?;
-        self.reload().await
-    }
-
-    async fn service_query(&self, service: String, query: String) -> Result<String> {
-        let rt = self.runtime.read().await.clone();
-        let registry = rt
-            .hook
-            .registry
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("no service registry"))?;
-        let handle = registry
-            .query
-            .get(&service)
-            .ok_or_else(|| anyhow::anyhow!("service '{}' not available", service))?;
-        let req = wcore::protocol::ext::ExtRequest {
-            msg: Some(wcore::protocol::ext::ext_request::Msg::ServiceQuery(
-                wcore::protocol::ext::ExtServiceQuery { query },
-            )),
-        };
-        let resp = handle.request(&req).await?;
-        match resp.msg {
-            Some(wcore::protocol::ext::ext_response::Msg::ServiceQueryResult(result)) => {
-                Ok(result.result)
-            }
-            Some(wcore::protocol::ext::ext_response::Msg::Error(e)) => {
-                anyhow::bail!("service '{}' error: {}", service, e.message)
-            }
-            other => anyhow::bail!("unexpected response from service '{}': {other:?}", service),
-        }
-    }
-
-    async fn get_service_schema(&self, service: String) -> Result<String> {
-        let rt = self.runtime.read().await.clone();
-        let registry = rt
-            .hook
-            .registry
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("no service registry"))?;
-        let handle = registry
-            .query
-            .get(&service)
-            .or_else(|| registry.tools.values().find(|h| h.name.as_str() == service))
-            .ok_or_else(|| anyhow::anyhow!("service '{}' not found", service))?;
-        let req = wcore::protocol::ext::ExtRequest {
-            msg: Some(wcore::protocol::ext::ext_request::Msg::GetSchema(
-                wcore::protocol::ext::ExtGetSchema {},
-            )),
-        };
-        let resp = handle.request(&req).await?;
-        match resp.msg {
-            Some(wcore::protocol::ext::ext_response::Msg::SchemaResult(result)) => {
-                Ok(result.schema)
-            }
-            Some(wcore::protocol::ext::ext_response::Msg::Error(e)) => {
-                anyhow::bail!("service '{}' schema error: {}", service, e.message)
-            }
-            other => anyhow::bail!(
-                "unexpected schema response from service '{}': {other:?}",
-                service
-            ),
-        }
-    }
-
-    async fn get_all_schemas(&self) -> Result<std::collections::HashMap<String, String>> {
-        let rt = self.runtime.read().await.clone();
-        let registry = rt
-            .hook
-            .registry
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("no service registry"))?;
-        let mut schemas = std::collections::HashMap::new();
-        // Collect unique service handles from the query registry.
-        for (name, handle) in &registry.query {
-            let req = wcore::protocol::ext::ExtRequest {
-                msg: Some(wcore::protocol::ext::ext_request::Msg::GetSchema(
-                    wcore::protocol::ext::ExtGetSchema {},
-                )),
-            };
-            if let Ok(resp) = handle.request(&req).await
-                && let Some(wcore::protocol::ext::ext_response::Msg::SchemaResult(result)) =
-                    resp.msg
-            {
-                schemas.insert(name.clone(), result.schema);
-            }
-        }
-        Ok(schemas)
-    }
-
-    async fn list_services(&self) -> Result<Vec<wcore::protocol::message::ServiceInfoMsg>> {
-        let rt = self.runtime.read().await.clone();
-        let registry = rt.hook.registry.as_ref();
-        let mut services = Vec::new();
-        if let Some(reg) = registry {
-            // Collect unique service names from capability buckets.
-            let mut seen = std::collections::HashSet::new();
-            let all_handles: Vec<_> = reg.query.values().chain(reg.tools.values()).collect();
-            for handle in all_handles {
-                let name = handle.name.to_string();
-                if !seen.insert(name.clone()) {
-                    continue;
-                }
-                let capabilities: Vec<String> = handle
-                    .capabilities
-                    .iter()
-                    .filter_map(|c| match &c.cap {
-                        Some(wcore::protocol::ext::capability::Cap::Tools(_)) => {
-                            Some("tools".into())
-                        }
-                        Some(wcore::protocol::ext::capability::Cap::Query(_)) => {
-                            Some("query".into())
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                services.push(wcore::protocol::message::ServiceInfoMsg {
-                    name,
-                    kind: "extension".into(),
-                    status: "running".into(),
-                    capabilities,
-                    has_config: true,
-                });
-            }
-        }
-        Ok(services)
-    }
-
-    async fn set_service_config(&self, service: String, config: String) -> Result<()> {
-        let mut daemon_config = self.load_config()?;
-        let svc = daemon_config
-            .services
-            .get_mut(&service)
-            .ok_or_else(|| anyhow::anyhow!("service '{}' not found in config", service))?;
-        let parsed: serde_json::Value =
-            serde_json::from_str(&config).context("invalid service config JSON")?;
-        svc.config = parsed;
-        let toml_str =
-            toml::to_string_pretty(&daemon_config).context("failed to serialize config to TOML")?;
         let config_path = self.config_dir.join("crab.toml");
         std::fs::write(&config_path, toml_str)
             .with_context(|| format!("failed to write {}", config_path.display()))?;

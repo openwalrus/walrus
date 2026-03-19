@@ -10,11 +10,6 @@ mod convert;
 pub mod manager;
 mod provider;
 
-/// Default model name when none is configured.
-pub fn default_model() -> &'static str {
-    "deepseek-chat"
-}
-
 pub use config::{ApiStandard, ModelConfig, ProviderDef};
 pub use manager::ProviderRegistry;
 pub use provider::{Provider, build_provider};

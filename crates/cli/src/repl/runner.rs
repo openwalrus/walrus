@@ -10,9 +10,8 @@ use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg, KillTaskMsg,
-        ServerMessage, SessionInfo, StreamMsg, TaskInfo, client_message, download_event,
-        server_message, stream_event,
+        ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg, ServerMessage,
+        SessionInfo, StreamMsg, client_message, download_event, server_message, stream_event,
     },
 };
 
@@ -205,45 +204,6 @@ impl Runner {
     pub async fn kill_session(&mut self, session: u64) -> Result<bool> {
         let msg = ClientMessage {
             msg: Some(client_message::Msg::Kill(KillMsg { session })),
-        };
-        match self.transport.request(msg).await? {
-            ServerMessage {
-                msg: Some(server_message::Msg::Pong(_)),
-            } => Ok(true),
-            ServerMessage {
-                msg: Some(server_message::Msg::Error(e)),
-            } if e.code == 404 => Ok(false),
-            ServerMessage {
-                msg: Some(server_message::Msg::Error(e)),
-            } => {
-                anyhow::bail!("server error ({}): {}", e.code, e.message)
-            }
-            other => anyhow::bail!("unexpected response: {other:?}"),
-        }
-    }
-
-    /// List tasks in the task registry.
-    pub async fn list_tasks(&mut self) -> Result<Vec<TaskInfo>> {
-        let msg = ClientMessage {
-            msg: Some(client_message::Msg::Tasks(Default::default())),
-        };
-        match self.transport.request(msg).await? {
-            ServerMessage {
-                msg: Some(server_message::Msg::Tasks(tl)),
-            } => Ok(tl.tasks),
-            ServerMessage {
-                msg: Some(server_message::Msg::Error(e)),
-            } => {
-                anyhow::bail!("server error ({}): {}", e.code, e.message)
-            }
-            other => anyhow::bail!("unexpected response: {other:?}"),
-        }
-    }
-
-    /// Kill (cancel) a task by ID. Returns true if it existed.
-    pub async fn kill_task(&mut self, task_id: u64) -> Result<bool> {
-        let msg = ClientMessage {
-            msg: Some(client_message::Msg::KillTask(KillTaskMsg { task_id })),
         };
         match self.transport.request(msg).await? {
             ServerMessage {

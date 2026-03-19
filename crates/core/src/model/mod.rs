@@ -23,7 +23,7 @@ mod tool;
 
 /// Unified LLM provider trait.
 ///
-/// Abstracts any LLM provider — single-backend (DeepSeek, Claude) or
+/// Abstracts any LLM provider — single-backend (Claude, GPT) or
 /// multi-model registry (ProviderRegistry). All implementations take
 /// `&Request` directly; no associated config type.
 ///

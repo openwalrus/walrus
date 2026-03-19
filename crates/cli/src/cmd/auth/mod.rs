@@ -50,11 +50,6 @@ pub(crate) const PRESETS: &[Preset] = &[
         standard: "openai_compat",
     },
     Preset {
-        name: "deepseek",
-        base_url: "https://api.deepseek.com/v1",
-        standard: "openai_compat",
-    },
-    Preset {
         name: "google",
         base_url: "",
         standard: "google",
@@ -168,7 +163,8 @@ impl AuthState {
                 .parse()
                 .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
-            if let Some(crab) = doc.get("crab").and_then(|w| w.as_table())
+            if let Some(system) = doc.get("system").and_then(|s| s.as_table())
+                && let Some(crab) = system.get("crab").and_then(|w| w.as_table())
                 && let Some(m) = crab.get("model").and_then(|v| v.as_str())
             {
                 active_model = m.to_string();

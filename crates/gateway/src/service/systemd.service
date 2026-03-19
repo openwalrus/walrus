@@ -1,12 +1,12 @@
 [Unit]
-Description={description}
+Description=Crabtalk Gateway - {description}
 After=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory={config_dir}
 Environment=PATH={path}
-ExecStart={binary} daemon run -v
+ExecStart={binary} {subcommand} run --daemon {socket} --config {config_path}
 Restart=always
 RestartSec=3
 

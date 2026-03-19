@@ -15,12 +15,8 @@ mod handler;
 pub(crate) mod tool;
 
 impl McpHandler {
-    /// Register MCP tool schemas into the registry.
-    ///
-    /// Only `search_mcp` and `call_mcp_tool` are registered — individual MCP
-    /// tool schemas are not exposed. The agent must search first, then call.
+    /// Register the `mcp` tool schema into the registry.
     pub fn register_tools(&self, registry: &mut wcore::ToolRegistry) {
-        registry.insert(tool::SearchMcp::as_tool());
-        registry.insert(tool::CallMcpTool::as_tool());
+        registry.insert(tool::Mcp::as_tool());
     }
 }

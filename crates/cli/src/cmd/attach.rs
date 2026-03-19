@@ -4,16 +4,15 @@ use crate::cmd::auth::PRESETS;
 use crate::repl::{ChatRepl, runner::Runner};
 use anyhow::Result;
 use clap::Args;
-use dialoguer::{Input, Select, theme::ColorfulTheme};
+use dialoguer::{Input, Password, Select, theme::ColorfulTheme};
 use std::path::Path;
 use toml_edit::{Array, DocumentMut, Item, Table, value};
-use wcore::paths::CONFIG_DIR;
 
 /// Attach to an agent and start an interactive chat REPL.
 #[derive(Args, Debug)]
 pub struct Attach {
     /// Connect via TCP instead of Unix domain socket.
-    /// Reads the port from ~/.crabtalk/crab.tcp.
+    /// Reads the port from ~/.crabtalk/run/crabtalk.port.
     #[arg(long, default_missing_value = "true", num_args = 0)]
     pub tcp: bool,
 }
@@ -24,23 +23,6 @@ impl Attach {
         let mut repl = ChatRepl::new(runner, agent)?;
         repl.run().await
     }
-}
-
-/// Check if providers are configured; prompt and reload the daemon if empty.
-pub async fn ensure_providers(socket_path: &Path) -> Result<()> {
-    let config_path = CONFIG_DIR.join("crab.toml");
-    if !config_path.exists() {
-        return Ok(());
-    }
-
-    let config = ::daemon::DaemonConfig::load(&config_path)?;
-    if config.provider.is_empty() {
-        setup_provider(&config_path)?;
-        if let Ok(mut runner) = Runner::connect(socket_path).await {
-            let _ = runner.reload().await;
-        }
-    }
-    Ok(())
 }
 
 /// Interactive provider setup for first-time daemon start.
@@ -57,9 +39,9 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
     let preset = &PRESETS[idx];
 
     let api_key = if preset.name != "ollama" {
-        let key: String = Input::with_theme(&theme)
+        let key: String = Password::with_theme(&theme)
             .with_prompt("API key")
-            .interact_text()?;
+            .interact()?;
         if key.is_empty() {
             anyhow::bail!("API key is required for {}", preset.name);
         }
@@ -76,20 +58,36 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         preset.base_url.to_string()
     };
 
-    let default_model = default_model_for(preset.name);
-    let model: String = Input::with_theme(&theme)
-        .with_prompt("Model name")
-        .default(default_model.to_string())
-        .interact_text()?;
+    let model: String = if let Some(default) = default_model_for(preset.name) {
+        Input::with_theme(&theme)
+            .with_prompt("Model name")
+            .default(default.to_string())
+            .interact_text()?
+    } else {
+        let m: String = Input::with_theme(&theme)
+            .with_prompt("Model name")
+            .interact_text()?;
+        if m.is_empty() {
+            anyhow::bail!("model name is required");
+        }
+        m
+    };
 
     // Write to crab.toml.
     let content = std::fs::read_to_string(config_path)?;
     let mut doc: DocumentMut = content.parse()?;
 
-    if !doc.contains_key("crab") {
-        doc.insert("crab", Item::Table(Table::new()));
+    if !doc.contains_key("system") {
+        doc.insert("system", Item::Table(Table::new()));
     }
-    doc["crab"]["model"] = value(&model);
+    if doc["system"]
+        .as_table()
+        .and_then(|s| s.get("crab"))
+        .is_none()
+    {
+        doc["system"]["crab"] = Item::Table(Table::new());
+    }
+    doc["system"]["crab"]["model"] = value(&model);
 
     if !doc.contains_key("provider") {
         doc.insert("provider", Item::Table(Table::new()));
@@ -113,14 +111,13 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn default_model_for(provider: &str) -> &str {
+fn default_model_for(provider: &str) -> Option<&str> {
     match provider {
-        "anthropic" => "claude-sonnet-4-5-20250514",
-        "openai" => "gpt-4o",
-        "deepseek" => "deepseek-chat",
-        "google" => "gemini-2.5-pro",
-        "ollama" => "llama3",
-        "azure" => "gpt-4o",
-        _ => "default",
+        "anthropic" => Some("claude-sonnet-4-5-20250514"),
+        "openai" => Some("gpt-4o"),
+        "google" => Some("gemini-2.5-pro"),
+        "ollama" => Some("llama3"),
+        "azure" => Some("gpt-4o"),
+        _ => None,
     }
 }

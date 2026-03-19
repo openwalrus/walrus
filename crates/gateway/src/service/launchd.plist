@@ -7,9 +7,12 @@
     <key>ProgramArguments</key>
     <array>
         <string>{binary}</string>
-        <string>daemon</string>
+        <string>{subcommand}</string>
         <string>run</string>
-        <string>-v</string>
+        <string>--daemon</string>
+        <string>{socket}</string>
+        <string>--config</string>
+        <string>{config_path}</string>
     </array>
     <key>WorkingDirectory</key>
     <string>{config_dir}</string>

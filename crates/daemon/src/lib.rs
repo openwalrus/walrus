@@ -4,7 +4,6 @@
 pub mod config;
 pub mod daemon;
 pub mod hook;
-pub mod service;
 
 pub use config::DaemonConfig;
 pub use daemon::event::{DaemonEvent, DaemonEventSender};
