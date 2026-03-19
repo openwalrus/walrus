@@ -12,9 +12,9 @@ pub mod console;
 pub mod daemon;
 pub mod hub;
 
-/// Walrus CLI client — connects to walrusd via Unix domain socket.
+/// Crabtalk CLI client — connects to crabtalk daemon via Unix domain socket.
 #[derive(Parser, Debug)]
-#[command(name = "walrus", about = "Walrus CLI client")]
+#[command(name = "crabtalk", about = "Crabtalk CLI client")]
 pub struct Cli {
     /// Subcommand to execute.
     #[command(subcommand)]
@@ -24,7 +24,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub agent: Option<String>,
 
-    /// Path to the walrusd socket.
+    /// Path to the crabtalk daemon socket.
     #[arg(long, global = true)]
     pub socket: Option<PathBuf>,
 }
@@ -39,9 +39,9 @@ impl Cli {
             && verbose > 0
         {
             Some(match verbose {
-                1 => "walrus=info",
-                2 => "walrus=debug",
-                _ => "walrus=trace",
+                1 => "crabtalk=info",
+                2 => "crabtalk=debug",
+                _ => "crabtalk=trace",
             })
         } else {
             None
@@ -50,7 +50,7 @@ impl Cli {
 
     /// Resolve the agent name from CLI flags or fall back to "assistant".
     pub fn resolve_agent(&self) -> String {
-        self.agent.clone().unwrap_or_else(|| "walrus".to_owned())
+        self.agent.clone().unwrap_or_else(|| "crab".to_owned())
     }
 
     /// Resolve the socket path from CLI flag or default.
@@ -95,11 +95,11 @@ pub enum Command {
     Console(console::Console),
     /// Install or uninstall hub packages.
     Hub(hub::Hub),
-    /// Manage the walrus daemon (start, reload, install, uninstall).
+    /// Manage the crabtalk daemon (start, reload, install, uninstall).
     Daemon(daemon::Daemon),
 }
 
-/// Connect to walrusd via TCP or UDS.
+/// Connect to crabtalk daemon via TCP or UDS.
 async fn connect(use_tcp: bool, socket_path: &std::path::Path) -> Result<Runner> {
     if use_tcp {
         connect_tcp().await
@@ -108,11 +108,11 @@ async fn connect(use_tcp: bool, socket_path: &std::path::Path) -> Result<Runner>
     }
 }
 
-/// Connect to walrusd via TCP, reading the port from the port file.
+/// Connect to crabtalk daemon via TCP, reading the port from the port file.
 async fn connect_tcp() -> Result<Runner> {
     let port_str = std::fs::read_to_string(&*TCP_PORT_FILE).with_context(|| {
         format!(
-            "failed to read TCP port file at {}. Is walrusd running?",
+            "failed to read TCP port file at {}. Is crabtalk daemon running?",
             TCP_PORT_FILE.display()
         )
     })?;
@@ -121,15 +121,15 @@ async fn connect_tcp() -> Result<Runner> {
         .parse()
         .with_context(|| format!("invalid port in {}", TCP_PORT_FILE.display()))?;
     Runner::connect_tcp(port).await.with_context(|| {
-        format!("failed to connect to walrusd via TCP on port {port}. Is walrusd running?")
+        format!("failed to connect to crabtalk daemon via TCP on port {port}. Is crabtalk daemon running?")
     })
 }
 
-/// Connect to walrusd via Unix domain socket.
+/// Connect to crabtalk daemon via Unix domain socket.
 async fn connect_uds(socket_path: &std::path::Path) -> Result<Runner> {
     Runner::connect(socket_path).await.with_context(|| {
         format!(
-            "failed to connect to walrusd at {}. Is walrusd running?",
+            "failed to connect to crabtalk daemon at {}. Is crabtalk daemon running?",
             socket_path.display()
         )
     })

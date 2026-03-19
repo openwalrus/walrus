@@ -1,4 +1,4 @@
-//! Walrus agent library.
+//! Crabtalk agent library.
 //!
 //! - [`Agent`]: Immutable agent definition with step/run/run_stream.
 //! - [`AgentBuilder`]: Fluent construction with a model provider.

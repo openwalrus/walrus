@@ -1,10 +1,10 @@
-//! walrus hub manifest
+//! crabtalk hub manifest
 
 use crate::{hook::mcp::McpServerConfig, service::ServiceConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Walrus resource manifest
+/// Crabtalk resource manifest
 #[derive(Serialize, Deserialize)]
 pub struct Manifest {
     /// the package manifest

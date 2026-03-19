@@ -1,4 +1,4 @@
-//! Unix domain socket client for connecting to a walrus daemon.
+//! Unix domain socket client for connecting to a crabtalk daemon.
 
 use anyhow::Result;
 use futures_core::Stream;
@@ -10,22 +10,22 @@ use wcore::protocol::{
     message::{ClientMessage, ErrorMsg, ServerMessage, server_message},
 };
 
-/// Client configuration for connecting to a walrus daemon.
+/// Client configuration for connecting to a crabtalk daemon.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     /// Daemon Unix domain socket path.
     pub socket_path: PathBuf,
 }
 
-/// Unix domain socket client for the walrus daemon.
+/// Unix domain socket client for the crabtalk daemon.
 ///
-/// Holds configuration. Call [`WalrusClient::connect`] to establish a
+/// Holds configuration. Call [`CrabtalkClient::connect`] to establish a
 /// connection.
-pub struct WalrusClient {
+pub struct CrabtalkClient {
     config: ClientConfig,
 }
 
-impl WalrusClient {
+impl CrabtalkClient {
     /// Create a new client with the given configuration.
     pub fn new(config: ClientConfig) -> Self {
         Self { config }
@@ -48,9 +48,9 @@ impl WalrusClient {
     }
 }
 
-/// An established Unix domain socket connection to a walrus daemon.
+/// An established Unix domain socket connection to a crabtalk daemon.
 ///
-/// Not Clone — one connection per session. Use [`WalrusClient::connect`]
+/// Not Clone — one connection per session. Use [`CrabtalkClient::connect`]
 /// to create a connection.
 pub struct Connection {
     reader: OwnedReadHalf,

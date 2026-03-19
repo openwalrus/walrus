@@ -88,7 +88,7 @@ impl ChatRepl {
         let config_json = self.runner.get_config().await.ok()?;
         let val: serde_json::Value = serde_json::from_str(&config_json).ok()?;
         val.get("system")?
-            .get("walrus")?
+            .get("crab")?
             .get("model")?
             .as_str()
             .map(|s| s.to_string())
@@ -105,7 +105,7 @@ impl ChatRepl {
     }
 }
 
-/// Resolve the history file path at `~/.openwalrus/history`.
+/// Resolve the history file path at `~/.crabtalk/history`.
 fn history_file_path() -> Option<PathBuf> {
     Some(wcore::paths::CONFIG_DIR.join("history"))
 }

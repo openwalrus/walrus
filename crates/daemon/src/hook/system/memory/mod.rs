@@ -23,7 +23,7 @@ use storage::Storage;
 
 const MEMORY_PROMPT: &str = include_str!("../../../../prompts/memory.md");
 
-const DEFAULT_SOUL: &str = include_str!("../../../../prompts/walrus.md");
+const DEFAULT_SOUL: &str = include_str!("../../../../prompts/crab.md");
 
 pub struct Memory {
     storage: Box<dyn Storage>,
@@ -40,22 +40,22 @@ pub struct Memory {
 impl Memory {
     /// Open (or create) memory storage at the given directory.
     ///
-    /// `config_dir` is the parent config directory where `Walrus.md` lives.
+    /// `config_dir` is the parent config directory where `Crab.md` lives.
     /// `dir` is the memory-specific subdirectory (`{config_dir}/memory/`).
     pub fn open(dir: PathBuf, config: MemoryConfig, storage: Box<dyn Storage>) -> Self {
         let entries_dir = dir.join("entries");
         let sessions_dir = dir.join("sessions");
         let index_path = dir.join("MEMORY.md");
-        // Walrus.md lives in the parent config dir, not inside memory/
+        // Crab.md lives in the parent config dir, not inside memory/
         let soul_path = dir
             .parent()
-            .map(|p| p.join("Walrus.md"))
-            .unwrap_or_else(|| dir.join("Walrus.md"));
+            .map(|p| p.join("Crab.md"))
+            .unwrap_or_else(|| dir.join("Crab.md"));
 
         storage.create_dir_all(&entries_dir).ok();
         storage.create_dir_all(&sessions_dir).ok();
 
-        // Seed Walrus.md if it doesn't exist
+        // Seed Crab.md if it doesn't exist
         if !storage.exists(&soul_path) {
             storage.write(&soul_path, DEFAULT_SOUL).ok();
         }
@@ -181,16 +181,16 @@ impl Memory {
         "MEMORY.md updated".to_owned()
     }
 
-    /// Overwrite Walrus.md (the soul/identity file). Gated by `soul_editable`.
+    /// Overwrite Crab.md (the soul/identity file). Gated by `soul_editable`.
     pub fn write_soul(&self, content: &str) -> String {
         if !self.config.soul_editable {
             return "soul editing is disabled in config".to_owned();
         }
         if let Err(e) = self.storage.write(&self.soul_path, content) {
-            return format!("failed to write Walrus.md: {e}");
+            return format!("failed to write Crab.md: {e}");
         }
         *self.soul.write().unwrap() = content.to_owned();
-        "Walrus.md updated".to_owned()
+        "Crab.md updated".to_owned()
     }
 
     /// Return the soul content for system prompt injection.

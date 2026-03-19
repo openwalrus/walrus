@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>xyz.openwalrus.walrus</string>
+    <string>ai.crabtalk.crabtalk</string>
     <key>ProgramArguments</key>
     <array>
         <string>{binary}</string>

@@ -1,4 +1,4 @@
-//! Walrus skill handler — initial load from disk.
+//! Crabtalk skill handler — initial load from disk.
 
 use crate::hook::skill::{SkillRegistry, loader};
 use anyhow::Result;

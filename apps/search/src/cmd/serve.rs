@@ -1,4 +1,4 @@
-//! Extension serve command — run walrus-search as an extension service over UDS.
+//! Extension serve command — run crabtalk-search as an extension service over UDS.
 
 use crate::{
     aggregator::Aggregator,

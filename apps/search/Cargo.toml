@@ -1,5 +1,5 @@
 [package]
-name = "walrus-search"
+name = "crabtalk-search"
 description = "Meta search engine CLI with aggregated results from multiple backends"
 keywords = ["search", "meta-search", "cli", "web-scraping"]
 categories = ["command-line-utilities", "web-programming"]
@@ -11,7 +11,7 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "walrus-search"
+name = "crabtalk-search"
 path = "src/bin/main.rs"
 required-features = ["cli"]
 

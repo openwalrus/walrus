@@ -1,4 +1,4 @@
-# walrus-core
+# crabtalk-core
 
 Stateful agent execution library.
 

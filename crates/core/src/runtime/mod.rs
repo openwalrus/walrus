@@ -30,7 +30,7 @@ pub mod session;
 
 pub use session::Session;
 
-/// The walrus runtime — agent registry, session store, and hook orchestration.
+/// The crabtalk runtime — agent registry, session store, and hook orchestration.
 ///
 /// Agents are stored as plain immutable values. Sessions own conversation
 /// history behind per-session `Arc<Mutex<Session>>`. The sessions map uses

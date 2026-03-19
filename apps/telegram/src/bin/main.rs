@@ -1,7 +1,7 @@
-//! Walrus Telegram gateway entry point.
+//! Crabtalk Telegram gateway entry point.
 
 use clap::Parser;
-use walrus_telegram::cmd::{App, Command};
+use crabtalk_telegram::cmd::{App, Command};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let app = App::parse();
     match app.command {
         Command::Serve { daemon, config } => {
-            walrus_telegram::cmd::serve::run(&daemon, &config).await
+            crabtalk_telegram::cmd::serve::run(&daemon, &config).await
         }
     }
 }

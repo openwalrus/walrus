@@ -1,4 +1,4 @@
-//! Walrus MCP handler — initial load and read access.
+//! Crabtalk MCP handler — initial load and read access.
 
 use crate::hook::mcp::{McpBridge, config::McpServerConfig};
 use std::sync::{Arc, RwLock as StdRwLock};

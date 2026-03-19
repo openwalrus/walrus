@@ -1,4 +1,4 @@
-//! `walrus daemon install/uninstall` — system service management.
+//! `crabtalk daemon install/uninstall` — system service management.
 
 use anyhow::Result;
 use std::path::Path;
@@ -32,14 +32,14 @@ fn launchctl_domain() -> String {
 
 #[cfg(target_os = "macos")]
 fn launchctl_service_target() -> String {
-    format!("{}/xyz.openwalrus.walrus", launchctl_domain())
+    format!("{}/ai.crabtalk.crabtalk", launchctl_domain())
 }
 
 #[cfg(target_os = "macos")]
 fn plist_path() -> Result<std::path::PathBuf> {
     Ok(dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join("Library/LaunchAgents/xyz.openwalrus.walrus.plist"))
+        .join("Library/LaunchAgents/ai.crabtalk.crabtalk.plist"))
 }
 
 #[cfg(target_os = "macos")]
@@ -83,7 +83,7 @@ pub fn restart() -> Result<()> {
 
     if !plist_path.exists() {
         anyhow::bail!(
-            "service not installed — run `walrus daemon install` first, \
+            "service not installed — run `crabtalk daemon install` first, \
              or stop and start the daemon manually"
         );
     }
@@ -132,12 +132,12 @@ pub fn install() -> Result<()> {
     std::fs::create_dir_all(&*LOGS_DIR)?;
     std::fs::create_dir_all(&*HOME_DIR)?;
 
-    let unit_path = unit_dir.join("walrus-daemon.service");
+    let unit_path = unit_dir.join("crabtalk-daemon.service");
     std::fs::write(&unit_path, unit)?;
     println!("wrote {}", unit_path.display());
 
     let status = std::process::Command::new("systemctl")
-        .args(["--user", "enable", "--now", "walrus-daemon.service"])
+        .args(["--user", "enable", "--now", "crabtalk-daemon.service"])
         .status()?;
     if status.success() {
         println!("service enabled and started");
@@ -151,17 +151,17 @@ pub fn install() -> Result<()> {
 pub fn restart() -> Result<()> {
     let unit_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(".config/systemd/user/walrus-daemon.service");
+        .join(".config/systemd/user/crabtalk-daemon.service");
 
     if !unit_path.exists() {
         anyhow::bail!(
-            "service not installed — run `walrus daemon install` first, \
+            "service not installed — run `crabtalk daemon install` first, \
              or stop and start the daemon manually"
         );
     }
 
     let status = std::process::Command::new("systemctl")
-        .args(["--user", "restart", "walrus-daemon.service"])
+        .args(["--user", "restart", "crabtalk-daemon.service"])
         .status()?;
     if status.success() {
         println!("daemon restarted");
@@ -175,14 +175,14 @@ pub fn restart() -> Result<()> {
 pub fn uninstall() -> Result<()> {
     let unit_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(".config/systemd/user/walrus-daemon.service");
+        .join(".config/systemd/user/crabtalk-daemon.service");
 
     if !unit_path.exists() {
         anyhow::bail!("service not installed ({})", unit_path.display());
     }
 
     let status = std::process::Command::new("systemctl")
-        .args(["--user", "disable", "--now", "walrus-daemon.service"])
+        .args(["--user", "disable", "--now", "crabtalk-daemon.service"])
         .status()?;
     if !status.success() {
         eprintln!("warning: systemctl disable exited with {}", status);

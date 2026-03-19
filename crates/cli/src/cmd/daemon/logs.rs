@@ -1,4 +1,4 @@
-//! `walrus daemon logs` — view daemon or service logs.
+//! `crabtalk daemon logs` — view daemon or service logs.
 //!
 //! Thin wrapper around `tail` — all extra flags are passed through.
 

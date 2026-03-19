@@ -1,3 +1,3 @@
-//! walrus daemon extensions.
+//! crabtalk daemon extensions.
 
 pub mod hub;

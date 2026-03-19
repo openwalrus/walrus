@@ -1,4 +1,4 @@
-//! Walrus skill registry — tag-indexed skill matching and prompt enrichment.
+//! Crabtalk skill registry — tag-indexed skill matching and prompt enrichment.
 //!
 //! Skills are named units of agent behavior loaded from Markdown files with
 //! YAML frontmatter (agentskills.io format). The [`SkillRegistry`] indexes

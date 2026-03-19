@@ -1,8 +1,8 @@
-//! Walrus CLI binary entry point.
+//! Crabtalk CLI binary entry point.
 
 use anyhow::Result;
 use clap::Parser;
-use openwalrus::Cli;
+use crabtalk::Cli;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     cli.run().await
 }
 
-/// Extract the most specific level from a filter string like "walrus=debug".
+/// Extract the most specific level from a filter string like "crabtalk=debug".
 fn parse_level(s: &str) -> tracing::Level {
     let level_str = s.rsplit('=').next().unwrap_or(s);
     match level_str.to_lowercase().as_str() {

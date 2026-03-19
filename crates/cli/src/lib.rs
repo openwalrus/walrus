@@ -1,4 +1,4 @@
-//! Walrus CLI — thin client for walrusd. Connects via Unix domain socket.
+//! Crabtalk CLI — thin client for the crabtalk daemon. Connects via Unix domain socket.
 
 pub use cmd::{Cli, Command};
 

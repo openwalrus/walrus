@@ -122,14 +122,14 @@ impl Hub {
         };
 
         if completed && action == HubAction::Install {
-            let config_path = CONFIG_DIR.join("walrus.toml");
+            let config_path = CONFIG_DIR.join("crab.toml");
             if config_path.exists() {
                 let changed = prompt_empty_env_vars(&config_path)?;
                 if changed {
                     let _ = runner.reload().await;
                     println!("Daemon reloaded.");
                 }
-                println!("\nRun `walrus auth` to reconfigure these values later.");
+                println!("\nRun `crabtalk auth` to reconfigure these values later.");
             }
         }
 
@@ -147,7 +147,7 @@ fn test_manifest(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Scan `[mcps.*]` and `[services.*]` in walrus.toml for empty env values,
+/// Scan `[mcps.*]` and `[services.*]` in crab.toml for empty env values,
 /// prompt the user for each one, and write non-empty responses back.
 /// Returns `true` if any values were filled.
 fn prompt_empty_env_vars(config_path: &Path) -> Result<bool> {

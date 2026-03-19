@@ -1,18 +1,18 @@
 #!/bin/sh
-# Install script for walrus — https://github.com/openwalrus/walrus
+# Install script for crabtalk — https://github.com/crabtalk/crabtalk
 #
 # Usage:
-#   curl -fsSL openwalrus.xyz/install | sh
-#   curl -fsSL openwalrus.xyz/install | sh -s -- --yes   # non-interactive
+#   curl -fsSL crabtalk.ai/install | sh
+#   curl -fsSL crabtalk.ai/install | sh -s -- --yes   # non-interactive
 #
 # Environment variables:
-#   WALRUS_INSTALL_DIR  Override binary installation directory
+#   CRABTALK_INSTALL_DIR  Override binary installation directory
 
 set -eu
 
-REPO="openwalrus/walrus"
-BINARY_NAME="walrus"
-CARGO_CRATE="openwalrus"
+REPO="crabtalk/crabtalk"
+BINARY_NAME="crabtalk"
+CARGO_CRATE="crabtalk"
 AUTO_YES=0
 TMPDIR_PATH=""
 
@@ -80,7 +80,7 @@ parse_args() {
                 ;;
             --help | -h)
                 cat <<'EOF'
-Install walrus — composable primitives for agentic workflows in Rust.
+Install crabtalk — composable primitives for agentic workflows in Rust.
 
 Usage:
   install.sh [OPTIONS]
@@ -90,7 +90,7 @@ Options:
   -h, --help             Show this help message
 
 Environment variables:
-  WALRUS_INSTALL_DIR   Override binary installation directory
+  CRABTALK_INSTALL_DIR   Override binary installation directory
 EOF
                 exit 0
                 ;;
@@ -151,8 +151,8 @@ get_latest_version() {
 }
 
 determine_install_dir() {
-    if [ -n "${WALRUS_INSTALL_DIR:-}" ]; then
-        INSTALL_DIR="$WALRUS_INSTALL_DIR"
+    if [ -n "${CRABTALK_INSTALL_DIR:-}" ]; then
+        INSTALL_DIR="$CRABTALK_INSTALL_DIR"
         return
     fi
     INSTALL_DIR="/usr/local/bin"

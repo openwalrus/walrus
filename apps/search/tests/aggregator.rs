@@ -1,6 +1,6 @@
-use walrus_search::aggregator::{merge_and_rank, normalize_url};
-use walrus_search::engine::EngineId;
-use walrus_search::result::SearchResult;
+use crabtalk_search::aggregator::{merge_and_rank, normalize_url};
+use crabtalk_search::engine::EngineId;
+use crabtalk_search::result::SearchResult;
 
 #[test]
 fn normalize_strips_tracking_params() {

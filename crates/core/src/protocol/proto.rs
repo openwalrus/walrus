@@ -4,9 +4,9 @@
 //! live in the [`ext_proto`] submodule. Domain re-exports in
 //! [`super::message`] and [`super::ext`] provide stable import paths.
 
-include!(concat!(env!("OUT_DIR"), "/walrus.protocol.rs"));
+include!(concat!(env!("OUT_DIR"), "/crabtalk.protocol.rs"));
 
-/// Walrus Extension protocol types — generated from `ext.proto`.
+/// Crabtalk Extension protocol types — generated from `ext.proto`.
 pub mod ext_proto {
-    include!(concat!(env!("OUT_DIR"), "/walrus.ext.rs"));
+    include!(concat!(env!("OUT_DIR"), "/crabtalk.ext.rs"));
 }

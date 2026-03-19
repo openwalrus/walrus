@@ -1,4 +1,4 @@
-//! Gateway runner — connects to walrusd via Unix domain socket or TCP.
+//! Gateway runner — connects to crabtalk daemon via Unix domain socket or TCP.
 
 use anyhow::Result;
 use futures_core::Stream;
@@ -6,7 +6,7 @@ use futures_util::StreamExt;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use transport::tcp::TcpConnection;
-use transport::uds::{ClientConfig, Connection, WalrusClient};
+use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
@@ -28,7 +28,7 @@ pub enum OutputChunk {
     ToolDone(bool),
 }
 
-/// Transport-agnostic connection to walrusd.
+/// Transport-agnostic connection to the crabtalk daemon.
 enum Transport {
     Uds(Connection),
     Tcp(TcpConnection),
@@ -65,25 +65,25 @@ impl Transport {
     }
 }
 
-/// Runs agents via a walrusd connection (UDS or TCP).
+/// Runs agents via a crabtalk daemon connection (UDS or TCP).
 pub struct Runner {
     transport: Transport,
 }
 
 impl Runner {
-    /// Connect to walrusd via Unix domain socket.
+    /// Connect to crabtalk daemon via Unix domain socket.
     pub async fn connect(socket_path: &Path) -> Result<Self> {
         let config = ClientConfig {
             socket_path: socket_path.to_path_buf(),
         };
-        let client = WalrusClient::new(config);
+        let client = CrabtalkClient::new(config);
         let connection = client.connect().await?;
         Ok(Self {
             transport: Transport::Uds(connection),
         })
     }
 
-    /// Connect to walrusd via TCP.
+    /// Connect to crabtalk daemon via TCP.
     pub async fn connect_tcp(port: u16) -> Result<Self> {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
         let connection = TcpConnection::connect(addr).await?;

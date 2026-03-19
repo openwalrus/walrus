@@ -1,12 +1,12 @@
-//! Provider implementation backed by crabtalk-provider.
+//! Provider implementation backed by crabllm-provider.
 //!
-//! Wraps `crabtalk_provider::Provider` behind wcore's `Model` trait with
+//! Wraps `crabllm_provider::Provider` behind wcore's `Model` trait with
 //! type conversion and retry logic.
 
 use crate::{config::ProviderDef, convert};
 use anyhow::Result;
 use async_stream::try_stream;
-use crabtalk_provider::Provider as CtProvider;
+use crabllm_provider::Provider as CtProvider;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
@@ -47,7 +47,7 @@ pub fn build_provider(def: &ProviderDef, model: &str, client: reqwest::Client) -
     config.kind = config.effective_kind();
     let mut inner = CtProvider::from(&config);
 
-    // Apply walrus-specific base_url normalization (strip endpoint suffixes).
+    // Apply crabtalk-specific base_url normalization (strip endpoint suffixes).
     if let CtProvider::OpenAiCompat {
         ref mut base_url, ..
     } = inner
@@ -115,7 +115,7 @@ impl Model for Provider {
 async fn send_with_retry(
     provider: &CtProvider,
     client: &reqwest::Client,
-    request: &crabtalk_core::ChatCompletionRequest,
+    request: &crabllm_core::ChatCompletionRequest,
     max_retries: u32,
     timeout: Duration,
 ) -> Result<Response> {
@@ -128,7 +128,7 @@ async fn send_with_retry(
         } else {
             tokio::time::timeout(timeout, provider.chat_completion(client, request))
                 .await
-                .map_err(|_| crabtalk_core::Error::Timeout)?
+                .map_err(|_| crabllm_core::Error::Timeout)?
         };
 
         match result {

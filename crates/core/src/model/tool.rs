@@ -66,4 +66,4 @@ pub struct FunctionCall {
     pub arguments: String,
 }
 
-pub use crabtalk_core::ToolChoice;
+pub use crabllm_core::ToolChoice;

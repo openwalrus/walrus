@@ -1,21 +1,21 @@
-# Walrus Makefile
+# Crabtalk Makefile
 #
-# Cross-platform builds for walrus CLI and extension services.
+# Cross-platform builds for crabtalk CLI and extension services.
 #
 # - macOS Apple Silicon: Metal acceleration
 # - linux x86_64: CUDA acceleration
 #
 # Usage:
-# make walrus   (CLI only, all platforms)
-# make bundle   (CLI + services, all platforms)
+# make crabtalk   (CLI only, all platforms)
+# make bundle     (CLI + services, all platforms)
 # make macos-arm64
 # make macos-amd64
 # make linux-arm64
 # make linux-amd64
 VERSION = v$(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
 CARGO = cargo b --profile prod
-PACKAGES = -p openwalrus -p walrus-search -p walrus-telegram
-BINS = walrus walrus-search walrus-telegram
+PACKAGES = -p crabtalk -p crabtalk-search -p crabtalk-telegram
+BINS = crabtalk crabtalk-search crabtalk-telegram
 
 # Cross-compilation: set CC/AR so aws-lc-sys cmake uses the right
 # assembler (macOS as doesn't understand armv8.4-a+sha3 etc).
@@ -35,14 +35,14 @@ triple-linux-amd64 = x86_64-unknown-linux-gnu
 
 PLATFORMS = macos-arm64 macos-amd64 linux-amd64 linux-arm64
 
-# build only the walrus CLI for all platforms
-walrus: $(addprefix walrus-,$(PLATFORMS))
+# build only the crabtalk CLI for all platforms
+crabtalk: $(addprefix crabtalk-,$(PLATFORMS))
 	mkdir -p target/bundle
 	$(foreach p,$(PLATFORMS),\
-		tar -czf target/bundle/walrus-$(VERSION)-$(p).tar.gz -C target/$(triple-$(p))/prod walrus;)
+		tar -czf target/bundle/crabtalk-$(VERSION)-$(p).tar.gz -C target/$(triple-$(p))/prod crabtalk;)
 
-walrus-%:
-	$(build-$*) -p openwalrus
+crabtalk-%:
+	$(build-$*) -p crabtalk
 
 # build all packages for all platforms
 bundle: $(PLATFORMS) tar-all

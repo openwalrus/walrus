@@ -1,6 +1,6 @@
 [package]
-name = "walrus-transport"
-description = "UDS and TCP transport for Walrus daemon communication"
+name = "crabtalk-transport"
+description = "UDS and TCP transport for Crabtalk daemon communication"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

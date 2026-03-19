@@ -1,7 +1,7 @@
 //! Turbofish LLM message
 
 use crate::model::{StreamChunk, ToolCall};
-pub use crabtalk_core::Role;
+pub use crabllm_core::Role;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

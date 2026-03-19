@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package walrus.protocol;
+package crabtalk.protocol;
 
-option swift_prefix = "WalrusProto_";
+option swift_prefix = "CrabtalkProto_";
 
 // ── Client Messages ──────────────────────────────────────────────
 

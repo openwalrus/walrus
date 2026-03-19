@@ -1,4 +1,4 @@
-//! Walrus Extension protocol types.
+//! Crabtalk Extension protocol types.
 //!
 //! Generated from `proto/ext.proto`. Re-exported here for stable
 //! `wcore::protocol::ext::*` import paths.

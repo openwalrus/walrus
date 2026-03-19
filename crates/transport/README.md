@@ -1,6 +1,6 @@
-# walrus-transport
+# crabtalk-transport
 
-UDS and TCP transport for Walrus daemon communication.
+UDS and TCP transport for Crabtalk daemon communication.
 
 Provides length-prefixed protobuf messaging over Unix domain sockets (`uds`
 module) and TCP (`tcp` module). Used by the daemon for local IPC and remote

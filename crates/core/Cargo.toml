@@ -1,7 +1,7 @@
 [package]
-name = "walrus-core"
-description = "Core types and traits for the Walrus agent runtime"
-documentation = "https://docs.rs/walrus-core"
+name = "crabtalk-core"
+description = "Core types and traits for the Crabtalk agent runtime"
+documentation = "https://docs.rs/crabtalk-core"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -11,8 +11,8 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
-# crabtalk
-crabtalk-core.workspace = true
+# crabllm
+crabllm-core.workspace = true
 # crates.io
 anyhow.workspace = true
 dirs.workspace = true

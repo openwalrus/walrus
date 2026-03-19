@@ -1,4 +1,4 @@
-//! Walrus skill registry — skill storage and lookup.
+//! Crabtalk skill registry — skill storage and lookup.
 
 use std::collections::BTreeMap;
 

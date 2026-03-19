@@ -1,4 +1,4 @@
-//! Length-prefixed framing codec for walrus wire protocol.
+//! Length-prefixed framing codec for crabtalk wire protocol.
 //!
 //! Wire format: `[u32 BE length][protobuf payload]`. The length is the byte
 //! count of the payload only (not including the 4-byte header). Generic over

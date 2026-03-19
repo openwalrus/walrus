@@ -1,4 +1,4 @@
-//! Reusable TUI components for walrus CLI screens.
+//! Reusable TUI components for crabtalk CLI screens.
 
 use anyhow::Result;
 use crossterm::{

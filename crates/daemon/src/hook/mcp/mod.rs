@@ -1,7 +1,7 @@
-//! Walrus MCP bridge — connects to MCP servers and dispatches tool calls.
+//! Crabtalk MCP bridge — connects to MCP servers and dispatches tool calls.
 //!
 //! The [`McpBridge`] manages connections to MCP servers via the rmcp SDK,
-//! converts tool definitions to walrus-core format, and routes tool calls.
+//! converts tool definitions to crabtalk-core format, and routes tool calls.
 //! [`McpHandler`] wraps the bridge with hot-reload and config persistence.
 //! `register_tools` registers only tool schemas — dispatch is handled
 //! statically by the daemon event loop via [`McpBridge::call`].

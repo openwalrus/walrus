@@ -1,10 +1,10 @@
 //! Integration tests for the memory system using MemStorage (no disk I/O).
 
-use std::path::PathBuf;
-use walrus_daemon::hook::system::{
+use crabtalk_daemon::hook::system::{
     MemoryConfig,
     memory::{Memory, storage::MemStorage},
 };
+use std::path::PathBuf;
 
 fn test_memory() -> Memory {
     Memory::open(
@@ -40,8 +40,8 @@ fn recall_ranks_by_relevance() {
     );
     mem.remember(
         "rust-project".to_owned(),
-        "User works on a Rust project called Walrus".to_owned(),
-        "Walrus is an AI companion daemon written in Rust.".to_owned(),
+        "User works on a Rust project called Crabtalk".to_owned(),
+        "Crabtalk is an AI companion daemon written in Rust.".to_owned(),
     );
     mem.remember(
         "cooking".to_owned(),
@@ -49,8 +49,8 @@ fn recall_ranks_by_relevance() {
         "Favorite dish is carbonara.".to_owned(),
     );
 
-    let result = mem.recall("rust walrus", 5);
-    // rust-project should appear first since it matches "rust" and "walrus"
+    let result = mem.recall("rust crabtalk", 5);
+    // rust-project should appear first since it matches "rust" and "crabtalk"
     assert!(
         result.starts_with("## rust-project"),
         "rust-project should rank first, got: {result}"
@@ -161,7 +161,7 @@ fn migration_converts_legacy_files() {
     storage
         .write(
             &dir.join("memory.md"),
-            "Luna is a golden retriever\n\nUser works on Walrus",
+            "Luna is a golden retriever\n\nUser works on Crabtalk",
         )
         .unwrap();
     storage
@@ -194,7 +194,7 @@ fn after_compact_saves_session() {
 
     let mem = Memory::open(dir.clone(), MemoryConfig::default(), Box::new(storage));
 
-    mem.after_compact("walrus", "Session summary: discussed Rust patterns");
+    mem.after_compact("crab", "Session summary: discussed Rust patterns");
 
     // Session file should exist in sessions/
     // (We can't easily check MemStorage contents without exposing it,
@@ -203,7 +203,7 @@ fn after_compact_saves_session() {
 
 #[test]
 fn slugify_examples() {
-    use walrus_daemon::hook::system::memory::entry::slugify;
+    use crabtalk_daemon::hook::system::memory::entry::slugify;
 
     assert_eq!(slugify("Luna's Vet Appointment!"), "luna-s-vet-appointment");
     assert_eq!(slugify("hello world"), "hello-world");
@@ -215,7 +215,7 @@ fn slugify_examples() {
 
 #[test]
 fn entry_parse_roundtrip() {
-    use walrus_daemon::hook::system::memory::entry::MemoryEntry;
+    use crabtalk_daemon::hook::system::memory::entry::MemoryEntry;
 
     let entry = MemoryEntry::new(
         "test-entry".to_owned(),
@@ -234,7 +234,7 @@ fn entry_parse_roundtrip() {
 
 #[test]
 fn bm25_tokenize() {
-    use walrus_daemon::hook::system::memory::bm25::tokenize;
+    use crabtalk_daemon::hook::system::memory::bm25::tokenize;
 
     let tokens = tokenize("Hello, World! This is a test.");
     assert!(tokens.contains(&"hello".to_owned()));
@@ -248,7 +248,7 @@ fn bm25_tokenize() {
 
 #[test]
 fn bm25_score_ranks() {
-    use walrus_daemon::hook::system::memory::bm25::score;
+    use crabtalk_daemon::hook::system::memory::bm25::score;
 
     let docs = vec![
         (0, "the weather is sunny today"),
@@ -262,13 +262,13 @@ fn bm25_score_ranks() {
     assert_eq!(results[0].0, 1);
 }
 
-use walrus_daemon::hook::system::memory::storage::Storage;
+use crabtalk_daemon::hook::system::memory::storage::Storage;
 
 #[test]
 fn soul_defaults_to_compiled_in() {
     let mem = test_memory();
     let soul = mem.build_soul();
-    assert!(soul.contains("You are Walrus"));
+    assert!(soul.contains("You are Crab"));
 }
 
 #[test]
@@ -292,5 +292,5 @@ fn write_soul_denied_when_disabled() {
     let result = mem.write_soul("hacked identity");
     assert!(result.contains("disabled"));
     // Soul should still be the default
-    assert!(mem.build_soul().contains("You are Walrus"));
+    assert!(mem.build_soul().contains("You are Crab"));
 }

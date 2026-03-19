@@ -1,6 +1,6 @@
 [package]
-name = "walrus-gateway"
-description = "Shared gateway types for OpenWalrus platform adapters"
+name = "crabtalk-gateway"
+description = "Shared gateway types for Crabtalk platform adapters"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true

@@ -155,7 +155,7 @@ pub(crate) struct AuthState {
 
 impl AuthState {
     fn load() -> Result<Self> {
-        let config_path = wcore::paths::CONFIG_DIR.join("walrus.toml");
+        let config_path = wcore::paths::CONFIG_DIR.join("crab.toml");
         let mut providers = Vec::new();
         let mut active_model = String::new();
         let mut gateways = Vec::new();
@@ -168,8 +168,8 @@ impl AuthState {
                 .parse()
                 .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
-            if let Some(walrus) = doc.get("walrus").and_then(|w| w.as_table())
-                && let Some(m) = walrus.get("model").and_then(|v| v.as_str())
+            if let Some(crab) = doc.get("crab").and_then(|w| w.as_table())
+                && let Some(m) = crab.get("model").and_then(|v| v.as_str())
             {
                 active_model = m.to_string();
             }
@@ -283,7 +283,7 @@ impl AuthState {
     }
 
     fn save(&mut self) -> Result<()> {
-        let config_path = wcore::paths::CONFIG_DIR.join("walrus.toml");
+        let config_path = wcore::paths::CONFIG_DIR.join("crab.toml");
         std::fs::create_dir_all(&*wcore::paths::CONFIG_DIR)
             .with_context(|| format!("cannot create {}", wcore::paths::CONFIG_DIR.display()))?;
 
@@ -298,17 +298,17 @@ impl AuthState {
             .parse()
             .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
-        // [system.walrus].model
+        // [system.crab].model
         if !self.active_model.is_empty() {
             if doc.get("system").is_none() {
                 doc.insert("system", Item::Table(Table::new()));
             }
             if let Some(system) = doc.get_mut("system").and_then(|s| s.as_table_mut()) {
-                if system.get("walrus").is_none() {
-                    system.insert("walrus", Item::Table(Table::new()));
+                if system.get("crab").is_none() {
+                    system.insert("crab", Item::Table(Table::new()));
                 }
-                if let Some(walrus) = system.get_mut("walrus").and_then(|w| w.as_table_mut()) {
-                    walrus.insert("model", value(&self.active_model));
+                if let Some(crab) = system.get_mut("crab").and_then(|w| w.as_table_mut()) {
+                    crab.insert("model", value(&self.active_model));
                 }
             }
         }
@@ -502,7 +502,7 @@ fn render(frame: &mut Frame, state: &AuthState) {
     let area = frame.area();
 
     let outer = Block::default()
-        .title(" Walrus Auth ")
+        .title(" Crabtalk Auth ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     let inner = outer.inner(area);

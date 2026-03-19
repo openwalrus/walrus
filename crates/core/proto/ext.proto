@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package walrus.ext;
+package crabtalk.ext;
 
-// ── Walrus Extension Protocol ───────────────────────────────────
+// ── Crabtalk Extension Protocol ─────────────────────────────────
 
 message ExtRequest {
   oneof msg {

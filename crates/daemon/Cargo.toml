@@ -1,7 +1,7 @@
 [package]
-name = "walrus-daemon"
-description = "Walrus agent runtime with memory, tools, and local inference"
-documentation = "https://docs.rs/walrus-daemon"
+name = "crabtalk-daemon"
+description = "Crabtalk agent runtime with memory, tools, and local inference"
+documentation = "https://docs.rs/crabtalk-daemon"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true

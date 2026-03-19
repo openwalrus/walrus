@@ -21,7 +21,7 @@ use std::{path::Path, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 use wcore::{AgentConfig, Runtime, ToolRequest};
 
-const SYSTEM_AGENT: &str = include_str!("../../prompts/walrus.md");
+const SYSTEM_AGENT: &str = include_str!("../../prompts/crab.md");
 const SKILL_MASTER_AGENT: &str = include_str!("../../prompts/skill-master.md");
 
 impl Daemon {
@@ -51,7 +51,7 @@ impl Daemon {
     /// Note: reload does not restart managed services — that requires a
     /// full daemon restart. Services field is cleared to avoid re-spawning.
     pub async fn reload(&self) -> Result<()> {
-        let mut config = DaemonConfig::load(&self.config_dir.join("walrus.toml"))?;
+        let mut config = DaemonConfig::load(&self.config_dir.join("crab.toml"))?;
         config.services.clear();
         let (new_runtime, _) =
             Self::build_runtime(&config, &self.config_dir, &self.event_tx).await?;
@@ -84,10 +84,10 @@ impl Daemon {
     fn build_providers(config: &DaemonConfig) -> Result<ProviderRegistry> {
         let active_model = config
             .system
-            .walrus
+            .crab
             .model
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("system.walrus.model is required in walrus.toml"))?;
+            .ok_or_else(|| anyhow::anyhow!("system.crab.model is required in crab.toml"))?;
         let registry = ProviderRegistry::from_providers(active_model.clone(), &config.provider)?;
 
         tracing::info!(
@@ -175,7 +175,7 @@ impl Daemon {
 
     /// Load agents and add them to the runtime.
     ///
-    /// The built-in walrus agent is always registered first. Sub-agents are
+    /// The built-in crab agent is always registered first. Sub-agents are
     /// loaded by iterating TOML `[agents.*]` entries and matching each to a
     /// `.md` prompt file from the agents directory.
     fn load_agents(
@@ -187,22 +187,22 @@ impl Daemon {
         let prompts = crate::config::load_agents_dir(&config_dir.join(wcore::paths::AGENTS_DIR))?;
         let prompt_map: std::collections::BTreeMap<String, String> = prompts.into_iter().collect();
 
-        // Built-in walrus agent. Read soul from memory (Walrus.md), fall back to compiled-in.
-        let mut walrus_config = config.system.walrus.clone();
-        walrus_config.name = wcore::paths::DEFAULT_AGENT.to_owned();
-        walrus_config.system_prompt = runtime
+        // Built-in crab agent. Read soul from memory (Crab.md), fall back to compiled-in.
+        let mut crab_config = config.system.crab.clone();
+        crab_config.name = wcore::paths::DEFAULT_AGENT.to_owned();
+        crab_config.system_prompt = runtime
             .hook
             .memory
             .as_ref()
             .map(|m| m.build_soul())
             .unwrap_or_else(|| SYSTEM_AGENT.to_owned());
-        runtime.add_agent(walrus_config);
+        runtime.add_agent(crab_config);
 
         // Built-in skill-master agent.
         let mut skill_master = AgentConfig::new("skill-master");
         skill_master.system_prompt = SKILL_MASTER_AGENT.to_owned();
         skill_master.description = "Interactive skill recorder".to_owned();
-        skill_master.thinking = config.system.walrus.thinking;
+        skill_master.thinking = config.system.crab.thinking;
         runtime.add_agent(skill_master);
 
         // Sub-agents from TOML — each must have a matching .md file.
@@ -219,7 +219,7 @@ impl Daemon {
         }
 
         // Also register agents that have .md files but no TOML entry (defaults).
-        let default_think = config.system.walrus.thinking;
+        let default_think = config.system.crab.thinking;
         for (stem, prompt) in &prompt_map {
             if config.agents.contains_key(stem) {
                 continue;
@@ -243,9 +243,9 @@ impl Daemon {
 }
 
 /// Detect sandbox mode by checking if the current process is running as
-/// a user named `walrus`.
+/// a user named `crabtalk`.
 fn detect_sandbox() -> bool {
     std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
-        .is_ok_and(|u| u == "walrus")
+        .is_ok_and(|u| u == "crabtalk")
 }

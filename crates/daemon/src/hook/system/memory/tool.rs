@@ -1,6 +1,6 @@
 //! Tool schemas and dispatch for built-in memory tools.
 //!
-//! Five tools: recall, remember, forget, memory (MEMORY.md), soul (Walrus.md).
+//! Five tools: recall, remember, forget, memory (MEMORY.md), soul (Crab.md).
 
 use crate::hook::DaemonHook;
 use serde::Deserialize;
@@ -58,12 +58,12 @@ impl ToolDescription for MemoryTool {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub(crate) struct Soul {
-    /// The full content to write to Walrus.md — your identity and personality.
+    /// The full content to write to Crab.md — your identity and personality.
     pub content: String,
 }
 
 impl ToolDescription for Soul {
-    const DESCRIPTION: &'static str = "Overwrite Walrus.md — your identity and personality. Only edit when the user explicitly shapes who you are.";
+    const DESCRIPTION: &'static str = "Overwrite Crab.md — your identity and personality. Only edit when the user explicitly shapes who you are.";
 }
 
 pub(crate) fn tools() -> Vec<Tool> {

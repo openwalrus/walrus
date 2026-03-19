@@ -413,7 +413,7 @@ pub fn welcome_banner(model: Option<&str>) -> String {
         Some(m) => format!(" ({m})"),
         None => String::new(),
     };
-    let title = format!("  Walrus{model_part} — Ctrl+D to exit");
+    let title = format!("  Crabtalk{model_part} — Ctrl+D to exit");
     let width = title.len().min(60);
     let rule: String = "─".repeat(width);
     let home = wcore::paths::HOME_DIR.display();

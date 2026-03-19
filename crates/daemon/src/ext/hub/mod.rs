@@ -1,6 +1,6 @@
-//! Walrus hub — unified registry for all download operations.
+//! Crabtalk hub — unified registry for all download operations.
 //!
-//! The "hub" encompasses walrus packages, proxied huggingface models,
+//! The "hub" encompasses crabtalk packages, proxied huggingface models,
 //! and future skill downloads. Each operation gets a unique ID, tracked
 //! status, and broadcasts events to subscribers.
 

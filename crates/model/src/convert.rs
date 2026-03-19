@@ -1,10 +1,10 @@
-//! Type conversion between wcore model types and crabtalk-core wire types.
+//! Type conversion between wcore model types and crabllm-core wire types.
 //!
-//! Role and FinishReason are shared (re-exported from crabtalk-core in wcore).
+//! Role and FinishReason are shared (re-exported from crabllm-core in wcore).
 //! Structural differences remain: String vs Option<Value> content, flat vs
 //! envelope Tool.
 
-use crabtalk_core::{
+use crabllm_core::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
     Delta as CtDelta, FunctionCall as CtFunctionCall, FunctionDef, Message as CtMessage,
     Tool as CtTool, ToolCall as CtToolCall, ToolType,
@@ -47,7 +47,7 @@ fn to_ct_message(msg: &Message) -> CtMessage {
     // every message. Assistant messages accept `null`; all other roles
     // require a string.
     let content = Some(if msg.content.is_empty() {
-        if msg.role == crabtalk_core::Role::Assistant {
+        if msg.role == crabllm_core::Role::Assistant {
             serde_json::Value::Null
         } else {
             serde_json::Value::String(String::new())

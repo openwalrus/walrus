@@ -31,7 +31,7 @@ mod protocol;
 /// already cloned the inner `Arc` complete normally.
 #[derive(Clone)]
 pub struct Daemon {
-    /// The walrus runtime, swappable via [`Daemon::reload`].
+    /// The crabtalk runtime, swappable via [`Daemon::reload`].
     pub runtime: Arc<RwLock<Arc<Runtime<ProviderRegistry, DaemonHook>>>>,
     /// Config directory — stored so [`Daemon::reload`] can re-read config from disk.
     pub(crate) config_dir: PathBuf,
@@ -49,7 +49,7 @@ impl Daemon {
     /// and `shutdown_tx`, then integrates its own channels by cloning
     /// `event_tx` and sending [`DaemonEvent::Message`] variants.
     pub async fn start(config_dir: &Path) -> Result<DaemonHandle> {
-        let config_path = config_dir.join("walrus.toml");
+        let config_path = config_dir.join("crab.toml");
         let config = DaemonConfig::load(&config_path)?;
         tracing::info!("loaded configuration from {}", config_path.display());
 

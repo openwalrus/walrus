@@ -1,5 +1,5 @@
 [Unit]
-Description=Walrus Daemon
+Description=Crabtalk Daemon
 After=network-online.target
 
 [Service]

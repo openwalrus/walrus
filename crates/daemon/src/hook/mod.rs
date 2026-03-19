@@ -41,7 +41,7 @@ pub struct DaemonHook {
     pub tasks: Arc<Mutex<TaskSet>>,
     pub downloads: Arc<Mutex<DownloadRegistry>>,
     pub permissions: PermissionConfig,
-    /// Whether the daemon is running as the `walrus` OS user (sandbox active).
+    /// Whether the daemon is running as the `crabtalk` OS user (sandbox active).
     pub sandboxed: bool,
     /// Built-in memory.
     pub memory: Option<Memory>,
@@ -49,7 +49,7 @@ pub struct DaemonHook {
     pub(crate) event_tx: DaemonEventSender,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<String, AgentScope>,
-    /// Sub-agent descriptions for catalog injection into the walrus agent.
+    /// Sub-agent descriptions for catalog injection into the crab agent.
     pub(crate) agent_descriptions: BTreeMap<String, String>,
     /// External extension service registry (tools + queries).
     pub(crate) registry: Option<Arc<ServiceRegistry>>,
@@ -248,7 +248,7 @@ impl DaemonHook {
     }
 
     /// Apply scoped tool whitelist and scope prompt for sub-agents.
-    /// No-op for the walrus agent (empty scoping = all tools).
+    /// No-op for the crab agent (empty scoping = all tools).
     fn apply_scope(&self, config: &mut AgentConfig) {
         let has_scoping =
             !config.skills.is_empty() || !config.mcps.is_empty() || !config.members.is_empty();

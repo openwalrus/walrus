@@ -42,7 +42,7 @@ pub fn load_agents_dir(path: &Path) -> Result<Vec<(String, String)>> {
 
 /// Scaffold the full config directory structure on first run.
 ///
-/// Creates subdirectories (agents, skills, data) and writes a default walrus.toml.
+/// Creates subdirectories (agents, skills, data) and writes a default crab.toml.
 pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(config_dir.join(AGENTS_DIR))
         .context("failed to create agents directory")?;
@@ -51,7 +51,7 @@ pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(config_dir.join(DATA_DIR))
         .context("failed to create data directory")?;
 
-    let config_toml = config_dir.join("walrus.toml");
+    let config_toml = config_dir.join("crab.toml");
     if !config_toml.exists() {
         let contents = toml::to_string_pretty(&DaemonConfig::default())
             .context("failed to serialize default config")?;

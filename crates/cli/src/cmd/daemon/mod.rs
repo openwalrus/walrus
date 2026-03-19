@@ -1,4 +1,4 @@
-//! `walrus daemon` — daemon lifecycle management.
+//! `crabtalk daemon` — daemon lifecycle management.
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -8,7 +8,7 @@ mod logs;
 mod service;
 mod start;
 
-/// Manage the walrus daemon.
+/// Manage the crabtalk daemon.
 #[derive(Args, Debug)]
 pub struct Daemon {
     #[command(subcommand)]
@@ -39,9 +39,9 @@ pub enum DaemonCommand {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         tail_args: Vec<String>,
     },
-    /// Install walrus as a system service (launchd/systemd).
+    /// Install crabtalk as a system service (launchd/systemd).
     Install,
-    /// Uninstall the walrus system service.
+    /// Uninstall the crabtalk system service.
     Uninstall,
 }
 

@@ -10,7 +10,7 @@ use wcore::protocol::{
     message::{ClientMessage, ServerMessage},
 };
 
-/// Default TCP port for the walrus daemon.
+/// Default TCP port for the crabtalk daemon.
 pub const DEFAULT_PORT: u16 = 6688;
 
 /// Bind a TCP listener, trying the default port first, then picking an

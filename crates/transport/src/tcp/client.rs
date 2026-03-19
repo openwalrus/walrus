@@ -1,4 +1,4 @@
-//! TCP client for connecting to a walrus daemon.
+//! TCP client for connecting to a crabtalk daemon.
 
 use anyhow::Result;
 use futures_core::Stream;
@@ -10,14 +10,14 @@ use wcore::protocol::{
     message::{ClientMessage, ErrorMsg, ServerMessage, server_message},
 };
 
-/// Client configuration for connecting to a walrus daemon over TCP.
+/// Client configuration for connecting to a crabtalk daemon over TCP.
 #[derive(Debug, Clone)]
 pub struct TcpClientConfig {
     /// Daemon TCP address.
     pub addr: SocketAddr,
 }
 
-/// TCP client for the walrus daemon.
+/// TCP client for the crabtalk daemon.
 ///
 /// Holds configuration. Call [`TcpClient::connect`] to establish a connection.
 pub struct TcpClient {
@@ -41,7 +41,7 @@ impl TcpClient {
     }
 }
 
-/// An established TCP connection to a walrus daemon.
+/// An established TCP connection to a crabtalk daemon.
 ///
 /// Not Clone — one connection per session. Use [`TcpClient::connect`]
 /// to create a connection.

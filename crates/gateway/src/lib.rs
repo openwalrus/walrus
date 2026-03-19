@@ -1,4 +1,4 @@
-//! Shared gateway types for OpenWalrus platform adapters.
+//! Shared gateway types for Crabtalk platform adapters.
 //!
 //! Provides configuration, message types, daemon client, stream accumulation,
 //! and bot command parsing used by the Telegram binary.
@@ -18,7 +18,7 @@ pub use config::{GatewayConfig, TelegramConfig};
 pub use message::{Attachment, AttachmentKind, GatewayMessage, attachment_summary};
 pub use stream::StreamAccumulator;
 
-/// Shared set of sender IDs belonging to sibling Walrus bots.
+/// Shared set of sender IDs belonging to sibling Crabtalk bots.
 ///
 /// Built incrementally as each bot connects. Channel loops check this set
 /// before dispatching messages — senders in this set are silently dropped

@@ -217,7 +217,7 @@ pub(crate) fn render_mcps(frame: &mut Frame, state: &AuthState, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             ),
             Line::styled(
-                "https://openwalrus.xyz/hub?type=mcp",
+                "https://crabtalk.ai/hub?type=mcp",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::ITALIC),

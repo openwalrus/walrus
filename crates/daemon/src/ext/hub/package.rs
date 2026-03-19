@@ -1,4 +1,4 @@
-//! Walrus hub package install/uninstall operations.
+//! Crabtalk hub package install/uninstall operations.
 
 use crate::ext::hub::{DownloadRegistry, manifest};
 use anyhow::{Context, Result};
@@ -10,8 +10,8 @@ use wcore::protocol::message::{
     DownloadCompleted, DownloadCreated, DownloadEvent, DownloadKind, DownloadStep, download_event,
 };
 
-/// Remote URL of the walrus hub repository.
-const WALRUS_HUB: &str = "https://github.com/openwalrus/hub";
+/// Remote URL of the crabtalk hub repository.
+const CRABTALK_HUB: &str = "https://github.com/crabtalk/hub";
 
 /// Parsed filters for selective install/uninstall.
 ///
@@ -74,7 +74,7 @@ impl HubFilter {
 /// Install a hub package, streaming unified download events.
 ///
 /// Syncs the hub repo, reads the manifest, merges MCP servers and services
-/// into `walrus.toml`, copies skill directories into `~/.openwalrus/skills/`,
+/// into `crab.toml`, copies skill directories into `~/.crabtalk/skills/`,
 /// and installs agents (prompt files + their declared skills).
 ///
 /// When `filters` is non-empty, only matching components are installed.
@@ -100,7 +100,7 @@ pub fn install(
 
         // Sync hub repo (clone or update).
         let hub_dir = CONFIG_DIR.join("hub");
-        git_sync(WALRUS_HUB, &hub_dir).await.context("failed to sync hub repo")?;
+        git_sync(CRABTALK_HUB, &hub_dir).await.context("failed to sync hub repo")?;
 
         let (scope, name) = parse_package(&package)?;
         let manifest = read_manifest(scope, name)?;
@@ -251,7 +251,7 @@ pub fn install(
 /// Uninstall a hub package, streaming unified download events.
 ///
 /// Reads the manifest from the local hub repo (no network sync), removes MCP
-/// servers and services from `walrus.toml`, deletes skill directories and
+/// servers and services from `crab.toml`, deletes skill directories and
 /// agent prompt files.
 ///
 /// When `filters` is non-empty, only matching components are removed.
@@ -416,13 +416,13 @@ fn read_manifest(scope: &str, name: &str) -> Result<manifest::Manifest> {
     toml::from_str(&content).with_context(|| format!("invalid manifest at {}", path.display()))
 }
 
-/// Merge selected MCP server entries into `walrus.toml`.
+/// Merge selected MCP server entries into `crab.toml`.
 fn merge_mcp_servers_filtered(
     entries: &[(&String, &wcore::config::mcp::McpServerConfig)],
 ) -> Result<()> {
     use toml_edit::DocumentMut;
 
-    let config_path = CONFIG_DIR.join("walrus.toml");
+    let config_path = CONFIG_DIR.join("crab.toml");
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("cannot read {}", config_path.display()))?;
     let mut doc: DocumentMut = content
@@ -447,13 +447,13 @@ fn merge_mcp_servers_filtered(
     Ok(())
 }
 
-/// Merge selected service entries into `walrus.toml`.
+/// Merge selected service entries into `crab.toml`.
 fn merge_services_filtered(
     entries: &[(&String, &crate::service::config::ServiceConfig)],
 ) -> Result<()> {
     use toml_edit::DocumentMut;
 
-    let config_path = CONFIG_DIR.join("walrus.toml");
+    let config_path = CONFIG_DIR.join("crab.toml");
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("cannot read {}", config_path.display()))?;
     let mut doc: DocumentMut = content
@@ -480,11 +480,11 @@ fn merge_services_filtered(
     Ok(())
 }
 
-/// Remove keys from a TOML section in `walrus.toml`.
+/// Remove keys from a TOML section in `crab.toml`.
 fn remove_keys_from_section(section: &str, keys: &[&String]) -> Result<()> {
     use toml_edit::DocumentMut;
 
-    let config_path = CONFIG_DIR.join("walrus.toml");
+    let config_path = CONFIG_DIR.join("crab.toml");
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("cannot read {}", config_path.display()))?;
     let mut doc: DocumentMut = content

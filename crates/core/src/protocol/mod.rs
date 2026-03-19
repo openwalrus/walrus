@@ -1,4 +1,4 @@
-//! Walrus wire protocol — message types, API traits, and wire codec.
+//! Crabtalk wire protocol — message types, API traits, and wire codec.
 
 pub mod api;
 pub mod codec;

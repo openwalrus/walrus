@@ -91,7 +91,7 @@ fn render_placeholder(frame: &mut Frame, area: Rect) {
         ),
         Line::raw(""),
         Line::styled(
-            "Find one at https://openwalrus.xyz/hub?type=gateway",
+            "Find one at https://crabtalk.ai/hub?type=gateway",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::ITALIC),

@@ -1,4 +1,4 @@
-//! UDS client for connecting to the walrus daemon.
+//! UDS client for connecting to the crabtalk daemon.
 //!
 //! Creates a fresh connection per message to support concurrent sends
 //! from platform adapters (Telegram).
@@ -33,7 +33,7 @@ impl DaemonClient {
     /// multiple platform loops can send concurrently without blocking.
     pub async fn send(&self, msg: ClientMessage) -> mpsc::UnboundedReceiver<ServerMessage> {
         let (tx, rx) = mpsc::unbounded_channel();
-        match transport::uds::WalrusClient::new(transport::uds::ClientConfig {
+        match transport::uds::CrabtalkClient::new(transport::uds::ClientConfig {
             socket_path: self.socket_path.clone(),
         })
         .connect()

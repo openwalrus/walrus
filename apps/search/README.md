@@ -1,28 +1,28 @@
-# walrus-search
+# crabtalk-search
 
-Meta-search extension for OpenWalrus agents. Aggregates results from DuckDuckGo
+Meta-search extension for Crabtalk agents. Aggregates results from DuckDuckGo
 and Wikipedia with consensus-based ranking. No API keys required.
 
 ## Install
 
 ```bash
-walrus hub install openwalrus/search
+crabtalk hub install crabtalk/search
 ```
 
 Or build from source:
 
 ```bash
-cargo install walrus-search
+cargo install crabtalk-search
 ```
 
 ## Configuration
 
-Installed automatically by `walrus hub install`. Default config in `walrus.toml`:
+Installed automatically by `crabtalk hub install`. Default config in `crab.toml`:
 
 ```toml
 [services.search]
 kind = "extension"
-crate = "walrus-search"
+crate = "crabtalk-search"
 enabled = true
 ```
 
@@ -40,11 +40,11 @@ No additional configuration needed.
 The binary also works as a standalone search CLI:
 
 ```sh
-walrus-search search "rust programming language"
-walrus-search search "openwalrus" --engines wikipedia
-walrus-search search "hello world" -n 5 --format text
-walrus-search fetch "https://example.com"
-walrus-search engines
+crabtalk-search search "rust programming language"
+crabtalk-search search "crabtalk" --engines wikipedia
+crabtalk-search search "hello world" -n 5 --format text
+crabtalk-search fetch "https://example.com"
+crabtalk-search engines
 ```
 
 ## License

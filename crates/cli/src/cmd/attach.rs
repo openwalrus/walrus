@@ -13,7 +13,7 @@ use wcore::paths::CONFIG_DIR;
 #[derive(Args, Debug)]
 pub struct Attach {
     /// Connect via TCP instead of Unix domain socket.
-    /// Reads the port from ~/.openwalrus/walrus.tcp.
+    /// Reads the port from ~/.crabtalk/crab.tcp.
     #[arg(long, default_missing_value = "true", num_args = 0)]
     pub tcp: bool,
 }
@@ -28,7 +28,7 @@ impl Attach {
 
 /// Check if providers are configured; prompt and reload the daemon if empty.
 pub async fn ensure_providers(socket_path: &Path) -> Result<()> {
-    let config_path = CONFIG_DIR.join("walrus.toml");
+    let config_path = CONFIG_DIR.join("crab.toml");
     if !config_path.exists() {
         return Ok(());
     }
@@ -82,14 +82,14 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         .default(default_model.to_string())
         .interact_text()?;
 
-    // Write to walrus.toml.
+    // Write to crab.toml.
     let content = std::fs::read_to_string(config_path)?;
     let mut doc: DocumentMut = content.parse()?;
 
-    if !doc.contains_key("walrus") {
-        doc.insert("walrus", Item::Table(Table::new()));
+    if !doc.contains_key("crab") {
+        doc.insert("crab", Item::Table(Table::new()));
     }
-    doc["walrus"]["model"] = value(&model);
+    doc["crab"]["model"] = value(&model);
 
     if !doc.contains_key("provider") {
         doc.insert("provider", Item::Table(Table::new()));

@@ -4,9 +4,9 @@ use clap::Parser;
 
 pub mod serve;
 
-/// Walrus Telegram gateway service.
+/// Crabtalk Telegram gateway service.
 #[derive(Parser)]
-#[command(name = "walrus-telegram")]
+#[command(name = "crabtalk-telegram")]
 pub struct App {
     #[command(subcommand)]
     pub command: Command,
@@ -14,7 +14,7 @@ pub struct App {
 
 #[derive(clap::Subcommand)]
 pub enum Command {
-    /// Run the Telegram gateway, connecting to a walrus daemon.
+    /// Run the Telegram gateway, connecting to a crabtalk daemon.
     Serve {
         /// Daemon UDS socket path to connect to.
         #[arg(long)]

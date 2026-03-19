@@ -185,7 +185,7 @@ fn render(frame: &mut Frame, state: &ConsoleState) {
     let area = frame.area();
 
     let outer = Block::default()
-        .title(" Walrus Console ")
+        .title(" Crabtalk Console ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     let inner = outer.inner(area);

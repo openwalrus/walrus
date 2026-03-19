@@ -1,6 +1,6 @@
 [package]
-name = "walrus-telegram"
-description = "Telegram bot gateway for OpenWalrus agents"
+name = "crabtalk-telegram"
+description = "Telegram bot gateway for Crabtalk agents"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ repository.workspace = true
 keywords.workspace = true
 
 [[bin]]
-name = "walrus-telegram"
+name = "crabtalk-telegram"
 path = "src/bin/main.rs"
 required-features = ["cli"]
 

@@ -1,13 +1,13 @@
-# walrus-gateway
+# crabtalk-gateway
 
-Shared gateway library for [OpenWalrus](https://github.com/aspect-build/walrus) platform adapters.
+Shared gateway library for [Crabtalk](https://github.com/crabtalk/crabtalk) platform adapters.
 
 Provides configuration, message types, daemon client, stream accumulation, and bot command
 parsing used by the Telegram gateway binary.
 
 ## Crates
 
-- [`walrus-telegram`](https://crates.io/crates/walrus-telegram) — Telegram bot gateway
+- [`crabtalk-telegram`](https://crates.io/crates/crabtalk-telegram) — Telegram bot gateway
 
 ## License
 

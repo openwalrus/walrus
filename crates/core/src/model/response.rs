@@ -1,7 +1,7 @@
 //! Chat response abstractions for the unified LLM Interfaces
 
 use crate::model::{Message, Role, tool::ToolCall};
-pub use crabtalk_core::{CompletionTokensDetails, FinishReason, Usage};
+pub use crabllm_core::{CompletionTokensDetails, FinishReason, Usage};
 use serde::{Deserialize, Serialize};
 
 /// Common metadata shared between streaming and non-streaming completions

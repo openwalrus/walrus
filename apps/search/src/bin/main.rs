@@ -1,4 +1,4 @@
-use walrus_search::cmd::App;
+use crabtalk_search::cmd::App;
 
 #[tokio::main]
 async fn main() {

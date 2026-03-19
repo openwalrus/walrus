@@ -1,4 +1,4 @@
-//! Service configuration types for `[services.*]` in `walrus.toml`.
+//! Service configuration types for `[services.*]` in `crab.toml`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -8,10 +8,10 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceKind {
-    /// Extension service — speaks Walrus Extension protocol over UDS.
+    /// Extension service — speaks Crabtalk Extension protocol over UDS.
     #[default]
     Extension,
-    /// Gateway service — speaks existing walrus protocol (e.g. Telegram).
+    /// Gateway service — speaks existing crabtalk protocol (e.g. Telegram).
     Gateway,
 }
 
@@ -37,7 +37,7 @@ pub struct ServiceConfig {
     /// Service kind.
     #[serde(default)]
     pub kind: ServiceKind,
-    /// Cargo package name (e.g. "walrus-memory"). Used as binary name and for
+    /// Cargo package name (e.g. "crabtalk-memory"). Used as binary name and for
     /// `cargo install` during hub installation.
     #[serde(rename = "crate", alias = "krate")]
     pub krate: String,

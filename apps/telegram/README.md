@@ -1,26 +1,26 @@
-# walrus-telegram
+# crabtalk-telegram
 
-Telegram bot gateway for [OpenWalrus](https://github.com/aspect-build/walrus) agents.
+Telegram bot gateway for [Crabtalk](https://github.com/crabtalk/crabtalk) agents.
 
-Connects a Telegram bot to OpenWalrus agents via the walrus daemon, streaming
+Connects a Telegram bot to Crabtalk agents via the crabtalk daemon, streaming
 AI responses with edit-in-place updates.
 
 ## Install
 
 ```
-cargo install walrus-telegram
+cargo install crabtalk-telegram
 ```
 
-Or via the OpenWalrus hub:
+Or via the Crabtalk hub:
 
 ```
-walrus hub install openwalrus/telegram
+crabtalk hub install crabtalk/telegram
 ```
 
 ## Usage
 
 ```
-walrus-telegram serve --daemon /path/to/daemon.sock --config '{"telegram":{"token":"BOT_TOKEN"}}'
+crabtalk-telegram serve --daemon /path/to/daemon.sock --config '{"telegram":{"token":"BOT_TOKEN"}}'
 ```
 
 The bot token is obtained from [@BotFather](https://t.me/BotFather) on Telegram.
@@ -32,7 +32,7 @@ silently ignores messages from anyone not on the list:
 
 ```toml
 [services.telegram]
-crate = "walrus-telegram"
+crate = "crabtalk-telegram"
 kind = "gateway"
 config = { telegram = { token = "BOT_TOKEN", allowed_users = [123456789] } }
 ```

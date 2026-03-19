@@ -13,7 +13,7 @@ pub mod task;
 #[serde(default)]
 pub struct SystemConfig {
     /// The default system agent config (model, heartbeat, thinking).
-    pub walrus: wcore::AgentConfig,
+    pub crab: wcore::AgentConfig,
     /// Task executor pool configuration (`[system.tasks]`).
     pub tasks: TasksConfig,
     /// Built-in memory configuration (`[system.memory]`).
@@ -48,7 +48,7 @@ impl Default for TasksConfig {
 pub struct MemoryConfig {
     /// Maximum entries returned by auto-recall (default 5).
     pub recall_limit: usize,
-    /// Whether the agent can edit Walrus.md via the soul tool (default true).
+    /// Whether the agent can edit Crab.md via the soul tool (default true).
     pub soul_editable: bool,
 }
 

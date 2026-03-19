@@ -46,10 +46,10 @@ pub struct AgentConfig {
     /// Agents this agent can delegate to via spawn_task. Empty = no delegation.
     #[serde(default)]
     pub members: Vec<String>,
-    /// Skill names this agent can access. Empty = all skills (walrus default).
+    /// Skill names this agent can access. Empty = all skills (crabtalk default).
     #[serde(default)]
     pub skills: Vec<String>,
-    /// MCP server names this agent can access. Empty = all MCPs (walrus default).
+    /// MCP server names this agent can access. Empty = all MCPs (crabtalk default).
     #[serde(default)]
     pub mcps: Vec<String>,
     /// Computed tool whitelist. Empty = all tools. Not serialized.

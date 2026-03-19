@@ -1,4 +1,4 @@
-//! Global paths for the walrus runtime.
+//! Global paths for the crabtalk runtime.
 //!
 //! All crates resolve configuration, socket, and data paths through these
 //! constants so there is a single source of truth.
@@ -6,23 +6,23 @@
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-/// Global configuration directory (`~/.openwalrus/`).
+/// Global configuration directory (`~/.crabtalk/`).
 pub static CONFIG_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     dirs::home_dir()
         .expect("no home directory")
-        .join(".openwalrus")
+        .join(".crabtalk")
 });
 
-/// Pinned socket path (`~/.openwalrus/walrus.sock`).
-pub static SOCKET_PATH: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("walrus.sock"));
+/// Pinned socket path (`~/.crabtalk/crab.sock`).
+pub static SOCKET_PATH: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("crab.sock"));
 
-/// TCP port file (`~/.openwalrus/walrus.tcp`). Contains the port number as text.
-pub static TCP_PORT_FILE: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("walrus.tcp"));
+/// TCP port file (`~/.crabtalk/crab.tcp`). Contains the port number as text.
+pub static TCP_PORT_FILE: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("crab.tcp"));
 
-/// Logs directory (`~/.openwalrus/logs/`).
+/// Logs directory (`~/.crabtalk/logs/`).
 pub static LOGS_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("logs"));
 
-/// Agent working directory (`~/.openwalrus/home/`).
+/// Agent working directory (`~/.crabtalk/home/`).
 pub static HOME_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("home"));
 
 /// Agents subdirectory (contains *.md files).
@@ -36,4 +36,4 @@ pub const DATA_DIR: &str = "data";
 pub const MEMORY_DB: &str = "memory.db";
 
 /// Default agent name used when no custom agents are configured.
-pub const DEFAULT_AGENT: &str = "walrus";
+pub const DEFAULT_AGENT: &str = "crab";

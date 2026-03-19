@@ -1,4 +1,4 @@
-//! //! Walrus MCP bridge — connects to MCP servers and dispatches tool calls.
+//! Crabtalk MCP bridge — connects to MCP servers and dispatches tool calls.
 
 use anyhow::Result;
 use rmcp::{
@@ -20,7 +20,7 @@ struct ConnectedPeer {
 
 /// Bridge to one or more MCP servers via the rmcp SDK.
 ///
-/// Converts MCP tool definitions to walrus-core [`Tool`] schemas and
+/// Converts MCP tool definitions to crabtalk-core [`Tool`] schemas and
 /// dispatches tool calls through the protocol.
 pub struct McpBridge {
     peers: Mutex<Vec<ConnectedPeer>>,
@@ -71,9 +71,9 @@ impl McpBridge {
         {
             let mut cache = self.tool_cache.lock().await;
             for mcp_tool in &mcp_tools {
-                let walrus_tool = self::convert_tool(mcp_tool);
-                tool_names.push(walrus_tool.name.to_string());
-                cache.insert(walrus_tool.name.to_string(), walrus_tool);
+                let ct_tool = self::convert_tool(mcp_tool);
+                tool_names.push(ct_tool.name.to_string());
+                cache.insert(ct_tool.name.to_string(), ct_tool);
             }
         }
 
@@ -177,7 +177,7 @@ impl McpBridge {
     }
 }
 
-/// Convert an rmcp Tool to a walrus-core Tool.
+/// Convert an rmcp Tool to a crabtalk-core Tool.
 fn convert_tool(mcp_tool: &rmcp::model::Tool) -> Tool {
     let schema_value =
         serde_json::to_value(mcp_tool.input_schema.as_ref()).unwrap_or(serde_json::json!({}));
