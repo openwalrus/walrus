@@ -3,14 +3,13 @@
 use crate::repl::runner::Runner;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 use wcore::paths::TCP_PORT_FILE;
 
 pub mod attach;
 pub mod auth;
 pub mod console;
 pub mod daemon;
-pub mod gateway;
 pub mod hub;
 
 /// Crabtalk CLI client — connects to crabtalk daemon via Unix domain socket.
@@ -20,14 +19,6 @@ pub struct Cli {
     /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Command,
-
-    /// Agent name override.
-    #[arg(long, global = true)]
-    pub agent: Option<String>,
-
-    /// Path to the crabtalk daemon socket.
-    #[arg(long, global = true)]
-    pub socket: Option<PathBuf>,
 }
 
 impl Cli {
@@ -49,27 +40,14 @@ impl Cli {
         }
     }
 
-    /// Resolve the agent name from CLI flags or fall back to "assistant".
-    pub fn resolve_agent(&self) -> String {
-        self.agent.clone().unwrap_or_else(|| "crab".to_owned())
-    }
-
-    /// Resolve the socket path from CLI flag or default.
-    fn resolve_socket(&self) -> PathBuf {
-        self.socket
-            .clone()
-            .unwrap_or_else(|| wcore::paths::SOCKET_PATH.clone())
-    }
-
     /// Parse and dispatch the CLI command.
     pub async fn run(self) -> Result<()> {
-        let agent = self.resolve_agent();
-        let socket_path = self.resolve_socket();
+        let socket_path = wcore::paths::SOCKET_PATH.clone();
         match self.command {
             Command::Auth(cmd) => cmd.run(),
             Command::Attach(cmd) => {
                 let runner = connect(cmd.tcp, &socket_path).await?;
-                cmd.run(runner, agent).await
+                cmd.run(runner, "crab".to_owned()).await
             }
             Command::Console(cmd) => {
                 let runner = connect_uds(&socket_path).await?;
@@ -80,7 +58,7 @@ impl Cli {
                 cmd.run(&mut runner).await
             }
             Command::Daemon(cmd) => cmd.run(&socket_path).await,
-            Command::Gateway(cmd) => cmd.run(),
+            Command::External(args) => run_external(args),
         }
     }
 }
@@ -98,8 +76,9 @@ pub enum Command {
     Hub(hub::Hub),
     /// Manage the crabtalk daemon (run, start, stop, reload).
     Daemon(daemon::Daemon),
-    /// Manage gateways (telegram start/stop). Forwards to crabtalk-gateway.
-    Gateway(gateway::Gateway),
+    /// Forward to an external `crabtalk-{name}` binary (cargo-style).
+    #[command(external_subcommand)]
+    External(Vec<OsString>),
 }
 
 /// Connect to crabtalk daemon via TCP or UDS.
@@ -136,4 +115,48 @@ async fn connect_uds(socket_path: &std::path::Path) -> Result<Runner> {
             socket_path.display()
         )
     })
+}
+
+/// Find `crabtalk-{name}` next to the current exe or on PATH, then exec it.
+fn run_external(args: Vec<OsString>) -> Result<()> {
+    let name = args
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("no subcommand provided"))?
+        .to_string_lossy();
+    let bin_name = format!("crabtalk-{name}");
+
+    let binary = find_external_binary(&bin_name).ok_or_else(|| {
+        anyhow::anyhow!("{bin_name} not found on PATH or next to crabtalk binary")
+    })?;
+
+    let status = std::process::Command::new(&binary)
+        .args(&args[1..])
+        .status()
+        .with_context(|| format!("failed to run {}", binary.display()))?;
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    Ok(())
+}
+
+/// Look for an external binary next to the current exe, then on PATH.
+fn find_external_binary(name: &str) -> Option<PathBuf> {
+    if let Ok(current) = std::env::current_exe()
+        && let Some(dir) = current.parent()
+    {
+        let candidate = dir.join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let path = std::env::var("PATH").unwrap_or_default();
+    for dir in path.split(':') {
+        let candidate = PathBuf::from(dir).join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
 }

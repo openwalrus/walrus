@@ -1,10 +1,8 @@
 //! macOS launchd service management.
 
+use crate::paths::{HOME_DIR, LOGS_DIR};
 use crate::service::{ServiceParams, render_template};
 use anyhow::Result;
-use wcore::paths::{HOME_DIR, LOGS_DIR};
-
-const LAUNCHD_TEMPLATE: &str = include_str!("launchd.plist");
 
 fn launchctl_domain() -> String {
     let uid = std::process::Command::new("id")
@@ -15,7 +13,7 @@ fn launchctl_domain() -> String {
     format!("gui/{uid}")
 }
 
-pub fn install(params: &ServiceParams<'_>) -> Result<()> {
+pub fn install(template: &str, params: &ServiceParams<'_>) -> Result<()> {
     let plist_path = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
         .join(format!("Library/LaunchAgents/{}.plist", params.label));
@@ -24,7 +22,7 @@ pub fn install(params: &ServiceParams<'_>) -> Result<()> {
         uninstall(params)?;
     }
 
-    let plist = render_template(LAUNCHD_TEMPLATE, params);
+    let plist = render_template(template, params);
 
     std::fs::create_dir_all(&*LOGS_DIR)?;
     std::fs::create_dir_all(&*HOME_DIR)?;

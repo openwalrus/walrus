@@ -110,7 +110,7 @@ async fn telegram_start() -> anyhow::Result<()> {
         socket: &socket,
         config_path: &config_path,
     };
-    service::install(&params)
+    service::install_gateway(&params)
 }
 
 fn telegram_stop() -> anyhow::Result<()> {

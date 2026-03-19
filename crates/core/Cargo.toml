@@ -10,6 +10,10 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[features]
+default = []
+service = []
+
 [dependencies]
 # crabllm
 crabllm-core.workspace = true

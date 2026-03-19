@@ -1,5 +1,5 @@
 [Unit]
-Description=Crabtalk Daemon
+Description={description}
 After=network-online.target
 
 [Service]

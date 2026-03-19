@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>ai.crabtalk.crabtalk</string>
+    <string>{label}</string>
     <key>ProgramArguments</key>
     <array>
         <string>{binary}</string>
@@ -23,8 +23,8 @@
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>{logs_dir}/daemon.log</string>
+    <string>{logs_dir}/{log_name}.log</string>
     <key>StandardErrorPath</key>
-    <string>{logs_dir}/daemon.log</string>
+    <string>{logs_dir}/{log_name}.log</string>
 </dict>
 </plist>

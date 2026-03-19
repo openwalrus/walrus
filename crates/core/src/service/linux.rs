@@ -1,13 +1,11 @@
 //! Linux systemd service management.
 
+use crate::paths::{HOME_DIR, LOGS_DIR};
 use crate::service::{ServiceParams, render_template};
 use anyhow::Result;
-use wcore::paths::{HOME_DIR, LOGS_DIR};
 
-const SYSTEMD_TEMPLATE: &str = include_str!("systemd.service");
-
-pub fn install(params: &ServiceParams<'_>) -> Result<()> {
-    let unit = render_template(SYSTEMD_TEMPLATE, params);
+pub fn install(template: &str, params: &ServiceParams<'_>) -> Result<()> {
+    let unit = render_template(template, params);
     let unit_name = format!("{}.service", params.label);
 
     let unit_dir = dirs::home_dir()

@@ -26,4 +26,6 @@ pub mod model;
 pub mod paths;
 pub mod protocol;
 mod runtime;
+#[cfg(feature = "service")]
+pub mod service;
 pub mod utils;

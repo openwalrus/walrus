@@ -1,17 +1,13 @@
-//! `crabtalk daemon logs` — view daemon or service logs.
+//! `crabtalk daemon logs` — view daemon logs.
 //!
 //! Thin wrapper around `tail` — all extra flags are passed through.
 
 use anyhow::{Context, Result};
 use wcore::paths::LOGS_DIR;
 
-/// Display log output by delegating to `tail`.
-pub fn logs(service: Option<&str>, tail_args: &[String]) -> Result<()> {
-    let filename = match service {
-        Some(name) => format!("{name}.log"),
-        None => "daemon.log".to_owned(),
-    };
-    let path = LOGS_DIR.join(&filename);
+/// Display daemon log output by delegating to `tail`.
+pub fn logs(tail_args: &[String]) -> Result<()> {
+    let path = LOGS_DIR.join("daemon.log");
     if !path.exists() {
         anyhow::bail!("log file not found: {}", path.display());
     }
