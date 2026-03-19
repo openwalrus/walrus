@@ -61,14 +61,11 @@ pub struct MarkdownRenderer {
     line_buf: String,
     state: RenderState,
     out: BufWriter<Stdout>,
-    /// Whether the leading `⏺` has been printed for this response.
     started: bool,
-    /// Whether the next `render_line` is the first line (MARKER already on stdout).
     first_line: bool,
-    /// Stored tool labels for rewriting blinking → green/red.
     tool_labels: Vec<String>,
-    /// Number of tool result lines printed (for cursor arithmetic).
     tool_result_lines: usize,
+    after_tool: bool,
 }
 
 impl Default for MarkdownRenderer {
@@ -78,7 +75,6 @@ impl Default for MarkdownRenderer {
 }
 
 impl MarkdownRenderer {
-    /// Create a new renderer.
     pub fn new() -> Self {
         Self {
             line_buf: String::new(),
@@ -88,10 +84,10 @@ impl MarkdownRenderer {
             first_line: false,
             tool_labels: Vec::new(),
             tool_result_lines: 0,
+            after_tool: false,
         }
     }
 
-    /// Print the leading `⏺` marker if not yet printed.
     fn ensure_started(&mut self) {
         if !self.started {
             let _ = write!(self.out, "{MARKER}");
@@ -100,13 +96,17 @@ impl MarkdownRenderer {
         }
     }
 
-    /// Push streamed text content, rendering complete lines.
     pub fn push_text(&mut self, chunk: &str) {
         if matches!(self.state, RenderState::Thinking) {
             self.state = RenderState::Normal;
         }
 
         self.ensure_started();
+
+        if self.after_tool {
+            let _ = write!(self.out, "{PAD}");
+            self.after_tool = false;
+        }
 
         for ch in chunk.chars() {
             if ch == '\n' {
@@ -119,7 +119,6 @@ impl MarkdownRenderer {
         let _ = self.out.flush();
     }
 
-    /// Push thinking/reasoning content (dim + italic).
     pub fn push_thinking(&mut self, chunk: &str) {
         if !matches!(self.state, RenderState::Thinking) {
             self.state = RenderState::Thinking;
@@ -129,10 +128,8 @@ impl MarkdownRenderer {
         let _ = self.out.flush();
     }
 
-    /// Print tool call names with blinking `⏺` marker.
     pub fn push_tool_start(&mut self, calls: &[(String, String)]) {
         self.flush_thinking();
-        // Flush any pending text so it prints before the tool label.
         if !self.line_buf.is_empty() {
             let line = std::mem::take(&mut self.line_buf);
             self.render_inline(&line);
@@ -155,24 +152,40 @@ impl MarkdownRenderer {
         let _ = self.out.flush();
     }
 
-    /// Print a tool result as an indented tree under the tool labels.
-    ///
-    /// For bash results (JSON with stdout/stderr/exit_code), parse and show
-    /// stdout and stderr as separate indented sub-items. For other tools,
-    /// show the raw output indented.
     pub fn push_tool_result(&mut self, output: &str) {
-        let indent = "    ";
-        let lines = format_tool_result(output);
+        let tree = format_tool_result(output);
+        let width = term_width().saturating_sub(PAD.len() + 4);
         let mut count = 0;
-        for line in &lines {
-            let _ = writeln!(self.out, "{PAD}{indent}{}", S_DIM.apply_to(line));
+        for (i, node) in tree.iter().enumerate() {
+            let is_last = i == tree.len() - 1;
+            let branch = if is_last { "└ " } else { "├ " };
+            let cont = if is_last { "  " } else { "│ " };
+
+            let _ = writeln!(
+                self.out,
+                "{PAD}  {}{}",
+                S_DIM.apply_to(branch),
+                S_DIM.apply_to(&node.label)
+            );
             count += 1;
+
+            for line in &node.lines {
+                let wrapped = textwrap::fill(line, width);
+                for wl in wrapped.lines() {
+                    let _ = writeln!(
+                        self.out,
+                        "{PAD}  {}{}",
+                        S_DIM.apply_to(cont),
+                        S_DIM.apply_to(wl)
+                    );
+                    count += 1;
+                }
+            }
         }
         self.tool_result_lines += count;
         let _ = self.out.flush();
     }
 
-    /// Rewrite tool lines: green `⏺` on success, red on failure.
     pub fn push_tool_done(&mut self, success: bool) {
         let count = self.tool_labels.len();
         if count == 0 {
@@ -186,7 +199,6 @@ impl MarkdownRenderer {
             S_RED.apply_to("⏺")
         };
 
-        // Move cursor up to the first tool line (+1 for trailing blank line + result lines).
         let up = count + 1 + self.tool_result_lines;
         let _ = write!(self.out, "\x1b[{up}A");
         for label in &self.tool_labels {
@@ -196,23 +208,20 @@ impl MarkdownRenderer {
                 style(label).bold().dim()
             );
         }
-        // Skip past result lines and trailing blank line.
         let skip = self.tool_result_lines + 1;
         let _ = write!(self.out, "\x1b[{skip}B");
         let _ = self.out.flush();
         self.tool_labels.clear();
         self.tool_result_lines = 0;
+        self.after_tool = true;
     }
 
-    /// Flush remaining buffer on stream end.
     pub fn finish(&mut self) {
-        // If tools were still blinking, mark them red (interrupted/failed).
         if !self.tool_labels.is_empty() {
             self.push_tool_done(false);
         }
         self.flush_thinking();
 
-        // Flush remaining line buffer.
         if !self.line_buf.is_empty() {
             let line = std::mem::take(&mut self.line_buf);
             match &self.state {
@@ -227,7 +236,6 @@ impl MarkdownRenderer {
             }
         }
 
-        // If still in a code block, flush it.
         if let RenderState::CodeBlock { lang, code } = &self.state {
             let lang = lang.clone();
             let code = code.clone();
@@ -238,7 +246,6 @@ impl MarkdownRenderer {
         let _ = self.out.flush();
     }
 
-    /// Render a complete line based on current state.
     fn render_line(&mut self, line: &str) {
         match &mut self.state {
             RenderState::CodeBlock { lang: _, code } => {
@@ -300,7 +307,6 @@ impl MarkdownRenderer {
         }
     }
 
-    /// Render inline markdown formatting: **bold**, *italic*, `code`.
     fn render_inline(&mut self, text: &str) {
         let chars: Vec<char> = text.chars().collect();
         let len = chars.len();
@@ -339,11 +345,9 @@ impl MarkdownRenderer {
         }
     }
 
-    /// Word-wrap `text` to fit within `term_width`, rendering each physical line
-    /// with inline markdown. `first_prefix` is used for the first line; continuation
-    /// lines use `PAD`.
     fn render_wrapped(&mut self, text: &str, first_prefix: &str) {
-        let width = term_width().saturating_sub(PAD.len());
+        let indent = first_prefix.len().max(PAD.len());
+        let width = term_width().saturating_sub(indent);
         let wrapped = textwrap::fill(text, width);
         for (i, line) in wrapped.lines().enumerate() {
             let p = if i == 0 { first_prefix } else { PAD };
@@ -353,7 +357,6 @@ impl MarkdownRenderer {
         }
     }
 
-    /// Return empty string on the first line (MARKER already printed), PAD otherwise.
     fn line_prefix(&mut self) -> &'static str {
         if self.first_line {
             self.first_line = false;
@@ -363,7 +366,6 @@ impl MarkdownRenderer {
         }
     }
 
-    /// Print the top border of a code block with optional language label.
     fn print_code_border_top(&mut self, lang: &str) {
         let prefix = self.line_prefix();
         let label = if lang.is_empty() {
@@ -374,7 +376,6 @@ impl MarkdownRenderer {
         let _ = writeln!(self.out, "{prefix}{}", S_DIM.apply_to(label));
     }
 
-    /// Syntax-highlight and emit a buffered code block.
     fn emit_code_block(&mut self, lang: &str, code: &str) {
         let syntax = if lang.is_empty() {
             SYNTAX_SET.find_syntax_plain_text()
@@ -403,7 +404,6 @@ impl MarkdownRenderer {
         let _ = writeln!(self.out, "{PAD}{}", S_DIM.apply_to("└─"));
     }
 
-    /// Flush a code block as raw text (used on cancel).
     fn flush_code_block_raw(&mut self, extra: &str) {
         let pipe = S_DIM.apply_to("│");
         if let RenderState::CodeBlock { code, .. } = &self.state {
@@ -416,7 +416,6 @@ impl MarkdownRenderer {
         self.state = RenderState::Normal;
     }
 
-    /// If in thinking state, transition back to normal.
     fn flush_thinking(&mut self) {
         if matches!(self.state, RenderState::Thinking) {
             self.state = RenderState::Normal;
@@ -449,7 +448,6 @@ pub fn welcome_banner(model: Option<&str>) -> String {
     )
 }
 
-/// Check if a line is an ordered list item (e.g. "1. foo").
 fn is_ordered_list(line: &str) -> bool {
     let mut chars = line.chars();
     if !chars.next().is_some_and(|c| c.is_ascii_digit()) {
@@ -466,7 +464,6 @@ fn is_ordered_list(line: &str) -> bool {
     false
 }
 
-/// Split an ordered list item into prefix ("1. ") and rest.
 fn split_ordered_list(line: &str) -> (&str, &str) {
     if let Some(dot) = line.find(". ") {
         (&line[..dot + 2], &line[dot + 2..])
@@ -475,7 +472,6 @@ fn split_ordered_list(line: &str) -> (&str, &str) {
     }
 }
 
-/// Find closing `**` in chars starting at `start`.
 fn find_closing(chars: &[char], start: usize, pattern: &str) -> Option<usize> {
     let pat: Vec<char> = pattern.chars().collect();
     let plen = pat.len();
@@ -487,20 +483,18 @@ fn find_closing(chars: &[char], start: usize, pattern: &str) -> Option<usize> {
     None
 }
 
-/// Find a single closing character in chars starting at `start`.
 fn find_closing_char(chars: &[char], start: usize, closing: char) -> Option<usize> {
     (start..chars.len()).find(|&i| chars[i] == closing)
 }
 
-/// Format tool result output for display.
-///
-/// For bash JSON results, parse and show stdout/stderr as separate lines.
-/// For other tools, show the raw output truncated.
-fn format_tool_result(output: &str) -> Vec<String> {
-    let max_lines = 10;
-    let max_line_len = 120;
+struct ResultNode {
+    label: String,
+    lines: Vec<String>,
+}
 
-    // Try to parse as bash JSON result.
+fn format_tool_result(output: &str) -> Vec<ResultNode> {
+    let max_lines = 10;
+
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(output)
         && let (Some(stdout), Some(stderr), Some(exit_code)) = (
             v.get("stdout").and_then(|s| s.as_str()),
@@ -508,65 +502,65 @@ fn format_tool_result(output: &str) -> Vec<String> {
             v.get("exit_code").and_then(|c| c.as_i64()),
         )
     {
-        let mut lines = Vec::new();
+        let mut nodes = Vec::new();
         if !stdout.is_empty() {
-            for line in stdout.lines().take(max_lines) {
-                let truncated = truncate_str(line, max_line_len);
-                lines.push(truncated);
+            let mut lines: Vec<String> = stdout
+                .lines()
+                .take(max_lines)
+                .map(|l| l.to_string())
+                .collect();
+            let total = stdout.lines().count();
+            if total > max_lines {
+                lines.push(format!("... ({} more lines)", total - max_lines));
             }
-            if stdout.lines().count() > max_lines {
-                lines.push(format!(
-                    "... ({} more lines)",
-                    stdout.lines().count() - max_lines
-                ));
-            }
+            nodes.push(ResultNode {
+                label: "stdout".to_string(),
+                lines,
+            });
         }
         if !stderr.is_empty() {
-            lines.push(format!(
-                "stderr: {}",
-                truncate_str(stderr.lines().next().unwrap_or(""), max_line_len)
-            ));
-            for line in stderr.lines().skip(1).take(3) {
-                lines.push(format!("  {}", truncate_str(line, max_line_len)));
-            }
+            let lines: Vec<String> = stderr.lines().take(4).map(|l| l.to_string()).collect();
+            nodes.push(ResultNode {
+                label: "stderr".to_string(),
+                lines,
+            });
         }
         if exit_code != 0 {
-            lines.push(format!("exit_code: {exit_code}"));
+            nodes.push(ResultNode {
+                label: format!("exit_code: {exit_code}"),
+                lines: vec![],
+            });
         }
-        if lines.is_empty() {
-            lines.push("(no output)".to_string());
+        if nodes.is_empty() {
+            nodes.push(ResultNode {
+                label: "(no output)".to_string(),
+                lines: vec![],
+            });
         }
-        return lines;
+        return nodes;
     }
 
-    // Generic tool result — show first few lines.
     let mut lines: Vec<String> = output
         .lines()
         .take(max_lines)
-        .map(|l| truncate_str(l, max_line_len))
+        .map(|l| l.to_string())
         .collect();
-    if output.lines().count() > max_lines {
-        lines.push(format!(
-            "... ({} more lines)",
-            output.lines().count() - max_lines
-        ));
+    let total = output.lines().count();
+    if total > max_lines {
+        lines.push(format!("... ({} more lines)", total - max_lines));
     }
     if lines.is_empty() {
-        lines.push("(no output)".to_string());
+        return vec![ResultNode {
+            label: "(no output)".to_string(),
+            lines: vec![],
+        }];
     }
-    lines
+    vec![ResultNode {
+        label: "output".to_string(),
+        lines,
+    }]
 }
 
-/// Truncate a string to `max` characters, appending "..." if truncated.
-fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max])
-    }
-}
-
-/// Format a tool label for display. For bash, show the command inline.
 fn format_tool_label(name: &str, args: &str) -> String {
     let pascal = name.to_upper_camel_case();
 
@@ -582,5 +576,11 @@ fn format_tool_label(name: &str, args: &str) -> String {
         return pascal;
     };
 
+    let max = term_width().saturating_sub(PAD.len() + 8);
+    let cmd = if cmd.len() > max {
+        format!("{}...", &cmd[..max])
+    } else {
+        cmd.to_string()
+    };
     format!("Bash({cmd})")
 }
