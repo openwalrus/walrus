@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use crabtalk_gateway::{GatewayConfig, config::TelegramConfig, service};
+use dialoguer::{Password, theme::ColorfulTheme};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -82,11 +83,9 @@ async fn telegram_start() -> anyhow::Result<()> {
     };
 
     if config.telegram.as_ref().is_none_or(|t| t.token.is_empty()) {
-        eprintln!("No Telegram bot token configured.");
-        eprint!("Enter your bot token from @BotFather: ");
-        let mut token = String::new();
-        std::io::stdin().read_line(&mut token)?;
-        let token = token.trim().to_string();
+        let token = Password::with_theme(&ColorfulTheme::default())
+            .with_prompt("Telegram bot token (from @BotFather)")
+            .interact()?;
         if token.is_empty() {
             anyhow::bail!("token cannot be empty");
         }

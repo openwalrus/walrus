@@ -508,6 +508,7 @@ dependencies = [
  "clap",
  "crabtalk-core",
  "crabtalk-transport",
+ "dialoguer",
  "dirs",
  "futures-util",
  "serde",

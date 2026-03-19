@@ -12,24 +12,19 @@ keywords.workspace = true
 [[bin]]
 name = "crabtalk-gateway"
 path = "src/bin/main.rs"
-required-features = ["cli"]
-
-[features]
-default = []
-telegram = ["dep:teloxide"]
-cli = ["dep:clap", "dep:tracing-subscriber", "telegram"]
 
 [dependencies]
 anyhow.workspace = true
-clap = { workspace = true, optional = true }
+clap.workspace = true
+dialoguer.workspace = true
 dirs.workspace = true
 futures-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-teloxide = { workspace = true, optional = true }
+teloxide.workspace = true
 tokio.workspace = true
 toml.workspace = true
 transport.workspace = true
 tracing.workspace = true
-tracing-subscriber = { workspace = true, optional = true }
+tracing-subscriber.workspace = true
 wcore = { workspace = true, features = ["service"] }

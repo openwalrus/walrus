@@ -10,7 +10,6 @@ pub mod config;
 pub mod message;
 pub mod service;
 pub mod stream;
-#[cfg(feature = "telegram")]
 pub mod telegram;
 
 pub use client::DaemonClient;
