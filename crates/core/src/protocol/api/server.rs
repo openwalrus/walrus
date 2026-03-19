@@ -3,7 +3,7 @@
 use crate::protocol::message::{
     ClientMessage, ConfigMsg, DownloadEvent, DownloadInfo, DownloadList, ErrorMsg, HubAction, Pong,
     SendMsg, SendResponse, ServerMessage, SessionInfo, SessionList, StreamEvent, StreamMsg,
-    TaskEvent, TaskInfo, TaskList, client_message, server_message,
+    client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -66,22 +66,6 @@ pub trait Server: Sync {
 
     /// Handle `Kill` — close a session by ID.
     fn kill_session(&self, session: u64) -> impl std::future::Future<Output = Result<bool>> + Send;
-
-    /// Handle `Tasks` — list tasks in the task registry.
-    fn list_tasks(&self) -> impl std::future::Future<Output = Result<Vec<TaskInfo>>> + Send;
-
-    /// Handle `KillTask` — cancel a task by ID.
-    fn kill_task(&self, task_id: u64) -> impl std::future::Future<Output = Result<bool>> + Send;
-
-    /// Handle `Approve` — approve a blocked task's inbox item.
-    fn approve_task(
-        &self,
-        task_id: u64,
-        response: String,
-    ) -> impl std::future::Future<Output = Result<bool>> + Send;
-
-    /// Handle `SubscribeTasks` — stream task lifecycle events.
-    fn subscribe_tasks(&self) -> impl Stream<Item = Result<TaskEvent>> + Send;
 
     /// Handle `Downloads` — list downloads in the registry.
     fn list_downloads(&self)
@@ -152,41 +136,6 @@ pub trait Server: Sync {
                         ),
                         Err(e) => server_error(500, e.to_string()),
                     };
-                }
-                client_message::Msg::Tasks(_) => {
-                    yield match self.list_tasks().await {
-                        Ok(tasks) => ServerMessage {
-                            msg: Some(server_message::Msg::Tasks(TaskList { tasks })),
-                        },
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
-                client_message::Msg::KillTask(kill_task_msg) => {
-                    yield match self.kill_task(kill_task_msg.task_id).await {
-                        Ok(true) => server_pong(),
-                        Ok(false) => server_error(
-                            404,
-                            format!("task {} not found", kill_task_msg.task_id),
-                        ),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
-                client_message::Msg::Approve(approve_msg) => {
-                    yield match self.approve_task(approve_msg.task_id, approve_msg.response).await {
-                        Ok(true) => server_pong(),
-                        Ok(false) => server_error(
-                            404,
-                            format!("task {} not found or not blocked", approve_msg.task_id),
-                        ),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
-                client_message::Msg::SubscribeTasks(_) => {
-                    let s = self.subscribe_tasks();
-                    tokio::pin!(s);
-                    while let Some(result) = s.next().await {
-                        yield result_to_msg(result);
-                    }
                 }
                 client_message::Msg::Downloads(_) => {
                     yield match self.list_downloads().await {

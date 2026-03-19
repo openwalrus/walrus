@@ -7,12 +7,7 @@
 
 use crate::{
     daemon::event::DaemonEventSender,
-    hook::{
-        mcp::McpHandler,
-        os::PermissionConfig,
-        skill::SkillHandler,
-        system::{memory::Memory, task::TaskSet},
-    },
+    hook::{mcp::McpHandler, os::PermissionConfig, skill::SkillHandler, system::memory::Memory},
 };
 use crabhub::DownloadRegistry;
 use std::{collections::BTreeMap, sync::Arc};
@@ -36,7 +31,6 @@ pub(crate) struct AgentScope {
 pub struct DaemonHook {
     pub skills: SkillHandler,
     pub mcp: McpHandler,
-    pub tasks: Arc<Mutex<TaskSet>>,
     pub downloads: Arc<Mutex<DownloadRegistry>>,
     pub permissions: PermissionConfig,
     /// Whether the daemon is running as the `crabtalk` OS user (sandbox active).
@@ -45,7 +39,7 @@ pub struct DaemonHook {
     pub cwd: std::path::PathBuf,
     /// Built-in memory.
     pub memory: Option<Memory>,
-    /// Event channel for task dispatch.
+    /// Event channel for task delegation.
     pub(crate) event_tx: DaemonEventSender,
     /// Per-agent scope maps, populated during load_agents.
     pub(crate) scopes: BTreeMap<String, AgentScope>,
@@ -67,7 +61,7 @@ const MCP_TOOLS: &[&str] = &["search_mcp", "call_mcp_tool"];
 const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget", "soul"];
 
 /// Task delegation tools.
-const TASK_TOOLS: &[&str] = &["delegate", "collect", "check_tasks"];
+const TASK_TOOLS: &[&str] = &["delegate"];
 
 impl Hook for DaemonHook {
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
@@ -202,7 +196,6 @@ impl DaemonHook {
     pub fn new(
         skills: SkillHandler,
         mcp: McpHandler,
-        tasks: Arc<Mutex<TaskSet>>,
         downloads: Arc<Mutex<DownloadRegistry>>,
         permissions: PermissionConfig,
         sandboxed: bool,
@@ -213,7 +206,6 @@ impl DaemonHook {
         Self {
             skills,
             mcp,
-            tasks,
             downloads,
             permissions,
             sandboxed,
@@ -390,8 +382,6 @@ impl DaemonHook {
             "skill" => self.dispatch_skill(args, agent).await,
             "bash" => self.dispatch_bash(args).await,
             "delegate" => self.dispatch_delegate(args, agent).await,
-            "collect" => self.dispatch_collect(args).await,
-            "check_tasks" => self.dispatch_check_tasks(args).await,
             "recall" => self.dispatch_recall(args).await,
             "remember" => self.dispatch_remember(args).await,
             "memory" => self.dispatch_memory(args).await,

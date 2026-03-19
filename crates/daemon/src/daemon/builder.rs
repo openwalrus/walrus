@@ -8,10 +8,7 @@
 use crate::{
     Daemon, DaemonConfig,
     daemon::event::{DaemonEvent, DaemonEventSender},
-    hook::{
-        self, DaemonHook,
-        system::{memory::Memory, task::TaskSet},
-    },
+    hook::{self, DaemonHook, system::memory::Memory},
 };
 use anyhow::Result;
 use crabhub::DownloadRegistry;
@@ -100,8 +97,6 @@ impl Daemon {
         let mcp_servers = config.mcps.values().cloned().collect::<Vec<_>>();
         let mcp_handler = hook::mcp::McpHandler::load(&mcp_servers).await;
 
-        let tasks = Arc::new(Mutex::new(TaskSet::new()));
-
         let sandboxed = detect_sandbox();
         if sandboxed {
             tracing::info!("sandbox mode active — OS tools bypass permission check");
@@ -118,7 +113,6 @@ impl Daemon {
         Ok(DaemonHook::new(
             skills,
             mcp_handler,
-            tasks,
             downloads,
             config.permissions.clone(),
             sandboxed,

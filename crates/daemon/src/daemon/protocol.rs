@@ -9,8 +9,8 @@ use wcore::protocol::{
     api::Server,
     message::{
         DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse, SessionInfo, StreamChunk,
-        StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, TaskEvent, TaskInfo,
-        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
+        StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, ToolCallInfo,
+        ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
     },
 };
 
@@ -121,30 +121,6 @@ impl Server for Daemon {
         Ok(rt.close_session(session).await)
     }
 
-    async fn list_tasks(&self) -> Result<Vec<TaskInfo>> {
-        let rt = self.runtime.read().await.clone();
-        let tasks = rt.hook.tasks.lock().await;
-        Ok(tasks.list(16).iter().map(|t| t.to_info()).collect())
-    }
-
-    async fn kill_task(&self, task_id: u64) -> Result<bool> {
-        let rt = self.runtime.read().await.clone();
-        let session_id = {
-            let tasks = rt.hook.tasks.lock().await;
-            tasks.get(task_id).and_then(|t| t.session_id)
-        };
-        let killed = rt.hook.tasks.lock().await.kill(task_id);
-        if killed && let Some(sid) = session_id {
-            rt.close_session(sid).await;
-        }
-        Ok(killed)
-    }
-
-    async fn approve_task(&self, _task_id: u64, _response: String) -> Result<bool> {
-        // Approval system removed — sub-agents are autonomous.
-        Ok(false)
-    }
-
     fn hub(
         &self,
         package: String,
@@ -172,11 +148,6 @@ impl Server for Daemon {
                 }
             }
         }
-    }
-
-    fn subscribe_tasks(&self) -> impl futures_core::Stream<Item = Result<TaskEvent>> + Send {
-        // Task subscription removed — tasks are lightweight JoinHandles now.
-        futures_util::stream::empty()
     }
 
     async fn list_downloads(&self) -> Result<Vec<DownloadInfo>> {

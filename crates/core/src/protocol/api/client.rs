@@ -3,7 +3,7 @@
 use crate::protocol::message::{
     ClientMessage, ConfigMsg, DownloadEvent, ErrorMsg, GetConfig, HubMsg, Ping, SendMsg,
     SendResponse, ServerMessage, SetConfigMsg, StreamEvent, StreamMsg, SubscribeDownloads,
-    SubscribeTasks, client_message, download_event, server_message, stream_event, task_event,
+    client_message, download_event, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -101,16 +101,6 @@ pub trait Client: Send {
                 other => anyhow::bail!("unexpected response: {other:?}"),
             }
         }
-    }
-
-    /// Subscribe to task lifecycle events.
-    ///
-    /// Streams `task_event::Event`s indefinitely until the connection closes.
-    fn subscribe_tasks(&mut self) -> impl Stream<Item = Result<task_event::Event>> + Send + '_ {
-        self.request_stream(ClientMessage {
-            msg: Some(client_message::Msg::SubscribeTasks(SubscribeTasks {})),
-        })
-        .map(|r| r.and_then(task_event::Event::try_from))
     }
 
     /// Subscribe to download lifecycle events.

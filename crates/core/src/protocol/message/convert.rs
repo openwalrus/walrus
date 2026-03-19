@@ -2,7 +2,7 @@
 
 use crate::protocol::proto::{
     ClientMessage, DownloadEvent, SendMsg, SendResponse, ServerMessage, StreamEvent, StreamMsg,
-    TaskEvent, client_message, download_event, server_message, stream_event, task_event,
+    client_message, download_event, server_message, stream_event,
 };
 
 // ── ClientMessage constructors ───────────────────────────────────
@@ -49,14 +49,6 @@ impl From<DownloadEvent> for ServerMessage {
     }
 }
 
-impl From<TaskEvent> for ServerMessage {
-    fn from(e: TaskEvent) -> Self {
-        Self {
-            msg: Some(server_message::Msg::Task(e)),
-        }
-    }
-}
-
 // ── TryFrom<ServerMessage> ───────────────────────────────────────
 
 fn error_or_unexpected(msg: ServerMessage) -> anyhow::Error {
@@ -97,18 +89,6 @@ impl TryFrom<ServerMessage> for download_event::Event {
             Some(server_message::Msg::Download(e)) => e
                 .event
                 .ok_or_else(|| anyhow::anyhow!("empty download event")),
-            _ => Err(error_or_unexpected(msg)),
-        }
-    }
-}
-
-impl TryFrom<ServerMessage> for task_event::Event {
-    type Error = anyhow::Error;
-    fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
-        match msg.msg {
-            Some(server_message::Msg::Task(e)) => {
-                e.event.ok_or_else(|| anyhow::anyhow!("empty task event"))
-            }
             _ => Err(error_or_unexpected(msg)),
         }
     }

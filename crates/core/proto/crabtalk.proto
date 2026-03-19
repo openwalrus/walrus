@@ -14,11 +14,7 @@ message ClientMessage {
     HubMsg hub = 4;
     Sessions sessions = 5;
     KillMsg kill = 6;
-    Tasks tasks = 7;
-    KillTaskMsg kill_task = 8;
-    ApproveMsg approve = 9;
-    // Field 10 removed — reserved to prevent accidental reuse.
-    SubscribeTasks subscribe_tasks = 11;
+    // Fields 7-11 removed (task protocol).
     Downloads downloads = 12;
     SubscribeDownloads subscribe_downloads = 13;
     GetConfig get_config = 14;
@@ -44,8 +40,6 @@ message StreamMsg {
 
 message Ping {}
 message Sessions {}
-message Tasks {}
-message SubscribeTasks {}
 message Downloads {}
 message SubscribeDownloads {}
 message GetConfig {}
@@ -67,15 +61,6 @@ message KillMsg {
   uint64 session = 1;
 }
 
-message KillTaskMsg {
-  uint64 task_id = 1;
-}
-
-message ApproveMsg {
-  uint64 task_id = 1;
-  string response = 2;
-}
-
 message SetConfigMsg {
   string config = 1;
 }
@@ -93,9 +78,7 @@ message ServerMessage {
     Pong pong = 5;
     SessionList sessions = 6;
     DownloadList downloads = 7;
-    TaskList tasks = 8;
-    TaskEvent task = 9;
-    // Field 10 removed — reserved to prevent accidental reuse.
+    // Fields 8-10 removed (task protocol).
     ConfigMsg config = 11;
     // Fields 12-15 removed (service protocol).
   }
@@ -227,50 +210,6 @@ message SessionList {
 
 message DownloadList {
   repeated DownloadInfo downloads = 1;
-}
-
-message TaskInfo {
-  uint64 id = 1;
-  optional uint64 parent_id = 2;
-  string agent = 3;
-  string status = 4;
-  string description = 5;
-  optional string result = 6;
-  optional string error = 7;
-  string created_by = 8;
-  uint64 prompt_tokens = 9;
-  uint64 completion_tokens = 10;
-  uint64 alive_secs = 11;
-  optional string blocked_on = 12;
-}
-
-message TaskList {
-  repeated TaskInfo tasks = 1;
-}
-
-message TaskEvent {
-  oneof event {
-    TaskCreated created = 1;
-    TaskStatusChanged status_changed = 2;
-    TaskCompleted completed = 3;
-  }
-}
-
-message TaskCreated {
-  TaskInfo task = 1;
-}
-
-message TaskStatusChanged {
-  uint64 task_id = 1;
-  string status = 2;
-  optional string blocked_on = 3;
-}
-
-message TaskCompleted {
-  uint64 task_id = 1;
-  string status = 2;
-  optional string result = 3;
-  optional string error = 4;
 }
 
 message ConfigMsg {
