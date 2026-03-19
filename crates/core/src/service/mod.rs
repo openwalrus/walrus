@@ -1,6 +1,6 @@
 //! Shared system service management (launchd/systemd).
 
-use crate::paths::{HOME_DIR, LOGS_DIR};
+use crate::paths::{CONFIG_DIR, LOGS_DIR};
 use std::path::Path;
 
 #[cfg(target_os = "linux")]
@@ -32,7 +32,7 @@ pub fn render_template(template: &str, params: &ServiceParams<'_>) -> String {
         .replace("{socket}", &params.socket.display().to_string())
         .replace("{config_path}", &params.config_path.display().to_string())
         .replace("{logs_dir}", &LOGS_DIR.display().to_string())
-        .replace("{home_dir}", &HOME_DIR.display().to_string())
+        .replace("{config_dir}", &CONFIG_DIR.display().to_string())
         .replace("{path}", &path)
 }
 

@@ -1,6 +1,6 @@
 //! Linux systemd service management.
 
-use crate::paths::{HOME_DIR, LOGS_DIR};
+use crate::paths::LOGS_DIR;
 use crate::service::{ServiceParams, render_template};
 use anyhow::Result;
 
@@ -13,7 +13,6 @@ pub fn install(template: &str, params: &ServiceParams<'_>) -> Result<()> {
         .join(".config/systemd/user");
     std::fs::create_dir_all(&unit_dir)?;
     std::fs::create_dir_all(&*LOGS_DIR)?;
-    std::fs::create_dir_all(&*HOME_DIR)?;
 
     let unit_path = unit_dir.join(&unit_name);
     std::fs::write(&unit_path, unit)?;

@@ -12,7 +12,7 @@
         <string>-v</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>{home_dir}</string>
+    <string>{config_dir}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>

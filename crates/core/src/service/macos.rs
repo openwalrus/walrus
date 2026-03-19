@@ -1,6 +1,6 @@
 //! macOS launchd service management.
 
-use crate::paths::{HOME_DIR, LOGS_DIR};
+use crate::paths::LOGS_DIR;
 use crate::service::{ServiceParams, render_template};
 use anyhow::Result;
 
@@ -25,7 +25,6 @@ pub fn install(template: &str, params: &ServiceParams<'_>) -> Result<()> {
     let plist = render_template(template, params);
 
     std::fs::create_dir_all(&*LOGS_DIR)?;
-    std::fs::create_dir_all(&*HOME_DIR)?;
 
     if let Some(parent) = plist_path.parent() {
         std::fs::create_dir_all(parent)?;
