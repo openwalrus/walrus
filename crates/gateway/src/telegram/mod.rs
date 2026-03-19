@@ -5,9 +5,10 @@
 
 pub mod command;
 pub mod markdown;
+pub mod serve;
 
+use crate::message::{Attachment, AttachmentKind, GatewayMessage};
 use futures_util::StreamExt;
-use gateway::message::{Attachment, AttachmentKind, GatewayMessage};
 use teloxide::prelude::*;
 use teloxide::types::{ChatKind, UpdateKind};
 use teloxide::update_listeners::{AsUpdateStream, polling_default};

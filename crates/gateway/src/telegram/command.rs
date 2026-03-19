@@ -3,7 +3,7 @@
 //! Executes parsed bot commands (hub install/uninstall) by streaming
 //! progress back to the originating Telegram chat.
 
-use gateway::{BotCommand, DaemonClient};
+use crate::{BotCommand, DaemonClient};
 use std::sync::Arc;
 use teloxide::prelude::*;
 use wcore::protocol::message::{

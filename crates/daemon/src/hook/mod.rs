@@ -1,10 +1,9 @@
 //! Stateful Hook implementation for the daemon.
 //!
-//! [`DaemonHook`] composes skill, MCP, OS, and built-in memory sub-hooks plus
-//! external extension services. `on_build_agent` delegates to skills, memory,
-//! and extension services; `on_register_tools` delegates to all sub-hooks in
-//! sequence. `dispatch_tool` routes every agent tool call by name — the single
-//! entry point from `event.rs`.
+//! [`DaemonHook`] composes skill, MCP, OS, and built-in memory sub-hooks.
+//! `on_build_agent` delegates to skills, memory; `on_register_tools` delegates
+//! to all sub-hooks in sequence. `dispatch_tool` routes every agent tool call
+//! by name — the single entry point from `event.rs`.
 
 use crate::{
     daemon::event::DaemonEventSender,
@@ -14,7 +13,6 @@ use crate::{
         skill::SkillHandler,
         system::{memory::Memory, task::TaskSet},
     },
-    service::ServiceRegistry,
 };
 use crabhub::DownloadRegistry;
 use std::{collections::BTreeMap, sync::Arc};
@@ -53,8 +51,6 @@ pub struct DaemonHook {
     pub(crate) scopes: BTreeMap<String, AgentScope>,
     /// Sub-agent descriptions for catalog injection into the crab agent.
     pub(crate) agent_descriptions: BTreeMap<String, String>,
-    /// External extension service registry (tools + queries).
-    pub(crate) registry: Option<Arc<ServiceRegistry>>,
 }
 
 /// Base tools always included in every agent's whitelist.
@@ -156,9 +152,6 @@ impl Hook for DaemonHook {
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(system::task::tool::tools());
-        if let Some(ref registry) = self.registry {
-            registry.register_tools(tools).await;
-        }
         if self.memory.is_some() {
             tools.insert_all(system::memory::tool::tools());
         }
@@ -215,7 +208,6 @@ impl DaemonHook {
         sandboxed: bool,
         cwd: std::path::PathBuf,
         memory: Option<Memory>,
-        registry: Option<Arc<ServiceRegistry>>,
         event_tx: DaemonEventSender,
     ) -> Self {
         Self {
@@ -230,7 +222,6 @@ impl DaemonHook {
             event_tx,
             scopes: BTreeMap::new(),
             agent_descriptions: BTreeMap::new(),
-            registry,
         }
     }
 
@@ -260,16 +251,11 @@ impl DaemonHook {
             return;
         }
 
-        // Base tools + memory + external service tools always included.
+        // Base tools + memory always included.
         let mut whitelist: Vec<String> = BASE_TOOLS.iter().map(|&s| s.to_owned()).collect();
         if self.memory.is_some() {
             for &t in MEMORY_TOOLS {
                 whitelist.push(t.to_owned());
-            }
-        }
-        if let Some(ref registry) = self.registry {
-            for tool_name in registry.tools.keys() {
-                whitelist.push(tool_name.clone());
             }
         }
         let mut scope_lines = Vec::new();
@@ -340,15 +326,6 @@ impl DaemonHook {
         }
     }
 
-    /// Dispatch to an external extension service if the tool is registered.
-    /// Returns `None` if the tool is not in the registry (fall through to in-process).
-    async fn dispatch_external(&self, name: &str, args: &str, agent: &str) -> Option<String> {
-        self.registry
-            .as_ref()?
-            .dispatch_tool(name, args, agent, None)
-            .await
-    }
-
     /// Scan content for `/skill-name` tokens, load each skill found, and
     /// append their bodies to the end of the message.
     /// Tokens that don't match a skill are left as-is.
@@ -395,8 +372,7 @@ impl DaemonHook {
     /// Route a tool call by name to the appropriate handler.
     ///
     /// This is the single dispatch entry point — `event.rs` calls this
-    /// and never matches on tool names itself. Unrecognised names are
-    /// forwarded to the MCP bridge after a warn-level log.
+    /// and never matches on tool names itself.
     pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str, sender: &str) -> String {
         if let Some(denied) = self.check_perm(name, agent, sender) {
             return denied;
@@ -423,13 +399,7 @@ impl DaemonHook {
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
             "soul" => self.dispatch_soul(args).await,
-            // External extension services.
-            name => {
-                if let Some(result) = self.dispatch_external(name, args, agent).await {
-                    return result;
-                }
-                format!("tool not available: {name}")
-            }
+            name => format!("tool not available: {name}"),
         }
     }
 }

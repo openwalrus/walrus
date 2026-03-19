@@ -505,13 +505,18 @@ name = "crabtalk-gateway"
 version = "0.0.10"
 dependencies = [
  "anyhow",
+ "clap",
  "crabtalk-core",
  "crabtalk-transport",
+ "dirs",
  "futures-util",
  "serde",
  "serde_json",
+ "teloxide",
  "tokio",
+ "toml",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -538,15 +543,11 @@ dependencies = [
 name = "crabtalk-search"
 version = "0.0.10"
 dependencies = [
- "anyhow",
  "clap",
- "crabtalk-core",
  "lru 0.14.0",
  "percent-encoding",
- "prost",
  "rand 0.9.2",
  "reqwest",
- "schemars 1.2.1",
  "scraper",
  "serde",
  "serde_json",
@@ -556,22 +557,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
-]
-
-[[package]]
-name = "crabtalk-telegram"
-version = "0.0.10"
-dependencies = [
- "anyhow",
- "clap",
- "crabtalk-core",
- "crabtalk-gateway",
- "futures-util",
- "serde_json",
- "teloxide",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

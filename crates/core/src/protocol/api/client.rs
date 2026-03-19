@@ -2,9 +2,8 @@
 
 use crate::protocol::message::{
     ClientMessage, ConfigMsg, DownloadEvent, ErrorMsg, GetConfig, HubMsg, Ping, SendMsg,
-    SendResponse, ServerMessage, ServiceQueryMsg, ServiceQueryResultMsg, SetConfigMsg, StreamEvent,
-    StreamMsg, SubscribeDownloads, SubscribeTasks, client_message, download_event, server_message,
-    stream_event, task_event,
+    SendResponse, ServerMessage, SetConfigMsg, StreamEvent, StreamMsg, SubscribeDownloads,
+    SubscribeTasks, client_message, download_event, server_message, stream_event, task_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -165,36 +164,6 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Pong(_)),
                 } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
-    /// Query a named service.
-    fn service_query(
-        &mut self,
-        service: String,
-        query: String,
-    ) -> impl std::future::Future<Output = Result<String>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::ServiceQuery(ServiceQueryMsg {
-                        service,
-                        query,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg:
-                        Some(server_message::Msg::ServiceQueryResult(ServiceQueryResultMsg { result })),
-                } => Ok(result),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

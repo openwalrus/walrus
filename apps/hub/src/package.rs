@@ -4,7 +4,6 @@ use crate::{DownloadRegistry, manifest};
 use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 use std::path::Path;
-use tokio::process::Command;
 use wcore::paths::CONFIG_DIR;
 use wcore::protocol::message::{
     DownloadCompleted, DownloadCreated, DownloadEvent, DownloadKind, DownloadStep, download_event,
@@ -19,7 +18,6 @@ const CRABTALK_HUB: &str = "https://github.com/crabtalk/hub";
 /// Filter format: `"kind:name"` — e.g. `"skill:playwright-cli"`.
 struct HubFilter {
     mcps: BTreeSet<String>,
-    services: BTreeSet<String>,
     skills: BTreeSet<String>,
     agents: BTreeSet<String>,
 }
@@ -28,7 +26,6 @@ impl HubFilter {
     fn parse(filters: &[String]) -> Self {
         let mut f = Self {
             mcps: BTreeSet::new(),
-            services: BTreeSet::new(),
             skills: BTreeSet::new(),
             agents: BTreeSet::new(),
         };
@@ -36,7 +33,6 @@ impl HubFilter {
             if let Some((kind, name)) = raw.split_once(':') {
                 let set = match kind {
                     "mcp" => &mut f.mcps,
-                    "service" => &mut f.services,
                     "skill" => &mut f.skills,
                     "agent" => &mut f.agents,
                     _ => continue,
@@ -48,18 +44,11 @@ impl HubFilter {
     }
 
     fn is_empty(&self) -> bool {
-        self.mcps.is_empty()
-            && self.services.is_empty()
-            && self.skills.is_empty()
-            && self.agents.is_empty()
+        self.mcps.is_empty() && self.skills.is_empty() && self.agents.is_empty()
     }
 
     fn wants_mcp(&self, name: &str) -> bool {
         self.is_empty() || self.mcps.contains(name)
-    }
-
-    fn wants_service(&self, name: &str) -> bool {
-        self.is_empty() || self.services.contains(name)
     }
 
     fn wants_skill(&self, name: &str) -> bool {
@@ -73,7 +62,7 @@ impl HubFilter {
 
 /// Install a hub package, streaming unified download events.
 ///
-/// Syncs the hub repo, reads the manifest, merges MCP servers and services
+/// Syncs the hub repo, reads the manifest, merges MCP servers
 /// into `crab.toml`, copies skill directories into `~/.crabtalk/skills/`,
 /// and installs agents (prompt files + their declared skills).
 ///
@@ -118,60 +107,6 @@ pub fn install(
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
             merge_mcp_servers_filtered(&wanted_mcps)?;
-        }
-
-        // Install service binaries and merge configs.
-        let wanted_services: Vec<_> = manifest
-            .services
-            .iter()
-            .filter(|(k, _)| filter.wants_service(k.as_str()))
-            .collect();
-        if !wanted_services.is_empty() {
-            // Auto-install Rust toolchain if cargo is not available.
-            // Check the well-known path first since the daemon's PATH may not
-            // include ~/.cargo/bin.
-            let cargo = std::env::var_os("HOME")
-                .map(|h| std::path::PathBuf::from(h).join(".cargo/bin/cargo"))
-                .filter(|p| p.exists());
-            let cargo_bin = cargo.as_deref().unwrap_or(Path::new("cargo"));
-            if Command::new(cargo_bin).arg("--version").output().await.is_err() {
-                let msg = "installing rust toolchain…".to_string();
-                registry.lock().await.step(id, msg.clone());
-                yield DownloadEvent {
-                    event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
-                };
-                let status = Command::new("sh")
-                    .args(["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"])
-                    .status()
-                    .await
-                    .context("failed to install rust via rustup")?;
-                if !status.success() {
-                    Err(anyhow::anyhow!("rustup install exited with {status}"))?;
-                }
-            }
-
-            for (key, cfg) in &wanted_services {
-                let msg = format!("installing {key}…");
-                registry.lock().await.step(id, msg.clone());
-                yield DownloadEvent {
-                    event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
-                };
-                let status = Command::new(cargo_bin)
-                    .args(["install", &cfg.krate])
-                    .status()
-                    .await
-                    .with_context(|| format!("failed to cargo install {key}"))?;
-                if !status.success() {
-                    Err(anyhow::anyhow!("cargo install for {key} exited with {status}"))?;
-                }
-            }
-
-            let msg = "adding services…".to_string();
-            registry.lock().await.step(id, msg.clone());
-            yield DownloadEvent {
-                event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
-            };
-            merge_services_filtered(&wanted_services)?;
         }
 
         // Collect skill keys from wanted agents.
@@ -251,8 +186,7 @@ pub fn install(
 /// Uninstall a hub package, streaming unified download events.
 ///
 /// Reads the manifest from the local hub repo (no network sync), removes MCP
-/// servers and services from `crab.toml`, deletes skill directories and
-/// agent prompt files.
+/// servers from `crab.toml`, deletes skill directories and agent prompt files.
 ///
 /// When `filters` is non-empty, only matching components are removed.
 pub fn uninstall(
@@ -290,20 +224,6 @@ pub fn uninstall(
                 event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
             };
             remove_keys_from_section("mcps", &mcp_keys)?;
-        }
-
-        let service_keys: Vec<_> = manifest
-            .services
-            .keys()
-            .filter(|k| filter.wants_service(k.as_str()))
-            .collect();
-        if !service_keys.is_empty() {
-            let msg = "removing services…".to_string();
-            registry.lock().await.step(id, msg.clone());
-            yield DownloadEvent {
-                event: Some(download_event::Event::Step(DownloadStep { id, message: msg })),
-            };
-            remove_keys_from_section("services", &service_keys)?;
         }
 
         let skill_keys: Vec<_> = manifest
@@ -359,6 +279,8 @@ pub fn uninstall(
 
 /// Ensure `dest` is a shallow clone of `url`, creating or updating as needed.
 async fn git_sync(url: &str, dest: &Path) -> Result<()> {
+    use tokio::process::Command;
+
     if dest.exists() {
         let status = Command::new("git")
             .args([
@@ -436,37 +358,6 @@ fn merge_mcp_servers_filtered(entries: &[(&String, &wcore::McpServerConfig)]) ->
     for (key, cfg) in entries {
         let doc = toml_edit::ser::to_document(cfg)
             .with_context(|| format!("failed to serialize McpServerConfig for {key}"))?;
-        let item = toml_edit::Item::Table(doc.as_table().clone());
-        table.insert(key.as_str(), item);
-    }
-
-    std::fs::write(&config_path, doc.to_string())
-        .with_context(|| format!("failed to write {}", config_path.display()))?;
-    Ok(())
-}
-
-/// Merge selected service entries into `crab.toml`.
-fn merge_services_filtered(entries: &[(&String, &wcore::ServiceConfig)]) -> Result<()> {
-    use toml_edit::DocumentMut;
-
-    let config_path = CONFIG_DIR.join("crab.toml");
-    let content = std::fs::read_to_string(&config_path)
-        .with_context(|| format!("cannot read {}", config_path.display()))?;
-    let mut doc: DocumentMut = content
-        .parse()
-        .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
-
-    let table = doc
-        .entry("services")
-        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-        .as_table_mut()
-        .context("services is not a table")?;
-
-    for (key, cfg) in entries {
-        let mut runtime = (*cfg).clone();
-        runtime.description = None;
-        let doc = toml_edit::ser::to_document(&runtime)
-            .with_context(|| format!("failed to serialize ServiceConfig for {key}"))?;
         let item = toml_edit::Item::Table(doc.as_table().clone());
         table.insert(key.as_str(), item);
     }

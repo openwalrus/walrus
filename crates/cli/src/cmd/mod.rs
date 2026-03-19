@@ -10,6 +10,7 @@ pub mod attach;
 pub mod auth;
 pub mod console;
 pub mod daemon;
+pub mod gateway;
 pub mod hub;
 
 /// Crabtalk CLI client — connects to crabtalk daemon via Unix domain socket.
@@ -80,6 +81,7 @@ impl Cli {
                 cmd.run(&mut runner).await
             }
             Command::Daemon(cmd) => cmd.run(&socket_path).await,
+            Command::Gateway(cmd) => cmd.run(),
         }
     }
 }
@@ -97,6 +99,8 @@ pub enum Command {
     Hub(hub::Hub),
     /// Manage the crabtalk daemon (start, reload, install, uninstall).
     Daemon(daemon::Daemon),
+    /// Manage gateways (telegram start/stop). Forwards to crabtalk-gateway.
+    Gateway(gateway::Gateway),
 }
 
 /// Connect to crabtalk daemon via TCP or UDS.

@@ -2,7 +2,6 @@
 
 pub mod api;
 pub mod codec;
-pub mod ext;
 pub mod message;
 pub mod proto;
 

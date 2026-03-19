@@ -38,9 +38,6 @@ pub struct DaemonConfig {
     /// Permission configuration: global defaults + per-agent overrides.
     #[serde(default)]
     pub permissions: PermissionConfig,
-    /// Managed child services (`[services.<name>]`).
-    #[serde(default)]
-    pub services: BTreeMap<String, crate::service::ServiceConfig>,
 }
 
 impl DaemonConfig {

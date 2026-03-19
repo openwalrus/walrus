@@ -1,6 +1,8 @@
 //! Gateway configuration types.
 
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Telegram bot configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,9 +20,27 @@ pub struct TelegramConfig {
 
 /// Top-level gateway configuration.
 ///
-/// Deserialized from `[gateway.telegram]` TOML tables.
+/// Deserialized from `~/.crabtalk/gateway.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatewayConfig {
     /// Telegram bot config. Absent means no Telegram bot.
     pub telegram: Option<TelegramConfig>,
+}
+
+impl GatewayConfig {
+    /// Load from a TOML file.
+    pub fn load(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("cannot read {}", path.display()))?;
+        toml::from_str(&content).with_context(|| format!("invalid TOML in {}", path.display()))
+    }
+
+    /// Save to a TOML file.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let content = toml::to_string_pretty(self).context("failed to serialize GatewayConfig")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))
+    }
 }

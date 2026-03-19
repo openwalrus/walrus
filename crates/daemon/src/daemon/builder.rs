@@ -12,7 +12,6 @@ use crate::{
         self, DaemonHook,
         system::{memory::Memory, task::TaskSet},
     },
-    service::ServiceManager,
 };
 use anyhow::Result;
 use crabhub::DownloadRegistry;
@@ -26,56 +25,44 @@ const SKILL_MASTER_AGENT: &str = include_str!("../../prompts/skill-master.md");
 
 impl Daemon {
     /// Build a fully-configured [`Daemon`] from the given config, config
-    /// directory, and event sender. Returns the daemon and an optional
-    /// ServiceManager for lifecycle management of child services.
+    /// directory, and event sender.
     pub(crate) async fn build(
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: DaemonEventSender,
-    ) -> Result<(Self, Option<ServiceManager>)> {
-        let (runtime, service_manager) = Self::build_runtime(config, config_dir, &event_tx).await?;
-        Ok((
-            Self {
-                runtime: Arc::new(RwLock::new(Arc::new(runtime))),
-                config_dir: config_dir.to_path_buf(),
-                event_tx,
-            },
-            service_manager,
-        ))
+    ) -> Result<Self> {
+        let runtime = Self::build_runtime(config, config_dir, &event_tx).await?;
+        Ok(Self {
+            runtime: Arc::new(RwLock::new(Arc::new(runtime))),
+            config_dir: config_dir.to_path_buf(),
+            event_tx,
+        })
     }
 
     /// Rebuild the runtime from disk and swap it in atomically.
     ///
     /// In-flight requests that already hold a reference to the old runtime
     /// complete normally. New requests after the swap see the new runtime.
-    /// Note: reload does not restart managed services — that requires a
-    /// full daemon restart. Services field is cleared to avoid re-spawning.
     pub async fn reload(&self) -> Result<()> {
-        let mut config = DaemonConfig::load(&self.config_dir.join("crab.toml"))?;
-        config.services.clear();
-        let (new_runtime, _) =
-            Self::build_runtime(&config, &self.config_dir, &self.event_tx).await?;
+        let config = DaemonConfig::load(&self.config_dir.join("crab.toml"))?;
+        let new_runtime = Self::build_runtime(&config, &self.config_dir, &self.event_tx).await?;
         *self.runtime.write().await = Arc::new(new_runtime);
         tracing::info!("daemon reloaded");
         Ok(())
     }
 
     /// Construct a fresh [`Runtime`] from config. Used by both [`build`] and [`reload`].
-    /// Returns the runtime and an optional ServiceManager for child service lifecycle.
     async fn build_runtime(
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-    ) -> Result<(
-        Runtime<ProviderRegistry, DaemonHook>,
-        Option<ServiceManager>,
-    )> {
+    ) -> Result<Runtime<ProviderRegistry, DaemonHook>> {
         let manager = Self::build_providers(config)?;
-        let (hook, service_manager) = Self::build_hook(config, config_dir, event_tx).await?;
+        let hook = Self::build_hook(config, config_dir, event_tx).await?;
         let tool_tx = Self::build_tool_sender(event_tx);
         let mut runtime = Runtime::new(manager, hook, Some(tool_tx)).await;
         Self::load_agents(&mut runtime, config_dir, config)?;
-        Ok((runtime, service_manager))
+        Ok(runtime)
     }
 
     /// Construct the provider registry from config.
@@ -98,12 +85,11 @@ impl Daemon {
     }
 
     /// Build the daemon hook with all backends (skills, MCP, tasks, downloads, memory).
-    /// Returns the hook and an optional ServiceManager for child service lifecycle.
     async fn build_hook(
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-    ) -> Result<(DaemonHook, Option<ServiceManager>)> {
+    ) -> Result<DaemonHook> {
         let downloads = Arc::new(Mutex::new(DownloadRegistry::new()));
 
         let skills_dir = config_dir.join(wcore::paths::SKILLS_DIR);
@@ -122,17 +108,6 @@ impl Daemon {
             tracing::info!("sandbox mode active — OS tools bypass permission check");
         }
 
-        // Spawn and handshake managed services.
-        let (registry, service_manager) = if config.services.is_empty() {
-            (None, None)
-        } else {
-            let daemon_socket = wcore::paths::SOCKET_PATH.to_path_buf();
-            let mut sm = ServiceManager::new(&config.services, config_dir, daemon_socket);
-            sm.spawn_all().await?;
-            let registry = sm.handshake_all().await;
-            (Some(Arc::new(registry)), Some(sm))
-        };
-
         let memory = Some(Memory::open(
             config_dir.join("memory"),
             config.system.memory.clone(),
@@ -141,20 +116,16 @@ impl Daemon {
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
 
-        Ok((
-            DaemonHook::new(
-                skills,
-                mcp_handler,
-                tasks,
-                downloads,
-                config.permissions.clone(),
-                sandboxed,
-                cwd,
-                memory,
-                registry,
-                event_tx.clone(),
-            ),
-            service_manager,
+        Ok(DaemonHook::new(
+            skills,
+            mcp_handler,
+            tasks,
+            downloads,
+            config.permissions.clone(),
+            sandboxed,
+            cwd,
+            memory,
+            event_tx.clone(),
         ))
     }
 

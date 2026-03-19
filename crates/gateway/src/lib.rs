@@ -1,7 +1,5 @@
-//! Shared gateway types for Crabtalk platform adapters.
-//!
-//! Provides configuration, message types, daemon client, stream accumulation,
-//! and bot command parsing used by the Telegram binary.
+//! Crabtalk gateway — library for platform adapters (Telegram, etc.)
+//! and system service management.
 
 use std::{collections::HashSet, path::Path, sync::Arc};
 use tokio::sync::RwLock;
@@ -10,7 +8,10 @@ pub mod client;
 pub mod command;
 pub mod config;
 pub mod message;
+pub mod service;
 pub mod stream;
+#[cfg(feature = "telegram")]
+pub mod telegram;
 
 pub use client::DaemonClient;
 pub use command::{BotCommand, COMMAND_HINT, parse_command};
