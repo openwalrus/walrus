@@ -12,7 +12,7 @@ use toml_edit::{Array, DocumentMut, Item, Table, value};
 #[derive(Args, Debug)]
 pub struct Attach {
     /// Connect via TCP instead of Unix domain socket.
-    /// Reads the port from ~/.crabtalk/crab.tcp.
+    /// Reads the port from ~/.crabtalk/run/crabtalk.port.
     #[arg(long, default_missing_value = "true", num_args = 0)]
     pub tcp: bool,
 }
