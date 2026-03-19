@@ -55,10 +55,10 @@ const BASE_TOOLS: &[&str] = &["bash"];
 const SKILL_TOOLS: &[&str] = &["skill"];
 
 /// MCP discovery/call tools.
-const MCP_TOOLS: &[&str] = &["search_mcp", "call_mcp_tool"];
+const MCP_TOOLS: &[&str] = &["mcp"];
 
 /// Memory tools.
-const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget", "soul"];
+const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget"];
 
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &["delegate"];
@@ -85,7 +85,7 @@ impl Hook for DaemonHook {
         if !mcp_servers.is_empty() {
             let names: Vec<&str> = mcp_servers.iter().map(|(n, _)| n.as_str()).collect();
             hints.push(format!(
-                "MCP servers: {}. Use search_mcp to list tools, call_mcp_tool to invoke them.",
+                "MCP servers: {}. Use the mcp tool to list or call tools.",
                 names.join(", ")
             ));
         }
@@ -264,10 +264,7 @@ impl DaemonHook {
                 whitelist.push(t.to_owned());
             }
             let server_names: Vec<&str> = config.mcps.iter().map(|s| s.as_str()).collect();
-            scope_lines.push(format!(
-                "mcp servers: {}\nUse search_mcp to discover tools, call_mcp_tool to invoke them.",
-                server_names.join(", ")
-            ));
+            scope_lines.push(format!("mcp servers: {}", server_names.join(", ")));
         }
 
         if !config.members.is_empty() {
@@ -377,8 +374,7 @@ impl DaemonHook {
             return format!("tool not available: {name}");
         }
         match name {
-            "search_mcp" => self.dispatch_search_mcp(args, agent).await,
-            "call_mcp_tool" => self.dispatch_call_mcp_tool(args, agent).await,
+            "mcp" => self.dispatch_mcp(args, agent).await,
             "skill" => self.dispatch_skill(args, agent).await,
             "bash" => self.dispatch_bash(args).await,
             "delegate" => self.dispatch_delegate(args, agent).await,
@@ -386,7 +382,6 @@ impl DaemonHook {
             "remember" => self.dispatch_remember(args).await,
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
-            "soul" => self.dispatch_soul(args).await,
             name => format!("tool not available: {name}"),
         }
     }

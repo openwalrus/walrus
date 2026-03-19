@@ -1,6 +1,6 @@
 //! Tool schemas and dispatch for built-in memory tools.
 //!
-//! Five tools: recall, remember, forget, memory (MEMORY.md), soul (Crab.md).
+//! Four tools: recall, remember, forget, memory (MEMORY.md).
 
 use crate::hook::DaemonHook;
 use serde::Deserialize;
@@ -56,23 +56,12 @@ impl ToolDescription for Memory {
     const DESCRIPTION: &'static str = "Overwrite MEMORY.md — your curated overview injected every session. Read it before overwriting.";
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
-pub(crate) struct Soul {
-    /// The full content to write to Crab.md — your identity and personality.
-    pub content: String,
-}
-
-impl ToolDescription for Soul {
-    const DESCRIPTION: &'static str = "Overwrite Crab.md — your identity and personality. Only edit when the user explicitly shapes who you are.";
-}
-
 pub(crate) fn tools() -> Vec<Tool> {
     vec![
         Recall::as_tool(),
         Remember::as_tool(),
         Forget::as_tool(),
         Memory::as_tool(),
-        Soul::as_tool(),
     ]
 }
 
@@ -117,17 +106,6 @@ impl DaemonHook {
         };
         match self.memory {
             Some(ref mem) => mem.write_index(&input.content),
-            None => "memory not available".to_owned(),
-        }
-    }
-
-    pub(crate) async fn dispatch_soul(&self, args: &str) -> String {
-        let input: Soul = match serde_json::from_str(args) {
-            Ok(v) => v,
-            Err(e) => return format!("invalid arguments: {e}"),
-        };
-        match self.memory {
-            Some(ref mem) => mem.write_soul(&input.content),
             None => "memory not available".to_owned(),
         }
     }
