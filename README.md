@@ -31,22 +31,23 @@ Crabtalk is a daemon that runs [agents] and dispatches tools. The daemon
 ships with built-in [tools] (shell, task delegation, memory),
 [MCP][mcp] server integration, and [skills] (Markdown prompt files).
 
-Heavier capabilities live outside the daemon as [extensions][services] —
-managed child processes you add or remove in config:
+Heavier capabilities live outside the daemon as [commands] — standalone
+binaries discovered via cargo-style dispatch (`crabtalk <name>` finds
+`crabtalk-<name>` on PATH):
 
-| Service            | What it does                                 |
+| Command            | What it does                                 |
 | ------------------ | -------------------------------------------- |
 | [Search][search]   | Meta-search aggregator                       |
 | [Gateway][gateway] | Telegram adapter                             |
 
-The daemon stays small. Services scale independently.
+The daemon stays small. Commands run independently.
 
 ## Learn More
 
 - [Quickstart][quickstart] — first agent in 2 minutes
 - [Configuration][config] — crab.toml reference
 - [Providers][providers] — connect any LLM
-- [Extensions][services] — how extensions work
+- [Commands] — how commands work
 - [Architecture][runtime] — runtime, event loop, hooks
 - [Why we built Crabtalk][blog]
 
@@ -72,9 +73,9 @@ GPL-3.0
 [remote]: https://crabtalk.ai/docs/crabtalk/models/remote
 [agents]: https://crabtalk.ai/docs/development/concepts/agents
 [runtime]: https://crabtalk.ai/docs/development/concepts/runtime
-[services]: https://crabtalk.ai/docs/crabtalk/extensions
-[search]: https://crabtalk.ai/docs/crabtalk/extensions/search
-[gateway]: https://crabtalk.ai/docs/crabtalk/extensions/gateway
+[commands]: https://crabtalk.ai/docs/crabtalk/commands
+[search]: https://crabtalk.ai/docs/crabtalk/commands/search
+[gateway]: https://crabtalk.ai/docs/crabtalk/commands/gateway
 [tools]: https://crabtalk.ai/docs/development/tools/built-in
 [mcp]: https://crabtalk.ai/docs/development/tools/mcp
 [skills]: https://crabtalk.ai/docs/development/tools/skills

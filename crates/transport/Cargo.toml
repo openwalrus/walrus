@@ -6,6 +6,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+documentation = "https://docs.rs/crabtalk-transport"
 keywords.workspace = true
 
 [dependencies]
