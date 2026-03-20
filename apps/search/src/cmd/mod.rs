@@ -74,9 +74,9 @@ pub enum Command {
         init: bool,
     },
 
-    /// Manage the search MCP service.
+    /// MCP service management.
     #[cfg(feature = "mcp")]
-    #[command(subcommand)]
+    #[command(flatten)]
     Mcp(McpCommand),
 }
 
