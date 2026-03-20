@@ -656,20 +656,15 @@ name = "crabtalk-gateway"
 version = "0.0.11"
 dependencies = [
  "anyhow",
- "clap",
- "crabtalk-command",
  "crabtalk-core",
  "crabtalk-transport",
- "dialoguer",
  "dirs",
  "futures-util",
  "serde",
  "serde_json",
- "teloxide",
  "tokio",
  "toml",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -715,6 +710,24 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "crabtalk-telegram"
+version = "0.0.11"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crabtalk-command",
+ "crabtalk-core",
+ "crabtalk-gateway",
+ "crabtalk-transport",
+ "dialoguer",
+ "futures-util",
+ "teloxide",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

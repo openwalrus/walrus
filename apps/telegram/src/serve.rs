@@ -80,7 +80,7 @@ async fn spawn_telegram(
 
     let poll_bot = bot.clone();
     tokio::spawn(async move {
-        crate::telegram::poll_loop(poll_bot, tx).await;
+        crate::poll_loop(poll_bot, tx).await;
     });
 
     let allowed: std::collections::HashSet<i64> = allowed_users.iter().copied().collect();
@@ -131,7 +131,7 @@ async fn telegram_loop(
                     let b = bot.clone();
                     let c = client.clone();
                     tokio::spawn(async move {
-                        crate::telegram::command::dispatch_command(cmd, c, b, chat_id).await;
+                        crate::command::dispatch_command(cmd, c, b, chat_id).await;
                     });
                 }
                 None => {
@@ -260,7 +260,7 @@ async fn tg_stream(
                 let reply_to = is_group.then_some(teloxide::types::MessageId(reply_to_msg_id as i32));
                 match msg_id {
                     None => {
-                        match crate::telegram::markdown::send_md(bot, ChatId(chat_id), &rendered, reply_to).await {
+                        match crate::markdown::send_md(bot, ChatId(chat_id), &rendered, reply_to).await {
                             Ok(sent) => {
                                 msg_id = Some(sent.id);
                                 last_sent_len = rendered.len();
@@ -269,7 +269,7 @@ async fn tg_stream(
                         }
                     }
                     Some(mid) => {
-                        if let Err(e) = crate::telegram::markdown::edit_md(bot, ChatId(chat_id), mid, &rendered).await {
+                        if let Err(e) = crate::markdown::edit_md(bot, ChatId(chat_id), mid, &rendered).await {
                             tracing::debug!(agent, "edit failed (may be same text): {e}");
                         } else {
                             last_sent_len = rendered.len();
@@ -300,7 +300,7 @@ async fn tg_stream(
         match msg_id {
             Some(mid) if final_text.len() != last_sent_len => {
                 if let Err(e) =
-                    crate::telegram::markdown::edit_md(bot, ChatId(chat_id), mid, &final_text).await
+                    crate::markdown::edit_md(bot, ChatId(chat_id), mid, &final_text).await
                 {
                     tracing::debug!(agent, "final edit failed: {e}");
                 }
@@ -309,8 +309,7 @@ async fn tg_stream(
                 let reply_to =
                     is_group.then_some(teloxide::types::MessageId(reply_to_msg_id as i32));
                 if let Err(e) =
-                    crate::telegram::markdown::send_md(bot, ChatId(chat_id), &final_text, reply_to)
-                        .await
+                    crate::markdown::send_md(bot, ChatId(chat_id), &final_text, reply_to).await
                 {
                     tracing::warn!(agent, "failed to send reply: {e}");
                 }

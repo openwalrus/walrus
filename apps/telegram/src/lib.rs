@@ -1,13 +1,11 @@
-//! Telegram Bot API adapter.
-//!
-//! Uses teloxide long-polling for receiving messages and `Bot::send_message`
-//! for sending replies.
+//! Crabtalk Telegram gateway — Telegram Bot API adapter.
 
 pub mod command;
 pub mod markdown;
 pub mod serve;
 
-use crate::message::{Attachment, AttachmentKind, GatewayMessage};
+pub use gateway::*;
+
 use futures_util::StreamExt;
 use teloxide::prelude::*;
 use teloxide::types::{ChatKind, UpdateKind};

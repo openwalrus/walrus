@@ -1,7 +1,7 @@
-//! `crabtalk-gateway` binary — manages gateway services.
+//! `crabtalk-telegram` binary — Telegram gateway for Crabtalk.
 
 use clap::{Parser, Subcommand};
-use crabtalk_gateway::{GatewayConfig, config::TelegramConfig};
+use crabtalk_telegram::{GatewayConfig, config::TelegramConfig};
 use dialoguer::{Password, theme::ColorfulTheme};
 
 #[crabtalk_command::command(kind = "client", label = "ai.crabtalk.gateway-telegram")]
@@ -16,12 +16,12 @@ impl GatewayTelegram {
         } else {
             GatewayConfig::default()
         };
-        crabtalk_gateway::telegram::serve::run(&socket.to_string_lossy(), &config).await
+        crabtalk_telegram::serve::run(&socket.to_string_lossy(), &config).await
     }
 }
 
 #[derive(Parser)]
-#[command(name = "crabtalk-gateway", about = "Crabtalk gateway manager")]
+#[command(name = "crabtalk-telegram", about = "Crabtalk Telegram gateway")]
 struct App {
     #[command(subcommand)]
     command: GatewayCommand,
