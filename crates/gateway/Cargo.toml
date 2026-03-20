@@ -27,4 +27,6 @@ toml.workspace = true
 transport.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-wcore = { workspace = true, features = ["client"] }
+crabtalk-command = { workspace = true, features = ["client"] }
+
+wcore.workspace = true

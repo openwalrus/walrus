@@ -27,13 +27,11 @@ pub trait Service {
     fn description(&self) -> &str;
     /// Reverse-DNS label, e.g. "ai.crabtalk.search".
     fn label(&self) -> &str;
-    /// CLI subcommand prefix used in the service template.
-    fn subcommand(&self) -> &str;
 
     /// Install and start the service.
     fn start(&self) -> anyhow::Result<()> {
         let binary = std::env::current_exe()?;
-        let rendered = render_service_template(self, &binary);
+        let rendered = render_service_template(self, &binary, self.name());
         install(&rendered, self.label())
     }
 
@@ -53,7 +51,11 @@ pub trait Service {
 
 /// Render the platform-specific service template for a [`Service`] implementor.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> String {
+pub fn render_service_template(
+    svc: &(impl Service + ?Sized),
+    binary: &Path,
+    subcommand: &str,
+) -> String {
     let path_env = std::env::var("PATH").unwrap_or_default();
     #[cfg(target_os = "macos")]
     let template = LAUNCHD_TEMPLATE;
@@ -62,7 +64,7 @@ pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> 
     template
         .replace("{label}", svc.label())
         .replace("{description}", svc.description())
-        .replace("{subcommand}", svc.subcommand())
+        .replace("{subcommand}", subcommand)
         .replace("{log_name}", svc.name())
         .replace("{binary}", &binary.display().to_string())
         .replace("{logs_dir}", &LOGS_DIR.display().to_string())
@@ -71,7 +73,11 @@ pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> 
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
+pub fn render_service_template(
+    _svc: &(impl Service + ?Sized),
+    _binary: &Path,
+    _subcommand: &str,
+) -> String {
     String::new()
 }
 
@@ -121,60 +127,23 @@ pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-// ── ServiceAction (clap enum) ───────────────────────────────────────
+// ── MCP run helper ──────────────────────────────────────────────────
 
-#[cfg(any(feature = "mcp", feature = "client"))]
-#[derive(Debug, clap::Subcommand)]
-pub enum ServiceAction {
-    /// Install and start the service.
-    Start,
-    /// Stop and uninstall the service.
-    Stop,
-    /// Run the service directly (used by launchd/systemd).
-    Run,
-    /// View service logs.
-    Logs {
-        /// Arguments passed through to `tail` (e.g. `-f`, `-n 100`).
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        tail_args: Vec<String>,
-    },
-}
-
-#[cfg(any(feature = "mcp", feature = "client"))]
-impl ServiceAction {
-    /// Dispatch the action for an MCP (port-bound) service.
-    #[cfg(feature = "mcp")]
-    pub async fn exec_mcp(self, svc: &(impl McpService + Sync)) -> anyhow::Result<()> {
-        match self {
-            Self::Start => svc.start(),
-            Self::Stop => svc.stop(),
-            Self::Run => {
-                let router = svc.router();
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-                let addr = listener.local_addr()?;
-                std::fs::create_dir_all(&*RUN_DIR)?;
-                std::fs::write(
-                    RUN_DIR.join(format!("{}.port", svc.name())),
-                    addr.port().to_string(),
-                )?;
-                eprintln!("MCP server listening on {addr}");
-                axum::serve(listener, router).await?;
-                Ok(())
-            }
-            Self::Logs { tail_args } => svc.logs(&tail_args),
-        }
-    }
-
-    /// Dispatch the action for a client (daemon-connected) service.
-    #[cfg(feature = "client")]
-    pub async fn exec_client(self, svc: &(impl ClientService + Sync)) -> anyhow::Result<()> {
-        match self {
-            Self::Start => svc.start(),
-            Self::Stop => svc.stop(),
-            Self::Run => svc.run().await,
-            Self::Logs { tail_args } => svc.logs(&tail_args),
-        }
-    }
+/// Run an MCP (port-bound) service: bind a TCP listener, write the port file,
+/// and serve the router.
+#[cfg(feature = "mcp")]
+pub async fn run_mcp(svc: &(impl McpService + Sync)) -> anyhow::Result<()> {
+    let router = svc.router();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    std::fs::create_dir_all(&*RUN_DIR)?;
+    std::fs::write(
+        RUN_DIR.join(format!("{}.port", svc.name())),
+        addr.port().to_string(),
+    )?;
+    eprintln!("MCP server listening on {addr}");
+    axum::serve(listener, router).await?;
+    Ok(())
 }
 
 // ── McpService ──────────────────────────────────────────────────────

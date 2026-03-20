@@ -1,0 +1,16 @@
+[package]
+name = "crabtalk-command-codegen"
+description = "Proc-macro codegen for crabtalk service commands"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true

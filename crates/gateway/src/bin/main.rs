@@ -3,26 +3,11 @@
 use clap::{Parser, Subcommand};
 use crabtalk_gateway::{GatewayConfig, config::TelegramConfig};
 use dialoguer::{Password, theme::ColorfulTheme};
-use wcore::service::{ClientService, Service};
 
-struct TelegramService;
+#[crabtalk_command::command(kind = "client", label = "ai.crabtalk.gateway-telegram")]
+struct GatewayTelegram;
 
-impl Service for TelegramService {
-    fn name(&self) -> &str {
-        "gateway-telegram"
-    }
-    fn description(&self) -> &str {
-        "Crabtalk Gateway - Telegram"
-    }
-    fn label(&self) -> &str {
-        "ai.crabtalk.gateway-telegram"
-    }
-    fn subcommand(&self) -> &str {
-        "telegram"
-    }
-}
-
-impl ClientService for TelegramService {
+impl crabtalk_command::ClientService for GatewayTelegram {
     async fn run(&self) -> anyhow::Result<()> {
         let socket = wcore::paths::SOCKET_PATH.clone();
         let config_path = wcore::paths::CONFIG_DIR.join("gateway.toml");
@@ -47,23 +32,7 @@ enum GatewayCommand {
     /// Manage the Telegram gateway.
     Telegram {
         #[command(subcommand)]
-        action: TelegramAction,
-    },
-}
-
-#[derive(Subcommand)]
-enum TelegramAction {
-    /// Install and start the Telegram gateway as a system service.
-    Start,
-    /// Stop and uninstall the Telegram gateway system service.
-    Stop,
-    /// Run the Telegram gateway directly (used by launchd/systemd).
-    Run,
-    /// View gateway service logs.
-    Logs {
-        /// Arguments passed through to `tail` (e.g. `-f`, `-n 100`).
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        tail_args: Vec<String>,
+        action: GatewayTelegramCommand,
     },
 }
 
@@ -114,15 +83,12 @@ async fn main() -> anyhow::Result<()> {
 
     let app = App::parse();
     match app.command {
-        GatewayCommand::Telegram { action } => match action {
-            TelegramAction::Start => {
+        GatewayCommand::Telegram { action } => {
+            if matches!(&action, GatewayTelegramCommand::Start) {
                 ensure_config()?;
-                TelegramService.start()?;
             }
-            TelegramAction::Stop => TelegramService.stop()?,
-            TelegramAction::Run => TelegramService.run().await?,
-            TelegramAction::Logs { tail_args } => TelegramService.logs(&tail_args)?,
-        },
+            GatewayTelegram.exec(action).await?;
+        }
     }
     Ok(())
 }

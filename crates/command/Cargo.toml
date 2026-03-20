@@ -1,0 +1,19 @@
+[package]
+name = "crabtalk-command"
+description = "High-level service command layer for Crabtalk"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+mcp = ["wcore/mcp"]
+client = ["wcore/client"]
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+crabtalk-command-codegen.workspace = true
+wcore.workspace = true

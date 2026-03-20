@@ -12,8 +12,8 @@ keywords.workspace = true
 
 [features]
 default = []
-mcp = ["dep:axum", "dep:rmcp", "dep:clap"]
-client = ["dep:clap"]
+mcp = ["dep:axum", "dep:rmcp"]
+client = []
 
 [dependencies]
 # crabllm
@@ -33,7 +33,6 @@ tokio.workspace = true
 tracing.workspace = true
 # optional (service features)
 axum = { workspace = true, optional = true }
-clap = { workspace = true, optional = true }
 rmcp = { workspace = true, optional = true }
 
 [build-dependencies]

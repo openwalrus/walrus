@@ -23,6 +23,25 @@ pub struct App {
     pub command: Command,
 }
 
+#[cfg(feature = "mcp")]
+#[crabtalk_command::command(kind = "mcp", name = "search")]
+struct Mcp;
+
+#[cfg(feature = "mcp")]
+impl crabtalk_command::McpService for Mcp {
+    fn router(&self) -> axum::Router {
+        use crate::mcp::SearchServer;
+        use rmcp::transport::streamable_http_server::{
+            StreamableHttpService, session::local::LocalSessionManager,
+        };
+
+        let config = Default::default();
+        let service: StreamableHttpService<SearchServer, LocalSessionManager> =
+            StreamableHttpService::new(|| Ok(SearchServer::new()), Default::default(), config);
+        axum::Router::new().nest_service("/mcp", service)
+    }
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Search across all configured engines.
@@ -58,41 +77,7 @@ pub enum Command {
     /// Manage the search MCP service.
     #[cfg(feature = "mcp")]
     #[command(subcommand)]
-    Service(wcore::service::ServiceAction),
-}
-
-#[cfg(feature = "mcp")]
-struct SearchService;
-
-#[cfg(feature = "mcp")]
-impl wcore::service::Service for SearchService {
-    fn name(&self) -> &str {
-        env!("CARGO_PKG_NAME").strip_prefix("crabtalk-").unwrap()
-    }
-    fn description(&self) -> &str {
-        env!("CARGO_PKG_DESCRIPTION")
-    }
-    fn label(&self) -> &str {
-        "ai.crabtalk.search"
-    }
-    fn subcommand(&self) -> &str {
-        "service"
-    }
-}
-
-#[cfg(feature = "mcp")]
-impl wcore::service::McpService for SearchService {
-    fn router(&self) -> axum::Router {
-        use crate::mcp::SearchServer;
-        use rmcp::transport::streamable_http_server::{
-            StreamableHttpService, session::local::LocalSessionManager,
-        };
-
-        let config = Default::default();
-        let service: StreamableHttpService<SearchServer, LocalSessionManager> =
-            StreamableHttpService::new(|| Ok(SearchServer::new()), Default::default(), config);
-        axum::Router::new().nest_service("/mcp", service)
-    }
+    Mcp(McpCommand),
 }
 
 impl App {
@@ -131,9 +116,8 @@ impl App {
                 config_cmd::run(&config, init);
             }
             #[cfg(feature = "mcp")]
-            Command::Service(action) => {
-                action
-                    .exec_mcp(&SearchService)
+            Command::Mcp(action) => {
+                Mcp.exec(action)
                     .await
                     .map_err(|e| Error::Config(e.to_string()))?;
             }
