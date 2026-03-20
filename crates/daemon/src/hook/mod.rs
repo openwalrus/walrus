@@ -7,7 +7,7 @@
 
 use crate::{
     daemon::event::DaemonEventSender,
-    hook::{mcp::McpHandler, os::PermissionConfig, skill::SkillHandler, system::memory::Memory},
+    hook::{mcp::McpHandler, skill::SkillHandler, system::memory::Memory},
 };
 use crabhub::DownloadRegistry;
 use std::{collections::BTreeMap, sync::Arc};
@@ -32,9 +32,6 @@ pub struct DaemonHook {
     pub skills: SkillHandler,
     pub mcp: McpHandler,
     pub downloads: Arc<Mutex<DownloadRegistry>>,
-    pub permissions: PermissionConfig,
-    /// Whether the daemon is running as the `crabtalk` OS user (sandbox active).
-    pub sandboxed: bool,
     /// Working directory for agent commands (caller's cwd at daemon startup).
     pub cwd: std::path::PathBuf,
     /// Built-in memory.
@@ -48,7 +45,6 @@ pub struct DaemonHook {
 }
 
 /// Base tools always included in every agent's whitelist.
-/// Also bypass permission check when running in sandbox mode.
 const BASE_TOOLS: &[&str] = &["bash"];
 
 /// Skill discovery/loading tools.
@@ -65,10 +61,10 @@ const TASK_TOOLS: &[&str] = &["delegate"];
 
 impl Hook for DaemonHook {
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
-        // Inject environment context (OS, working directory, sandbox state).
+        // Inject environment context (OS, working directory).
         config
             .system_prompt
-            .push_str(&os::environment_block(&self.cwd, self.sandboxed));
+            .push_str(&os::environment_block(&self.cwd));
 
         // Inject built-in memory prompt if active.
         if let Some(ref mem) = self.memory {
@@ -197,8 +193,6 @@ impl DaemonHook {
         skills: SkillHandler,
         mcp: McpHandler,
         downloads: Arc<Mutex<DownloadRegistry>>,
-        permissions: PermissionConfig,
-        sandboxed: bool,
         cwd: std::path::PathBuf,
         memory: Option<Memory>,
         event_tx: DaemonEventSender,
@@ -207,8 +201,6 @@ impl DaemonHook {
             skills,
             mcp,
             downloads,
-            permissions,
-            sandboxed,
             cwd,
             memory,
             event_tx,
@@ -282,39 +274,6 @@ impl DaemonHook {
         config.tools = whitelist;
     }
 
-    /// Check tool permission. Returns `Some(denied_message)` if denied,
-    /// `None` if allowed.
-    ///
-    /// `Ask` permission: allowed for interactive sessions (sender is empty
-    /// or "user"), denied for non-interactive (gateways, sub-agents).
-    fn check_perm(&self, name: &str, agent: &str, sender: &str) -> Option<String> {
-        // OS tools bypass permission when running in sandbox mode.
-        if self.sandboxed && BASE_TOOLS.contains(&name) {
-            return None;
-        }
-        use crate::hook::os::ToolPermission;
-        match self.permissions.resolve(agent, name) {
-            ToolPermission::Allow => None,
-            ToolPermission::Deny => Some(format!("permission denied: {name}")),
-            ToolPermission::Ask => {
-                let interactive = sender.is_empty() || sender == "user";
-                if interactive {
-                    None
-                } else {
-                    tracing::warn!(
-                        tool = name,
-                        agent = agent,
-                        sender = sender,
-                        "tool requires approval — denied for non-interactive session"
-                    );
-                    Some(format!(
-                        "permission denied: {name} (requires interactive approval)"
-                    ))
-                }
-            }
-        }
-    }
-
     /// Scan content for `/skill-name` tokens, load each skill found, and
     /// append their bodies to the end of the message.
     /// Tokens that don't match a skill are left as-is.
@@ -362,10 +321,13 @@ impl DaemonHook {
     ///
     /// This is the single dispatch entry point — `event.rs` calls this
     /// and never matches on tool names itself.
-    pub async fn dispatch_tool(&self, name: &str, args: &str, agent: &str, sender: &str) -> String {
-        if let Some(denied) = self.check_perm(name, agent, sender) {
-            return denied;
-        }
+    pub async fn dispatch_tool(
+        &self,
+        name: &str,
+        args: &str,
+        agent: &str,
+        _sender: &str,
+    ) -> String {
         // Dispatch enforcement: reject tools not in the agent's whitelist.
         if let Some(scope) = self.scopes.get(agent)
             && !scope.tools.is_empty()

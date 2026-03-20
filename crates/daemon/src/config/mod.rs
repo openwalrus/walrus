@@ -1,10 +1,6 @@
 //! Daemon configuration loaded from TOML.
 
-pub use crate::hook::{
-    mcp::McpServerConfig,
-    os::{PermissionConfig, ToolPermission},
-    system::SystemConfig,
-};
+pub use crate::hook::{mcp::McpServerConfig, system::SystemConfig};
 pub use ::model::{ModelConfig, ProviderDef, ProviderRegistry};
 use anyhow::Result;
 pub use loader::{load_agents_dir, scaffold_config_dir};
@@ -35,9 +31,6 @@ pub struct DaemonConfig {
     /// Per-agent configurations (name → config).
     #[serde(default)]
     pub agents: BTreeMap<String, AgentConfig>,
-    /// Permission configuration: global defaults + per-agent overrides.
-    #[serde(default)]
-    pub permissions: PermissionConfig,
 }
 
 impl DaemonConfig {

@@ -97,11 +97,6 @@ impl Daemon {
         let mcp_servers = config.mcps.values().cloned().collect::<Vec<_>>();
         let mcp_handler = hook::mcp::McpHandler::load(&mcp_servers).await;
 
-        let sandboxed = detect_sandbox();
-        if sandboxed {
-            tracing::info!("sandbox mode active — OS tools bypass permission check");
-        }
-
         let memory = Some(Memory::open(
             config_dir.join("memory"),
             config.system.memory.clone(),
@@ -114,8 +109,6 @@ impl Daemon {
             skills,
             mcp_handler,
             downloads,
-            config.permissions.clone(),
-            sandboxed,
             cwd,
             memory,
             event_tx.clone(),
@@ -200,12 +193,4 @@ impl Daemon {
 
         Ok(())
     }
-}
-
-/// Detect sandbox mode by checking if the current process is running as
-/// a user named `crabtalk`.
-fn detect_sandbox() -> bool {
-    std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .is_ok_and(|u| u == "crabtalk")
 }
