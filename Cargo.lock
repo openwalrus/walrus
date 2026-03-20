@@ -589,9 +589,7 @@ dependencies = [
  "clap",
  "crabtalk-command-codegen",
  "crabtalk-core",
- "crabtalk-transport",
  "dirs",
- "futures-util",
  "schemars 1.2.1",
  "serde_json",
  "tokio",
@@ -603,6 +601,7 @@ dependencies = [
 name = "crabtalk-command-codegen"
 version = "0.0.10"
 dependencies = [
+ "heck",
  "proc-macro2",
  "quote",
  "syn",

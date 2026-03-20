@@ -1,3 +1,4 @@
+use heck::ToKebabCase;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{ItemStruct, LitStr, Token, parse::Parse, parse_macro_input};
@@ -41,23 +42,6 @@ impl Parse for CommandArgs {
     }
 }
 
-fn to_kebab_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() {
-            if i > 0 {
-                result.push('-');
-            }
-            for lc in c.to_lowercase() {
-                result.push(lc);
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as CommandArgs);
@@ -66,7 +50,7 @@ pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let struct_name = &input.ident;
     let name = args
         .name
-        .unwrap_or_else(|| to_kebab_case(&struct_name.to_string()));
+        .unwrap_or_else(|| struct_name.to_string().to_kebab_case());
     let label = args.label.unwrap_or_else(|| format!("ai.crabtalk.{name}"));
 
     let command_enum = format_ident!("{}Command", struct_name);
@@ -84,7 +68,7 @@ pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
         },
         "client" => quote! {
             #command_enum::Run => {
-                crabtalk_command::ClientService::run(self).await?
+                self.run().await?
             }
         },
         _ => {

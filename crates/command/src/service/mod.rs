@@ -154,12 +154,3 @@ pub trait McpService: Service {
     /// Return the axum Router for the MCP server.
     fn router(&self) -> axum::Router;
 }
-
-// ── ClientService ───────────────────────────────────────────────────
-
-/// Client (daemon-connected) service. Implementors provide a run method.
-#[cfg(feature = "client")]
-pub trait ClientService: Service {
-    /// Run the client service.
-    fn run(&self) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
-}

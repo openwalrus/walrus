@@ -7,7 +7,7 @@ use dialoguer::{Password, theme::ColorfulTheme};
 #[crabtalk_command::command(kind = "client", label = "ai.crabtalk.gateway-telegram")]
 struct GatewayTelegram;
 
-impl crabtalk_command::ClientService for GatewayTelegram {
+impl GatewayTelegram {
     async fn run(&self) -> anyhow::Result<()> {
         let socket = wcore::paths::SOCKET_PATH.clone();
         let config_path = wcore::paths::CONFIG_DIR.join("gateway.toml");

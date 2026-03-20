@@ -1,13 +1,14 @@
-pub use crabtalk_command_codegen::command;
-
-// Re-export common deps so templates only need `crabtalk-command`.
 pub use anyhow;
-pub use clap;
-pub use futures_util;
-pub use tokio;
-pub use tracing;
-pub use tracing_subscriber;
+pub use crabtalk_command_codegen::command;
 pub use wcore;
+
+pub mod service;
+pub use service::{Service, install, render_service_template, uninstall, view_logs};
+
+#[cfg(feature = "mcp")]
+pub use axum;
+#[cfg(feature = "mcp")]
+pub use service::{McpService, run_mcp};
 
 /// Shared entry point: init tracing from `RUST_LOG`, build a tokio runtime,
 /// run the given async closure, and exit on error.
@@ -31,24 +32,15 @@ where
             .init();
     }
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Error: failed to create tokio runtime: {e}");
+            std::process::exit(1);
+        }
+    };
     if let Err(e) = rt.block_on(f()) {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }
-
-pub mod service;
-pub use service::{Service, install, render_service_template, uninstall, view_logs};
-
-#[cfg(feature = "mcp")]
-pub use axum;
-#[cfg(feature = "mcp")]
-pub use service::{McpService, run_mcp};
-#[cfg(feature = "mcp")]
-pub use {schemars, serde_json};
-
-#[cfg(feature = "client")]
-pub use service::ClientService;
-#[cfg(feature = "client")]
-pub use transport;
