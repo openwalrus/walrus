@@ -727,7 +727,6 @@ dependencies = [
  "teloxide",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

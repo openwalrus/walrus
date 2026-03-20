@@ -1,6 +1,6 @@
 //! `crabtalk-telegram` binary — Telegram gateway for Crabtalk.
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use crabtalk_telegram::{GatewayConfig, config::TelegramConfig};
 use dialoguer::{Password, theme::ColorfulTheme};
 
@@ -24,16 +24,7 @@ impl GatewayTelegram {
 #[command(name = "crabtalk-telegram", about = "Crabtalk Telegram gateway")]
 struct App {
     #[command(subcommand)]
-    command: GatewayCommand,
-}
-
-#[derive(Subcommand)]
-enum GatewayCommand {
-    /// Manage the Telegram gateway.
-    Telegram {
-        #[command(subcommand)]
-        action: GatewayTelegramCommand,
-    },
+    action: GatewayTelegramCommand,
 }
 
 fn default_config_path() -> std::path::PathBuf {
@@ -65,30 +56,13 @@ fn ensure_config() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let level = std::env::var("RUST_LOG")
-        .ok()
-        .map(
-            |v| match v.rsplit('=').next().unwrap_or(&v).to_lowercase().as_str() {
-                "trace" => tracing::Level::TRACE,
-                "debug" => tracing::Level::DEBUG,
-                "info" => tracing::Level::INFO,
-                "error" => tracing::Level::ERROR,
-                _ => tracing::Level::WARN,
-            },
-        )
-        .unwrap_or(tracing::Level::WARN);
-    tracing_subscriber::fmt().with_max_level(level).init();
-
+fn main() {
     let app = App::parse();
-    match app.command {
-        GatewayCommand::Telegram { action } => {
-            if matches!(&action, GatewayTelegramCommand::Start) {
-                ensure_config()?;
-            }
-            GatewayTelegram.exec(action).await?;
-        }
+    if matches!(&app.action, GatewayTelegramCommand::Start)
+        && let Err(e) = ensure_config()
+    {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
-    Ok(())
+    app.action.start(GatewayTelegram);
 }
