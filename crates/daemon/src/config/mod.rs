@@ -1,9 +1,9 @@
 //! Daemon configuration loaded from TOML.
 
 pub use crate::hook::{mcp::McpServerConfig, system::SystemConfig};
-pub use ::model::{ModelConfig, ProviderDef, ProviderRegistry};
+pub use ::model::{ProviderDef, ProviderRegistry, validate_providers};
 use anyhow::Result;
-pub use loader::{load_agents_dir, scaffold_config_dir};
+pub use loader::{DEFAULT_CONFIG, load_agents_dir, scaffold_config_dir};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use wcore::{
@@ -19,9 +19,6 @@ pub struct DaemonConfig {
     /// Provider definitions (`[provider.<name>]`).
     #[serde(default)]
     pub provider: BTreeMap<String, ProviderDef>,
-    /// Model configuration (embedding model).
-    #[serde(default)]
-    pub model: ModelConfig,
     /// MCP server configurations.
     #[serde(default)]
     pub mcps: BTreeMap<String, McpServerConfig>,
@@ -42,7 +39,7 @@ impl DaemonConfig {
                 server.name = name.clone();
             }
         });
-        ModelConfig::validate(&config.provider)?;
+        validate_providers(&config.provider)?;
         Ok(config)
     }
 

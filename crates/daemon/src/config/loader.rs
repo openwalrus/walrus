@@ -3,10 +3,12 @@
 //! Handles filesystem I/O: reads agent prompt directories and scaffolds the
 //! config directory structure on first run.
 
-use crate::config::DaemonConfig;
 use anyhow::{Context, Result};
 use std::path::Path;
 use wcore::paths::{AGENTS_DIR, SKILLS_DIR};
+
+/// Default configuration template, embedded from the checked-in `crab.toml`.
+pub const DEFAULT_CONFIG: &str = include_str!("../../crab.toml");
 
 /// Load all agent markdown files from a directory as plain text.
 ///
@@ -51,9 +53,7 @@ pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
 
     let config_toml = config_dir.join("crab.toml");
     if !config_toml.exists() {
-        let contents = toml::to_string_pretty(&DaemonConfig::default())
-            .context("failed to serialize default config")?;
-        std::fs::write(&config_toml, contents)
+        std::fs::write(&config_toml, DEFAULT_CONFIG)
             .with_context(|| format!("failed to write {}", config_toml.display()))?;
     }
 

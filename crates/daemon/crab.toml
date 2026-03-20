@@ -1,0 +1,77 @@
+# Crabtalk daemon configuration.
+#
+# This file is the full configuration template for the crabtalk daemon.
+# Uncomment and modify sections as needed.
+
+# ---------------------------------------------------------------------------
+# Providers — LLM provider definitions.
+#
+# Each [provider.<name>] section registers a provider. The `kind` field
+# selects the API format: openai_compat (default), anthropic, google,
+# bedrock, ollama, azure.
+# ---------------------------------------------------------------------------
+
+# [provider.openai]
+# api_key = "${OPENAI_API_KEY}"
+# models = ["gpt-4o", "gpt-4o-mini"]
+
+# [provider.anthropic]
+# kind = "anthropic"
+# api_key = "${ANTHROPIC_API_KEY}"
+# models = ["claude-sonnet-4-20250514"]
+
+# [provider.ollama]
+# kind = "ollama"
+# base_url = "http://localhost:11434/v1"
+# models = ["llama3"]
+
+# ---------------------------------------------------------------------------
+# MCP servers — Model Context Protocol server configurations.
+#
+# Each [mcps.<name>] section defines an MCP server. Use either stdio
+# transport (command + args) or streamable HTTP transport (url).
+# ---------------------------------------------------------------------------
+
+# [mcps.example]
+# command = "npx"
+# args = ["-y", "@anthropic/mcp-server"]
+# auto_restart = true
+
+# [mcps.remote]
+# url = "http://localhost:8080/mcp"
+
+# ---------------------------------------------------------------------------
+# System — core agent, task executor, and memory settings.
+# ---------------------------------------------------------------------------
+
+[system.crab]
+# model = "gpt-4o"
+# description = ""
+# max_iterations = 16
+# thinking = false
+# compact_threshold = 100000
+
+[system.tasks]
+max_concurrent = 4
+viewable_window = 16
+task_timeout = 300
+
+[system.memory]
+recall_limit = 5
+soul_editable = true
+
+# ---------------------------------------------------------------------------
+# Agents — per-agent configurations.
+#
+# Each [agents.<name>] section configures a named agent. The agent's system
+# prompt is loaded from ~/.crabtalk/agents/<name>.md.
+# ---------------------------------------------------------------------------
+
+# [agents.researcher]
+# description = "Research agent"
+# model = "gpt-4o"
+# max_iterations = 16
+# thinking = false
+# members = []
+# skills = []
+# mcps = []

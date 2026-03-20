@@ -10,7 +10,7 @@ mod convert;
 pub mod manager;
 mod provider;
 
-pub use config::{ApiStandard, ModelConfig, ProviderDef};
+pub use config::{ApiStandard, ProviderDef, validate_providers};
 pub use manager::ProviderRegistry;
 pub use provider::{Provider, build_provider};
 pub use reqwest::Client;
