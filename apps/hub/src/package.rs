@@ -20,6 +20,7 @@ struct HubFilter {
     mcps: BTreeSet<String>,
     skills: BTreeSet<String>,
     agents: BTreeSet<String>,
+    commands: BTreeSet<String>,
 }
 
 impl HubFilter {
@@ -28,6 +29,7 @@ impl HubFilter {
             mcps: BTreeSet::new(),
             skills: BTreeSet::new(),
             agents: BTreeSet::new(),
+            commands: BTreeSet::new(),
         };
         for raw in filters {
             if let Some((kind, name)) = raw.split_once(':') {
@@ -35,6 +37,7 @@ impl HubFilter {
                     "mcp" => &mut f.mcps,
                     "skill" => &mut f.skills,
                     "agent" => &mut f.agents,
+                    "command" => &mut f.commands,
                     _ => continue,
                 };
                 set.insert(name.to_string());
@@ -44,7 +47,10 @@ impl HubFilter {
     }
 
     fn is_empty(&self) -> bool {
-        self.mcps.is_empty() && self.skills.is_empty() && self.agents.is_empty()
+        self.mcps.is_empty()
+            && self.skills.is_empty()
+            && self.agents.is_empty()
+            && self.commands.is_empty()
     }
 
     fn wants_mcp(&self, name: &str) -> bool {
@@ -57,6 +63,10 @@ impl HubFilter {
 
     fn wants_agent(&self, name: &str) -> bool {
         self.is_empty() || self.agents.contains(name)
+    }
+
+    fn wants_command(&self, name: &str) -> bool {
+        self.is_empty() || self.commands.contains(name)
     }
 }
 
@@ -106,7 +116,7 @@ pub fn install(
             let event = step_event(id, "adding MCP servers…");
             yield event.clone();
             registry.lock().await.broadcast(event);
-            merge_mcp_servers_filtered(&wanted_mcps)?;
+            merge_section_filtered("mcps", &wanted_mcps)?;
         }
 
         // Collect skill keys from wanted agents.
@@ -175,6 +185,19 @@ pub fn install(
             yield event.clone();
             registry.lock().await.broadcast(event);
             install_agents_filtered(scope, &wanted_agents)?;
+        }
+
+        // Register commands (merge metadata into crab.toml).
+        let wanted_cmds: Vec<_> = manifest
+            .commands
+            .iter()
+            .filter(|(k, _)| filter.wants_command(k.as_str()))
+            .collect();
+        if !wanted_cmds.is_empty() {
+            let event = step_event(id, "registering commands…");
+            yield event.clone();
+            registry.lock().await.broadcast(event);
+            merge_section_filtered("commands", &wanted_cmds)?;
         }
 
         registry.lock().await.complete(id);
@@ -276,6 +299,18 @@ pub fn uninstall(
             }
         }
 
+        let cmd_keys: Vec<_> = manifest
+            .commands
+            .keys()
+            .filter(|k| filter.wants_command(k.as_str()))
+            .collect();
+        if !cmd_keys.is_empty() {
+            let event = step_event(id, "removing commands…");
+            yield event.clone();
+            registry.lock().await.broadcast(event);
+            remove_keys_from_section("commands", &cmd_keys)?;
+        }
+
         registry.lock().await.complete(id);
         let event = DownloadEvent {
             event: Some(download_event::Event::Completed(DownloadCompleted { id })),
@@ -348,8 +383,11 @@ fn read_manifest(scope: &str, name: &str) -> Result<manifest::Manifest> {
     toml::from_str(&content).with_context(|| format!("invalid manifest at {}", path.display()))
 }
 
-/// Merge selected MCP server entries into `crab.toml`.
-fn merge_mcp_servers_filtered(entries: &[(&String, &wcore::McpServerConfig)]) -> Result<()> {
+/// Merge serializable entries into a named section of `crab.toml`.
+fn merge_section_filtered<T: serde::Serialize>(
+    section: &str,
+    entries: &[(&String, &T)],
+) -> Result<()> {
     use toml_edit::DocumentMut;
 
     let config_path = CONFIG_DIR.join("crab.toml");
@@ -360,14 +398,14 @@ fn merge_mcp_servers_filtered(entries: &[(&String, &wcore::McpServerConfig)]) ->
         .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
     let table = doc
-        .entry("mcps")
+        .entry(section)
         .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
         .as_table_mut()
-        .context("mcps is not a table")?;
+        .with_context(|| format!("{section} is not a table"))?;
 
     for (key, cfg) in entries {
         let doc = toml_edit::ser::to_document(cfg)
-            .with_context(|| format!("failed to serialize McpServerConfig for {key}"))?;
+            .with_context(|| format!("failed to serialize entry for {key}"))?;
         let item = toml_edit::Item::Table(doc.as_table().clone());
         table.insert(key.as_str(), item);
     }

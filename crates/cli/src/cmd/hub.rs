@@ -54,6 +54,10 @@ pub struct HubPackage {
     /// Install only specific agents by name.
     #[arg(long)]
     pub agent: Vec<String>,
+
+    /// Install only specific commands by name.
+    #[arg(long)]
+    pub command: Vec<String>,
 }
 
 impl HubPackage {
@@ -68,6 +72,9 @@ impl HubPackage {
         }
         for s in &self.agent {
             out.push(format!("agent:{s}"));
+        }
+        for s in &self.command {
+            out.push(format!("command:{s}"));
         }
         out
     }
