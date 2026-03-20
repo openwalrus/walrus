@@ -160,6 +160,13 @@ impl Daemon {
 
         // Sub-agents from TOML — each must have a matching .md file.
         for (name, agent_config) in &config.agents {
+            if name == wcore::paths::DEFAULT_AGENT {
+                tracing::warn!(
+                    "agents.{name} overrides the built-in system agent and will be ignored — \
+                     configure it under [system.crab] instead"
+                );
+                continue;
+            }
             let Some(prompt) = prompt_map.get(name) else {
                 tracing::warn!("agent '{name}' in TOML has no matching .md file, skipping");
                 continue;
@@ -174,6 +181,12 @@ impl Daemon {
         // Also register agents that have .md files but no TOML entry (defaults).
         let default_think = config.system.crab.thinking;
         for (stem, prompt) in &prompt_map {
+            if stem == wcore::paths::DEFAULT_AGENT {
+                tracing::warn!(
+                    "agents/{stem}.md shadows the built-in system agent and will be ignored"
+                );
+                continue;
+            }
             if config.agents.contains_key(stem) {
                 continue;
             }
