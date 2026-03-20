@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "crabhub"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-command"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "axum",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-command-codegen"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-core"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-daemon"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-gateway"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "clap",
@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-model"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-search"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "axum",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-transport"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "async-stream",

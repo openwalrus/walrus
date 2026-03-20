@@ -12,7 +12,7 @@ pub struct Manifest {
 
     /// MCP server configs
     #[serde(default)]
-    pub mcp_servers: BTreeMap<String, McpServerConfig>,
+    pub mcps: BTreeMap<String, McpServerConfig>,
 
     /// Skill resources
     #[serde(default)]

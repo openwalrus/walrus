@@ -10,10 +10,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 use tokio::time::Instant;
-use wcore::protocol::message::{
-    DownloadCompleted, DownloadCreated, DownloadEvent, DownloadFailed, DownloadInfo, DownloadKind,
-    DownloadProgress, DownloadStep, download_event,
-};
+use wcore::protocol::message::{DownloadEvent, DownloadInfo, DownloadKind};
 
 pub mod manifest;
 pub mod package;
@@ -88,7 +85,7 @@ impl DownloadRegistry {
         let download = Download {
             id,
             kind,
-            label: label.clone(),
+            label,
             status: DownloadStatus::Downloading,
             bytes_downloaded: 0,
             total_bytes: 0,
@@ -96,13 +93,6 @@ impl DownloadRegistry {
             created_at: Instant::now(),
         };
         self.downloads.insert(id, download);
-        let _ = self.broadcast.send(DownloadEvent {
-            event: Some(download_event::Event::Created(DownloadCreated {
-                id,
-                kind: kind as i32,
-                label,
-            })),
-        });
         id
     }
 
@@ -112,20 +102,6 @@ impl DownloadRegistry {
             dl.bytes_downloaded += bytes;
             dl.total_bytes = total_bytes;
         }
-        let _ = self.broadcast.send(DownloadEvent {
-            event: Some(download_event::Event::Progress(DownloadProgress {
-                id,
-                bytes,
-                total_bytes,
-            })),
-        });
-    }
-
-    /// Report a human-readable progress step.
-    pub fn step(&mut self, id: u64, message: String) {
-        let _ = self.broadcast.send(DownloadEvent {
-            event: Some(download_event::Event::Step(DownloadStep { id, message })),
-        });
     }
 
     /// Mark a download as completed.
@@ -133,20 +109,19 @@ impl DownloadRegistry {
         if let Some(dl) = self.downloads.get_mut(&id) {
             dl.status = DownloadStatus::Completed;
         }
-        let _ = self.broadcast.send(DownloadEvent {
-            event: Some(download_event::Event::Completed(DownloadCompleted { id })),
-        });
     }
 
     /// Mark a download as failed.
     pub fn fail(&mut self, id: u64, error: String) {
         if let Some(dl) = self.downloads.get_mut(&id) {
             dl.status = DownloadStatus::Failed;
-            dl.error = Some(error.clone());
+            dl.error = Some(error);
         }
-        let _ = self.broadcast.send(DownloadEvent {
-            event: Some(download_event::Event::Failed(DownloadFailed { id, error })),
-        });
+    }
+
+    /// Broadcast an event to subscription consumers.
+    pub fn broadcast(&self, event: DownloadEvent) {
+        let _ = self.broadcast.send(event);
     }
 
     /// List all downloads, most recent first.
