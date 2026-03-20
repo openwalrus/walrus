@@ -1,7 +1,7 @@
 //! Shared system service management (launchd/systemd).
 
-use crate::paths::{CONFIG_DIR, LOGS_DIR, RUN_DIR};
 use std::path::Path;
+use wcore::paths::{CONFIG_DIR, LOGS_DIR, RUN_DIR};
 
 #[cfg(target_os = "linux")]
 mod linux;

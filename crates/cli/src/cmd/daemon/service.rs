@@ -42,24 +42,24 @@ fn render_daemon_template(template: &str) -> Result<String> {
 pub fn install() -> Result<()> {
     ensure_providers()?;
     let rendered = render_daemon_template(LAUNCHD_TEMPLATE)?;
-    wcore::service::install(&rendered, LABEL)
+    crabtalk_command::install(&rendered, LABEL)
 }
 
 #[cfg(target_os = "macos")]
 pub fn uninstall() -> Result<()> {
-    wcore::service::uninstall(LABEL)
+    crabtalk_command::uninstall(LABEL)
 }
 
 #[cfg(target_os = "linux")]
 pub fn install() -> Result<()> {
     ensure_providers()?;
     let rendered = render_daemon_template(SYSTEMD_TEMPLATE)?;
-    wcore::service::install(&rendered, LABEL)
+    crabtalk_command::install(&rendered, LABEL)
 }
 
 #[cfg(target_os = "linux")]
 pub fn uninstall() -> Result<()> {
-    wcore::service::uninstall(LABEL)
+    crabtalk_command::uninstall(LABEL)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]

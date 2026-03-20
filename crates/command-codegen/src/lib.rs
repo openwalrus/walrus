@@ -128,7 +128,7 @@ pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
             pub async fn exec(
                 &self,
                 action: #command_enum,
-            ) -> anyhow::Result<()> {
+            ) -> crabtalk_command::anyhow::Result<()> {
                 use crabtalk_command::Service as _;
                 match action {
                     #command_enum::Start => self.start()?,
@@ -139,6 +139,13 @@ pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
                 Ok(())
+            }
+        }
+
+        impl #command_enum {
+            /// Init tracing, build a tokio runtime, and run the command.
+            pub fn start(self, svc: #struct_name) {
+                crabtalk_command::run(move || async move { svc.exec(self).await });
             }
         }
     };

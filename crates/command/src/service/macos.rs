@@ -1,7 +1,7 @@
 //! macOS launchd service management.
 
-use crate::paths::LOGS_DIR;
 use anyhow::Result;
+use wcore::paths::LOGS_DIR;
 
 fn launchctl_domain() -> String {
     let uid = std::process::Command::new("id")

@@ -1,7 +1,7 @@
 //! Linux systemd service management.
 
-use crate::paths::LOGS_DIR;
 use anyhow::Result;
+use wcore::paths::LOGS_DIR;
 
 pub fn install(rendered: &str, label: &str) -> Result<()> {
     let unit_name = format!("{label}.service");

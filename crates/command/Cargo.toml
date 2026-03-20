@@ -9,11 +9,22 @@ repository.workspace = true
 
 [features]
 default = []
-mcp = ["wcore/mcp"]
-client = ["wcore/client"]
+mcp = ["dep:axum"]
+client = ["dep:transport"]
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 crabtalk-command-codegen.workspace = true
+dirs.workspace = true
+futures-util.workspace = true
+schemars.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 wcore.workspace = true
+# optional (mcp)
+axum = { workspace = true, optional = true }
+# optional (client)
+transport = { workspace = true, optional = true }

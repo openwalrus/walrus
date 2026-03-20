@@ -558,6 +558,7 @@ dependencies = [
  "clap",
  "console",
  "crabhub",
+ "crabtalk-command",
  "crabtalk-core",
  "crabtalk-daemon",
  "crabtalk-transport",
@@ -584,9 +585,18 @@ name = "crabtalk-command"
 version = "0.0.10"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "crabtalk-command-codegen",
  "crabtalk-core",
+ "crabtalk-transport",
+ "dirs",
+ "futures-util",
+ "schemars 1.2.1",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -604,7 +614,6 @@ version = "0.0.10"
 dependencies = [
  "anyhow",
  "async-stream",
- "axum",
  "crabllm-core",
  "dirs",
  "futures-core",
@@ -612,7 +621,6 @@ dependencies = [
  "heck",
  "prost",
  "prost-build",
- "rmcp",
  "schemars 1.2.1",
  "serde",
  "serde_json",

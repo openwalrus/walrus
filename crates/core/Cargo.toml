@@ -10,11 +10,6 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
-[features]
-default = []
-mcp = ["dep:axum", "dep:rmcp"]
-client = []
-
 [dependencies]
 # crabllm
 crabllm-core.workspace = true
@@ -31,9 +26,6 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-# optional (service features)
-axum = { workspace = true, optional = true }
-rmcp = { workspace = true, optional = true }
 
 [build-dependencies]
 prost-build.workspace = true
