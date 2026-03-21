@@ -21,6 +21,7 @@ message ClientMessage {
     SetConfigMsg set_config = 15;
     // Fields 16-20 removed (service protocol).
     ReloadMsg reload = 21;
+    SubscribeEvents subscribe_events = 22;
   }
 }
 
@@ -42,6 +43,7 @@ message Ping {}
 message Sessions {}
 message Downloads {}
 message SubscribeDownloads {}
+message SubscribeEvents {}
 message GetConfig {}
 
 message HubMsg {
@@ -81,6 +83,7 @@ message ServerMessage {
     // Fields 8-10 removed (task protocol).
     ConfigMsg config = 11;
     // Fields 12-15 removed (service protocol).
+    AgentEventMsg agent_event = 16;
   }
 }
 
@@ -202,6 +205,23 @@ message SessionInfo {
   string created_by = 3;
   uint64 message_count = 4;
   uint64 alive_secs = 5;
+  bool active = 6;
+}
+
+enum AgentEventKind {
+  TEXT_DELTA = 0;
+  THINKING_DELTA = 1;
+  TOOL_START = 2;
+  TOOL_RESULT = 3;
+  TOOLS_COMPLETE = 4;
+  DONE = 5;
+}
+
+message AgentEventMsg {
+  string agent = 1;
+  uint64 session = 2;
+  AgentEventKind kind = 3;
+  string content = 4;
 }
 
 message SessionList {

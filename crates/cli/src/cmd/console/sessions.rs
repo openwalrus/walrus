@@ -23,8 +23,8 @@ pub(super) fn render_sessions(frame: &mut Frame, state: &ConsoleState, area: Rec
 
     let mut lines = vec![Line::from(vec![Span::styled(
         format!(
-            "  {:<6} {:<16} {:<16} {:<8} {:<10}",
-            "ID", "AGENT", "CREATED BY", "MSGS", "ALIVE"
+            "  {:<6} {:<16} {:<16} {:<8} {:<8} {:<10}",
+            "ID", "AGENT", "CREATED BY", "MSGS", "STATUS", "ALIVE"
         ),
         Style::default()
             .fg(Color::White)
@@ -35,16 +35,19 @@ pub(super) fn render_sessions(frame: &mut Frame, state: &ConsoleState, area: Rec
         let is_selected = i == state.selected;
         let marker = if is_selected { "> " } else { "  " };
         let alive = format_duration(s.alive_secs);
+        let status = if s.active { "active" } else { "idle" };
         let text = format!(
-            "{marker}{:<6} {:<16} {:<16} {:<8} {:<10}",
-            s.id, s.agent, s.created_by, s.message_count, alive
+            "{marker}{:<6} {:<16} {:<16} {:<8} {:<8} {:<10}",
+            s.id, s.agent, s.created_by, s.message_count, status, alive
         );
         let style = if is_selected {
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD)
+        } else if s.active {
+            Style::default().fg(Color::Green)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(Color::DarkGray)
         };
         lines.push(Line::from(Span::styled(text, style)));
     }

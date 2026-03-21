@@ -28,7 +28,7 @@ pub trait Hook: Send + Sync {
     /// Use for logging, metrics, persistence, or forwarding.
     ///
     /// Default: no-op.
-    fn on_event(&self, _agent: &str, _event: &AgentEvent) {}
+    fn on_event(&self, _agent: &str, _session_id: u64, _event: &AgentEvent) {}
 
     /// Called by `Runtime::new()` to register tool schemas into the registry.
     ///

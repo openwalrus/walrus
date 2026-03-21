@@ -17,7 +17,7 @@ use async_stream::stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -43,6 +43,7 @@ pub struct Runtime<M: Model, H: Hook> {
     next_session_id: AtomicU64,
     tools: ToolRegistry,
     tool_tx: Option<ToolSender>,
+    active_sessions: RwLock<HashSet<u64>>,
 }
 
 impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> {
@@ -62,6 +63,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             next_session_id: AtomicU64::new(1),
             tools,
             tool_tx,
+            active_sessions: RwLock::new(HashSet::new()),
         }
     }
 
@@ -143,6 +145,11 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         self.sessions.read().await.values().cloned().collect()
     }
 
+    /// Check if a session is currently active (running send_to or stream_to).
+    pub async fn is_active(&self, id: u64) -> bool {
+        self.active_sessions.read().await.contains(&id)
+    }
+
     // --- Execution ---
 
     /// Push the user message, strip old auto-injected messages, and inject
@@ -194,10 +201,12 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             .ok_or_else(|| anyhow::anyhow!("agent '{}' not registered", session.agent))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
+        self.active_sessions.write().await.insert(session_id);
         let response = agent_ref.run(&mut session.history, tx).await;
+        self.active_sessions.write().await.remove(&session_id);
 
         while let Ok(event) = rx.try_recv() {
-            self.hook.on_event(&agent_name, &event);
+            self.hook.on_event(&agent_name, session_id, &event);
         }
 
         Ok(response)
@@ -253,11 +262,13 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                 }
             };
 
+            self.active_sessions.write().await.insert(session_id);
             let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history));
             while let Some(event) = event_stream.next().await {
-                self.hook.on_event(&agent_name, &event);
+                self.hook.on_event(&agent_name, session_id, &event);
                 yield event;
             }
+            self.active_sessions.write().await.remove(&session_id);
         }
     }
 }

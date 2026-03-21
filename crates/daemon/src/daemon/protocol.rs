@@ -8,8 +8,8 @@ use wcore::AgentEvent;
 use wcore::protocol::{
     api::Server,
     message::{
-        DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse, SessionInfo, StreamChunk,
-        StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, ToolCallInfo,
+        AgentEventMsg, DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse, SessionInfo,
+        StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, ToolCallInfo,
         ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
     },
 };
@@ -105,12 +105,14 @@ impl Server for Daemon {
         let mut infos = Vec::with_capacity(sessions.len());
         for s in sessions {
             let s = s.lock().await;
+            let active = rt.is_active(s.id).await;
             infos.push(SessionInfo {
                 id: s.id,
                 agent: s.agent.to_string(),
                 created_by: s.created_by.to_string(),
                 message_count: s.history.len() as u64,
                 alive_secs: s.created_at.elapsed().as_secs(),
+                active,
             });
         }
         Ok(infos)
@@ -154,6 +156,21 @@ impl Server for Daemon {
         let rt = self.runtime.read().await.clone();
         let registry = rt.hook.downloads.lock().await;
         Ok(registry.list())
+    }
+
+    fn subscribe_events(&self) -> impl futures_core::Stream<Item = Result<AgentEventMsg>> + Send {
+        let runtime = self.runtime.clone();
+        async_stream::try_stream! {
+            let rt = runtime.read().await.clone();
+            let mut rx = rt.hook.subscribe_events();
+            loop {
+                match rx.recv().await {
+                    Ok(event) => yield event,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                }
+            }
+        }
     }
 
     fn subscribe_downloads(

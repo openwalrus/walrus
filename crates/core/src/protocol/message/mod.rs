@@ -3,13 +3,14 @@
 mod convert;
 
 pub use crate::protocol::proto::{
-    ClientMessage, ConfigMsg, DownloadCompleted, DownloadCreated, DownloadEvent, DownloadFailed,
-    DownloadInfo, DownloadList, DownloadProgress, DownloadStep, Downloads, ErrorMsg, GetConfig,
-    HubAction, HubMsg, KillMsg, Ping, Pong, SendMsg, SendResponse, ServerMessage, SessionInfo,
-    SessionList, SetConfigMsg, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
-    StreamThinking, SubscribeDownloads, ToolCallInfo, ToolResultEvent, ToolStartEvent,
-    ToolsCompleteEvent,
+    AgentEventKind, DownloadKind, HubAction, client_message, download_event, server_message,
+    stream_event,
 };
 pub use crate::protocol::proto::{
-    DownloadKind, client_message, download_event, server_message, stream_event,
+    AgentEventMsg, ClientMessage, ConfigMsg, DownloadCompleted, DownloadCreated, DownloadEvent,
+    DownloadFailed, DownloadInfo, DownloadList, DownloadProgress, DownloadStep, Downloads,
+    ErrorMsg, GetConfig, HubMsg, KillMsg, Ping, Pong, SendMsg, SendResponse, ServerMessage,
+    SessionInfo, SessionList, SetConfigMsg, StreamChunk, StreamEnd, StreamEvent, StreamMsg,
+    StreamStart, StreamThinking, SubscribeDownloads, SubscribeEvents, ToolCallInfo,
+    ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
 };

@@ -10,8 +10,9 @@ use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg, ServerMessage,
-        SessionInfo, StreamMsg, client_message, download_event, server_message, stream_event,
+        AgentEventMsg, ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg,
+        ServerMessage, SessionInfo, StreamMsg, SubscribeEvents, client_message, download_event,
+        server_message, stream_event,
     },
 };
 
@@ -237,6 +238,30 @@ impl Runner {
             }
             other => anyhow::bail!("unexpected response: {other:?}"),
         }
+    }
+
+    /// Subscribe to agent events. Returns a stream of `AgentEventMsg`.
+    pub fn subscribe_events(&mut self) -> impl Stream<Item = Result<AgentEventMsg>> + Send + '_ {
+        self.transport
+            .request_stream(ClientMessage {
+                msg: Some(client_message::Msg::SubscribeEvents(SubscribeEvents {})),
+            })
+            .filter_map(|r| async {
+                match r {
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::AgentEvent(e)),
+                    }) => Some(Ok(e)),
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::Error(e)),
+                    }) => Some(Err(anyhow::anyhow!(
+                        "server error ({}): {}",
+                        e.code,
+                        e.message
+                    ))),
+                    Ok(_) => None,
+                    Err(e) => Some(Err(e)),
+                }
+            })
     }
 
     /// Get the daemon config as JSON string.
