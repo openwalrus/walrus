@@ -43,20 +43,22 @@ impl DaemonHook {
             return format!("invalid skill name: {name}");
         }
 
-        // Try exact load first.
+        // Try exact load from each skill directory.
         if !name.is_empty() {
-            let skill_dir = self.skills.skills_dir.join(name);
-            let skill_file = skill_dir.join("SKILL.md");
-            if let Ok(content) = tokio::fs::read_to_string(&skill_file).await {
-                return match loader::parse_skill_md(&content) {
-                    Ok(skill) => {
-                        let body = skill.body.clone();
-                        self.skills.registry.lock().await.add(skill);
-                        let dir_path = skill_dir.display();
-                        format!("{body}\n\nSkill directory: {dir_path}")
-                    }
-                    Err(e) => format!("failed to parse skill: {e}"),
-                };
+            for dir in &self.skills.skill_dirs {
+                let skill_dir = dir.join(name);
+                let skill_file = skill_dir.join("SKILL.md");
+                if let Ok(content) = tokio::fs::read_to_string(&skill_file).await {
+                    return match loader::parse_skill_md(&content) {
+                        Ok(skill) => {
+                            let body = skill.body.clone();
+                            self.skills.registry.lock().await.add(skill);
+                            let dir_path = skill_dir.display();
+                            format!("{body}\n\nSkill directory: {dir_path}")
+                        }
+                        Err(e) => format!("failed to parse skill: {e}"),
+                    };
+                }
             }
         }
 

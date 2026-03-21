@@ -4,9 +4,8 @@ use crate::repl::runner::Runner;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use crabhub::manifest::Manifest;
-use dialoguer::{Input, MultiSelect, theme::ColorfulTheme};
+use dialoguer::{MultiSelect, theme::ColorfulTheme};
 use std::path::{Path, PathBuf};
-use toml_edit::{DocumentMut, value};
 use wcore::paths::CONFIG_DIR;
 
 /// Manage hub packages.
@@ -126,16 +125,10 @@ impl Hub {
             crabhub::package::install(&pkg, &filters, on_step).await?;
             println!("Done: {pkg}");
 
-            // Env var prompting + daemon reload.
-            let config_path = CONFIG_DIR.join(wcore::paths::CONFIG_FILE);
-            if config_path.exists() {
-                let changed = prompt_empty_env_vars(&config_path)?;
-                if changed {
-                    let _ = runner.reload().await;
-                    println!("Daemon reloaded.");
-                }
-                println!("\nRun `crabtalk auth` to reconfigure these values later.");
-            }
+            // Reload daemon to pick up new components.
+            let _ = runner.reload().await;
+            println!("Daemon reloaded.");
+            println!("\nConfigure env vars in config.toml [env] section if needed.");
         } else {
             crabhub::package::uninstall(&pkg, &explicit_filters, on_step).await?;
             println!("Done: {pkg}");
@@ -191,58 +184,4 @@ fn test_manifest(path: &Path) -> Result<()> {
         toml::from_str(&content).with_context(|| format!("failed to parse {}", path.display()))?;
     println!("ok  {}", manifest.package.name);
     Ok(())
-}
-
-/// Scan `[mcps.*]` in config.toml for empty env values,
-/// prompt the user for each one, and write non-empty responses back.
-/// Returns `true` if any values were filled.
-fn prompt_empty_env_vars(config_path: &Path) -> Result<bool> {
-    let content = std::fs::read_to_string(config_path)?;
-    let mut doc: DocumentMut = content.parse()?;
-    let theme = ColorfulTheme::default();
-    let mut changed = false;
-
-    for (section, label) in [("mcps", "MCP")] {
-        let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) else {
-            continue;
-        };
-
-        let names: Vec<String> = table.iter().map(|(k, _)| k.to_string()).collect();
-        for name in &names {
-            let Some(entry) = table.get_mut(name).and_then(|v| v.as_table_mut()) else {
-                continue;
-            };
-            let Some(env) = entry.get_mut("env").and_then(|v| v.as_table_mut()) else {
-                continue;
-            };
-
-            let empty_keys: Vec<String> = env
-                .iter()
-                .filter(|(_, v)| v.as_str().is_some_and(|s| s.is_empty()))
-                .map(|(k, _)| k.to_string())
-                .collect();
-
-            if empty_keys.is_empty() {
-                continue;
-            }
-
-            println!("\nConfigure {label} \"{name}\":");
-            for key in &empty_keys {
-                let val: String = Input::with_theme(&theme)
-                    .with_prompt(format!("  {key}"))
-                    .allow_empty(true)
-                    .interact_text()?;
-                if !val.is_empty() {
-                    env.insert(key, value(&val));
-                    changed = true;
-                }
-            }
-        }
-    }
-
-    if changed {
-        std::fs::write(config_path, doc.to_string())?;
-    }
-
-    Ok(changed)
 }

@@ -122,9 +122,80 @@ pub async fn handle_slash(line: &str) -> Result<SlashResult> {
 }
 
 /// List skill directory names for tab completion.
+///
+/// Scans `local/skills/` plus any cached repo skill dirs from packages.
 fn list_skill_names() -> Option<Vec<String>> {
-    let skills_dir = wcore::paths::CONFIG_DIR.join(wcore::paths::SKILLS_DIR);
-    list_skill_dirs(&skills_dir)
+    let config_dir = &*wcore::paths::CONFIG_DIR;
+    let mut all_names = std::collections::BTreeSet::new();
+
+    // Local skills.
+    let local_skills = config_dir.join(wcore::paths::SKILLS_DIR);
+    if let Some(names) = list_skill_dirs(&local_skills) {
+        all_names.extend(names);
+    }
+
+    // Package skills from cached repos.
+    let packages_dir = config_dir.join(wcore::paths::PACKAGES_DIR);
+    if let Ok(scopes) = std::fs::read_dir(&packages_dir) {
+        for scope in scopes.flatten() {
+            let scope_path = scope.path();
+            if !scope_path.is_dir() {
+                continue;
+            }
+            if let Ok(packages) = std::fs::read_dir(&scope_path) {
+                for pkg in packages.flatten() {
+                    let pkg_path = pkg.path();
+                    if pkg_path.extension().is_some_and(|e| e == "toml") {
+                        // Try to read repository from manifest to find cached repo.
+                        if let Ok(content) = std::fs::read_to_string(&pkg_path)
+                            && let Some(repo) = extract_repository(&content)
+                        {
+                            let slug = repo_slug(&repo);
+                            let skills = config_dir
+                                .join(".cache")
+                                .join("repos")
+                                .join(&slug)
+                                .join("skills");
+                            if let Some(names) = list_skill_dirs(&skills) {
+                                all_names.extend(names);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if all_names.is_empty() {
+        None
+    } else {
+        Some(all_names.into_iter().collect())
+    }
+}
+
+/// Extract the repository URL from a manifest TOML string.
+fn extract_repository(toml_content: &str) -> Option<String> {
+    let doc: toml_edit::DocumentMut = toml_content.parse().ok()?;
+    doc.get("package")?
+        .get("repository")?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_owned())
+}
+
+/// Convert a repo URL to a filesystem-safe slug.
+fn repo_slug(url: &str) -> String {
+    url.chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
 }
 
 /// Read skill subdirectory names that contain a SKILL.md file.

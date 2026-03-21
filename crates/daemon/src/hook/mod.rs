@@ -348,14 +348,22 @@ impl DaemonHook {
             {
                 continue;
             }
-            let skill_file = self.skills.skills_dir.join(name).join("SKILL.md");
-            let Ok(file_content) = std::fs::read_to_string(&skill_file) else {
+            let mut found = false;
+            for dir in &self.skills.skill_dirs {
+                let skill_file = dir.join(name).join("SKILL.md");
+                let Ok(file_content) = std::fs::read_to_string(&skill_file) else {
+                    continue;
+                };
+                let Ok(skill) = skill::loader::parse_skill_md(&file_content) else {
+                    continue;
+                };
+                appended.push(skill.body);
+                found = true;
+                break;
+            }
+            if !found {
                 continue;
-            };
-            let Ok(skill) = skill::loader::parse_skill_md(&file_content) else {
-                continue;
-            };
-            appended.push(skill.body);
+            }
         }
 
         if appended.is_empty() {

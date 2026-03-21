@@ -7,6 +7,7 @@
 
 use crate::{
     Daemon, DaemonConfig,
+    config::{ResolvedManifest, resolve_manifests},
     daemon::event::{DaemonEvent, DaemonEventSender},
     hook::{self, DaemonHook, system::memory::Memory},
 };
@@ -53,10 +54,11 @@ impl Daemon {
         event_tx: &DaemonEventSender,
     ) -> Result<Runtime<ProviderRegistry, DaemonHook>> {
         let manager = Self::build_providers(config)?;
-        let hook = Self::build_hook(config, config_dir, event_tx).await?;
+        let manifest = resolve_manifests(config_dir);
+        let hook = Self::build_hook(config, config_dir, &manifest, event_tx).await?;
         let tool_tx = Self::build_tool_sender(event_tx);
         let mut runtime = Runtime::new(manager, hook, Some(tool_tx)).await;
-        Self::load_agents(&mut runtime, config_dir, config)?;
+        Self::load_agents(&mut runtime, config, &manifest)?;
         Ok(runtime)
     }
 
@@ -83,15 +85,27 @@ impl Daemon {
     async fn build_hook(
         config: &DaemonConfig,
         config_dir: &Path,
+        manifest: &ResolvedManifest,
         event_tx: &DaemonEventSender,
     ) -> Result<DaemonHook> {
-        let skills_dir = config_dir.join(wcore::paths::SKILLS_DIR);
-        let skills = hook::skill::SkillHandler::load(skills_dir).unwrap_or_else(|e| {
-            tracing::warn!("failed to load skills: {e}");
-            hook::skill::SkillHandler::default()
-        });
+        let skills =
+            hook::skill::SkillHandler::load(manifest.skill_dirs.clone()).unwrap_or_else(|e| {
+                tracing::warn!("failed to load skills: {e}");
+                hook::skill::SkillHandler::default()
+            });
 
-        let mcp_servers = config.mcps.values().cloned().collect::<Vec<_>>();
+        // Inject [env] from config.toml into each MCP's env map.
+        let mcp_servers: Vec<_> = manifest
+            .mcps
+            .values()
+            .map(|mcp| {
+                let mut mcp = mcp.clone();
+                for (k, v) in &config.env {
+                    mcp.env.entry(k.clone()).or_insert_with(|| v.clone());
+                }
+                mcp
+            })
+            .collect();
         let mcp_handler = hook::mcp::McpHandler::load(&mcp_servers).await;
 
         let memory = Some(Memory::open(
@@ -132,15 +146,15 @@ impl Daemon {
     /// Load agents and add them to the runtime.
     ///
     /// The built-in crab agent is always registered first. Sub-agents are
-    /// loaded by iterating TOML `[agents.*]` entries and matching each to a
-    /// `.md` prompt file from the agents directory.
+    /// loaded from manifest agent configs matched to `.md` prompt files
+    /// from the agent directories.
     fn load_agents(
         runtime: &mut Runtime<ProviderRegistry, DaemonHook>,
-        config_dir: &Path,
         config: &DaemonConfig,
+        manifest: &ResolvedManifest,
     ) -> Result<()> {
-        // Load prompt files from disk: (filename_stem, text).
-        let prompts = crate::config::load_agents_dir(&config_dir.join(wcore::paths::AGENTS_DIR))?;
+        // Load prompt files from all agent directories.
+        let prompts = crate::config::load_agents_dirs(&manifest.agent_dirs)?;
         let prompt_map: std::collections::BTreeMap<String, String> = prompts.into_iter().collect();
 
         // Built-in crab agent. Read soul from memory (Crab.md), fall back to compiled-in.
@@ -154,8 +168,8 @@ impl Daemon {
             .unwrap_or_else(|| SYSTEM_AGENT.to_owned());
         runtime.add_agent(crab_config);
 
-        // Sub-agents from TOML — each must have a matching .md file.
-        for (name, agent_config) in &config.agents {
+        // Sub-agents from manifests — each must have a matching .md file.
+        for (name, agent_config) in &manifest.agents {
             if name == wcore::paths::DEFAULT_AGENT {
                 tracing::warn!(
                     "agents.{name} overrides the built-in system agent and will be ignored — \
@@ -164,7 +178,7 @@ impl Daemon {
                 continue;
             }
             let Some(prompt) = prompt_map.get(name) else {
-                tracing::warn!("agent '{name}' in TOML has no matching .md file, skipping");
+                tracing::warn!("agent '{name}' in manifest has no matching .md file, skipping");
                 continue;
             };
             let mut agent = agent_config.clone();
@@ -174,7 +188,7 @@ impl Daemon {
             runtime.add_agent(agent);
         }
 
-        // Also register agents that have .md files but no TOML entry (defaults).
+        // Also register agents that have .md files but no manifest entry (defaults).
         let default_think = config.system.crab.thinking;
         for (stem, prompt) in &prompt_map {
             if stem == wcore::paths::DEFAULT_AGENT {
@@ -183,7 +197,7 @@ impl Daemon {
                 );
                 continue;
             }
-            if config.agents.contains_key(stem) {
+            if manifest.agents.contains_key(stem) {
                 continue;
             }
             let mut agent = AgentConfig::new(stem.as_str());
