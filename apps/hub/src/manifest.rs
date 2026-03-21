@@ -90,28 +90,41 @@ impl McpResource {
     }
 }
 
-/// A skill resource.
+/// A skill resource — discovered by convention from `skills/*/SKILL.md`.
 #[derive(Serialize, Deserialize)]
 pub struct SkillResource {
     /// Skill name (defaults to map key if empty)
     #[serde(default)]
     pub name: String,
     /// Skill description
+    #[serde(default)]
     pub description: String,
-    /// Path within the repo to the skill directory
+    /// Path within the repo to the skill directory (legacy, optional)
+    #[serde(default)]
     pub path: String,
 }
 
-/// An agent resource — system prompt + skill bundle.
+/// An agent resource — discovered by convention from `agents/*.md`.
 #[derive(Serialize, Deserialize)]
 pub struct AgentResource {
     /// Agent description
+    #[serde(default)]
     pub description: String,
-    /// Path to the prompt `.md` file in the hub repo (relative to scope dir)
+    /// Path to the prompt `.md` file (legacy, optional)
+    #[serde(default)]
     pub prompt: String,
-    /// Skill keys from `[skills.*]` in the same manifest to auto-install
+    /// Skill keys from `[skills.*]` in the same manifest
     #[serde(default)]
     pub skills: Vec<String>,
+    /// Model override for this agent
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Whether to enable thinking/reasoning mode
+    #[serde(default)]
+    pub thinking: bool,
+    /// MCP server names this agent can access
+    #[serde(default)]
+    pub mcps: Vec<String>,
 }
 
 /// Command service metadata for hub registration.
