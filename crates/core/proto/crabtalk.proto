@@ -11,15 +11,13 @@ message ClientMessage {
     SendMsg send = 1;
     StreamMsg stream = 2;
     Ping ping = 3;
-    // Fields 4-13 removed (hub + task protocol).
-    GetConfig get_config = 14;
-    SetConfigMsg set_config = 15;
-    // Fields 16-20 removed (service protocol).
-    ReloadMsg reload = 21;
-    SubscribeEvents subscribe_events = 22;
-    ReplyToAsk reply_to_ask = 23;
-    Sessions sessions = 5;
-    KillMsg kill = 6;
+    Sessions sessions = 4;
+    KillMsg kill = 5;
+    GetConfig get_config = 6;
+    SetConfigMsg set_config = 7;
+    ReloadMsg reload = 8;
+    SubscribeEvents subscribe_events = 9;
+    ReplyToAsk reply_to_ask = 10;
   }
 }
 
@@ -58,14 +56,11 @@ message ServerMessage {
   oneof msg {
     SendResponse response = 1;
     StreamEvent stream = 2;
-    // Field 3 removed (download event).
-    ErrorMsg error = 4;
-    Pong pong = 5;
-    SessionList sessions = 6;
-    // Fields 7-10 removed (download + task protocol).
-    ConfigMsg config = 11;
-    // Fields 12-15 removed (service protocol).
-    AgentEventMsg agent_event = 16;
+    ErrorMsg error = 3;
+    Pong pong = 4;
+    SessionList sessions = 5;
+    ConfigMsg config = 6;
+    AgentEventMsg agent_event = 7;
   }
 }
 
