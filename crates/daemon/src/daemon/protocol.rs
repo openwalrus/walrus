@@ -8,9 +8,9 @@ use wcore::AgentEvent;
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse, SessionInfo,
-        StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, ToolCallInfo,
-        ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
+        AgentEventMsg, AskUserEvent, DownloadEvent, DownloadInfo, HubAction, SendMsg, SendResponse,
+        SessionInfo, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
+        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
     },
 };
 
@@ -64,12 +64,24 @@ impl Server for Daemon {
                         yield StreamEvent { event: Some(stream_event::Event::Thinking(StreamThinking { content: text })) };
                     }
                     AgentEvent::ToolCallsStart(calls) => {
+                        // Check for ask_user calls and extract question.
+                        let ask_question = calls.iter().find(|c| c.function.name == "ask_user").and_then(|c| {
+                            serde_json::from_str::<serde_json::Value>(&c.function.arguments)
+                                .ok()
+                                .and_then(|v| v.get("question").and_then(|q| q.as_str()).map(String::from))
+                        });
+
                         yield StreamEvent { event: Some(stream_event::Event::ToolStart(ToolStartEvent {
                             calls: calls.into_iter().map(|c| ToolCallInfo {
                                 name: c.function.name.to_string(),
                                 arguments: c.function.arguments,
                             }).collect(),
                         })) };
+
+                        // Emit AskUserEvent after ToolStartEvent.
+                        if let Some(question) = ask_question {
+                            yield StreamEvent { event: Some(stream_event::Event::AskUser(AskUserEvent { question })) };
+                        }
                     }
                     AgentEvent::ToolResult { call_id, output } => {
                         yield StreamEvent { event: Some(stream_event::Event::ToolResult(ToolResultEvent { call_id: call_id.to_string(), output })) };
@@ -120,6 +132,8 @@ impl Server for Daemon {
 
     async fn kill_session(&self, session: u64) -> Result<bool> {
         let rt = self.runtime.read().await.clone();
+        // Drop any pending ask_user oneshot so dispatch_ask_user unblocks immediately.
+        rt.hook.pending_asks.lock().await.remove(&session);
         Ok(rt.close_session(session).await)
     }
 
@@ -208,6 +222,22 @@ impl Server for Daemon {
 
     async fn reload(&self) -> Result<()> {
         self.reload().await
+    }
+
+    async fn reply_to_ask(&self, session: u64, content: String) -> Result<()> {
+        let rt = self.runtime.read().await.clone();
+        // Try to find and deliver the reply. Retry once after a brief delay
+        // in case the ask_user dispatch hasn't inserted the oneshot yet.
+        if let Some(tx) = rt.hook.pending_asks.lock().await.remove(&session) {
+            let _ = tx.send(content);
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if let Some(tx) = rt.hook.pending_asks.lock().await.remove(&session) {
+            let _ = tx.send(content);
+            return Ok(());
+        }
+        anyhow::bail!("no pending ask_user for session {session}")
     }
 }
 

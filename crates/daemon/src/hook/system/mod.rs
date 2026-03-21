@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod ask_user;
 pub mod memory;
 pub mod task;
 

@@ -202,7 +202,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.active_sessions.write().await.insert(session_id);
-        let response = agent_ref.run(&mut session.history, tx).await;
+        let response = agent_ref.run(&mut session.history, tx, None).await;
         self.active_sessions.write().await.remove(&session_id);
 
         while let Ok(event) = rx.try_recv() {
@@ -263,7 +263,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             self.active_sessions.write().await.insert(session_id);
-            let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history));
+            let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history, Some(session_id)));
             while let Some(event) = event_stream.next().await {
                 self.hook.on_event(&agent_name, session_id, &event);
                 yield event;

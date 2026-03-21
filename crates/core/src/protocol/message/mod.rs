@@ -7,10 +7,10 @@ pub use crate::protocol::proto::{
     stream_event,
 };
 pub use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, ConfigMsg, DownloadCompleted, DownloadCreated, DownloadEvent,
-    DownloadFailed, DownloadInfo, DownloadList, DownloadProgress, DownloadStep, Downloads,
-    ErrorMsg, GetConfig, HubMsg, KillMsg, Ping, Pong, SendMsg, SendResponse, ServerMessage,
-    SessionInfo, SessionList, SetConfigMsg, StreamChunk, StreamEnd, StreamEvent, StreamMsg,
-    StreamStart, StreamThinking, SubscribeDownloads, SubscribeEvents, ToolCallInfo,
+    AgentEventMsg, AskUserEvent, ClientMessage, ConfigMsg, DownloadCompleted, DownloadCreated,
+    DownloadEvent, DownloadFailed, DownloadInfo, DownloadList, DownloadProgress, DownloadStep,
+    Downloads, ErrorMsg, GetConfig, HubMsg, KillMsg, Ping, Pong, ReplyToAsk, SendMsg, SendResponse,
+    ServerMessage, SessionInfo, SessionList, SetConfigMsg, StreamChunk, StreamEnd, StreamEvent,
+    StreamMsg, StreamStart, StreamThinking, SubscribeDownloads, SubscribeEvents, ToolCallInfo,
     ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
 };

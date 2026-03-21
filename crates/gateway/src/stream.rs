@@ -59,6 +59,9 @@ impl StreamAccumulator {
             Some(stream_event::Event::End(_)) => {
                 self.done = true;
             }
+            Some(stream_event::Event::AskUser(_)) => {
+                // Handled by Phase 12 (P12-01).
+            }
             None => {}
         }
     }

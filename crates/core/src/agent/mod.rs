@@ -85,7 +85,11 @@ impl<M: Model> Agent<M> {
     /// Composes a [`Request`] from config state (system prompt + history +
     /// tool schemas), calls the stored model, dispatches any tool calls via
     /// the [`ToolSender`] channel, and appends results to history.
-    pub async fn step(&self, history: &mut Vec<Message>) -> Result<AgentStep> {
+    pub async fn step(
+        &self,
+        history: &mut Vec<Message>,
+        session_id: Option<u64>,
+    ) -> Result<AgentStep> {
         let request = self.build_request(history);
         let response = self.model.send(&request).await?;
         let tool_calls = response.tool_calls().unwrap_or_default().to_vec();
@@ -99,7 +103,12 @@ impl<M: Model> Agent<M> {
             let sender = last_sender(history);
             for tc in &tool_calls {
                 let result = self
-                    .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender)
+                    .dispatch_tool(
+                        &tc.function.name,
+                        &tc.function.arguments,
+                        &sender,
+                        session_id,
+                    )
                     .await;
                 let msg = Message::tool(&result, tc.id.clone());
                 history.push(msg.clone());
@@ -118,7 +127,13 @@ impl<M: Model> Agent<M> {
     ///
     /// Returns the result string. If no sender is configured, returns an error
     /// message without panicking.
-    async fn dispatch_tool(&self, name: &str, args: &str, sender: &str) -> String {
+    async fn dispatch_tool(
+        &self,
+        name: &str,
+        args: &str,
+        sender: &str,
+        session_id: Option<u64>,
+    ) -> String {
         let Some(tx) = &self.tool_tx else {
             return format!("tool '{name}' called but no tool sender configured");
         };
@@ -130,6 +145,7 @@ impl<M: Model> Agent<M> {
             reply: reply_tx,
             task_id: None,
             sender: sender.into(),
+            session_id,
         };
         if tx.send(req).is_err() {
             return format!("tool channel closed while calling '{name}'");
@@ -156,8 +172,9 @@ impl<M: Model> Agent<M> {
         &self,
         history: &mut Vec<Message>,
         events: mpsc::UnboundedSender<AgentEvent>,
+        session_id: Option<u64>,
     ) -> AgentResponse {
-        let mut stream = std::pin::pin!(self.run_stream(history));
+        let mut stream = std::pin::pin!(self.run_stream(history, session_id));
         let mut response = None;
         while let Some(event) = stream.next().await {
             if let AgentEvent::Done(ref resp) = event {
@@ -182,6 +199,7 @@ impl<M: Model> Agent<M> {
     pub fn run_stream<'a>(
         &'a self,
         history: &'a mut Vec<Message>,
+        session_id: Option<u64>,
     ) -> impl Stream<Item = AgentEvent> + 'a {
         stream! {
             let mut steps = Vec::new();
@@ -284,7 +302,7 @@ impl<M: Model> Agent<M> {
                     yield AgentEvent::ToolCallsStart(tool_calls.clone());
                     for tc in &tool_calls {
                         let result = self
-                            .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender)
+                            .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender, session_id)
                             .await;
                         let msg = Message::tool(&result, tc.id.clone());
                         history.push(msg.clone());

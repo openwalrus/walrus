@@ -142,6 +142,7 @@ impl Runner {
                         }
                         Some(stream_event::Event::Start(_)) => None,
                         Some(stream_event::Event::End(_)) => None,
+                        Some(stream_event::Event::AskUser(_)) => None,
                         None => None,
                     },
                     Ok(ServerMessage {

@@ -33,6 +33,9 @@ pub struct ToolRequest {
     /// Sender identity of the user who triggered this agent run.
     /// Empty for local/owner sessions.
     pub sender: String,
+    /// Session ID of the calling session, if running within a session.
+    /// Set by the runtime; the agent passes it through as an opaque value.
+    pub session_id: Option<u64>,
 }
 
 /// Schema-only registry of named tools.

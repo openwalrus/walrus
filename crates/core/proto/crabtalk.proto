@@ -22,6 +22,7 @@ message ClientMessage {
     // Fields 16-20 removed (service protocol).
     ReloadMsg reload = 21;
     SubscribeEvents subscribe_events = 22;
+    ReplyToAsk reply_to_ask = 23;
   }
 }
 
@@ -109,6 +110,7 @@ message StreamEvent {
     ToolResultEvent tool_result = 5;
     ToolsCompleteEvent tools_complete = 6;
     StreamEnd end = 7;
+    AskUserEvent ask_user = 8;
   }
 }
 
@@ -138,6 +140,15 @@ message ToolsCompleteEvent {}
 
 message StreamEnd {
   string agent = 1;
+}
+
+message AskUserEvent {
+  string question = 1;
+}
+
+message ReplyToAsk {
+  uint64 session = 1;
+  string content = 2;
 }
 
 enum DownloadKind {

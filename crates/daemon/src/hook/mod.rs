@@ -10,8 +10,11 @@ use crate::{
     hook::{mcp::McpHandler, skill::SkillHandler, system::memory::Memory},
 };
 use crabhub::DownloadRegistry;
-use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::{Mutex, broadcast};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
+use tokio::sync::{Mutex, broadcast, oneshot};
 use wcore::{
     AgentConfig, AgentEvent, Hook, ToolRegistry,
     model::Message,
@@ -48,10 +51,12 @@ pub struct DaemonHook {
     pub(crate) agent_descriptions: BTreeMap<String, String>,
     /// Broadcast channel for agent events (console subscription).
     events_tx: broadcast::Sender<AgentEventMsg>,
+    /// Pending `ask_user` oneshots, keyed by session_id.
+    pub pending_asks: Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>,
 }
 
 /// Base tools always included in every agent's whitelist.
-const BASE_TOOLS: &[&str] = &["bash"];
+const BASE_TOOLS: &[&str] = &["bash", "ask_user"];
 
 /// Skill discovery/loading tools.
 const SKILL_TOOLS: &[&str] = &["skill"];
@@ -148,6 +153,7 @@ impl Hook for DaemonHook {
         tools.insert_all(os::tool::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(system::task::tool::tools());
+        tools.insert_all(system::ask_user::tools());
         if self.memory.is_some() {
             tools.insert_all(system::memory::tool::tools());
         }
@@ -228,6 +234,7 @@ impl DaemonHook {
             scopes: BTreeMap::new(),
             agent_descriptions: BTreeMap::new(),
             events_tx,
+            pending_asks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -354,6 +361,7 @@ impl DaemonHook {
         args: &str,
         agent: &str,
         _sender: &str,
+        session_id: Option<u64>,
     ) -> String {
         // Dispatch enforcement: reject tools not in the agent's whitelist.
         if let Some(scope) = self.scopes.get(agent)
@@ -371,6 +379,7 @@ impl DaemonHook {
             "remember" => self.dispatch_remember(args).await,
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
+            "ask_user" => self.dispatch_ask_user(args, session_id).await,
             name => format!("tool not available: {name}"),
         }
     }

@@ -76,13 +76,14 @@ fn install_rustup() -> Result<()> {
 
     // Source cargo env so it's available for the rest of this process.
     let cargo_env = format!("{}/.cargo/env", std::env::var("HOME").unwrap_or_default());
-    if std::path::Path::new(&cargo_env).exists() {
-        Command::new("sh")
+    if std::path::Path::new(&cargo_env).exists()
+        && let Some(path) = Command::new("sh")
             .args(["-c", &format!(". '{cargo_env}' && echo $PATH")])
             .output()
             .ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|path| unsafe { std::env::set_var("PATH", path.trim()) });
+    {
+        unsafe { std::env::set_var("PATH", path.trim()) }
     }
 
     if !has_cargo() {
