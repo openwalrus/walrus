@@ -395,20 +395,8 @@ fn install_agents_filtered(
 }
 
 /// Convert a repo URL to a filesystem-safe slug.
-///
-/// e.g. `https://github.com/microsoft/playwright-cli` → `github-com-microsoft-playwright-cli`
 fn repo_slug(url: &str) -> String {
-    url.chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
+    wcore::repo_slug(url)
 }
 
 /// Recursively copy `src` directory into `dst`.

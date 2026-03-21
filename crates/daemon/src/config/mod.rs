@@ -3,15 +3,14 @@
 pub use crate::hook::{mcp::McpServerConfig, system::SystemConfig};
 pub use ::model::{ProviderDef, ProviderRegistry, validate_providers};
 use anyhow::Result;
-pub use loader::{
-    DEFAULT_CONFIG, ManifestConfig, ResolvedManifest, load_agents_dir, load_agents_dirs,
-    resolve_manifests, scaffold_config_dir,
-};
+pub use loader::{DEFAULT_CONFIG, scaffold_config_dir};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use wcore::{
-    AgentConfig, HeartbeatConfig,
+    AgentConfig, HeartbeatConfig, ManifestConfig, ResolvedManifest, load_agents_dir,
+    load_agents_dirs,
     paths::{AGENTS_DIR, CONFIG_DIR, CONFIG_FILE, SKILLS_DIR, SOCKET_PATH},
+    resolve_manifests,
 };
 
 mod loader;

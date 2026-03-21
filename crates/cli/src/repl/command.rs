@@ -185,17 +185,7 @@ fn extract_repository(toml_content: &str) -> Option<String> {
 
 /// Convert a repo URL to a filesystem-safe slug.
 fn repo_slug(url: &str) -> String {
-    url.chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
+    wcore::repo_slug(url)
 }
 
 /// Read skill subdirectory names that contain a SKILL.md file.

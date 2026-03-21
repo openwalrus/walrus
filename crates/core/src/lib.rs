@@ -17,7 +17,10 @@ pub use agent::{
     event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason},
     tool::{ToolRegistry, ToolRequest, ToolSender},
 };
-pub use config::{ApiStandard, McpServerConfig, ProviderDef};
+pub use config::{
+    ApiStandard, ManifestConfig, McpServerConfig, PackageMeta, ProviderDef, ResolvedManifest,
+    load_agents_dir, load_agents_dirs, repo_slug, resolve_manifests,
+};
 pub use runtime::{Runtime, Session, hook::Hook};
 
 pub mod agent;
