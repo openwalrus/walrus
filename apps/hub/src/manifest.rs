@@ -61,8 +61,6 @@ pub struct McpResource {
     pub auto_restart: bool,
     /// HTTP URL for streamable HTTP transport.
     pub url: Option<String>,
-    /// Optional setup command to run after install.
-    pub setup: Option<SetupConfig>,
 }
 
 impl Default for McpResource {
@@ -74,13 +72,12 @@ impl Default for McpResource {
             env: BTreeMap::new(),
             auto_restart: true,
             url: None,
-            setup: None,
         }
     }
 }
 
 impl McpResource {
-    /// Convert to the runtime MCP config (without setup).
+    /// Convert to the runtime MCP config.
     pub fn to_server_config(&self) -> wcore::McpServerConfig {
         wcore::McpServerConfig {
             name: self.name.clone(),
@@ -93,15 +90,6 @@ impl McpResource {
     }
 }
 
-/// A setup command to run after install.
-#[derive(Serialize, Deserialize)]
-pub struct SetupConfig {
-    /// Shell command to execute.
-    pub run: String,
-    /// Human-readable message shown before running.
-    pub message: String,
-}
-
 /// A skill resource.
 #[derive(Serialize, Deserialize)]
 pub struct SkillResource {
@@ -112,9 +100,6 @@ pub struct SkillResource {
     pub description: String,
     /// Path within the repo to the skill directory
     pub path: String,
-    /// Optional setup command to run after install.
-    #[serde(default)]
-    pub setup: Option<SetupConfig>,
 }
 
 /// An agent resource — system prompt + skill bundle.

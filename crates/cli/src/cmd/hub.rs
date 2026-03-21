@@ -3,7 +3,7 @@
 use crate::repl::runner::Runner;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
-use crabhub::manifest::{Manifest, SetupConfig};
+use crabhub::manifest::Manifest;
 use dialoguer::{Input, MultiSelect, theme::ColorfulTheme};
 use std::path::{Path, PathBuf};
 use toml_edit::{DocumentMut, value};
@@ -123,14 +123,8 @@ impl Hub {
                 pick_components(&manifest)?
             };
 
-            // Collect setup configs for selected components before install.
-            let setups = collect_setups(&manifest, &filters);
-
             crabhub::package::install(&pkg, &filters, on_step).await?;
             println!("Done: {pkg}");
-
-            // Run setup commands.
-            run_setups(&setups);
 
             // Env var prompting + daemon reload.
             let config_path = CONFIG_DIR.join("crab.toml");
@@ -187,51 +181,6 @@ fn pick_components(manifest: &Manifest) -> Result<Vec<String>> {
     }
 
     Ok(selections.into_iter().map(|i| items[i].clone()).collect())
-}
-
-/// Collect setup configs for the selected components.
-fn collect_setups<'a>(
-    manifest: &'a Manifest,
-    filters: &[String],
-) -> Vec<(&'a str, &'a SetupConfig)> {
-    let mut setups: Vec<(&str, &SetupConfig)> = Vec::new();
-    let no_filter = filters.is_empty();
-
-    for (key, res) in &manifest.skills {
-        if let Some(ref setup) = res.setup
-            && (no_filter || filters.iter().any(|f| f == &format!("skill:{key}")))
-        {
-            setups.push((key, setup));
-        }
-    }
-    for (key, res) in &manifest.mcps {
-        if let Some(ref setup) = res.setup
-            && (no_filter || filters.iter().any(|f| f == &format!("mcp:{key}")))
-        {
-            setups.push((key, setup));
-        }
-    }
-
-    setups
-}
-
-/// Run setup commands, printing messages. Failures are non-fatal.
-fn run_setups(setups: &[(&str, &SetupConfig)]) {
-    for (name, setup) in setups {
-        println!("\nRunning setup for {name}: {}", setup.message);
-        let status = std::process::Command::new("sh")
-            .args(["-c", &setup.run])
-            .status();
-        match status {
-            Ok(s) if s.success() => {}
-            Ok(s) => {
-                eprintln!("  Setup for {name} exited with {s}");
-            }
-            Err(e) => {
-                eprintln!("  Setup for {name} failed: {e}");
-            }
-        }
-    }
 }
 
 /// Parse a single manifest .toml and report success or the parse error.
