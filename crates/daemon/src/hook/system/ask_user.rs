@@ -9,15 +9,15 @@ use wcore::{
     model::Tool,
 };
 
-/// Ask the user a question and wait for their reply.
+/// Ask the user one or more questions and wait for their reply.
 #[derive(Deserialize, schemars::JsonSchema)]
 pub(crate) struct AskUser {
-    /// The question to ask the user.
-    pub question: String,
+    /// The questions to ask the user.
+    pub questions: Vec<String>,
 }
 
 impl ToolDescription for AskUser {
-    const DESCRIPTION: &'static str = "Ask the user a question and wait for their reply. Use when you need clarification or approval before proceeding.";
+    const DESCRIPTION: &'static str = "Ask the user one or more questions and wait for their reply. Use when you need clarification or approval before proceeding.";
 }
 
 pub(crate) fn tools() -> Vec<Tool> {
@@ -45,16 +45,15 @@ impl DaemonHook {
         match tokio::time::timeout(ASK_USER_TIMEOUT, rx).await {
             Ok(Ok(reply)) => reply,
             Ok(Err(_)) => {
-                // Sender was dropped (session killed, etc.)
                 self.pending_asks.lock().await.remove(&session_id);
                 "ask_user cancelled: reply channel closed".to_owned()
             }
             Err(_) => {
                 self.pending_asks.lock().await.remove(&session_id);
                 format!(
-                    "ask_user timed out after {}s: no reply received for question: {}",
+                    "ask_user timed out after {}s: no reply received for: {}",
                     ASK_USER_TIMEOUT.as_secs(),
-                    input.question,
+                    input.questions.join("; "),
                 )
             }
         }

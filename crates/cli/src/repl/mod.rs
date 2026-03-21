@@ -3,7 +3,7 @@
 use crate::repl::{
     command::{ReplHelper, SlashResult, handle_slash},
     render::{MarkdownRenderer, styled_prompt, welcome_banner},
-    runner::{OutputChunk, Runner},
+    runner::{ConnectionInfo, OutputChunk, Runner, send_reply},
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -73,8 +73,9 @@ impl ChatRepl {
                 }
             };
             println!();
+            let conn_info = self.runner.conn_info().clone();
             let stream = self.runner.stream(&self.agent, &content);
-            stream_to_terminal(stream).await?;
+            stream_to_terminal(stream, &conn_info).await?;
             println!();
         }
 
@@ -133,8 +134,23 @@ fn history_file_path() -> Option<PathBuf> {
     Some(wcore::paths::CONFIG_DIR.join("history"))
 }
 
+/// Read a line from stdin in a blocking context.
+async fn read_stdin_line(prompt: &str) -> Result<String> {
+    let prompt = prompt.to_owned();
+    tokio::task::spawn_blocking(move || {
+        eprint!("{prompt}");
+        let mut buf = String::new();
+        std::io::stdin().read_line(&mut buf)?;
+        Ok(buf.trim().to_owned())
+    })
+    .await?
+}
+
 /// Consume a stream of output chunks and render them via `MarkdownRenderer`.
-async fn stream_to_terminal(stream: impl Stream<Item = Result<OutputChunk>>) -> Result<()> {
+async fn stream_to_terminal(
+    stream: impl Stream<Item = Result<OutputChunk>>,
+    conn_info: &ConnectionInfo,
+) -> Result<()> {
     let mut stream = pin!(stream);
     let mut renderer = MarkdownRenderer::new();
 
@@ -156,6 +172,17 @@ async fn stream_to_terminal(stream: impl Stream<Item = Result<OutputChunk>>) -> 
                     }
                     Some(Ok(OutputChunk::ToolDone(success))) => {
                         renderer.push_tool_done(success);
+                    }
+                    Some(Ok(OutputChunk::AskUser { questions, session })) => {
+                        renderer.finish();
+                        println!();
+                        for q in &questions {
+                            println!("{}", console::style(q).yellow());
+                        }
+                        let reply = read_stdin_line("> ").await?;
+                        if let Err(e) = send_reply(conn_info, session, reply).await {
+                            eprintln!("failed to send reply: {e}");
+                        }
                     }
                     Some(Err(e)) => {
                         renderer.finish();

@@ -4,7 +4,6 @@ use crate::{
     COMMAND_HINT, DaemonClient, GatewayConfig, GatewayMessage, KnownBots, StreamAccumulator,
     StreamResult, attachment_summary, parse_command,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashMap, path::Path, sync::Arc};
 use teloxide::prelude::*;
 use teloxide::types::ChatAction;
@@ -103,11 +102,9 @@ struct ChatStream {
     handle: tokio::task::JoinHandle<StreamResult>,
     session_id: Option<u64>,
     reply_tx: mpsc::UnboundedSender<String>,
-    waiting_for_reply: Arc<AtomicBool>,
 }
 
 impl ChatStream {
-    /// Check if the background stream task has finished.
     fn is_finished(&self) -> bool {
         self.handle.is_finished()
     }
@@ -129,7 +126,6 @@ async fn telegram_loop(
     known_bots: KnownBots,
     allowed_users: std::collections::HashSet<i64>,
 ) {
-    // Per-chat state: active stream tasks and last-known session IDs.
     let mut chats: HashMap<i64, ChatStream> = HashMap::new();
     let mut sessions: HashMap<i64, u64> = HashMap::new();
 
@@ -177,19 +173,15 @@ async fn telegram_loop(
         // Check if there's an active stream for this chat.
         if let Some(chat_stream) = chats.get(&chat_id) {
             if chat_stream.is_finished() {
-                // Reap the finished stream and update session.
                 let chat_stream = chats.remove(&chat_id).unwrap();
                 if let Some(sid) = reap_chat(chat_stream).await {
                     sessions.insert(chat_id, sid);
                 }
                 // Fall through to spawn a new stream below.
-            } else if chat_stream.waiting_for_reply.load(Ordering::Relaxed) {
-                // Forward the user's message as a reply to ask_user.
-                let _ = chat_stream.reply_tx.send(content);
-                continue;
             } else {
-                // Stream is active but not waiting — drop the message.
-                tracing::warn!(chat_id, "dropping message: stream in progress");
+                // Stream in flight — forward message. If ask_user is pending,
+                // tg_stream will route it as ReplyToAsk. Otherwise it's dropped.
+                let _ = chat_stream.reply_tx.send(content);
                 continue;
             }
         }
@@ -202,13 +194,10 @@ async fn telegram_loop(
 
         // Spawn the stream as a background task.
         let (reply_tx, reply_rx) = mpsc::unbounded_channel();
-        let waiting = Arc::new(AtomicBool::new(false));
-
         let handle = {
             let bot = bot.clone();
             let client = client.clone();
             let agent = agent.clone();
-            let waiting = waiting.clone();
             tokio::spawn(async move {
                 let result = tg_stream(
                     &bot,
@@ -221,7 +210,6 @@ async fn telegram_loop(
                     &sender,
                     session,
                     reply_rx,
-                    waiting,
                 )
                 .await;
 
@@ -230,7 +218,6 @@ async fn telegram_loop(
                     StreamResult::SessionError if session.is_some() => {
                         tracing::warn!(agent = %&agent, chat_id, "session error, retrying");
                         let (_retry_tx, retry_rx) = mpsc::unbounded_channel();
-                        let retry_waiting = Arc::new(AtomicBool::new(false));
                         tg_stream(
                             &bot,
                             &client,
@@ -242,7 +229,6 @@ async fn telegram_loop(
                             &sender,
                             None,
                             retry_rx,
-                            retry_waiting,
                         )
                         .await
                     }
@@ -257,7 +243,6 @@ async fn telegram_loop(
                 handle,
                 session_id: session,
                 reply_tx,
-                waiting_for_reply: waiting,
             },
         );
     }
@@ -277,7 +262,6 @@ async fn tg_stream(
     sender: &str,
     session: Option<u64>,
     mut reply_rx: mpsc::UnboundedReceiver<String>,
-    waiting_for_reply: Arc<AtomicBool>,
 ) -> StreamResult {
     use std::time::Duration;
 
@@ -315,9 +299,9 @@ async fn tg_stream(
                     Some(ServerMessage { msg: Some(server_message::Msg::Stream(event)) }) => {
                         acc.push(&event);
 
-                        // Detect ask_user: render question and signal waiting state.
-                        if acc.pending_question().is_some() {
-                            // Flush current text first.
+                        // When ask_user fires, flush text immediately so the
+                        // question is visible in the chat.
+                        if acc.pending_questions().is_some() {
                             let rendered = acc.render();
                             if !rendered.is_empty() && rendered.len() != last_sent_len {
                                 let reply_to = is_group.then_some(teloxide::types::MessageId(reply_to_msg_id as i32));
@@ -335,7 +319,6 @@ async fn tg_stream(
                                     }
                                 }
                             }
-                            waiting_for_reply.store(true, Ordering::Relaxed);
                         }
 
                         if acc.is_done() {
@@ -351,18 +334,18 @@ async fn tg_stream(
                 }
             }
             reply = reply_rx.recv() => {
-                if let Some(reply_content) = reply {
+                if let Some(reply_content) = reply
+                    && acc.pending_questions().is_some()
+                {
                     // Forward the reply to the daemon as ReplyToAsk.
                     if let Some(session_id) = acc.session() {
                         let reply_msg = ClientMessage::from(ReplyToAsk {
                             session: session_id,
                             content: reply_content,
                         });
-                        // Fire and forget — the daemon routes it to the pending oneshot.
                         let _ = client.send(reply_msg).await;
                     }
-                    acc.take_pending_question();
-                    waiting_for_reply.store(false, Ordering::Relaxed);
+                    acc.take_pending_questions();
                 }
             }
             _ = debounce.tick() => {

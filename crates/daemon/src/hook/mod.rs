@@ -52,7 +52,7 @@ pub struct DaemonHook {
     /// Broadcast channel for agent events (console subscription).
     events_tx: broadcast::Sender<AgentEventMsg>,
     /// Pending `ask_user` oneshots, keyed by session_id.
-    pub pending_asks: Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>,
+    pub(crate) pending_asks: Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>,
 }
 
 /// Base tools always included in every agent's whitelist.

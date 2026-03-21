@@ -64,12 +64,16 @@ impl Server for Daemon {
                         yield StreamEvent { event: Some(stream_event::Event::Thinking(StreamThinking { content: text })) };
                     }
                     AgentEvent::ToolCallsStart(calls) => {
-                        // Check for ask_user calls and extract question.
-                        let ask_question = calls.iter().find(|c| c.function.name == "ask_user").and_then(|c| {
-                            serde_json::from_str::<serde_json::Value>(&c.function.arguments)
-                                .ok()
-                                .and_then(|v| v.get("question").and_then(|q| q.as_str()).map(String::from))
-                        });
+                        // Extract questions from ask_user calls.
+                        let ask_questions: Vec<String> = calls
+                            .iter()
+                            .filter(|c| c.function.name == "ask_user")
+                            .filter_map(|c| {
+                                serde_json::from_str::<crate::hook::system::ask_user::AskUser>(&c.function.arguments)
+                                    .ok()
+                            })
+                            .flat_map(|a| a.questions)
+                            .collect();
 
                         yield StreamEvent { event: Some(stream_event::Event::ToolStart(ToolStartEvent {
                             calls: calls.into_iter().map(|c| ToolCallInfo {
@@ -78,9 +82,8 @@ impl Server for Daemon {
                             }).collect(),
                         })) };
 
-                        // Emit AskUserEvent after ToolStartEvent.
-                        if let Some(question) = ask_question {
-                            yield StreamEvent { event: Some(stream_event::Event::AskUser(AskUserEvent { question })) };
+                        if !ask_questions.is_empty() {
+                            yield StreamEvent { event: Some(stream_event::Event::AskUser(AskUserEvent { questions: ask_questions })) };
                         }
                     }
                     AgentEvent::ToolResult { call_id, output } => {

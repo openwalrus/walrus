@@ -4,13 +4,13 @@ use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use transport::tcp::TcpConnection;
 use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        AgentEventMsg, ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg,
+        AgentEventMsg, ClientMessage, ConfigMsg, GetConfig, HubAction, HubMsg, KillMsg, ReplyToAsk,
         ServerMessage, SessionInfo, StreamMsg, SubscribeEvents, client_message, download_event,
         server_message, stream_event,
     },
@@ -28,6 +28,11 @@ pub enum OutputChunk {
     ToolResult(String, String),
     /// Tool execution completed (true = success, false = failure).
     ToolDone(bool),
+    /// Agent is asking the user questions. Carries questions and session ID.
+    AskUser {
+        questions: Vec<String>,
+        session: u64,
+    },
 }
 
 /// Transport-agnostic connection to the crabtalk daemon.
@@ -67,9 +72,17 @@ impl Transport {
     }
 }
 
+/// How to reconnect to the daemon (for sending ReplyToAsk on a separate connection).
+#[derive(Clone)]
+pub enum ConnectionInfo {
+    Uds(PathBuf),
+    Tcp(u16),
+}
+
 /// Runs agents via a crabtalk daemon connection (UDS or TCP).
 pub struct Runner {
     transport: Transport,
+    conn_info: ConnectionInfo,
 }
 
 impl Runner {
@@ -82,6 +95,7 @@ impl Runner {
         let connection = client.connect().await?;
         Ok(Self {
             transport: Transport::Uds(connection),
+            conn_info: ConnectionInfo::Uds(socket_path.to_path_buf()),
         })
     }
 
@@ -91,7 +105,13 @@ impl Runner {
         let connection = TcpConnection::connect(addr).await?;
         Ok(Self {
             transport: Transport::Tcp(connection),
+            conn_info: ConnectionInfo::Tcp(port),
         })
+    }
+
+    /// Connection info for creating separate connections (e.g. for ReplyToAsk).
+    pub fn conn_info(&self) -> &ConnectionInfo {
+        &self.conn_info
     }
 
     /// Stream a response, yielding typed output chunks.
@@ -115,11 +135,15 @@ impl Runner {
                     }) if matches!(e.event, Some(stream_event::Event::End(_)))
                 ))
             })
-            .filter_map(|result| async {
-                match result {
+            .scan(0u64, |session_id, result| {
+                let chunk = match result {
                     Ok(ServerMessage {
                         msg: Some(server_message::Msg::Stream(e)),
                     }) => match &e.event {
+                        Some(stream_event::Event::Start(s)) => {
+                            *session_id = s.session;
+                            None
+                        }
                         Some(stream_event::Event::Chunk(c)) => {
                             Some(Ok(OutputChunk::Text(c.content.clone())))
                         }
@@ -140,9 +164,11 @@ impl Runner {
                         Some(stream_event::Event::ToolsComplete(_)) => {
                             Some(Ok(OutputChunk::ToolDone(true)))
                         }
-                        Some(stream_event::Event::Start(_)) => None,
+                        Some(stream_event::Event::AskUser(ask)) => Some(Ok(OutputChunk::AskUser {
+                            questions: ask.questions.clone(),
+                            session: *session_id,
+                        })),
                         Some(stream_event::Event::End(_)) => None,
-                        Some(stream_event::Event::AskUser(_)) => None,
                         None => None,
                     },
                     Ok(ServerMessage {
@@ -154,8 +180,10 @@ impl Runner {
                     ))),
                     Ok(_) => None,
                     Err(e) => Some(Err(e)),
-                }
+                };
+                std::future::ready(Some(chunk))
             })
+            .filter_map(std::future::ready)
     }
 
     /// Send a hub install/uninstall request and return a stream of progress events.
@@ -282,4 +310,24 @@ impl Runner {
             other => anyhow::bail!("unexpected response: {other:?}"),
         }
     }
+}
+
+/// Send a `ReplyToAsk` to the daemon on a temporary connection.
+pub async fn send_reply(conn_info: &ConnectionInfo, session: u64, content: String) -> Result<()> {
+    let msg = ClientMessage::from(ReplyToAsk { session, content });
+    match conn_info {
+        ConnectionInfo::Uds(path) => {
+            let client = CrabtalkClient::new(ClientConfig {
+                socket_path: path.clone(),
+            });
+            let mut conn = client.connect().await?;
+            conn.request(msg).await?;
+        }
+        ConnectionInfo::Tcp(port) => {
+            let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, *port));
+            let mut conn = TcpConnection::connect(addr).await?;
+            conn.request(msg).await?;
+        }
+    }
+    Ok(())
 }

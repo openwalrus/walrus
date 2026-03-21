@@ -17,8 +17,8 @@ pub struct StreamAccumulator {
     error: Option<String>,
     /// Whether the stream has ended.
     done: bool,
-    /// Pending question from an `AskUserEvent`.
-    pending_question: Option<String>,
+    /// Pending questions from an `AskUserEvent`.
+    pending_questions: Option<Vec<String>>,
 }
 
 impl Default for StreamAccumulator {
@@ -35,7 +35,7 @@ impl StreamAccumulator {
             session: None,
             error: None,
             done: false,
-            pending_question: None,
+            pending_questions: None,
         }
     }
 
@@ -63,8 +63,9 @@ impl StreamAccumulator {
                 self.done = true;
             }
             Some(stream_event::Event::AskUser(ask)) => {
-                self.pending_question = Some(ask.question.clone());
-                self.tool_line = Some(format!("[question: {}]", ask.question));
+                let formatted = ask.questions.join("\n");
+                self.tool_line = Some(format!("[question: {}]", formatted));
+                self.pending_questions = Some(ask.questions.clone());
             }
             None => {}
         }
@@ -90,14 +91,14 @@ impl StreamAccumulator {
         self.done
     }
 
-    /// Pending question from an `AskUserEvent`, if any.
-    pub fn pending_question(&self) -> Option<&str> {
-        self.pending_question.as_deref()
+    /// Pending questions from an `AskUserEvent`, if any.
+    pub fn pending_questions(&self) -> Option<&[String]> {
+        self.pending_questions.as_deref()
     }
 
-    /// Take and clear the pending question.
-    pub fn take_pending_question(&mut self) -> Option<String> {
-        self.pending_question.take()
+    /// Take and clear the pending questions.
+    pub fn take_pending_questions(&mut self) -> Option<Vec<String>> {
+        self.pending_questions.take()
     }
 
     /// Render the current state: accumulated text + inline tool status.
