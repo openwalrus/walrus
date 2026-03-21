@@ -1,8 +1,8 @@
 //! Conversions between protocol message types.
 
 use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, DownloadEvent, SendMsg, SendResponse, ServerMessage, StreamEvent,
-    StreamMsg, client_message, download_event, server_message, stream_event,
+    AgentEventMsg, ClientMessage, DownloadEvent, ReplyToAsk, SendMsg, SendResponse, ServerMessage,
+    StreamEvent, StreamMsg, client_message, download_event, server_message, stream_event,
 };
 
 // ── ClientMessage constructors ───────────────────────────────────
@@ -19,6 +19,14 @@ impl From<StreamMsg> for ClientMessage {
     fn from(msg: StreamMsg) -> Self {
         Self {
             msg: Some(client_message::Msg::Stream(msg)),
+        }
+    }
+}
+
+impl From<ReplyToAsk> for ClientMessage {
+    fn from(msg: ReplyToAsk) -> Self {
+        Self {
+            msg: Some(client_message::Msg::ReplyToAsk(msg)),
         }
     }
 }

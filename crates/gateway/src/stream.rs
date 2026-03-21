@@ -17,6 +17,8 @@ pub struct StreamAccumulator {
     error: Option<String>,
     /// Whether the stream has ended.
     done: bool,
+    /// Pending question from an `AskUserEvent`.
+    pending_question: Option<String>,
 }
 
 impl Default for StreamAccumulator {
@@ -33,6 +35,7 @@ impl StreamAccumulator {
             session: None,
             error: None,
             done: false,
+            pending_question: None,
         }
     }
 
@@ -59,8 +62,9 @@ impl StreamAccumulator {
             Some(stream_event::Event::End(_)) => {
                 self.done = true;
             }
-            Some(stream_event::Event::AskUser(_)) => {
-                // Handled by Phase 12 (P12-01).
+            Some(stream_event::Event::AskUser(ask)) => {
+                self.pending_question = Some(ask.question.clone());
+                self.tool_line = Some(format!("[question: {}]", ask.question));
             }
             None => {}
         }
@@ -84,6 +88,16 @@ impl StreamAccumulator {
     /// Whether the stream has ended.
     pub fn is_done(&self) -> bool {
         self.done
+    }
+
+    /// Pending question from an `AskUserEvent`, if any.
+    pub fn pending_question(&self) -> Option<&str> {
+        self.pending_question.as_deref()
+    }
+
+    /// Take and clear the pending question.
+    pub fn take_pending_question(&mut self) -> Option<String> {
+        self.pending_question.take()
     }
 
     /// Render the current state: accumulated text + inline tool status.
