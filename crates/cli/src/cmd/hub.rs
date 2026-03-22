@@ -10,6 +10,9 @@ use wcore::Setup;
 /// Manage hub packages.
 #[derive(Args, Debug)]
 pub struct Hub {
+    /// Branch of the hub repo to sync.
+    #[arg(long)]
+    pub branch: Option<String>,
     /// Hub subcommand.
     #[command(subcommand)]
     pub command: HubCommand,
@@ -38,9 +41,6 @@ pub struct HubTest {
 pub struct HubInstall {
     /// Package identifier in `scope/name` format.
     pub package: String,
-    /// Branch to clone (overrides manifest default).
-    #[arg(long)]
-    pub branch: Option<String>,
 }
 
 /// Package argument shared by uninstall.
@@ -57,16 +57,16 @@ impl Hub {
             return test_manifest(&t.path);
         }
 
-        let (pkg, branch, is_install) = match self.command {
-            HubCommand::Install(p) => (p.package, p.branch, true),
-            HubCommand::Uninstall(p) => (p.package, None, false),
+        let (pkg, is_install) = match self.command {
+            HubCommand::Install(p) => (p.package, true),
+            HubCommand::Uninstall(p) => (p.package, false),
             HubCommand::Test(_) => unreachable!(),
         };
 
         let on_step = |msg: &str| println!("  {msg}");
 
         if is_install {
-            let result = crabhub::package::install(&pkg, branch.as_deref(), on_step).await?;
+            let result = crabhub::package::install(&pkg, self.branch.as_deref(), on_step).await?;
             println!("Done: {pkg}");
 
             // Reload daemon to pick up new components.

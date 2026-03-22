@@ -36,7 +36,7 @@ pub async fn install(
     // Sync hub repo (clone or update).
     on_step("syncing hub…");
     let hub_dir = CONFIG_DIR.join("hub");
-    git_sync(CRABTALK_HUB, &hub_dir, None)
+    git_sync(CRABTALK_HUB, &hub_dir, branch)
         .await
         .context("failed to sync hub repo")?;
 
@@ -66,8 +66,7 @@ pub async fn install(
         let dir = CONFIG_DIR.join(".cache").join("repos").join(&slug);
         std::fs::create_dir_all(dir.parent().context("repo cache path has no parent")?)
             .context("failed to create repo cache dir")?;
-        // CLI --branch overrides manifest branch.
-        let effective_branch = branch.or(manifest.package.branch.as_deref());
+        let effective_branch = manifest.package.branch.as_deref();
         git_sync(&manifest.package.repository, &dir, effective_branch)
             .await
             .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
@@ -150,11 +149,16 @@ pub async fn git_sync(url: &str, dest: &Path, branch: Option<&str>) -> Result<()
     use tokio::process::Command;
 
     let dest_str = dest.to_string_lossy();
-    let ref_name = branch
-        .map(|b| format!("origin/{b}"))
-        .unwrap_or_else(|| "origin/HEAD".to_string());
 
     if dest.exists() {
+        // Fetch the specific branch (or all) from origin.
+        // With --depth=1 and a specific branch, git only updates FETCH_HEAD,
+        // not refs/remotes/origin/<branch>, so we reset to FETCH_HEAD.
+        let ref_name = if branch.is_some() {
+            "FETCH_HEAD"
+        } else {
+            "origin/HEAD"
+        };
         let mut args = vec!["-C", &*dest_str, "fetch", "--depth=1", "origin"];
         if let Some(b) = branch {
             args.push(b);
