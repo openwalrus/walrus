@@ -6,18 +6,27 @@
 
 use crate::manifest;
 use anyhow::{Context, Result};
-use std::path::Path;
-use wcore::paths::CONFIG_DIR;
+use std::path::{Path, PathBuf};
+use wcore::{Setup, paths::CONFIG_DIR};
 
 /// Remote URL of the crabtalk hub repository.
 pub const CRABTALK_HUB: &str = "https://github.com/crabtalk/hub";
 
+/// Result of a successful install, carrying info the CLI needs for prompt setup.
+pub struct InstallResult {
+    /// Setup configuration from the manifest, if any.
+    pub setup: Option<Setup>,
+    /// Path to the cached source repo, if cloned.
+    pub repo_dir: Option<PathBuf>,
+}
+
 /// Install a hub package.
 ///
 /// Syncs the hub repo, copies the manifest to `packages/scope/name.toml`,
-/// and clones the source repo to `.cache/repos/{slug}/`. The daemon discovers
-/// MCPs, skills, and agents from these on reload.
-pub async fn install(package: &str, on_step: impl Fn(&str)) -> Result<()> {
+/// and clones the source repo to `.cache/repos/{slug}/`. Runs command-type
+/// setup if configured. Returns [`InstallResult`] so the CLI can handle
+/// prompt-type setup after daemon reload.
+pub async fn install(package: &str, on_step: impl Fn(&str)) -> Result<InstallResult> {
     let (scope, name) = parse_package(package)?;
 
     // Sync hub repo (clone or update).
@@ -47,18 +56,38 @@ pub async fn install(package: &str, on_step: impl Fn(&str)) -> Result<()> {
     })?;
 
     // Clone the source repo to .cache/repos/{slug}/ if it has a repository URL.
-    if !manifest.package.repository.is_empty() {
+    let repo_dir = if !manifest.package.repository.is_empty() {
         on_step("cloning source repo…");
         let slug = wcore::repo_slug(&manifest.package.repository);
-        let repo_dir = CONFIG_DIR.join(".cache").join("repos").join(&slug);
-        std::fs::create_dir_all(repo_dir.parent().context("repo cache path has no parent")?)
+        let dir = CONFIG_DIR.join(".cache").join("repos").join(&slug);
+        std::fs::create_dir_all(dir.parent().context("repo cache path has no parent")?)
             .context("failed to create repo cache dir")?;
-        git_sync(&manifest.package.repository, &repo_dir)
+        git_sync(&manifest.package.repository, &dir)
             .await
             .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
+        Some(dir)
+    } else {
+        None
+    };
+
+    // Run command-type setup from the cached repo.
+    if let Some(Setup::Command { ref command }) = manifest.package.setup
+        && let Some(ref dir) = repo_dir
+    {
+        on_step("running setup command…");
+        let status = tokio::process::Command::new("sh")
+            .args(["-c", command])
+            .current_dir(dir)
+            .status()
+            .await
+            .with_context(|| format!("failed to run setup command: {command}"))?;
+        anyhow::ensure!(status.success(), "setup command exited with {status}");
     }
 
-    Ok(())
+    Ok(InstallResult {
+        setup: manifest.package.setup,
+        repo_dir,
+    })
 }
 
 /// Uninstall a hub package.

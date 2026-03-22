@@ -136,7 +136,7 @@ fn history_file_path() -> Option<PathBuf> {
 }
 
 /// Consume a stream of output chunks and render them via `MarkdownRenderer`.
-async fn stream_to_terminal(
+pub(crate) async fn stream_to_terminal(
     stream: impl Stream<Item = Result<OutputChunk>>,
     conn_info: &ConnectionInfo,
 ) -> Result<()> {

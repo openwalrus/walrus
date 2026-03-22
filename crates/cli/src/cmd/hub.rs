@@ -1,10 +1,11 @@
 //! Hub package management command.
 
-use crate::repl::runner::Runner;
+use crate::repl::{self, runner::Runner};
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use crabhub::manifest::Manifest;
 use std::path::{Path, PathBuf};
+use wcore::Setup;
 
 /// Manage hub packages.
 #[derive(Args, Debug)]
@@ -55,13 +56,34 @@ impl Hub {
         let on_step = |msg: &str| println!("  {msg}");
 
         if is_install {
-            crabhub::package::install(&pkg, on_step).await?;
+            let result = crabhub::package::install(&pkg, on_step).await?;
             println!("Done: {pkg}");
 
             // Reload daemon to pick up new components.
             let _ = runner.reload().await;
             println!("Daemon reloaded.");
-            println!("\nConfigure env vars in config.toml [env] section if needed.");
+
+            // Run prompt-type setup via inference.
+            if let Some(Setup::Prompt { ref prompt }) = result.setup {
+                let prompt_text = if prompt.ends_with(".md") {
+                    let repo_dir = result
+                        .repo_dir
+                        .as_ref()
+                        .context("prompt setup requires a repository but none was cloned")?;
+                    std::fs::read_to_string(repo_dir.join(prompt))
+                        .with_context(|| format!("failed to read setup prompt: {}", prompt))?
+                } else {
+                    prompt.clone()
+                };
+
+                println!("Running setup…");
+                let conn_info = runner.conn_info().clone();
+                let stream = runner.stream(wcore::paths::DEFAULT_AGENT, &prompt_text);
+                repl::stream_to_terminal(stream, &conn_info).await?;
+                println!();
+            }
+
+            println!("Configure env vars in config.toml [env] section if needed.");
         } else {
             crabhub::package::uninstall(&pkg, on_step).await?;
             println!("Done: {pkg}");

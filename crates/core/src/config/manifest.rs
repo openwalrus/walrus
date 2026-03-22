@@ -41,6 +41,20 @@ pub struct PackageMeta {
     /// Source repository URL.
     #[serde(default)]
     pub repository: String,
+    /// Setup configuration (run after install).
+    #[serde(default)]
+    pub setup: Option<Setup>,
+}
+
+/// Package setup — either a shell command or a prompt for inference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Setup {
+    /// Shell command run from the cached repo directory.
+    Command { command: String },
+    /// Prompt sent to the daemon for inference. If the value ends with `.md`,
+    /// it is read as a file path relative to the repo root.
+    Prompt { prompt: String },
 }
 
 impl ManifestConfig {

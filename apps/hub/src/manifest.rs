@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use wcore::Setup;
 
 /// Crabtalk resource manifest.
 #[derive(Serialize, Deserialize)]
@@ -12,10 +13,6 @@ pub struct Manifest {
     /// MCP server configs
     #[serde(default)]
     pub mcps: BTreeMap<String, McpResource>,
-
-    /// Skill resources
-    #[serde(default)]
-    pub skills: BTreeMap<String, SkillResource>,
 
     /// Agent resources
     #[serde(default)]
@@ -43,6 +40,9 @@ pub struct Package {
     /// Searchable keywords (for hub discovery).
     #[serde(default)]
     pub keywords: Vec<String>,
+    /// Setup configuration (run after install).
+    #[serde(default)]
+    pub setup: Option<Setup>,
 }
 
 /// An MCP server resource in a hub manifest.
@@ -88,20 +88,6 @@ impl McpResource {
             url: self.url.clone(),
         }
     }
-}
-
-/// A skill resource — discovered by convention from `skills/*/SKILL.md`.
-#[derive(Serialize, Deserialize)]
-pub struct SkillResource {
-    /// Skill name (defaults to map key if empty)
-    #[serde(default)]
-    pub name: String,
-    /// Skill description
-    #[serde(default)]
-    pub description: String,
-    /// Path within the repo to the skill directory (legacy, optional)
-    #[serde(default)]
-    pub path: String,
 }
 
 /// An agent resource — discovered by convention from `agents/*.md`.
