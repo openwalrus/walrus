@@ -166,10 +166,8 @@ fn load_package_manifest(config_dir: &Path, path: &Path, resolved: &mut Resolved
         let slug = repo_slug(&pkg.repository);
         let repo_dir = config_dir.join(".cache").join("repos").join(&slug);
         if repo_dir.exists() {
-            let skills = repo_dir.join("skills");
-            if skills.exists() && skills.is_dir() {
-                resolved.skill_dirs.push(skills);
-            }
+            // Push repo root — skills are discovered recursively by SKILL.md.
+            resolved.skill_dirs.push(repo_dir.clone());
             let agents = repo_dir.join("agents");
             if agents.exists() && agents.is_dir() {
                 resolved.agent_dirs.push(agents);

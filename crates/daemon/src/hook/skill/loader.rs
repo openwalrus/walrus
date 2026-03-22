@@ -51,13 +51,23 @@ pub fn parse_skill_md(content: &str) -> anyhow::Result<Skill> {
     })
 }
 
-/// Load skills from a directory. Each subdirectory should contain a `SKILL.md`.
+/// Load skills by searching for `SKILL.md` files in subdirectories.
+///
+/// Ignores any `SKILL.md` at the root — that's meta content, not a skill.
+/// Once a `SKILL.md` is found in a subdirectory, that directory is a skill
+/// and we don't recurse deeper. Skips hidden directories (starting with `.`).
 pub fn load_skills_dir(path: impl AsRef<Path>) -> anyhow::Result<SkillRegistry> {
     let path = path.as_ref();
     let mut registry = SkillRegistry::new();
+    scan_skills(path, &mut registry)?;
+    Ok(registry)
+}
 
-    let entries = std::fs::read_dir(path)
-        .map_err(|e| anyhow::anyhow!("failed to read skill directory {}: {e}", path.display()))?;
+fn scan_skills(dir: &Path, registry: &mut SkillRegistry) -> anyhow::Result<()> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
 
     for entry in entries {
         let entry = entry?;
@@ -66,17 +76,30 @@ pub fn load_skills_dir(path: impl AsRef<Path>) -> anyhow::Result<SkillRegistry> 
             continue;
         }
 
-        let skill_file = entry_path.join("SKILL.md");
-        if !skill_file.exists() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with('.'))
+        {
             continue;
         }
 
-        let content = std::fs::read_to_string(&skill_file)
-            .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", skill_file.display()))?;
-
-        let skill = parse_skill_md(&content)?;
-        registry.add(skill);
+        let skill_file = entry_path.join("SKILL.md");
+        if skill_file.exists() {
+            // Found a skill — load it and don't recurse deeper.
+            let content = std::fs::read_to_string(&skill_file)
+                .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", skill_file.display()))?;
+            match parse_skill_md(&content) {
+                Ok(skill) => registry.add(skill),
+                Err(e) => {
+                    tracing::warn!("failed to parse {}: {e}", skill_file.display());
+                }
+            }
+        } else {
+            // No SKILL.md here — recurse into subdirs.
+            scan_skills(&entry_path, registry)?;
+        }
     }
 
-    Ok(registry)
+    Ok(())
 }
