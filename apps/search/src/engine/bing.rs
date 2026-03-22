@@ -99,11 +99,7 @@ fn normalize_bing_url(href: &str) -> String {
         if let Some(value) = param.strip_prefix("u=") {
             let decoded = percent_decode_str(value).decode_utf8_lossy();
             // Bing prepends "a1" before the base64 payload
-            let payload = if decoded.starts_with("a1") {
-                &decoded[2..]
-            } else {
-                &decoded
-            };
+            let payload = decoded.strip_prefix("a1").unwrap_or(&decoded);
 
             // Bing omits base64 padding — add it back
             let mut padded = payload.to_string();
@@ -114,12 +110,11 @@ fn normalize_bing_url(href: &str) -> String {
                 }
             }
 
-            if let Ok(bytes) = STANDARD.decode(&padded) {
-                if let Ok(url) = String::from_utf8(bytes) {
-                    if url.starts_with("http://") || url.starts_with("https://") {
-                        return url;
-                    }
-                }
+            if let Ok(bytes) = STANDARD.decode(&padded)
+                && let Ok(url) = String::from_utf8(bytes)
+                && (url.starts_with("http://") || url.starts_with("https://"))
+            {
+                return url;
             }
         }
     }

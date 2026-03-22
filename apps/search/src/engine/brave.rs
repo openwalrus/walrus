@@ -143,27 +143,27 @@ fn extract_results_from_text(text: &str, results: &mut Vec<SearchResult>) {
     while let Some(start) = text[search_from..].find("{\"title\"") {
         let abs_start = search_from + start;
         // Find matching closing brace (simple depth tracking)
-        if let Some(obj_str) = extract_json_object(&text[abs_start..]) {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(obj_str) {
-                let title = value["title"].as_str().unwrap_or_default();
-                let url = value["url"].as_str().unwrap_or_default();
-                let desc = value["description"]
-                    .as_str()
-                    .or_else(|| value["snippet"].as_str())
-                    .unwrap_or_default();
+        if let Some(obj_str) = extract_json_object(&text[abs_start..])
+            && let Ok(value) = serde_json::from_str::<serde_json::Value>(obj_str)
+        {
+            let title = value["title"].as_str().unwrap_or_default();
+            let url = value["url"].as_str().unwrap_or_default();
+            let desc = value["description"]
+                .as_str()
+                .or_else(|| value["snippet"].as_str())
+                .unwrap_or_default();
 
-                if !title.is_empty()
-                    && !url.is_empty()
-                    && (url.starts_with("http://") || url.starts_with("https://"))
-                {
-                    results.push(SearchResult {
-                        title: title.to_string(),
-                        url: url.to_string(),
-                        description: desc.to_string(),
-                        engines: vec!["brave".into()],
-                        score: 0.0,
-                    });
-                }
+            if !title.is_empty()
+                && !url.is_empty()
+                && (url.starts_with("http://") || url.starts_with("https://"))
+            {
+                results.push(SearchResult {
+                    title: title.to_string(),
+                    url: url.to_string(),
+                    description: desc.to_string(),
+                    engines: vec!["brave".into()],
+                    score: 0.0,
+                });
             }
         }
         search_from = abs_start + 1;

@@ -75,7 +75,7 @@ impl ChatRepl {
             };
             println!();
             let conn_info = self.runner.conn_info().clone();
-            let stream = self.runner.stream(&self.agent, &content);
+            let stream = self.runner.stream(&self.agent, &content, None);
             stream_to_terminal(stream, &conn_info).await?;
             println!();
         }

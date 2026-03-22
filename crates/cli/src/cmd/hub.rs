@@ -88,7 +88,11 @@ impl Hub {
 
                 println!("Running setup…");
                 let conn_info = runner.conn_info().clone();
-                let stream = runner.stream(wcore::paths::DEFAULT_AGENT, &prompt_text);
+                let stream = runner.stream(
+                    wcore::paths::DEFAULT_AGENT,
+                    &prompt_text,
+                    result.repo_dir.as_deref(),
+                );
                 repl::stream_to_terminal(stream, &conn_info).await?;
                 println!();
             }
