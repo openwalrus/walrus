@@ -19,7 +19,7 @@ pub struct Hub {
 #[derive(Subcommand, Debug)]
 pub enum HubCommand {
     /// Install a hub package.
-    Install(HubPackage),
+    Install(HubInstall),
     /// Uninstall a hub package.
     Uninstall(HubPackage),
     /// Test manifest parsing for all .toml files in a hub directory.
@@ -33,7 +33,17 @@ pub struct HubTest {
     pub path: PathBuf,
 }
 
-/// Package argument shared by install and uninstall.
+/// Install arguments.
+#[derive(Args, Debug)]
+pub struct HubInstall {
+    /// Package identifier in `scope/name` format.
+    pub package: String,
+    /// Branch to clone (overrides manifest default).
+    #[arg(long)]
+    pub branch: Option<String>,
+}
+
+/// Package argument shared by uninstall.
 #[derive(Args, Debug)]
 pub struct HubPackage {
     /// Package identifier in `scope/name` format.
@@ -47,16 +57,17 @@ impl Hub {
             return test_manifest(&t.path);
         }
 
-        let (pkg, is_install) = match self.command {
-            HubCommand::Install(p) => (p.package, true),
-            HubCommand::Uninstall(p) => (p.package, false),
+        let (pkg, branch, is_install) = match self.command {
+            HubCommand::Install(p) => (p.package, p.branch, true),
+            HubCommand::Uninstall(p) => (p.package, None, false),
             HubCommand::Test(_) => unreachable!(),
         };
 
         let on_step = |msg: &str| println!("  {msg}");
 
         if is_install {
-            let result = crabhub::package::install(&pkg, on_step).await?;
+            let result =
+                crabhub::package::install(&pkg, branch.as_deref(), on_step).await?;
             println!("Done: {pkg}");
 
             // Reload daemon to pick up new components.

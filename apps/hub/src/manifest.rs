@@ -37,6 +37,9 @@ pub struct Package {
     /// Source repository URL.
     #[serde(default)]
     pub repository: String,
+    /// Branch to clone (defaults to the repo's default branch).
+    #[serde(default)]
+    pub branch: Option<String>,
     /// Searchable keywords (for hub discovery).
     #[serde(default)]
     pub keywords: Vec<String>,

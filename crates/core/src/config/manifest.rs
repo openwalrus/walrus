@@ -41,6 +41,9 @@ pub struct PackageMeta {
     /// Source repository URL.
     #[serde(default)]
     pub repository: String,
+    /// Branch to clone (defaults to the repo's default branch).
+    #[serde(default)]
+    pub branch: Option<String>,
     /// Setup configuration (run after install).
     #[serde(default)]
     pub setup: Option<Setup>,

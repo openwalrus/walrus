@@ -26,13 +26,17 @@ pub struct InstallResult {
 /// and clones the source repo to `.cache/repos/{slug}/`. Runs command-type
 /// setup if configured. Returns [`InstallResult`] so the CLI can handle
 /// prompt-type setup after daemon reload.
-pub async fn install(package: &str, on_step: impl Fn(&str)) -> Result<InstallResult> {
+pub async fn install(
+    package: &str,
+    branch: Option<&str>,
+    on_step: impl Fn(&str),
+) -> Result<InstallResult> {
     let (scope, name) = parse_package(package)?;
 
     // Sync hub repo (clone or update).
     on_step("syncing hub…");
     let hub_dir = CONFIG_DIR.join("hub");
-    git_sync(CRABTALK_HUB, &hub_dir)
+    git_sync(CRABTALK_HUB, &hub_dir, None)
         .await
         .context("failed to sync hub repo")?;
 
@@ -62,9 +66,11 @@ pub async fn install(package: &str, on_step: impl Fn(&str)) -> Result<InstallRes
         let dir = CONFIG_DIR.join(".cache").join("repos").join(&slug);
         std::fs::create_dir_all(dir.parent().context("repo cache path has no parent")?)
             .context("failed to create repo cache dir")?;
-        git_sync(&manifest.package.repository, &dir)
-            .await
-            .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
+        // CLI --branch overrides manifest branch.
+        let effective_branch = branch.or(manifest.package.branch.as_deref());
+        git_sync(&manifest.package.repository, &dir, effective_branch)
+        .await
+        .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
         Some(dir)
     } else {
         None
@@ -139,38 +145,41 @@ pub async fn uninstall(package: &str, on_step: impl Fn(&str)) -> Result<()> {
 // ── Helpers ───────────────────────────────────────────────────────
 
 /// Ensure `dest` is a shallow clone of `url`, creating or updating as needed.
-pub async fn git_sync(url: &str, dest: &Path) -> Result<()> {
+/// If `branch` is provided, clone/fetch that specific branch.
+pub async fn git_sync(url: &str, dest: &Path, branch: Option<&str>) -> Result<()> {
     use tokio::process::Command;
 
+    let dest_str = dest.to_string_lossy();
+    let ref_name = branch
+        .map(|b| format!("origin/{b}"))
+        .unwrap_or_else(|| "origin/HEAD".to_string());
+
     if dest.exists() {
+        let mut args = vec!["-C", &*dest_str, "fetch", "--depth=1", "origin"];
+        if let Some(b) = branch {
+            args.push(b);
+        }
         let status = Command::new("git")
-            .args([
-                "-C",
-                &dest.to_string_lossy(),
-                "fetch",
-                "--depth=1",
-                "origin",
-            ])
+            .args(&args)
             .status()
             .await
             .context("git fetch failed")?;
         anyhow::ensure!(status.success(), "git fetch exited with {status}");
 
         let status = Command::new("git")
-            .args([
-                "-C",
-                &dest.to_string_lossy(),
-                "reset",
-                "--hard",
-                "origin/HEAD",
-            ])
+            .args(["-C", &*dest_str, "reset", "--hard", &ref_name])
             .status()
             .await
             .context("git reset failed")?;
         anyhow::ensure!(status.success(), "git reset exited with {status}");
     } else {
+        let mut args = vec!["clone", "--depth=1"];
+        if let Some(b) = branch {
+            args.extend(["-b", b]);
+        }
+        args.extend([url, &*dest_str]);
         let status = Command::new("git")
-            .args(["clone", "--depth=1", url, &dest.to_string_lossy()])
+            .args(&args)
             .status()
             .await
             .context("git clone failed")?;
