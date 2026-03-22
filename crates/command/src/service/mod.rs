@@ -29,9 +29,9 @@ pub trait Service {
     fn label(&self) -> &str;
 
     /// Install and start the service.
-    fn start(&self, verbose: u8) -> anyhow::Result<()> {
+    fn start(&self, _verbose: u8) -> anyhow::Result<()> {
         let binary = std::env::current_exe()?;
-        let rendered = render_service_template(self, &binary, self.name(), verbose);
+        let rendered = render_service_template(self, &binary);
         install(&rendered, self.label())
     }
 
@@ -60,12 +60,7 @@ pub fn verbose_flag(count: u8) -> String {
 
 /// Render the platform-specific service template for a [`Service`] implementor.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn render_service_template(
-    svc: &(impl Service + ?Sized),
-    binary: &Path,
-    subcommand: &str,
-    verbose: u8,
-) -> String {
+pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> String {
     let path_env = std::env::var("PATH").unwrap_or_default();
     #[cfg(target_os = "macos")]
     let template = LAUNCHD_TEMPLATE;
@@ -74,8 +69,6 @@ pub fn render_service_template(
     template
         .replace("{label}", svc.label())
         .replace("{description}", svc.description())
-        .replace("{subcommand}", subcommand)
-        .replace("-v", &verbose_flag(verbose))
         .replace("{log_name}", svc.name())
         .replace("{binary}", &binary.display().to_string())
         .replace("{logs_dir}", &LOGS_DIR.display().to_string())
@@ -84,12 +77,7 @@ pub fn render_service_template(
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub fn render_service_template(
-    _svc: &(impl Service + ?Sized),
-    _binary: &Path,
-    _subcommand: &str,
-    _verbose: u8,
-) -> String {
+pub fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
     String::new()
 }
 
