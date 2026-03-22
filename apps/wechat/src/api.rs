@@ -91,7 +91,9 @@ struct SendMessageReqBody {
 
 #[derive(Serialize)]
 struct SendMessageMsg {
+    from_user_id: String,
     to_user_id: String,
+    client_id: String,
     context_token: String,
     message_type: i32,
     message_state: i32,
@@ -171,6 +173,17 @@ pub async fn get_updates(
     }
 }
 
+/// Generate a random client ID for outbound messages.
+fn generate_client_id() -> String {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    format!(
+        "crabtalk-{:08x}{:08x}",
+        rng.random::<u32>(),
+        rng.random::<u32>()
+    )
+}
+
 /// Send a text message to a WeChat user.
 pub async fn send_message(
     client: &Client,
@@ -181,9 +194,12 @@ pub async fn send_message(
     text: &str,
 ) -> Result<()> {
     let url = format!("{}/ilink/bot/sendmessage", base_url.trim_end_matches('/'));
+    let client_id = generate_client_id();
     let body = SendMessageReqBody {
         msg: SendMessageMsg {
+            from_user_id: String::new(),
             to_user_id: to_user_id.to_string(),
+            client_id,
             context_token: context_token.to_string(),
             message_type: 2,  // BOT
             message_state: 2, // FINISH
@@ -205,8 +221,12 @@ pub async fn send_message(
         .send()
         .await?;
 
-    if !r.status().is_success() {
-        bail!("sendmessage HTTP {}", r.status());
+    let status = r.status();
+    let resp_body = r.text().await.unwrap_or_default();
+    tracing::debug!(to = %to_user_id, %status, body = %resp_body, "sendmessage response");
+
+    if !status.is_success() {
+        bail!("sendmessage HTTP {status}: {resp_body}");
     }
     Ok(())
 }

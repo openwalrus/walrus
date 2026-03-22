@@ -8,7 +8,7 @@
     <array>
         <string>{binary}</string>
         <string>run</string>
-        {verbose_arg}
+        <string>-v</string>
     </array>
     <key>WorkingDirectory</key>
     <string>{config_dir}</string>
