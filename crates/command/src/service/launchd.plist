@@ -9,7 +9,7 @@
         <string>{binary}</string>
         <string>{subcommand}</string>
         <string>run</string>
-        <string>-v</string>
+        {verbose_arg}
     </array>
     <key>WorkingDirectory</key>
     <string>{config_dir}</string>

@@ -71,11 +71,16 @@ pub fn render_service_template(
     let template = LAUNCHD_TEMPLATE;
     #[cfg(target_os = "linux")]
     let template = SYSTEMD_TEMPLATE;
+    let verbose_arg = if verbose > 0 {
+        format!("<string>{}</string>", verbose_flag(verbose))
+    } else {
+        String::new()
+    };
     template
         .replace("{label}", svc.label())
         .replace("{description}", svc.description())
         .replace("{subcommand}", subcommand)
-        .replace("-v", &verbose_flag(verbose))
+        .replace("{verbose_arg}", &verbose_arg)
         .replace("{log_name}", svc.name())
         .replace("{binary}", &binary.display().to_string())
         .replace("{logs_dir}", &LOGS_DIR.display().to_string())
