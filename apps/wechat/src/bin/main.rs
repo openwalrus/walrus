@@ -10,26 +10,13 @@ struct GatewayWechat;
 
 impl GatewayWechat {
     async fn run(&self) -> anyhow::Result<()> {
+        let socket = wcore::paths::SOCKET_PATH.clone();
         let config_path = wcore::paths::CONFIG_DIR.join("gateway.toml");
-        let mut config = if config_path.exists() {
+        let config = if config_path.exists() {
             GatewayConfig::load(&config_path)?
         } else {
             GatewayConfig::default()
         };
-
-        // QR login on first run.
-        if config.wechat.as_ref().is_none_or(|w| w.token.is_empty()) {
-            let (token, base_url) = qr_login().await?;
-            config.wechat = Some(WechatConfig {
-                token,
-                base_url,
-                allowed_users: vec![],
-            });
-            config.save(&config_path)?;
-            tracing::info!("saved config to {}", config_path.display());
-        }
-
-        let socket = wcore::paths::SOCKET_PATH.clone();
         crabtalk_wechat::serve::run(&socket.to_string_lossy(), &config).await
     }
 }
@@ -39,6 +26,36 @@ impl GatewayWechat {
 struct App {
     #[command(subcommand)]
     action: GatewayWechatCommand,
+}
+
+fn config_path() -> std::path::PathBuf {
+    wcore::paths::CONFIG_DIR.join("gateway.toml")
+}
+
+/// Ensure a WeChat token exists in gateway.toml, running QR login if needed.
+///
+/// Runs before the service runtime starts (same pattern as Telegram's
+/// ensure_config). Uses a one-off tokio runtime for the HTTP calls.
+fn ensure_config() -> anyhow::Result<()> {
+    let path = config_path();
+    let mut config = if path.exists() {
+        GatewayConfig::load(&path)?
+    } else {
+        GatewayConfig::default()
+    };
+
+    if config.wechat.as_ref().is_none_or(|w| w.token.is_empty()) {
+        let rt = tokio::runtime::Runtime::new()?;
+        let (token, base_url) = rt.block_on(qr_login())?;
+        config.wechat = Some(WechatConfig {
+            token,
+            base_url,
+            allowed_users: vec![],
+        });
+        config.save(&path)?;
+        println!("saved config to {}", path.display());
+    }
+    Ok(())
 }
 
 async fn qr_login() -> anyhow::Result<(String, String)> {
@@ -83,5 +100,11 @@ async fn qr_login() -> anyhow::Result<(String, String)> {
 
 fn main() {
     let app = App::parse();
+    if matches!(&app.action, GatewayWechatCommand::Start { .. })
+        && let Err(e) = ensure_config()
+    {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
     app.action.start(GatewayWechat);
 }

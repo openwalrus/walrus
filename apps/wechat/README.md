@@ -9,7 +9,7 @@ scan on first run.
 ## Usage
 
 ```bash
-crabtalk-wechat gateway-wechat start
+crabtalk-wechat start
 ```
 
 ## License
