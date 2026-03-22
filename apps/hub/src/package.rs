@@ -36,7 +36,7 @@ pub async fn install(
     // Sync hub repo (clone or update).
     on_step("syncing hub…");
     let hub_dir = CONFIG_DIR.join("hub");
-    git_sync(CRABTALK_HUB, &hub_dir, None)
+    git_sync(CRABTALK_HUB, &hub_dir, branch)
         .await
         .context("failed to sync hub repo")?;
 
@@ -66,8 +66,7 @@ pub async fn install(
         let dir = CONFIG_DIR.join(".cache").join("repos").join(&slug);
         std::fs::create_dir_all(dir.parent().context("repo cache path has no parent")?)
             .context("failed to create repo cache dir")?;
-        // CLI --branch overrides manifest branch.
-        let effective_branch = branch.or(manifest.package.branch.as_deref());
+        let effective_branch = manifest.package.branch.as_deref();
         git_sync(&manifest.package.repository, &dir, effective_branch)
             .await
             .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
@@ -150,14 +149,21 @@ pub async fn git_sync(url: &str, dest: &Path, branch: Option<&str>) -> Result<()
     use tokio::process::Command;
 
     let dest_str = dest.to_string_lossy();
-    let ref_name = branch
-        .map(|b| format!("origin/{b}"))
-        .unwrap_or_else(|| "origin/HEAD".to_string());
 
     if dest.exists() {
+        // Use an explicit refspec so git creates a proper remote tracking ref.
+        // Plain `git fetch origin <branch>` only updates FETCH_HEAD which goes
+        // stale across calls with different branches.
+        let (refspec, ref_name) = match branch {
+            Some(b) => (
+                format!("+refs/heads/{b}:refs/remotes/origin/{b}"),
+                format!("origin/{b}"),
+            ),
+            None => (String::new(), "origin/HEAD".to_string()),
+        };
         let mut args = vec!["-C", &*dest_str, "fetch", "--depth=1", "origin"];
-        if let Some(b) = branch {
-            args.push(b);
+        if !refspec.is_empty() {
+            args.push(&refspec);
         }
         let status = Command::new("git")
             .args(&args)

@@ -115,14 +115,20 @@ impl Runner {
     }
 
     /// Stream a response, yielding typed output chunks.
+    ///
+    /// If `cwd` is `Some`, the agent session uses that directory for tool
+    /// execution instead of the process's current working directory.
     pub fn stream<'a>(
         &'a mut self,
         agent: &'a str,
         content: &'a str,
+        cwd: Option<&'a Path>,
     ) -> impl Stream<Item = Result<OutputChunk>> + Send + 'a {
-        let cwd = std::env::current_dir()
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned());
+        let cwd = cwd.map(|p| p.to_string_lossy().into_owned()).or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned())
+        });
         self.transport
             .request_stream(ClientMessage::from(StreamMsg {
                 agent: agent.to_string(),
