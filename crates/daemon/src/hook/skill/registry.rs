@@ -39,6 +39,11 @@ impl SkillRegistry {
     pub fn is_empty(&self) -> bool {
         self.skills.is_empty()
     }
+
+    /// Whether a skill with the given name is already registered.
+    pub fn contains(&self, name: &str) -> bool {
+        self.skills.iter().any(|s| s.name == name)
+    }
 }
 
 /// A named unit of agent behavior (agentskills.io format).

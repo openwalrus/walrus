@@ -72,8 +72,16 @@ impl McpBridge {
             let mut cache = self.tool_cache.lock().await;
             for mcp_tool in &mcp_tools {
                 let ct_tool = self::convert_tool(mcp_tool);
-                tool_names.push(ct_tool.name.to_string());
-                cache.insert(ct_tool.name.to_string(), ct_tool);
+                if cache.contains_key(&ct_tool.name) {
+                    tracing::warn!(
+                        "MCP tool '{}' from server '{}' conflicts with already-registered tool, skipping",
+                        ct_tool.name,
+                        name
+                    );
+                } else {
+                    tool_names.push(ct_tool.name.to_string());
+                    cache.insert(ct_tool.name.to_string(), ct_tool);
+                }
             }
         }
 
@@ -100,8 +108,16 @@ impl McpBridge {
             let mut cache = self.tool_cache.lock().await;
             for mcp_tool in &mcp_tools {
                 let ct_tool = self::convert_tool(mcp_tool);
-                tool_names.push(ct_tool.name.to_string());
-                cache.insert(ct_tool.name.to_string(), ct_tool);
+                if cache.contains_key(&ct_tool.name) {
+                    tracing::warn!(
+                        "MCP tool '{}' from server '{}' conflicts with already-registered tool, skipping",
+                        ct_tool.name,
+                        name
+                    );
+                } else {
+                    tool_names.push(ct_tool.name.to_string());
+                    cache.insert(ct_tool.name.to_string(), ct_tool);
+                }
             }
         }
 

@@ -39,7 +39,15 @@ impl SkillHandler {
                 Ok(r) => {
                     let count = r.len();
                     for skill in r.skills() {
-                        registry.add(skill.clone());
+                        if registry.contains(&skill.name) {
+                            tracing::warn!(
+                                "skill '{}' from {} conflicts with already-loaded skill, skipping",
+                                skill.name,
+                                dir.display()
+                            );
+                        } else {
+                            registry.add(skill.clone());
+                        }
                     }
                     tracing::info!("loaded {count} skill(s) from {}", dir.display());
                 }

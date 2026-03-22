@@ -52,7 +52,7 @@ impl DaemonHook {
                     return match loader::parse_skill_md(&content) {
                         Ok(skill) => {
                             let body = skill.body.clone();
-                            self.skills.registry.lock().await.add(skill);
+                            self.skills.registry.lock().await.upsert(skill);
                             let dir_path = skill_dir.display();
                             format!("{body}\n\nSkill directory: {dir_path}")
                         }
