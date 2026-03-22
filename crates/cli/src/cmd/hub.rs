@@ -66,8 +66,7 @@ impl Hub {
         let on_step = |msg: &str| println!("  {msg}");
 
         if is_install {
-            let result =
-                crabhub::package::install(&pkg, branch.as_deref(), on_step).await?;
+            let result = crabhub::package::install(&pkg, branch.as_deref(), on_step).await?;
             println!("Done: {pkg}");
 
             // Reload daemon to pick up new components.

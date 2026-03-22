@@ -69,8 +69,8 @@ pub async fn install(
         // CLI --branch overrides manifest branch.
         let effective_branch = branch.or(manifest.package.branch.as_deref());
         git_sync(&manifest.package.repository, &dir, effective_branch)
-        .await
-        .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
+            .await
+            .with_context(|| format!("failed to sync repo {}", &manifest.package.repository))?;
         Some(dir)
     } else {
         None
