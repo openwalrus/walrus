@@ -64,8 +64,9 @@ async fn qr_login() -> anyhow::Result<(String, String)> {
 
     println!("Fetching QR code for WeChat login...");
     let qr = crabtalk_wechat::api::fetch_qrcode(&client, base_url).await?;
-    println!("\nScan this QR code with WeChat:");
-    println!("{}\n", qr.qrcode_img_content);
+    println!("\nScan this QR code with WeChat:\n");
+    qr2term::print_qr(&qr.qrcode_img_content)?;
+    println!();
     println!("Waiting for scan...");
 
     let mut scanned = false;

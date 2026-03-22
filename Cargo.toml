@@ -30,6 +30,7 @@ crabllm-provider = "0.0.7"
 
 # crates.io
 base64 = "0.22"
+qr2term = "0.3"
 anyhow = "1"
 proc-macro2 = "1"
 quote = "1"
