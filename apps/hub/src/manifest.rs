@@ -121,8 +121,7 @@ pub struct AgentResource {
 pub struct CommandConfig {
     /// Human-readable description.
     pub description: String,
-    /// Executable name (resolved via PATH) or absolute path.
-    pub binary: String,
-    /// Clap subcommand with start/stop/run/logs actions.
-    pub subcommand: String,
+    /// Crate name on crates.io (installed via `cargo install`).
+    #[serde(rename = "crate")]
+    pub krate: String,
 }
