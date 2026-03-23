@@ -118,6 +118,21 @@ pub async fn uninstall(package: &str, on_step: impl Fn(&str)) -> Result<()> {
     // Read manifest before deleting (need repository URL for cache cleanup).
     let manifest = read_manifest(scope, name).ok();
 
+    // Uninstall command crates (best-effort — don't fail if already removed).
+    if let Some(ref manifest) = manifest
+        && !manifest.commands.is_empty()
+    {
+        if let Ok(cargo) = find_cargo(&on_step).await {
+            for (name, cmd) in &manifest.commands {
+                on_step(&format!("uninstalling command {name} ({})…", cmd.krate));
+                let _ = tokio::process::Command::new(&cargo)
+                    .args(["uninstall", &cmd.krate])
+                    .status()
+                    .await;
+            }
+        }
+    }
+
     // Delete manifest from packages/.
     on_step("removing manifest…");
     let manifest_path = CONFIG_DIR
