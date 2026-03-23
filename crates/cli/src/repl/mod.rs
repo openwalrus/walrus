@@ -145,9 +145,6 @@ pub(crate) async fn stream_to_terminal(
     let mut renderer = MarkdownRenderer::new();
     renderer.start_waiting();
 
-    let mut blink = tokio::time::interval(std::time::Duration::from_millis(500));
-    blink.tick().await; // consume the immediate first tick
-
     loop {
         tokio::select! {
             chunk = stream.next() => {
@@ -182,9 +179,6 @@ pub(crate) async fn stream_to_terminal(
                     }
                     None => break,
                 }
-            }
-            _ = blink.tick(), if renderer.is_waiting() => {
-                renderer.tick_waiting();
             }
             _ = tokio::signal::ctrl_c() => {
                 renderer.finish();

@@ -53,8 +53,6 @@ const PAD: &str = "  ";
 const TOOL_PAD: &str = "  ";
 
 const ERASE_LINE: &str = "\x1b[2K";
-const HIDE_CURSOR: &str = "\x1b[?25l";
-const SHOW_CURSOR: &str = "\x1b[?25h";
 
 fn term_width() -> usize {
     Term::stdout().size().1 as usize
@@ -89,8 +87,6 @@ pub struct MarkdownRenderer {
     tool_failed: bool,
     /// Whether the dim waiting dot is visible.
     waiting: bool,
-    /// Current blink state of the waiting dot.
-    blink_visible: bool,
 }
 
 impl Default for MarkdownRenderer {
@@ -113,66 +109,22 @@ impl MarkdownRenderer {
             after_tool: false,
             tool_failed: false,
             waiting: false,
-            blink_visible: false,
         }
     }
 
-    /// Show a dim blinking `⏺` and hide the cursor.
+    /// Show a static dim `⏺` while waiting for content.
     pub fn start_waiting(&mut self) {
         self.waiting = true;
-        self.blink_visible = true;
-        let _ = write!(self.out, "{HIDE_CURSOR}{} ", S_DIM.apply_to("⏺"));
+        let _ = write!(self.out, "{} ", S_DIM.apply_to("⏺"));
         let _ = self.out.flush();
     }
 
-    /// Toggle the waiting dot on/off. Driven by an interval in the event loop.
-    pub fn tick_waiting(&mut self) {
-        if !self.waiting {
-            return;
-        }
-        self.blink_visible = !self.blink_visible;
-
-        if !self.tool_labels.is_empty() {
-            // Blink the tool marker dots in-place.
-            let up = self.tool_labels.len() + self.tool_result_lines;
-            let _ = write!(self.out, "\x1b[{up}A");
-            for label in &self.tool_labels {
-                if self.blink_visible {
-                    let _ = write!(
-                        self.out,
-                        "\r{ERASE_LINE}{} {}\n",
-                        S_DIM.apply_to("⏺"),
-                        style(label).bold().dim()
-                    );
-                } else {
-                    let _ = write!(self.out, "\r{ERASE_LINE}  {}\n", style(label).bold().dim());
-                }
-            }
-            if self.tool_result_lines > 0 {
-                let _ = write!(self.out, "\x1b[{}B", self.tool_result_lines);
-            }
-        } else {
-            // Blink the initial waiting dot.
-            if self.blink_visible {
-                let _ = write!(self.out, "\r{ERASE_LINE}{} ", S_DIM.apply_to("⏺"));
-            } else {
-                let _ = write!(self.out, "\r{ERASE_LINE}");
-            }
-        }
-        let _ = self.out.flush();
-    }
-
-    /// Whether the waiting animation is active.
-    pub fn is_waiting(&self) -> bool {
-        self.waiting
-    }
-
-    /// Erase the waiting dot, show cursor. Does NOT flush — the caller's
+    /// Erase the waiting dot. Does NOT flush — the caller's
     /// next write + flush will be atomic with the erase.
     fn clear_waiting(&mut self) {
         if self.waiting {
             self.waiting = false;
-            let _ = write!(self.out, "\r{ERASE_LINE}{SHOW_CURSOR}");
+            let _ = write!(self.out, "\r{ERASE_LINE}");
         }
     }
 
@@ -284,11 +236,7 @@ impl MarkdownRenderer {
             );
             self.tool_labels.push(label);
         }
-        // Start blinking the tool marker dots.
-        let _ = write!(self.out, "{HIDE_CURSOR}");
         let _ = self.out.flush();
-        self.waiting = true;
-        self.blink_visible = true;
     }
 
     pub fn push_tool_result(&mut self, output: &str) {
@@ -319,7 +267,6 @@ impl MarkdownRenderer {
             return;
         }
 
-        self.clear_waiting();
         let success = !self.tool_failed;
         let _ = self.out.flush();
         let marker = if success {
