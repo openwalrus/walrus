@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod ask_user;
 pub mod memory;
+pub mod session;
 pub mod task;
 
 /// Top-level `[system]` configuration.

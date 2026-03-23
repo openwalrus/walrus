@@ -610,6 +610,7 @@ version = "0.0.12"
 dependencies = [
  "anyhow",
  "async-stream",
+ "chrono",
  "crabllm-core",
  "dirs",
  "futures-core",

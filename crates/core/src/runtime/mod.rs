@@ -122,7 +122,8 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             bail!("agent '{agent}' not registered");
         }
         let id = self.next_session_id.fetch_add(1, Ordering::Relaxed);
-        let session = Session::new(id, agent, created_by);
+        let mut session = Session::new(id, agent, created_by);
+        session.init_file(&crate::paths::SESSIONS_DIR);
         self.sessions
             .write()
             .await
@@ -211,6 +212,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             self.hook.on_event(&agent_name, session_id, &event);
         }
 
+        session.persist();
         Ok(response)
     }
 
@@ -265,12 +267,15 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             self.active_sessions.write().await.insert(session_id);
-            let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history, Some(session_id)));
-            while let Some(event) = event_stream.next().await {
-                self.hook.on_event(&agent_name, session_id, &event);
-                yield event;
+            {
+                let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history, Some(session_id)));
+                while let Some(event) = event_stream.next().await {
+                    self.hook.on_event(&agent_name, session_id, &event);
+                    yield event;
+                }
             }
             self.active_sessions.write().await.remove(&session_id);
+            session.persist();
         }
     }
 }
