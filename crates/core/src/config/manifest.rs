@@ -98,8 +98,11 @@ pub struct ResolvedManifest {
 /// `packages/*/*.toml`. For each package with a `repository` field, resolves
 /// skill and agent directories from `.cache/repos/{slug}/`. Local always wins
 /// on name conflicts; between packages, first alphabetically wins.
-pub fn resolve_manifests(config_dir: &Path) -> ResolvedManifest {
+///
+/// Returns the resolved manifest and a list of conflict warnings (if any).
+pub fn resolve_manifests(config_dir: &Path) -> (ResolvedManifest, Vec<String>) {
     let mut resolved = ResolvedManifest::default();
+    let mut warnings = Vec::new();
 
     // Local dirs always come first.
     let local_skills = config_dir.join(SKILLS_DIR);
@@ -114,7 +117,7 @@ pub fn resolve_manifests(config_dir: &Path) -> ResolvedManifest {
     // Load local manifest.
     let local_manifest_path = config_dir.join(LOCAL_DIR).join("CrabTalk.toml");
     if let Ok(Some(manifest)) = ManifestConfig::load(&local_manifest_path) {
-        merge_manifest(&mut resolved, &manifest, "local");
+        merge_manifest(&mut resolved, &manifest, "local", &mut warnings);
     }
 
     // Scan packages/*/*.toml (sorted for deterministic order).
@@ -127,7 +130,7 @@ pub fn resolve_manifests(config_dir: &Path) -> ResolvedManifest {
             let scope_path = scope_entry.path();
             if !scope_path.is_dir() {
                 if scope_path.extension().is_some_and(|e| e == "toml") {
-                    load_package_manifest(config_dir, &scope_path, &mut resolved);
+                    load_package_manifest(config_dir, &scope_path, &mut resolved, &mut warnings);
                 }
                 continue;
             }
@@ -138,7 +141,7 @@ pub fn resolve_manifests(config_dir: &Path) -> ResolvedManifest {
                 for pkg_entry in pkg_entries {
                     let pkg_path = pkg_entry.path();
                     if pkg_path.extension().is_some_and(|e| e == "toml") {
-                        load_package_manifest(config_dir, &pkg_path, &mut resolved);
+                        load_package_manifest(config_dir, &pkg_path, &mut resolved, &mut warnings);
                     }
                 }
             }
@@ -155,11 +158,16 @@ pub fn resolve_manifests(config_dir: &Path) -> ResolvedManifest {
         }
     }
 
-    resolved
+    (resolved, warnings)
 }
 
 /// Load a single package manifest and merge it into the resolved state.
-fn load_package_manifest(config_dir: &Path, path: &Path, resolved: &mut ResolvedManifest) {
+fn load_package_manifest(
+    config_dir: &Path,
+    path: &Path,
+    resolved: &mut ResolvedManifest,
+    warnings: &mut Vec<String>,
+) {
     let source = path
         .strip_prefix(config_dir.join(PACKAGES_DIR))
         .unwrap_or(path)
@@ -197,16 +205,22 @@ fn load_package_manifest(config_dir: &Path, path: &Path, resolved: &mut Resolved
         }
     }
 
-    merge_manifest(resolved, &manifest, &source);
+    merge_manifest(resolved, &manifest, &source, warnings);
 }
 
 /// Merge a manifest's MCPs and agents into resolved, skipping duplicates.
-fn merge_manifest(resolved: &mut ResolvedManifest, manifest: &ManifestConfig, source: &str) {
+fn merge_manifest(
+    resolved: &mut ResolvedManifest,
+    manifest: &ManifestConfig,
+    source: &str,
+    warnings: &mut Vec<String>,
+) {
     for (name, mcp) in &manifest.mcps {
         if resolved.mcps.contains_key(name) {
-            tracing::warn!(
-                "MCP '{name}' from {source} conflicts with already-loaded MCP, skipping"
-            );
+            let msg =
+                format!("MCP '{name}' from {source} conflicts with already-loaded MCP, skipping");
+            tracing::warn!("{msg}");
+            warnings.push(msg);
         } else {
             let mut cfg = mcp.clone();
             if cfg.name.is_empty() {
@@ -218,13 +232,100 @@ fn merge_manifest(resolved: &mut ResolvedManifest, manifest: &ManifestConfig, so
 
     for (name, agent) in &manifest.agents {
         if resolved.agents.contains_key(name) {
-            tracing::warn!(
+            let msg = format!(
                 "agent '{name}' from {source} conflicts with already-loaded agent, skipping"
             );
+            tracing::warn!("{msg}");
+            warnings.push(msg);
         } else {
             resolved.agents.insert(name.clone(), agent.clone());
         }
     }
+}
+
+// ── Skill conflict detection ────────────────────────────────────────
+
+/// Check for skill name conflicts across multiple skill directories.
+///
+/// Scans each directory for `SKILL.md` files, extracts the `name` field
+/// from YAML frontmatter, and reports duplicates. First directory wins
+/// (same priority semantics as daemon skill loading).
+pub fn check_skill_conflicts(skill_dirs: &[PathBuf]) -> Vec<String> {
+    let mut seen = std::collections::BTreeMap::<String, &Path>::new();
+    let mut warnings = Vec::new();
+
+    for dir in skill_dirs {
+        if !dir.exists() {
+            continue;
+        }
+        for name in scan_skill_names(dir) {
+            if let Some(first_dir) = seen.get(&name) {
+                warnings.push(format!(
+                    "skill '{name}' from {} conflicts with skill from {}, skipping",
+                    dir.display(),
+                    first_dir.display(),
+                ));
+            } else {
+                seen.insert(name, dir);
+            }
+        }
+    }
+
+    warnings
+}
+
+/// Scan a directory recursively for `SKILL.md` files and extract skill names.
+fn scan_skill_names(dir: &Path) -> Vec<String> {
+    let mut results = Vec::new();
+    scan_skill_names_inner(dir, &mut results);
+    results
+}
+
+fn scan_skill_names_inner(dir: &Path, results: &mut Vec<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with('.'))
+        {
+            continue;
+        }
+
+        let skill_file = path.join("SKILL.md");
+        if skill_file.exists() {
+            if let Some(name) = extract_skill_name(&skill_file) {
+                results.push(name);
+            }
+        } else {
+            scan_skill_names_inner(&path, results);
+        }
+    }
+}
+
+/// Extract the `name` field from a SKILL.md YAML frontmatter.
+fn extract_skill_name(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let (frontmatter, _) = crate::utils::split_yaml_frontmatter(&content).ok()?;
+    // Simple line scan — avoids pulling in a YAML parser.
+    for line in frontmatter.lines() {
+        let line = line.trim();
+        if let Some(value) = line.strip_prefix("name:") {
+            let value = value.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_owned());
+            }
+        }
+    }
+    None
 }
 
 /// Convert a repo URL to a filesystem-safe slug.

@@ -19,7 +19,7 @@ pub use agent::{
 };
 pub use config::{
     ApiStandard, ManifestConfig, McpServerConfig, PackageMeta, ProviderDef, ResolvedManifest,
-    Setup, load_agents_dir, load_agents_dirs, repo_slug, resolve_manifests,
+    Setup, check_skill_conflicts, load_agents_dir, load_agents_dirs, repo_slug, resolve_manifests,
 };
 pub use runtime::{Runtime, Session, hook::Hook};
 

@@ -91,7 +91,7 @@ impl Daemon {
         event_tx: &DaemonEventSender,
     ) -> Result<Runtime<ProviderRegistry, DaemonHook>> {
         let manager = Self::build_providers(config)?;
-        let manifest = resolve_manifests(config_dir);
+        let (manifest, _warnings) = resolve_manifests(config_dir);
         let hook = Self::build_hook(config, config_dir, &manifest, event_tx).await?;
         let tool_tx = Self::build_tool_sender(event_tx);
         let mut runtime = Runtime::new(manager, hook, Some(tool_tx)).await;

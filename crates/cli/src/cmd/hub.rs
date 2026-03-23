@@ -73,6 +73,14 @@ impl Hub {
             let _ = runner.reload().await;
             println!("Daemon reloaded.");
 
+            // Check for conflicts with existing packages.
+            let config_dir = &*wcore::paths::CONFIG_DIR;
+            let (manifest, mut warnings) = wcore::resolve_manifests(config_dir);
+            warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
+            for w in &warnings {
+                eprintln!("  warning: {w}");
+            }
+
             // Run prompt-type setup via inference.
             if let Some(Setup::Prompt { ref prompt }) = result.setup {
                 let prompt_text = if prompt.ends_with(".md") {
