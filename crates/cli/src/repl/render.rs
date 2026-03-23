@@ -53,6 +53,8 @@ const PAD: &str = "  ";
 const TOOL_PAD: &str = "  ";
 
 const ERASE_LINE: &str = "\x1b[2K";
+const HIDE_CURSOR: &str = "\x1b[?25l";
+const SHOW_CURSOR: &str = "\x1b[?25h";
 
 fn term_width() -> usize {
     Term::stdout().size().1 as usize
@@ -87,8 +89,8 @@ pub struct MarkdownRenderer {
     tool_failed: bool,
     /// Whether the dim waiting dot is visible.
     waiting: bool,
-    /// Whether we've written a partial-line preview to stdout.
-    has_preview: bool,
+    /// Current blink state of the waiting dot.
+    blink_visible: bool,
 }
 
 impl Default for MarkdownRenderer {
@@ -111,35 +113,66 @@ impl MarkdownRenderer {
             after_tool: false,
             tool_failed: false,
             waiting: false,
-            has_preview: false,
+            blink_visible: false,
         }
     }
 
-    /// Show a static dim `⏺` while waiting for the first response chunk.
+    /// Show a dim blinking `⏺` and hide the cursor.
     pub fn start_waiting(&mut self) {
         self.waiting = true;
-        let _ = write!(self.out, "{} ", S_DIM.apply_to("⏺"));
+        self.blink_visible = true;
+        let _ = write!(self.out, "{HIDE_CURSOR}{} ", S_DIM.apply_to("⏺"));
         let _ = self.out.flush();
     }
 
-    /// Erase the inline partial-line preview before a proper render.
-    fn erase_preview(&mut self) {
-        if self.has_preview {
-            self.has_preview = false;
-            if self.first_line {
-                let _ = write!(self.out, "\r{ERASE_LINE}⏺ ");
+    /// Toggle the waiting dot on/off. Driven by an interval in the event loop.
+    pub fn tick_waiting(&mut self) {
+        if !self.waiting {
+            return;
+        }
+        self.blink_visible = !self.blink_visible;
+
+        if !self.tool_labels.is_empty() {
+            // Blink the tool marker dots in-place.
+            let up = self.tool_labels.len() + self.tool_result_lines;
+            let _ = write!(self.out, "\x1b[{up}A");
+            for label in &self.tool_labels {
+                if self.blink_visible {
+                    let _ = write!(
+                        self.out,
+                        "\r{ERASE_LINE}{} {}\n",
+                        S_DIM.apply_to("⏺"),
+                        style(label).bold().dim()
+                    );
+                } else {
+                    let _ = write!(self.out, "\r{ERASE_LINE}  {}\n", style(label).bold().dim());
+                }
+            }
+            if self.tool_result_lines > 0 {
+                let _ = write!(self.out, "\x1b[{}B", self.tool_result_lines);
+            }
+        } else {
+            // Blink the initial waiting dot.
+            if self.blink_visible {
+                let _ = write!(self.out, "\r{ERASE_LINE}{} ", S_DIM.apply_to("⏺"));
             } else {
                 let _ = write!(self.out, "\r{ERASE_LINE}");
             }
         }
+        let _ = self.out.flush();
     }
 
-    /// Erase the waiting dot when real content arrives.
+    /// Whether the waiting animation is active.
+    pub fn is_waiting(&self) -> bool {
+        self.waiting
+    }
+
+    /// Erase the waiting dot, show cursor. Does NOT flush — the caller's
+    /// next write + flush will be atomic with the erase.
     fn clear_waiting(&mut self) {
         if self.waiting {
             self.waiting = false;
-            let _ = write!(self.out, "\r{ERASE_LINE}");
-            let _ = self.out.flush();
+            let _ = write!(self.out, "\r{ERASE_LINE}{SHOW_CURSOR}");
         }
     }
 
@@ -166,33 +199,41 @@ impl MarkdownRenderer {
 
         // After a tool block, print a new `⏺` marker for continuing text.
         if self.after_tool {
+            self.clear_waiting();
             let _ = write!(self.out, "⏺ ");
             self.first_line = true;
             self.after_tool = false;
         }
 
-        let in_block = matches!(
-            self.state,
-            RenderState::CodeBlock { .. } | RenderState::Table(_)
-        );
-
         for ch in chunk.chars() {
             if ch == '\n' {
-                self.erase_preview();
-                let line = std::mem::take(&mut self.line_buf);
-                self.render_line(&line);
-            } else {
-                // Write the char inline for immediate streaming feedback.
-                if !in_block {
-                    if !self.has_preview && !self.first_line {
-                        let _ = write!(self.out, "{PAD}");
+                if self.first_line {
+                    if self.line_buf.starts_with("```") || self.line_buf.starts_with('|') {
+                        // Code block / table — need render_line for state machine.
+                        let _ = write!(self.out, "\r{ERASE_LINE}⏺ ");
+                        self.first_line = false;
+                        let line = std::mem::take(&mut self.line_buf);
+                        self.render_line(&line);
+                    } else {
+                        // Normal text — inline output is the final render.
+                        let _ = writeln!(self.out);
+                        self.first_line = false;
+                        self.last_was_blank = self.line_buf.is_empty();
+                        self.line_buf.clear();
                     }
-                    self.has_preview = true;
+                } else {
+                    let line = std::mem::take(&mut self.line_buf);
+                    self.render_line(&line);
+                }
+            } else {
+                self.line_buf.push(ch);
+                // Stream first line chars inline for immediate visibility.
+                if self.first_line {
                     let _ = write!(self.out, "{ch}");
                 }
-                self.line_buf.push(ch);
             }
         }
+
         let _ = self.out.flush();
     }
 
@@ -200,6 +241,7 @@ impl MarkdownRenderer {
         if chunk.is_empty() {
             return;
         }
+
         self.clear_waiting();
 
         if !matches!(self.state, RenderState::Thinking) {
@@ -211,13 +253,20 @@ impl MarkdownRenderer {
     }
 
     pub fn push_tool_start(&mut self, calls: &[(String, String)]) {
-        self.clear_waiting();
         self.flush_thinking();
+        // Finalize any pending text BEFORE clear_waiting, so \r{ERASE_LINE}
+        // doesn't eat inline text on the first line.
         if !self.line_buf.is_empty() {
-            self.erase_preview();
-            let line = std::mem::take(&mut self.line_buf);
-            self.render_md_line(&line);
+            if self.first_line {
+                let _ = writeln!(self.out);
+                self.first_line = false;
+                self.line_buf.clear();
+            } else {
+                let line = std::mem::take(&mut self.line_buf);
+                self.render_md_line(&line);
+            }
         }
+        self.clear_waiting();
         if !self.last_was_blank {
             let _ = writeln!(self.out);
         }
@@ -235,7 +284,11 @@ impl MarkdownRenderer {
             );
             self.tool_labels.push(label);
         }
+        // Start blinking the tool marker dots.
+        let _ = write!(self.out, "{HIDE_CURSOR}");
         let _ = self.out.flush();
+        self.waiting = true;
+        self.blink_visible = true;
     }
 
     pub fn push_tool_result(&mut self, output: &str) {
@@ -266,6 +319,7 @@ impl MarkdownRenderer {
             return;
         }
 
+        self.clear_waiting();
         let success = !self.tool_failed;
         let _ = self.out.flush();
         let marker = if success {
@@ -300,15 +354,20 @@ impl MarkdownRenderer {
         self.flush_thinking();
 
         if !self.line_buf.is_empty() {
-            self.erase_preview();
-            let line = std::mem::take(&mut self.line_buf);
-            match &self.state {
-                RenderState::CodeBlock { .. } => {
-                    self.flush_code_block_raw(&line);
-                }
-                _ => {
-                    self.ensure_started();
-                    self.render_md_line(&line);
+            if self.first_line {
+                // First line was streamed inline — just finalize.
+                let _ = writeln!(self.out);
+                self.line_buf.clear();
+            } else {
+                let line = std::mem::take(&mut self.line_buf);
+                match &self.state {
+                    RenderState::CodeBlock { .. } => {
+                        self.flush_code_block_raw(&line);
+                    }
+                    _ => {
+                        self.ensure_started();
+                        self.render_md_line(&line);
+                    }
                 }
             }
         }
