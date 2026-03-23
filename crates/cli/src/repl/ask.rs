@@ -81,7 +81,7 @@ impl AskState {
     }
 
     /// Height for the inline viewport: tab bar(1) + border(2) + question(1)
-    /// + max options across all questions + other(1) + input(1) + status(1).
+    /// + gap(1) + max options across all questions + other(1) + input(1) + status(1).
     fn viewport_height(&self) -> usize {
         let max_opts = self
             .questions
@@ -89,9 +89,9 @@ impl AskState {
             .map(|q| q.question.options.len())
             .max()
             .unwrap_or(0);
-        // tab_bar(1) + top_border(1) + question_text(1) + options + other(1)
-        // + input_line(1) + bottom_border(1) + status(1)
-        1 + 1 + 1 + max_opts + 1 + 1 + 1 + 1
+        // tab_bar(1) + top_border(1) + question_text(1) + gap(1) + options
+        // + other(1) + bottom_border(1) + status(1)
+        1 + 1 + 1 + 1 + max_opts + 1 + 1 + 1
     }
 
     fn focused_q(&self) -> &QuestionState {
@@ -305,7 +305,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AskState) {
         .select(state.focused)
         .highlight_style(
             Style::default()
-                .fg(Color::LightMagenta)
+                .fg(Color::Rgb(215, 119, 87))
                 .add_modifier(Modifier::BOLD),
         )
         .style(Style::default().fg(Color::DarkGray))
@@ -322,7 +322,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AskState) {
 fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::layout::Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(Color::Rgb(136, 136, 136)));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -333,13 +333,16 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
     let qs = state.focused_q();
     let multi = qs.question.multi_select;
 
-    // Question text.
-    let mut lines = vec![Line::from(Span::styled(
-        &qs.question.question,
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    ))];
+    // Question text + gap line.
+    let mut lines = vec![
+        Line::from(Span::styled(
+            &qs.question.question,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
 
     // Options.
     for (i, opt) in qs.question.options.iter().enumerate() {
@@ -353,7 +356,7 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
         };
         let style = if is_cursor && !multi {
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::Rgb(215, 119, 87))
                 .add_modifier(Modifier::BOLD)
         } else if is_cursor {
             Style::default()
@@ -373,13 +376,19 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
     // In single-select, Other is only "selected" when no regular option is.
     let has_other = qs.other_text.is_some() && (multi || qs.selected.is_empty());
     let prefix = option_prefix(multi, is_cursor, has_other);
-    let other_label = match &qs.other_text {
-        Some(text) => format!("{prefix}Other: {text}"),
-        None => format!("{prefix}Other: "),
+    // Show live input inline on the "Other:" line.
+    let other_text = if state.mode == InputMode::TextInput && is_cursor {
+        &state.input_buf
+    } else {
+        match &qs.other_text {
+            Some(t) => t.as_str(),
+            None => "",
+        }
     };
+    let other_label = format!("{prefix}Other: {other_text}");
     let style = if is_cursor {
         Style::default()
-            .fg(Color::Cyan)
+            .fg(Color::Rgb(215, 119, 87))
             .add_modifier(Modifier::BOLD)
     } else if has_other {
         Style::default().fg(Color::Cyan)
@@ -387,14 +396,6 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
         Style::default()
     };
     lines.push(Line::from(Span::styled(other_label, style)));
-
-    // Text input line when in TextInput mode on "Other".
-    if state.mode == InputMode::TextInput && is_cursor {
-        lines.push(Line::from(Span::styled(
-            format!("  > {}", state.input_buf),
-            Style::default().fg(Color::Cyan),
-        )));
-    }
 
     frame.render_widget(Paragraph::new(lines), inner);
 }
@@ -413,7 +414,7 @@ fn option_prefix(multi: bool, is_cursor: bool, is_selected: bool) -> &'static st
 }
 
 fn draw_status(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::layout::Rect) {
-    let key = Style::default().fg(Color::Cyan);
+    let key = Style::default().fg(Color::Rgb(177, 185, 249));
     let spans = if state.mode == InputMode::TextInput {
         vec![
             Span::styled(" Type your answer ", Style::default().fg(Color::White)),

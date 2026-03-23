@@ -152,9 +152,9 @@ pub fn mask_token(token: &str) -> String {
 
 // ── Style helpers ───────────────────────────────────────────────────
 
-/// Border style for a focused panel.
+/// Border style for a focused panel (brand orange).
 pub fn border_focused() -> Style {
-    Style::default().fg(Color::Yellow)
+    Style::default().fg(Color::Rgb(215, 119, 87))
 }
 
 /// Border style for an unfocused panel.

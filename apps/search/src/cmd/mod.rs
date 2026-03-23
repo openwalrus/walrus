@@ -25,7 +25,7 @@ pub struct App {
 
 #[cfg(feature = "mcp")]
 #[crabtalk_command::command(kind = "mcp", name = "search")]
-struct Mcp;
+pub struct Mcp;
 
 #[cfg(feature = "mcp")]
 impl crabtalk_command::McpService for Mcp {

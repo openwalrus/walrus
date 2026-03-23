@@ -18,10 +18,12 @@ use syntect::{
 use termimad::MadSkin;
 
 static S_DIM: LazyLock<Style> = LazyLock::new(|| Style::new().dim());
-static S_PROMPT: LazyLock<Style> = LazyLock::new(|| Style::new().bold().green().bright());
-static S_BANNER: LazyLock<Style> = LazyLock::new(|| Style::new().bold().yellow().bright());
-static S_GREEN: LazyLock<Style> = LazyLock::new(|| Style::new().green().bright());
-static S_RED: LazyLock<Style> = LazyLock::new(|| Style::new().red().bright());
+static S_BRAND: LazyLock<Style> = LazyLock::new(|| Style::new().color256(173));
+static S_PROMPT: LazyLock<Style> = LazyLock::new(|| Style::new().cyan().bold());
+static S_BANNER: LazyLock<Style> = LazyLock::new(|| Style::new().color256(173).bold());
+static S_GREEN: LazyLock<Style> = LazyLock::new(|| Style::new().color256(71));
+static S_RED: LazyLock<Style> = LazyLock::new(|| Style::new().color256(204));
+static S_SUBTLE: LazyLock<Style> = LazyLock::new(|| Style::new().color256(240));
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
@@ -52,6 +54,8 @@ static SKIN: LazyLock<MadSkin> = LazyLock::new(|| {
 /// Text continuation indent (aligns with text after `⏺ `).
 const PAD: &str = "  ";
 /// Tool result indent (aligns with label text after `⏺ `).
+const TOOL_OUTPUT_MAX_SUCCESS: usize = 5;
+const TOOL_OUTPUT_MAX_FAILURE: usize = 10;
 const TOOL_PAD: &str = "  ";
 
 const ERASE_LINE: &str = "\x1b[2K";
@@ -164,12 +168,16 @@ impl MarkdownRenderer {
             self.state = RenderState::Normal;
         }
 
+        let was_started = self.started;
         self.ensure_started();
 
         // After a tool block, print a new `⏺` marker for continuing text.
         if self.after_tool {
             self.clear_waiting();
-            let _ = write!(self.out, "⏺ ");
+            // Only write ⏺ if ensure_started didn't just write one.
+            if was_started {
+                let _ = write!(self.out, "⏺ ");
+            }
             self.first_line = true;
             self.after_tool = false;
         }
@@ -222,8 +230,13 @@ impl MarkdownRenderer {
     }
 
     pub fn push_tool_start(&mut self, calls: &[(String, String)]) {
-        // Skip if markers already shown (early ToolCallsBegin already handled).
+        // If markers already shown (early ToolCallsBegin), just update labels
+        // with full args (the early event had empty args).
         if !self.tool_labels.is_empty() {
+            self.tool_labels.clear();
+            for (name, args) in calls {
+                self.tool_labels.push(format_tool_label(name, args));
+            }
             return;
         }
         self.flush_thinking();
@@ -275,7 +288,7 @@ impl MarkdownRenderer {
                 let _ = writeln!(
                     self.out,
                     "{} {}",
-                    S_DIM.apply_to("⏺"),
+                    S_BRAND.apply_to("⏺"),
                     style(label).bold().dim()
                 );
             }
@@ -285,24 +298,53 @@ impl MarkdownRenderer {
 
     pub fn push_tool_result(&mut self, output: &str) {
         self.solidify_tool_markers();
-        if is_tool_failure(output) {
+        let failed = is_tool_failure(output);
+        if failed {
             self.tool_failed = true;
         }
-        let last_line = format_tool_tail(output);
+        let (lines, total) = format_tool_output(output, failed);
         let width = term_width().saturating_sub(TOOL_PAD.len() + 2);
-        let truncated = if last_line.len() > width {
-            format!("{}...", &last_line[..width.saturating_sub(3)])
+
+        if lines.is_empty() {
+            let _ = writeln!(
+                self.out,
+                "{TOOL_PAD}{} {}",
+                S_SUBTLE.apply_to("⎿"),
+                S_DIM.apply_to("(no output)")
+            );
+            self.tool_result_lines += 1;
         } else {
-            last_line
-        };
-        let _ = writeln!(
-            self.out,
-            "{TOOL_PAD}{} {}",
-            S_DIM.apply_to("⎿"),
-            S_DIM.apply_to(&truncated)
-        );
+            for (i, line) in lines.iter().enumerate() {
+                let truncated = if line.len() > width {
+                    format!("{}...", &line[..width.saturating_sub(3)])
+                } else {
+                    line.clone()
+                };
+                if i == 0 {
+                    let _ = writeln!(
+                        self.out,
+                        "{TOOL_PAD}{} {}",
+                        S_SUBTLE.apply_to("⎿"),
+                        S_DIM.apply_to(&truncated)
+                    );
+                } else {
+                    let _ = writeln!(self.out, "{TOOL_PAD}  {}", S_DIM.apply_to(&truncated));
+                }
+                self.tool_result_lines += 1;
+            }
+            let shown = lines.len();
+            if total > shown {
+                let _ = writeln!(
+                    self.out,
+                    "{TOOL_PAD}  {}",
+                    S_DIM.apply_to(format!("… +{} lines", total - shown))
+                );
+                self.tool_result_lines += 1;
+            }
+        }
+
         let _ = writeln!(self.out);
-        self.tool_result_lines += 2;
+        self.tool_result_lines += 1;
         let _ = self.out.flush();
     }
 
@@ -474,7 +516,7 @@ impl MarkdownRenderer {
         } else {
             format!("┌ {lang} ─")
         };
-        let _ = writeln!(self.out, "{PAD}{}", S_DIM.apply_to(label));
+        let _ = writeln!(self.out, "{PAD}{}", S_SUBTLE.apply_to(label));
     }
 
     fn emit_code_block(&mut self, lang: &str, code: &str) {
@@ -488,7 +530,7 @@ impl MarkdownRenderer {
 
         let theme = &THEME_SET.themes["base16-ocean.dark"];
         let mut h = HighlightLines::new(syntax, theme);
-        let pipe = S_DIM.apply_to("│");
+        let pipe = S_SUBTLE.apply_to("│");
 
         for line in code.lines() {
             match h.highlight_line(line, &SYNTAX_SET) {
@@ -502,18 +544,18 @@ impl MarkdownRenderer {
             }
         }
 
-        let _ = writeln!(self.out, "{PAD}{}", S_DIM.apply_to("└─"));
+        let _ = writeln!(self.out, "{PAD}{}", S_SUBTLE.apply_to("└─"));
     }
 
     fn flush_code_block_raw(&mut self, extra: &str) {
-        let pipe = S_DIM.apply_to("│");
+        let pipe = S_SUBTLE.apply_to("│");
         if let RenderState::CodeBlock { code, .. } = &self.state {
             let full = format!("{code}{extra}");
             for line in full.lines() {
                 let _ = writeln!(self.out, "{PAD}{pipe} {line}");
             }
         }
-        let _ = writeln!(self.out, "{PAD}{}", S_DIM.apply_to("└─"));
+        let _ = writeln!(self.out, "{PAD}{}", S_SUBTLE.apply_to("└─"));
         self.state = RenderState::Normal;
     }
 
@@ -562,7 +604,15 @@ fn is_tool_failure(output: &str) -> bool {
         || output.starts_with("invalid arguments:")
 }
 
-fn format_tool_tail(output: &str) -> String {
+/// Extract output lines from a tool result, truncated to `max` lines.
+/// Returns (lines, total_count) where total_count is the full line count.
+fn format_tool_output(output: &str, failed: bool) -> (Vec<String>, usize) {
+    let max = if failed {
+        TOOL_OUTPUT_MAX_FAILURE
+    } else {
+        TOOL_OUTPUT_MAX_SUCCESS
+    };
+
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(output)
         && let (Some(stdout), Some(stderr), Some(exit_code)) = (
             v.get("stdout").and_then(|s| s.as_str()),
@@ -570,27 +620,24 @@ fn format_tool_tail(output: &str) -> String {
             v.get("exit_code").and_then(|c| c.as_i64()),
         )
     {
-        if exit_code != 0 {
-            if let Some(last) = stderr.lines().last().filter(|l| !l.is_empty()) {
-                return last.to_string();
-            }
-            return format!("exit code: {exit_code}");
-        }
-        if let Some(last) = stdout.lines().rev().find(|l| !l.is_empty()) {
-            return last.to_string();
-        }
-        if let Some(last) = stderr.lines().last().filter(|l| !l.is_empty()) {
-            return last.to_string();
-        }
-        return "(no output)".to_string();
+        let text = if exit_code != 0 {
+            if stderr.is_empty() { stdout } else { stderr }
+        } else if stdout.is_empty() {
+            stderr
+        } else {
+            stdout
+        };
+        return truncate_lines(text, max);
     }
 
-    output
-        .lines()
-        .rev()
-        .find(|l| !l.is_empty())
-        .unwrap_or("(no output)")
-        .to_string()
+    truncate_lines(output, max)
+}
+
+fn truncate_lines(text: &str, max: usize) -> (Vec<String>, usize) {
+    let all: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
+    let total = all.len();
+    let lines = all.into_iter().take(max).map(String::from).collect();
+    (lines, total)
 }
 
 fn format_tool_label(name: &str, args: &str) -> String {
