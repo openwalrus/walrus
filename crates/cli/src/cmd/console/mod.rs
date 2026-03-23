@@ -29,9 +29,7 @@ use sessions::render_sessions;
 pub struct Console;
 
 impl Console {
-    pub async fn run(self, mut runner: Runner) -> Result<()> {
-        let sessions = runner.list_sessions().await.unwrap_or_default();
-
+    pub async fn run(self, runner: Runner) -> Result<()> {
         // Spawn background event subscription task.
         let (event_tx, event_rx) = mpsc::unbounded_channel::<AgentEventMsg>();
         let socket_path = wcore::paths::SOCKET_PATH.to_path_buf();
@@ -48,11 +46,12 @@ impl Console {
             }
         });
 
+        // Show TUI immediately with empty sessions, load in background.
         let mut terminal = tui::setup()?;
         let mut state = ConsoleState {
-            sessions,
+            sessions: Vec::new(),
             selected: 0,
-            status: String::from("Ready"),
+            status: String::from("Loading..."),
             runner,
             tab: Tab::Sessions,
             events: VecDeque::new(),
@@ -61,6 +60,7 @@ impl Console {
         };
 
         let mut idle_ticks: u8 = 0;
+        let mut needs_refresh = true;
         let result = loop {
             // Drain any pending events.
             while let Ok(msg) = state.event_rx.try_recv() {
@@ -79,9 +79,26 @@ impl Console {
                 }
             } else {
                 idle_ticks = idle_ticks.saturating_add(1);
-                if idle_ticks >= 4 {
+                if needs_refresh || idle_ticks >= 4 {
                     idle_ticks = 0;
-                    state.refresh().await;
+                    needs_refresh = false;
+                    // Non-blocking refresh: timeout after 500ms to avoid freezing.
+                    let fut = state.runner.list_sessions();
+                    match tokio::time::timeout(std::time::Duration::from_millis(500), fut).await {
+                        Ok(Ok(sessions)) => {
+                            state.sessions = sessions;
+                            if state.selected >= state.sessions.len() {
+                                state.selected = state.sessions.len().saturating_sub(1);
+                            }
+                            state.status = String::from("Ready");
+                        }
+                        Ok(Err(_)) => {
+                            state.status = String::from("Error refreshing");
+                        }
+                        Err(_) => {
+                            // Timeout — don't block the TUI.
+                        }
+                    }
                 }
             }
         };
@@ -110,14 +127,7 @@ pub(crate) struct ConsoleState {
     event_scroll: usize,
 }
 
-impl ConsoleState {
-    pub(crate) async fn refresh(&mut self) {
-        self.sessions = self.runner.list_sessions().await.unwrap_or_default();
-        if self.selected >= self.sessions.len() {
-            self.selected = self.sessions.len().saturating_sub(1);
-        }
-    }
-}
+impl ConsoleState {}
 
 // ── Key handling ────────────────────────────────────────────────────
 
@@ -146,6 +156,7 @@ async fn handle_key(
 }
 
 async fn handle_sessions_key(code: KeyCode, state: &mut ConsoleState) {
+    let timeout = std::time::Duration::from_millis(500);
     let len = state.sessions.len();
     match code {
         KeyCode::Up | KeyCode::Char('k') => {
@@ -157,19 +168,28 @@ async fn handle_sessions_key(code: KeyCode, state: &mut ConsoleState) {
             }
         }
         KeyCode::Char('r') => {
-            state.refresh().await;
-            state.status = String::from("Refreshed");
+            if let Ok(Ok(sessions)) =
+                tokio::time::timeout(timeout, state.runner.list_sessions()).await
+            {
+                state.sessions = sessions;
+                state.status = String::from("Refreshed");
+            }
         }
         KeyCode::Char('d') | KeyCode::Delete => {
             if let Some(s) = state.sessions.get(state.selected) {
                 let id = s.id;
-                match state.runner.kill_session(id).await {
-                    Ok(true) => state.status = format!("Session {id} killed"),
-                    Ok(false) => state.status = format!("Session {id} not found"),
-                    Err(e) => state.status = format!("Error: {e}"),
+                match tokio::time::timeout(timeout, state.runner.kill_session(id)).await {
+                    Ok(Ok(true)) => state.status = format!("Session {id} killed"),
+                    Ok(Ok(false)) => state.status = format!("Session {id} not found"),
+                    Ok(Err(e)) => state.status = format!("Error: {e}"),
+                    Err(_) => state.status = String::from("Timeout"),
                 }
             }
-            state.refresh().await;
+            if let Ok(Ok(sessions)) =
+                tokio::time::timeout(timeout, state.runner.list_sessions()).await
+            {
+                state.sessions = sessions;
+            }
         }
         _ => {}
     }

@@ -19,7 +19,7 @@ use termimad::MadSkin;
 
 static S_DIM: LazyLock<Style> = LazyLock::new(|| Style::new().dim());
 static S_BRAND: LazyLock<Style> = LazyLock::new(|| Style::new().color256(173));
-static S_PROMPT: LazyLock<Style> = LazyLock::new(|| Style::new().cyan().bold());
+static S_PROMPT: LazyLock<Style> = LazyLock::new(|| Style::new().color256(173).bold());
 static S_BANNER: LazyLock<Style> = LazyLock::new(|| Style::new().color256(173).bold());
 static S_GREEN: LazyLock<Style> = LazyLock::new(|| Style::new().color256(71));
 static S_RED: LazyLock<Style> = LazyLock::new(|| Style::new().color256(204));

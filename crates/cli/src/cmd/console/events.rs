@@ -26,7 +26,21 @@ pub(super) fn render_events(
         .borders(Borders::ALL)
         .border_style(border_focused());
 
-    if events.is_empty() {
+    // Filter: only tool calls and done events.
+    let filtered: Vec<&&EventEntry> = events
+        .iter()
+        .filter(|e| {
+            matches!(
+                AgentEventKind::try_from(e.msg.kind),
+                Ok(AgentEventKind::ToolStart)
+                    | Ok(AgentEventKind::ToolResult)
+                    | Ok(AgentEventKind::ToolsComplete)
+                    | Ok(AgentEventKind::Done)
+            )
+        })
+        .collect();
+
+    if filtered.is_empty() {
         frame.render_widget(
             Paragraph::new("  No events yet. Waiting for agent activity...").block(block),
             area,
@@ -35,28 +49,35 @@ pub(super) fn render_events(
     }
 
     let inner_height = area.height.saturating_sub(2) as usize;
-    let lines: Vec<Line> = events
+    // Newest first: reverse, then skip/take for scrolling.
+    let lines: Vec<Line> = filtered
         .iter()
+        .rev()
         .skip(scroll_offset)
         .take(inner_height)
         .map(|entry| {
             let kind_str = match AgentEventKind::try_from(entry.msg.kind) {
-                Ok(AgentEventKind::TextDelta) => "TEXT",
-                Ok(AgentEventKind::ThinkingDelta) => "THINK",
                 Ok(AgentEventKind::ToolStart) => "TOOL_START",
                 Ok(AgentEventKind::ToolResult) => "TOOL_RESULT",
                 Ok(AgentEventKind::ToolsComplete) => "TOOLS_DONE",
                 Ok(AgentEventKind::Done) => "DONE",
-                Err(_) => "UNKNOWN",
+                _ => "UNKNOWN",
             };
             let content_part = if entry.msg.content.is_empty() {
                 String::new()
             } else {
-                format!(": {}", entry.msg.content)
+                // Truncate long content (e.g. bash args) for display.
+                let c = &entry.msg.content;
+                let display = if c.len() > 60 {
+                    format!("{}...", &c[..57])
+                } else {
+                    c.clone()
+                };
+                format!(": {display}")
             };
             let kind_color = match AgentEventKind::try_from(entry.msg.kind) {
-                Ok(AgentEventKind::ToolStart) => Color::Yellow,
-                Ok(AgentEventKind::Done) => Color::Green,
+                Ok(AgentEventKind::ToolStart) => Color::Rgb(215, 119, 87),
+                Ok(AgentEventKind::Done) => Color::Rgb(78, 186, 101),
                 Ok(AgentEventKind::ToolResult) => Color::Cyan,
                 _ => Color::White,
             };
