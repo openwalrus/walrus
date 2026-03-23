@@ -111,7 +111,16 @@ impl AskState {
         self.focused_q().question.options.len()
     }
 
+    /// Save current input buffer to the focused question's other_text.
+    fn commit_input(&mut self) {
+        let text = std::mem::take(&mut self.input_buf);
+        self.input_cursor = 0;
+        self.focused_q_mut().other_text = Some(text);
+        self.mode = InputMode::Normal;
+    }
+
     /// For single-select questions, cursor position is the selection.
+    /// When cursor lands on "Other", enter text input mode directly.
     fn auto_select(&mut self) {
         let qs = &mut self.questions[self.focused];
         if qs.question.multi_select {
@@ -121,8 +130,14 @@ impl AskState {
         let other = qs.question.options.len();
         qs.selected.clear();
         if cursor < other {
-            qs.other_text = None;
             qs.selected.insert(cursor);
+            self.mode = InputMode::Normal;
+        } else {
+            // Cursor on "Other": open text input directly.
+            let existing = qs.other_text.clone().unwrap_or_default();
+            self.input_buf = existing;
+            self.input_cursor = self.input_buf.chars().count();
+            self.mode = InputMode::TextInput;
         }
     }
 
@@ -131,7 +146,9 @@ impl AskState {
         let mut map = HashMap::new();
         for qs in &self.questions {
             let key = qs.question.question.clone();
-            if let Some(ref text) = qs.other_text {
+            if let Some(ref text) = qs.other_text
+                && (qs.question.multi_select || qs.selected.is_empty())
+            {
                 map.insert(key, text.clone());
             } else if qs.question.multi_select {
                 let labels: Vec<&str> = qs
@@ -152,8 +169,13 @@ impl AskState {
 
 impl QuestionState {
     fn new(q: &AskQuestion) -> Self {
+        // Filter out any "Other" option — the TUI provides its own.
+        let mut question = q.clone();
+        question
+            .options
+            .retain(|o| !o.label.eq_ignore_ascii_case("other"));
         Self {
-            question: q.clone(),
+            question,
             selected: BTreeSet::new(),
             cursor: 0,
             other_text: None,
@@ -183,15 +205,29 @@ fn event_loop(
         if state.mode == InputMode::TextInput {
             match key.code {
                 KeyCode::Enter => {
-                    let text = std::mem::take(&mut state.input_buf);
-                    state.input_cursor = 0;
-                    state.focused_q_mut().other_text = Some(text);
-                    state.mode = InputMode::Normal;
+                    state.commit_input();
+                    // For single-select, submit immediately.
+                    if !state.focused_q().question.multi_select {
+                        return Ok(state.answers());
+                    }
                 }
                 KeyCode::Esc => {
                     state.input_buf.clear();
                     state.input_cursor = 0;
                     state.mode = InputMode::Normal;
+                }
+                KeyCode::Up => {
+                    state.commit_input();
+                    let q = state.focused_q_mut();
+                    q.cursor = q.cursor.saturating_sub(1);
+                    state.auto_select();
+                }
+                KeyCode::Down => {
+                    state.commit_input();
+                    let max = state.item_count().saturating_sub(1);
+                    let q = state.focused_q_mut();
+                    q.cursor = (q.cursor + 1).min(max);
+                    state.auto_select();
                 }
                 code => {
                     tui::handle_text_input(code, &mut state.input_buf, &mut state.input_cursor);
@@ -226,13 +262,11 @@ fn event_loop(
                 let other = state.other_idx();
                 let cursor = state.focused_q().cursor;
                 if cursor == other {
-                    // Enter text input for "Other".
                     let existing = state.focused_q().other_text.clone().unwrap_or_default();
                     state.input_buf = existing;
                     state.input_cursor = state.input_buf.chars().count();
                     state.mode = InputMode::TextInput;
                 } else if state.focused_q().question.multi_select {
-                    // Multi-select: toggle.
                     let q = state.focused_q_mut();
                     q.other_text = None;
                     if q.selected.contains(&cursor) {
@@ -271,7 +305,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AskState) {
         .select(state.focused)
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )
         .style(Style::default().fg(Color::DarkGray))
@@ -288,7 +322,7 @@ fn draw(frame: &mut ratatui::Frame, state: &AskState) {
 fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::layout::Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(Color::DarkGray));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -302,7 +336,9 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
     // Question text.
     let mut lines = vec![Line::from(Span::styled(
         &qs.question.question,
-        Style::default().fg(Color::Yellow),
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
     ))];
 
     // Options.
@@ -315,12 +351,16 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
         } else {
             format!("{} — {}", opt.label, opt.description)
         };
-        let style = if is_cursor {
+        let style = if is_cursor && !multi {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if is_cursor {
             Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD)
         } else if is_selected {
-            Style::default().fg(Color::Green)
+            Style::default().fg(Color::Cyan)
         } else {
             Style::default()
         };
@@ -330,22 +370,19 @@ fn draw_content(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::lay
     // "Other" option.
     let other_idx = qs.question.options.len();
     let is_cursor = qs.cursor == other_idx;
-    let has_other = qs.other_text.is_some();
+    // In single-select, Other is only "selected" when no regular option is.
+    let has_other = qs.other_text.is_some() && (multi || qs.selected.is_empty());
     let prefix = option_prefix(multi, is_cursor, has_other);
     let other_label = match &qs.other_text {
         Some(text) => format!("{prefix}Other: {text}"),
-        None => format!("{prefix}Other"),
+        None => format!("{prefix}Other: "),
     };
-    let style = if state.mode == InputMode::TextInput && is_cursor {
+    let style = if is_cursor {
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD)
-    } else if is_cursor {
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
     } else if has_other {
-        Style::default().fg(Color::Green)
+        Style::default().fg(Color::Cyan)
     } else {
         Style::default()
     };
@@ -379,7 +416,7 @@ fn draw_status(frame: &mut ratatui::Frame, state: &AskState, area: ratatui::layo
     let key = Style::default().fg(Color::Cyan);
     let spans = if state.mode == InputMode::TextInput {
         vec![
-            Span::styled(" Type your answer ", Style::default().fg(Color::Yellow)),
+            Span::styled(" Type your answer ", Style::default().fg(Color::White)),
             Span::styled("Enter ", key),
             Span::raw("Confirm  "),
             Span::styled("Esc ", key),

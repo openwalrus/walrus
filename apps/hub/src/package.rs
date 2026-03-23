@@ -104,7 +104,8 @@ pub async fn install(
         && let Some(ref dir) = repo_dir
     {
         on_step("running setup script…");
-        let status = if script.ends_with(".sh") {
+        let is_file = !script.contains(' ') && dir.join(script).is_file();
+        let status = if is_file {
             tokio::process::Command::new("bash")
                 .arg(script)
                 .current_dir(dir)
@@ -145,15 +146,14 @@ pub async fn uninstall(package: &str, on_step: impl Fn(&str)) -> Result<()> {
     // Uninstall command crates (best-effort — don't fail if already removed).
     if let Some(ref manifest) = manifest
         && !manifest.commands.is_empty()
+        && let Ok(cargo) = find_cargo(&on_step).await
     {
-        if let Ok(cargo) = find_cargo(&on_step).await {
-            for (name, cmd) in &manifest.commands {
-                on_step(&format!("uninstalling command {name} ({})…", cmd.krate));
-                let _ = tokio::process::Command::new(&cargo)
-                    .args(["uninstall", &cmd.krate])
-                    .status()
-                    .await;
-            }
+        for (name, cmd) in &manifest.commands {
+            on_step(&format!("uninstalling command {name} ({})…", cmd.krate));
+            let _ = tokio::process::Command::new(&cargo)
+                .args(["uninstall", &cmd.krate])
+                .status()
+                .await;
         }
     }
 

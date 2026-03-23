@@ -493,11 +493,15 @@ fn format_tool_label(name: &str, args: &str) -> String {
         return pascal;
     };
 
+    // Show only the first line — multi-line commands bloat the label.
+    let first_line = cmd.lines().next().unwrap_or(cmd);
     let max = term_width().saturating_sub(8);
-    let cmd = if cmd.len() > max {
-        format!("{}...", &cmd[..max])
+    let display = if first_line.len() > max {
+        format!("{}...", &first_line[..max])
+    } else if first_line.len() < cmd.len() {
+        format!("{first_line}...")
     } else {
-        cmd.to_string()
+        first_line.to_string()
     };
-    format!("Bash({cmd})")
+    format!("Bash({display})")
 }

@@ -20,7 +20,11 @@ async fn main() -> Result<()> {
             .map(|v| parse_level(&v))
             .unwrap_or(tracing::Level::WARN),
     };
-    tracing_subscriber::fmt().with_max_level(level).init();
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .without_time()
+        .with_target(false)
+        .init();
 
     cli.run().await
 }

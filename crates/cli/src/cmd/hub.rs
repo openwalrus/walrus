@@ -91,7 +91,7 @@ impl Hub {
             let (manifest, mut warnings) = wcore::resolve_manifests(config_dir);
             warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
             for w in &warnings {
-                eprintln!("  warning: {w}");
+                tracing::warn!("{w}");
             }
 
             // Run prompt-type setup via inference.
