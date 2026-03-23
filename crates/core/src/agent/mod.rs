@@ -8,8 +8,8 @@
 //! `run()` collects its events and returns the final response.
 
 use crate::model::{
-    Choice, CompletionMeta, Delta, Message, MessageBuilder, Model, Request, Response, Role, Tool,
-    Usage,
+    Choice, CompletionMeta, Delta, FunctionCall, Message, MessageBuilder, Model, Request, Response,
+    Role, Tool, ToolCall, Usage,
 };
 use anyhow::Result;
 use async_stream::stream;
@@ -214,7 +214,7 @@ impl<M: Model> Agent<M> {
                 let mut last_meta = CompletionMeta::default();
                 let mut last_usage = None;
                 let mut stream_error = None;
-                let mut tool_start_emitted = false;
+                let mut tool_begin_emitted = false;
 
                 {
                     let mut chunk_stream = std::pin::pin!(self.model.stream(request));
@@ -227,22 +227,6 @@ impl<M: Model> Agent<M> {
                                 if let Some(reason) = chunk.reasoning_content() {
                                     yield AgentEvent::ThinkingDelta(reason.to_owned());
                                 }
-                                // Emit ToolCallsStart as soon as we see tool call
-                                // names, so the CLI can show blinking markers while
-                                // arguments are still streaming.
-                                if !tool_start_emitted {
-                                    if let Some(calls) = chunk.tool_calls() {
-                                        let named: Vec<_> = calls
-                                            .iter()
-                                            .filter(|c| !c.function.name.is_empty())
-                                            .cloned()
-                                            .collect();
-                                        if !named.is_empty() {
-                                            tool_start_emitted = true;
-                                            yield AgentEvent::ToolCallsStart(named);
-                                        }
-                                    }
-                                }
                                 if let Some(r) = chunk.reason() {
                                     finish_reason = Some(r.clone());
                                 }
@@ -251,6 +235,24 @@ impl<M: Model> Agent<M> {
                                     last_usage = chunk.usage.clone();
                                 }
                                 builder.accept(&chunk);
+                                // Emit ToolCallsBegin as soon as tool names appear
+                                // in the builder, so the CLI can show markers while
+                                // args are still streaming.
+                                if !tool_begin_emitted && !builder.tool_call_names().is_empty() {
+                                    tool_begin_emitted = true;
+                                    let calls: Vec<_> = builder
+                                        .tool_call_names()
+                                        .into_iter()
+                                        .map(|name| ToolCall {
+                                            function: FunctionCall {
+                                                name: name.to_owned(),
+                                                arguments: String::new(),
+                                            },
+                                            ..Default::default()
+                                        })
+                                        .collect();
+                                    yield AgentEvent::ToolCallsBegin(calls);
+                                }
                             }
                             Err(e) => {
                                 stream_error = Some(e.to_string());
@@ -313,12 +315,12 @@ impl<M: Model> Agent<M> {
                 let has_tool_calls = !tool_calls.is_empty();
 
                 // Dispatch tool calls if any.
+                //
+                // Batch the tool calls
                 let mut tool_results = Vec::new();
                 if has_tool_calls {
                     let sender = last_sender(history);
-                    if !tool_start_emitted {
-                        yield AgentEvent::ToolCallsStart(tool_calls.clone());
-                    }
+                    yield AgentEvent::ToolCallsStart(tool_calls.clone());
                     for tc in &tool_calls {
                         let result = self
                             .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender, session_id)

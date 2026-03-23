@@ -85,7 +85,7 @@ pub struct MarkdownRenderer {
     after_tool: bool,
     /// Whether any tool result in the current batch indicated failure.
     tool_failed: bool,
-    /// Whether the dim waiting dot is visible.
+    /// Whether the dim waiting dot is on screen.
     waiting: bool,
 }
 
@@ -205,6 +205,10 @@ impl MarkdownRenderer {
     }
 
     pub fn push_tool_start(&mut self, calls: &[(String, String)]) {
+        // Skip if markers already shown (early ToolCallsBegin already handled).
+        if !self.tool_labels.is_empty() {
+            return;
+        }
         self.flush_thinking();
         // Finalize any pending text BEFORE clear_waiting, so \r{ERASE_LINE}
         // doesn't eat inline text on the first line.
