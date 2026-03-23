@@ -5,9 +5,11 @@
 
 use console::{Style, Term, style};
 use heck::ToUpperCamelCase;
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::{
     io::{BufWriter, Stdout, Write},
     sync::LazyLock,
+    time::Duration,
 };
 use syntect::{
     easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet,
@@ -85,8 +87,8 @@ pub struct MarkdownRenderer {
     after_tool: bool,
     /// Whether any tool result in the current batch indicated failure.
     tool_failed: bool,
-    /// Whether the dim waiting dot is on screen.
-    waiting: bool,
+    /// Blinking spinner for waiting states (runs on background OS thread).
+    spinner: Option<ProgressBar>,
 }
 
 impl Default for MarkdownRenderer {
@@ -108,23 +110,31 @@ impl MarkdownRenderer {
             tool_result_lines: 0,
             after_tool: false,
             tool_failed: false,
-            waiting: false,
+            spinner: None,
         }
     }
 
-    /// Show a static dim `⏺` while waiting for content.
+    /// Show a blinking dim `⏺` while waiting for content.
+    /// Renders to stdout so all terminal writes are on one fd (no race).
     pub fn start_waiting(&mut self) {
-        self.waiting = true;
-        let _ = write!(self.out, "{} ", S_DIM.apply_to("⏺"));
         let _ = self.out.flush();
+        self.clear_waiting();
+        let sp = ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout());
+        sp.set_style(
+            ProgressStyle::default_spinner()
+                .tick_strings(&["⏺", " ", " "])
+                .template("{spinner:.dim}")
+                .expect("valid template"),
+        );
+        sp.enable_steady_tick(Duration::from_millis(500));
+        sp.tick();
+        self.spinner = Some(sp);
     }
 
-    /// Erase the waiting dot. Does NOT flush — the caller's
-    /// next write + flush will be atomic with the erase.
+    /// Stop the spinner without moving the cursor.
     fn clear_waiting(&mut self) {
-        if self.waiting {
-            self.waiting = false;
-            let _ = write!(self.out, "\r{ERASE_LINE}");
+        if let Some(sp) = self.spinner.take() {
+            sp.abandon();
         }
     }
 
@@ -132,7 +142,7 @@ impl MarkdownRenderer {
     fn ensure_started(&mut self) {
         if !self.started {
             self.clear_waiting();
-            let _ = write!(self.out, "⏺ ");
+            let _ = write!(self.out, "\r{ERASE_LINE}⏺ ");
             self.started = true;
             self.first_line = true;
         }
@@ -195,6 +205,7 @@ impl MarkdownRenderer {
         }
 
         self.clear_waiting();
+        let _ = write!(self.out, "\r{ERASE_LINE}");
 
         if !matches!(self.state, RenderState::Thinking) {
             self.state = RenderState::Thinking;
@@ -223,6 +234,7 @@ impl MarkdownRenderer {
             }
         }
         self.clear_waiting();
+        let _ = write!(self.out, "\r{ERASE_LINE}");
         if !self.last_was_blank {
             let _ = writeln!(self.out);
         }
@@ -231,19 +243,45 @@ impl MarkdownRenderer {
         self.tool_labels.clear();
         self.tool_failed = false;
         for (name, args) in calls {
-            let label = format_tool_label(name, args);
-            let _ = writeln!(
-                self.out,
-                "{} {}",
-                S_DIM.apply_to("⏺"),
-                style(&label).bold().dim()
-            );
-            self.tool_labels.push(label);
+            self.tool_labels.push(format_tool_label(name, args));
         }
         let _ = self.out.flush();
+
+        // Show tool marker as a blinking spinner on stdout.
+        let msg = self.tool_labels.join(", ");
+        let sp = ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout());
+        sp.set_style(
+            ProgressStyle::default_spinner()
+                .tick_strings(&["⏺", " ", " "])
+                .template("{spinner:.dim} {msg:.bold.dim}")
+                .expect("valid template"),
+        );
+        sp.set_message(msg);
+        sp.enable_steady_tick(Duration::from_millis(500));
+        sp.tick();
+        self.spinner = Some(sp);
+    }
+
+    /// Replace the spinner with static dim markers on stdout so
+    /// push_tool_result / push_tool_done can use cursor movement.
+    fn solidify_tool_markers(&mut self) {
+        if self.spinner.is_some() {
+            self.clear_waiting();
+            let _ = write!(self.out, "\r{ERASE_LINE}");
+            for label in &self.tool_labels {
+                let _ = writeln!(
+                    self.out,
+                    "{} {}",
+                    S_DIM.apply_to("⏺"),
+                    style(label).bold().dim()
+                );
+            }
+            let _ = self.out.flush();
+        }
     }
 
     pub fn push_tool_result(&mut self, output: &str) {
+        self.solidify_tool_markers();
         if is_tool_failure(output) {
             self.tool_failed = true;
         }
@@ -266,6 +304,7 @@ impl MarkdownRenderer {
     }
 
     pub fn push_tool_done(&mut self, _success: bool) {
+        self.solidify_tool_markers();
         let count = self.tool_labels.len();
         if count == 0 {
             return;
@@ -298,9 +337,11 @@ impl MarkdownRenderer {
     }
 
     pub fn finish(&mut self) {
-        self.clear_waiting();
         if !self.tool_labels.is_empty() {
+            // push_tool_done → solidify_tool_markers handles the spinner.
             self.push_tool_done(false);
+        } else {
+            self.clear_waiting();
         }
         self.flush_thinking();
 
