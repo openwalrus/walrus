@@ -77,6 +77,7 @@ impl ChatRepl {
             println!();
         }
 
+        println!();
         self.save_history();
         Ok(())
     }
