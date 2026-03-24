@@ -1,19 +1,20 @@
 //! Interactive chat REPL with streaming output and persistent history.
 
 use crate::repl::{
-    command::{ReplHelper, SlashResult, handle_slash},
+    command::{SlashResult, handle_slash},
+    input::{History, InputResult},
     render::{MarkdownRenderer, styled_prompt, welcome_banner},
     runner::{ConnectionInfo, OutputChunk, Runner, send_reply},
 };
 use anyhow::Result;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use rustyline::{Editor, config::CompletionType, error::ReadlineError, history::DefaultHistory};
 use std::{path::PathBuf, pin::pin};
 use wcore::protocol::message::AskQuestion;
 
 mod ask;
 pub mod command;
+mod input;
 pub mod render;
 pub mod runner;
 
@@ -21,26 +22,22 @@ pub mod runner;
 pub struct ChatRepl {
     runner: Runner,
     agent: String,
-    editor: Editor<ReplHelper, DefaultHistory>,
+    history: History,
     history_path: Option<PathBuf>,
 }
 
 impl ChatRepl {
     /// Create a new REPL with the given runner and agent name.
     pub fn new(runner: Runner, agent: String) -> Result<Self> {
-        let config = rustyline::Config::builder()
-            .completion_type(CompletionType::List)
-            .build();
-        let mut editor = Editor::with_config(config)?;
-        editor.set_helper(Some(ReplHelper));
         let history_path = history_file_path();
+        let mut history = History::new();
         if let Some(ref path) = history_path {
-            let _ = editor.load_history(path);
+            history.load(path);
         }
         Ok(Self {
             runner,
             agent,
-            editor,
+            history,
             history_path,
         })
     }
@@ -53,18 +50,16 @@ impl ChatRepl {
         println!();
 
         let prompt = styled_prompt(&self.agent);
-        let cont_prompt = "  .. ";
         loop {
-            let line = match self.read_input(&prompt, cont_prompt) {
-                Ok(line) => line,
-                Err(ReadlineError::Interrupted) => continue,
-                Err(ReadlineError::Eof) => break,
-                Err(e) => return Err(e.into()),
+            let line = match input::read_line(&prompt, &mut self.history) {
+                InputResult::Line(line) => line,
+                InputResult::Interrupt => continue,
+                InputResult::Eof => break,
             };
             if line.is_empty() {
                 continue;
             }
-            let _ = self.editor.add_history_entry(&line);
+            self.history.push(&line);
             let content = match handle_slash(&line).await? {
                 SlashResult::Handled => continue,
                 SlashResult::NotSlash => line,
@@ -86,30 +81,6 @@ impl ChatRepl {
         Ok(())
     }
 
-    /// Read a potentially multi-line input.
-    ///
-    /// Lines ending with `\` are continued on the next line. The backslash
-    /// is stripped and a newline is inserted in its place.
-    fn read_input(&mut self, prompt: &str, cont_prompt: &str) -> rustyline::Result<String> {
-        let mut buf = String::new();
-        let mut first = true;
-        loop {
-            let p = if first { prompt } else { cont_prompt };
-            first = false;
-            let line = self.editor.readline(p)?;
-            let trimmed = line.trim_end();
-            if let Some(prefix) = trimmed.strip_suffix('\\') {
-                buf.push_str(prefix);
-                buf.push('\n');
-            } else {
-                buf.push_str(trimmed);
-                break;
-            }
-        }
-        let result = buf.trim().to_string();
-        Ok(result)
-    }
-
     /// Try to extract the model name from daemon config.
     async fn fetch_model_name(&mut self) -> Option<String> {
         let config_json = self.runner.get_config().await.ok()?;
@@ -121,13 +92,10 @@ impl ChatRepl {
             .map(|s| s.to_string())
     }
 
-    /// Save readline history to disk.
-    fn save_history(&mut self) {
+    /// Save history to disk.
+    fn save_history(&self) {
         if let Some(ref path) = self.history_path {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = self.editor.save_history(path);
+            self.history.save(path);
         }
     }
 }
