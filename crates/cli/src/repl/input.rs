@@ -443,6 +443,20 @@ fn show_dropdown(
                     scroll = 0;
                 }
             }
+            event::KeyCode::Char(' ') => {
+                // Space exits the dropdown, keeping current input.
+                // The caller adds a trailing space via `format!("{completed} ")`.
+                erase_below(stdout, max_drawn, input_row);
+                let col = prompt_width
+                    + line_buf
+                        .chars()
+                        .take(line_cursor)
+                        .map(unicode_width)
+                        .sum::<usize>();
+                let _ = crossterm::execute!(stdout, cursor::MoveTo(col as u16, input_row));
+                let _ = stdout.flush();
+                return Some(line_buf);
+            }
             event::KeyCode::Char(ch) => {
                 filter.push(ch);
                 // Also append to the line buffer so the user sees what they type.
