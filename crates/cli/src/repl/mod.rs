@@ -73,11 +73,16 @@ impl ChatRepl {
                     println!("{}", console::style(&cmd).dim());
                     cmd
                 }
+                SlashResult::Exit => break,
             };
             println!();
             let conn_info = self.runner.conn_info().clone();
             let stream = self.runner.stream(&self.agent, &content, None);
-            stream_to_terminal(stream, &conn_info).await?;
+            match stream_to_terminal(stream, &conn_info).await {
+                Ok(()) => {}
+                Err(e) if e.to_string() == "cancelled" => break,
+                Err(e) => return Err(e),
+            }
             println!();
         }
 

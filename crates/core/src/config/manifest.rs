@@ -276,7 +276,7 @@ pub fn check_skill_conflicts(skill_dirs: &[PathBuf]) -> Vec<String> {
 }
 
 /// Scan a directory recursively for `SKILL.md` files and extract skill names.
-fn scan_skill_names(dir: &Path) -> Vec<String> {
+pub fn scan_skill_names(dir: &Path) -> Vec<String> {
     let mut results = Vec::new();
     scan_skill_names_inner(dir, &mut results);
     results

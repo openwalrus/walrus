@@ -6,7 +6,7 @@ pub mod provider;
 
 pub use manifest::{
     ManifestConfig, PackageMeta, ResolvedManifest, Setup, check_skill_conflicts, load_agents_dir,
-    load_agents_dirs, repo_slug, resolve_manifests,
+    load_agents_dirs, repo_slug, resolve_manifests, scan_skill_names,
 };
 pub use mcp::McpServerConfig;
 pub use provider::{ApiStandard, ProviderDef};
