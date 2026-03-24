@@ -33,7 +33,6 @@ pub struct Memory {
     index_path: PathBuf,
     soul_path: PathBuf,
     entries_dir: PathBuf,
-    sessions_dir: PathBuf,
     config: MemoryConfig,
 }
 
@@ -44,7 +43,6 @@ impl Memory {
     /// `dir` is the memory-specific subdirectory (`{config_dir}/memory/`).
     pub fn open(dir: PathBuf, config: MemoryConfig, storage: Box<dyn Storage>) -> Self {
         let entries_dir = dir.join("entries");
-        let sessions_dir = dir.join("sessions");
         let index_path = dir.join("MEMORY.md");
         // Crab.md lives in the parent config dir, not inside memory/
         let soul_path = dir
@@ -53,8 +51,6 @@ impl Memory {
             .unwrap_or_else(|| dir.join("Crab.md"));
 
         storage.create_dir_all(&entries_dir).ok();
-        storage.create_dir_all(&sessions_dir).ok();
-
         // Seed Crab.md if it doesn't exist
         if !storage.exists(&soul_path) {
             storage.write(&soul_path, DEFAULT_SOUL).ok();
@@ -72,7 +68,6 @@ impl Memory {
             index_path,
             soul_path,
             entries_dir,
-            sessions_dir,
             config,
         };
 
@@ -241,16 +236,6 @@ impl Memory {
             auto_injected: true,
             ..Default::default()
         }]
-    }
-
-    /// Save a session summary after compaction.
-    pub fn after_compact(&self, agent: &str, summary: &str) {
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("{agent}_{timestamp}.md");
-        let path = self.sessions_dir.join(filename);
-        if let Err(e) = self.storage.write(&path, summary) {
-            tracing::warn!("failed to save session summary: {e}");
-        }
     }
 
     /// Migrate legacy files (memory.md, user.md, facts.toml) to entry format.

@@ -188,20 +188,6 @@ fn migration_converts_legacy_files() {
 }
 
 #[test]
-fn after_compact_saves_session() {
-    let storage = MemStorage::new();
-    let dir = PathBuf::from("/test/memory");
-
-    let mem = Memory::open(dir.clone(), MemoryConfig::default(), Box::new(storage));
-
-    mem.after_compact("crab", "Session summary: discussed Rust patterns");
-
-    // Session file should exist in sessions/
-    // (We can't easily check MemStorage contents without exposing it,
-    // but at least verify it doesn't panic)
-}
-
-#[test]
 fn slugify_examples() {
     use crabtalk_daemon::hook::system::memory::entry::slugify;
 

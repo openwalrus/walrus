@@ -61,15 +61,6 @@ pub trait Hook: Send + Sync {
     fn on_before_run(&self, _agent: &str, _session_id: u64, _history: &[Message]) -> Vec<Message> {
         Vec::new()
     }
-
-    /// Called when an agent's context is compacted.
-    ///
-    /// Delivered via `AgentEvent::Compact` — the runtime forwards through
-    /// `on_event()`, and DaemonHook calls this method. Receives the agent
-    /// name and the compaction summary text.
-    ///
-    /// Default: no-op.
-    fn on_after_compact(&self, _agent: &str, _summary: &str) {}
 }
 
 impl Hook for () {}

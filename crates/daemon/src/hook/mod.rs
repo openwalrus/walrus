@@ -197,12 +197,6 @@ impl Hook for DaemonHook {
         }
     }
 
-    fn on_after_compact(&self, agent: &str, summary: &str) {
-        if let Some(ref mem) = self.memory {
-            mem.after_compact(agent, summary);
-        }
-    }
-
     fn on_event(&self, agent: &str, session_id: u64, event: &AgentEvent) {
         let (kind, content) = match event {
             AgentEvent::TextDelta(text) => {
@@ -241,7 +235,6 @@ impl Hook for DaemonHook {
             }
             AgentEvent::Compact { summary } => {
                 tracing::info!(%agent, summary_len = summary.len(), "context compacted");
-                self.on_after_compact(agent, summary);
                 return;
             }
             AgentEvent::Done(response) => {

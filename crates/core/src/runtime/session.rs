@@ -142,46 +142,6 @@ impl Session {
         }
     }
 
-    /// Keep the old `persist()` as a fallback for code that still calls it.
-    /// Does a full rewrite. Will be removed once all callers switch to append.
-    pub fn persist(&self) {
-        let Some(ref path) = self.file_path else {
-            return;
-        };
-
-        let meta = SessionMeta {
-            agent: self.agent.clone(),
-            created_by: self.created_by.clone(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-
-        let mut file = match OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(path)
-        {
-            Ok(f) => f,
-            Err(e) => {
-                tracing::warn!("failed to persist session {}: {e}", self.id);
-                return;
-            }
-        };
-
-        if let Ok(json) = serde_json::to_string(&meta) {
-            let _ = writeln!(file, "{json}");
-        }
-
-        for msg in &self.history {
-            if msg.auto_injected {
-                continue;
-            }
-            if let Ok(json) = serde_json::to_string(msg) {
-                let _ = writeln!(file, "{json}");
-            }
-        }
-    }
-
     /// Load the working context from a JSONL session file.
     ///
     /// Reads from the last `{"compact":"..."}` marker forward. If no compact
