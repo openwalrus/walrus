@@ -27,6 +27,7 @@ message SendMsg {
   optional uint64 session = 3;
   optional string sender = 4;
   optional string cwd = 5;
+  bool new_chat = 6;
 }
 
 message StreamMsg {
@@ -35,6 +36,7 @@ message StreamMsg {
   optional uint64 session = 3;
   optional string sender = 4;
   optional string cwd = 5;
+  bool new_chat = 6;
 }
 
 message Ping {}
@@ -153,6 +155,7 @@ message SessionInfo {
   uint64 message_count = 4;
   uint64 alive_secs = 5;
   bool active = 6;
+  string title = 7;
 }
 
 enum AgentEventKind {

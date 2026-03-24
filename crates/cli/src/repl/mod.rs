@@ -50,6 +50,7 @@ impl ChatRepl {
         println!();
 
         let prompt = styled_prompt(&self.agent);
+        let mut new_chat = false;
         loop {
             let line = match input::read_line(&prompt, &mut self.history) {
                 InputResult::Line(line) => line,
@@ -69,11 +70,17 @@ impl ChatRepl {
                     cmd
                 }
                 SlashResult::Exit => break,
+                SlashResult::Clear => {
+                    new_chat = true;
+                    println!("Context cleared. Starting a new conversation.\n");
+                    continue;
+                }
             };
             println!();
             let conn_info = self.runner.conn_info().clone();
-            let stream = self.runner.stream(&self.agent, &content, None);
+            let stream = self.runner.stream(&self.agent, &content, None, new_chat);
             stream_to_terminal(stream, &conn_info).await?;
+            new_chat = false;
             println!();
         }
 

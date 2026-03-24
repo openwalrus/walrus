@@ -23,7 +23,11 @@ impl Server for Daemon {
         let session_id = match req.session {
             Some(id) => id,
             None => {
-                let id = rt.get_or_create_session(&req.agent, created_by).await?;
+                let id = if req.new_chat {
+                    rt.create_session(&req.agent, created_by).await?
+                } else {
+                    rt.get_or_create_session(&req.agent, created_by).await?
+                };
                 if let Some(ref cwd) = cwd {
                     rt.hook.session_cwds.lock().await.insert(id, cwd.clone());
                 }
@@ -48,13 +52,18 @@ impl Server for Daemon {
         let req_session = req.session;
         let sender = req.sender.unwrap_or_default();
         let cwd = req.cwd.map(std::path::PathBuf::from);
+        let new_chat = req.new_chat;
         async_stream::try_stream! {
             let rt: Arc<_> = runtime.read().await.clone();
             let created_by = if sender.is_empty() { "user".into() } else { sender.clone() };
             let session_id = match req_session {
                 Some(id) => id,
                 None => {
-                    let id = rt.get_or_create_session(&agent, created_by.as_str()).await?;
+                    let id = if new_chat {
+                        rt.create_session(&agent, created_by.as_str()).await?
+                    } else {
+                        rt.get_or_create_session(&agent, created_by.as_str()).await?
+                    };
                     if let Some(ref cwd) = cwd {
                         rt.hook.session_cwds.lock().await.insert(id, cwd.clone());
                     }
@@ -155,6 +164,7 @@ impl Server for Daemon {
                 message_count: s.history.len() as u64,
                 alive_secs: s.created_at.elapsed().as_secs(),
                 active,
+                title: s.title.clone(),
             });
         }
         Ok(infos)

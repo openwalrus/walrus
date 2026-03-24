@@ -286,6 +286,13 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             // No compaction: append new messages since pre_run.
             session.append_messages(&session.history[pre_run_len..]);
         }
+
+        // Apply pending title from set_title tool.
+        if session.title.is_empty()
+            && let Some(title) = self.hook.take_pending_title(session_id)
+        {
+            session.set_title(&title);
+        }
         Ok(response)
     }
 
@@ -362,6 +369,13 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                 }
             } else {
                 session.append_messages(&session.history[pre_run_len..]);
+            }
+
+            // Apply pending title from set_title tool.
+            if session.title.is_empty()
+                && let Some(title) = self.hook.take_pending_title(session_id)
+            {
+                session.set_title(&title);
             }
         }
     }

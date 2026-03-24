@@ -115,6 +115,7 @@ impl Hub {
                     wcore::paths::DEFAULT_AGENT,
                     &prompt_text,
                     result.repo_dir.as_deref(),
+                    false,
                 );
                 repl::stream_to_terminal(stream, &conn_info).await?;
                 println!();

@@ -92,6 +92,7 @@ fn spawn_agent_task(
             session: None,
             sender: None,
             cwd: None,
+            new_chat: false,
         });
         if event_tx
             .send(DaemonEvent::Message {
