@@ -116,6 +116,47 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     // --- Session management ---
 
+    /// Get or create a session for the given (agent, created_by) identity.
+    ///
+    /// 1. Check in-memory sessions for a match → return existing ID.
+    /// 2. Check disk for a persisted session file → load context, return ID.
+    /// 3. Neither → create a new session with a fresh file.
+    pub async fn get_or_create_session(&self, agent: &str, created_by: &str) -> Result<u64> {
+        if !self.agents.contains_key(agent) {
+            bail!("agent '{agent}' not registered");
+        }
+
+        // 1. In-memory lookup.
+        {
+            let sessions = self.sessions.read().await;
+            for (id, session_mutex) in sessions.iter() {
+                let s = session_mutex.lock().await;
+                if s.agent == agent && s.created_by == created_by {
+                    return Ok(*id);
+                }
+            }
+        }
+
+        // 2. Disk lookup.
+        let path = session::session_file_path(&crate::paths::SESSIONS_DIR, agent, created_by);
+        if path.exists()
+            && let Ok((_, messages)) = Session::load_context(&path)
+        {
+            let id = self.next_session_id.fetch_add(1, Ordering::Relaxed);
+            let mut session = Session::new(id, agent, created_by);
+            session.history = messages;
+            session.file_path = Some(path);
+            self.sessions
+                .write()
+                .await
+                .insert(id, Arc::new(Mutex::new(session)));
+            return Ok(id);
+        }
+
+        // 3. Create new.
+        self.create_session(agent, created_by).await
+    }
+
     /// Create a new session for the given agent. Returns the session ID.
     pub async fn create_session(&self, agent: &str, created_by: &str) -> Result<u64> {
         if !self.agents.contains_key(agent) {
@@ -211,6 +252,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             .ok_or_else(|| anyhow::anyhow!("session {session_id} not found"))?;
 
         let mut session = session_mutex.lock().await;
+        let pre_run_len = session.history.len();
         let agent_name = self.prepare_history(&mut session, content, sender);
         let agent_ref = self
             .agents
@@ -222,11 +264,27 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         let response = agent_ref.run(&mut session.history, tx, None).await;
         self.active_sessions.write().await.remove(&session_id);
 
+        // Drain events, stash compact summary if one occurred.
+        let mut compact_summary: Option<String> = None;
         while let Ok(event) = rx.try_recv() {
+            if let AgentEvent::Compact { ref summary } = event {
+                compact_summary = Some(summary.clone());
+            }
             self.hook.on_event(&agent_name, session_id, &event);
         }
 
-        session.persist();
+        // Append-only persistence.
+        if let Some(summary) = compact_summary {
+            // Compaction happened: append compact marker + post-compact messages.
+            session.append_compact(&summary);
+            // history[0] is the summary-as-user-message; skip it (compact line serves that role).
+            if session.history.len() > 1 {
+                session.append_messages(&session.history[1..]);
+            }
+        } else {
+            // No compaction: append new messages since pre_run.
+            session.append_messages(&session.history[pre_run_len..]);
+        }
         Ok(response)
     }
 
@@ -263,6 +321,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             let mut session = session_mutex.lock().await;
+            let pre_run_len = session.history.len();
             let agent_name = self.prepare_history(&mut session, &content, &sender);
             let agent_ref = match self.agents.get(&session.agent) {
                 Some(a) => a,
@@ -281,15 +340,28 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             self.active_sessions.write().await.insert(session_id);
+            let mut compact_summary: Option<String> = None;
             {
                 let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut session.history, Some(session_id)));
                 while let Some(event) = event_stream.next().await {
+                    if let AgentEvent::Compact { ref summary } = event {
+                        compact_summary = Some(summary.clone());
+                    }
                     self.hook.on_event(&agent_name, session_id, &event);
                     yield event;
                 }
             }
             self.active_sessions.write().await.remove(&session_id);
-            session.persist();
+
+            // Append-only persistence.
+            if let Some(summary) = compact_summary {
+                session.append_compact(&summary);
+                if session.history.len() > 1 {
+                    session.append_messages(&session.history[1..]);
+                }
+            } else {
+                session.append_messages(&session.history[pre_run_len..]);
+            }
         }
     }
 }

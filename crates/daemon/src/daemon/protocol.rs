@@ -20,21 +20,17 @@ impl Server for Daemon {
         let sender = req.sender.as_deref().unwrap_or("");
         let created_by = if sender.is_empty() { "user" } else { sender };
         let cwd = req.cwd.map(std::path::PathBuf::from);
-        let (session_id, is_new) = match req.session {
-            Some(id) => (id, false),
+        let session_id = match req.session {
+            Some(id) => id,
             None => {
-                let id = rt.create_session(&req.agent, created_by).await?;
+                let id = rt.get_or_create_session(&req.agent, created_by).await?;
                 if let Some(ref cwd) = cwd {
                     rt.hook.session_cwds.lock().await.insert(id, cwd.clone());
                 }
-                (id, true)
+                id
             }
         };
         let response = rt.send_to(session_id, &req.content, sender).await?;
-        if is_new {
-            rt.hook.session_cwds.lock().await.remove(&session_id);
-            rt.close_session(session_id).await;
-        }
         Ok(SendResponse {
             agent: req.agent,
             content: response.final_response.unwrap_or_default(),
@@ -55,14 +51,14 @@ impl Server for Daemon {
         async_stream::try_stream! {
             let rt: Arc<_> = runtime.read().await.clone();
             let created_by = if sender.is_empty() { "user".into() } else { sender.clone() };
-            let (session_id, is_new) = match req_session {
-                Some(id) => (id, false),
+            let session_id = match req_session {
+                Some(id) => id,
                 None => {
-                    let id = rt.create_session(&agent, created_by.as_str()).await?;
+                    let id = rt.get_or_create_session(&agent, created_by.as_str()).await?;
                     if let Some(ref cwd) = cwd {
                         rt.hook.session_cwds.lock().await.insert(id, cwd.clone());
                     }
-                    (id, true)
+                    id
                 }
             };
 
@@ -131,10 +127,6 @@ impl Server for Daemon {
                     }
                     AgentEvent::Done(resp) => {
                         if let wcore::AgentStopReason::Error(e) = &resp.stop_reason {
-                            if is_new {
-                                rt.hook.session_cwds.lock().await.remove(&session_id);
-                                rt.close_session(session_id).await;
-                            }
                             Err(anyhow::anyhow!("{e}"))?;
                         }
                         break;
