@@ -1,4 +1,4 @@
-//! Interactive TUI for configuring LLM providers, models, and gateway tokens.
+//! Interactive TUI for configuring LLM providers and MCP servers.
 
 use crate::tui;
 use anyhow::{Context, Result};
@@ -12,16 +12,14 @@ use ratatui::{
 };
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
-use gateways::{handle_gateways_key, render_gateways};
 use mcps::{handle_mcps_key, render_mcps};
 use providers::{handle_providers_key, render_providers};
 
-mod gateways;
 mod mcps;
 pub(crate) mod oauth;
 mod providers;
 
-/// Configure providers, models, and gateway tokens interactively.
+/// Configure providers and MCP servers interactively.
 #[derive(clap::Args, Debug)]
 pub struct Auth {
     /// Auth subcommand. Opens TUI when omitted.
@@ -115,10 +113,9 @@ pub(crate) const PRESETS: &[Preset] = &[
 pub(crate) enum Tab {
     Providers,
     Mcps,
-    Gateways,
 }
 
-const TAB_TITLES: &[&str] = &["Providers", "MCPs", "Gateways"];
+const TAB_TITLES: &[&str] = &["Providers", "MCPs"];
 
 // ── Tree items (providers tab) ───────────────────────────────────────
 
@@ -137,11 +134,6 @@ pub(crate) struct ProviderData {
 }
 
 pub(crate) const PROVIDER_FIELDS: &[&str] = &["api_key", "base_url", "standard"];
-
-pub(crate) struct GatewayData {
-    pub(crate) name: String,
-    pub(crate) token: String,
-}
 
 pub(crate) struct McpData {
     pub(crate) name: String,
@@ -183,9 +175,6 @@ pub(crate) struct AuthState {
     pub(crate) cursor: usize,
     pub(crate) edit_buf: String,
     pub(crate) preset_idx: usize,
-    // Gateways.
-    pub(crate) gateways: Vec<GatewayData>,
-    pub(crate) gateway_selected: usize,
     // MCPs.
     pub(crate) mcps: Vec<McpData>,
     pub(crate) mcp_selected: usize,
@@ -203,7 +192,6 @@ impl AuthState {
         let config_path = wcore::paths::CONFIG_DIR.join(wcore::paths::CONFIG_FILE);
         let mut providers = Vec::new();
         let mut active_model = String::new();
-        let mut gateways = Vec::new();
         let mut mcps = Vec::new();
 
         if config_path.exists() {
@@ -254,21 +242,6 @@ impl AuthState {
                         base_url,
                         standard,
                         models,
-                    });
-                }
-            }
-
-            if let Some(gateway_table) = doc.get("gateway").and_then(|c| c.as_table()) {
-                for (name, item) in gateway_table.iter() {
-                    let token = item
-                        .as_table()
-                        .and_then(|t| t.get("token"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    gateways.push(GatewayData {
-                        name: name.to_string(),
-                        token,
                     });
                 }
             }
@@ -386,8 +359,6 @@ impl AuthState {
             cursor: 0,
             edit_buf: String::new(),
             preset_idx: 0,
-            gateways,
-            gateway_selected: 0,
             mcps,
             mcp_selected: 0,
             mcp_env_selected: 0,
@@ -454,21 +425,7 @@ impl AuthState {
             doc.insert("provider", Item::Table(provider_table));
         }
 
-        // [gateway.*]
-        doc.remove("gateway");
-        let mut gateway_table = Table::new();
-        for gw in &self.gateways {
-            if !gw.token.is_empty() {
-                let mut tbl = Table::new();
-                tbl.insert("token", value(&gw.token));
-                gateway_table.insert(&gw.name, Item::Table(tbl));
-            }
-        }
-        if !gateway_table.is_empty() {
-            doc.insert("gateway", Item::Table(gateway_table));
-        }
-
-        // Remove legacy [mcps] from config.toml if present.
+        // Remove legacy sections from config.toml if present.
         doc.remove("mcps");
 
         std::fs::write(&config_path, doc.to_string())
@@ -616,8 +573,7 @@ fn handle_key(
     if key.code == KeyCode::Tab && state.focus == Focus::List {
         state.tab = match state.tab {
             Tab::Providers => Tab::Mcps,
-            Tab::Mcps => Tab::Gateways,
-            Tab::Gateways => Tab::Providers,
+            Tab::Mcps => Tab::Providers,
         };
         return Ok(None);
     }
@@ -625,7 +581,6 @@ fn handle_key(
     match state.tab {
         Tab::Providers => handle_providers_key(key, state),
         Tab::Mcps => handle_mcps_key(key, state),
-        Tab::Gateways => handle_gateways_key(key, state),
     }
 }
 
@@ -670,7 +625,6 @@ fn render(frame: &mut Frame, state: &AuthState) {
     let tab_idx = match state.tab {
         Tab::Providers => 0,
         Tab::Mcps => 1,
-        Tab::Gateways => 2,
     };
     let tabs = Tabs::new(TAB_TITLES.iter().map(|t| Line::from(*t)))
         .select(tab_idx)
@@ -685,7 +639,6 @@ fn render(frame: &mut Frame, state: &AuthState) {
     match state.tab {
         Tab::Providers => render_providers(frame, state, vert[1]),
         Tab::Mcps => render_mcps(frame, state, vert[1]),
-        Tab::Gateways => render_gateways(frame, state, vert[1]),
     }
 
     render_status(frame, state, vert[2]);
@@ -714,15 +667,6 @@ fn render_status(frame: &mut Frame, state: &AuthState, area: Rect) {
             Span::raw("Next  "),
             Span::styled("Up/Dn ", Style::default().fg(Color::Cyan)),
             Span::raw("Field  "),
-            Span::styled("Esc ", Style::default().fg(Color::Cyan)),
-            Span::raw("Back  "),
-            Span::styled("Ctrl+S ", Style::default().fg(Color::Cyan)),
-            Span::raw("Save  "),
-            status_span(state),
-        ]),
-        (Tab::Gateways, Focus::Editing) => Line::from(vec![
-            Span::styled(" Enter ", Style::default().fg(Color::Cyan)),
-            Span::raw("Save field  "),
             Span::styled("Esc ", Style::default().fg(Color::Cyan)),
             Span::raw("Back  "),
             Span::styled("Ctrl+S ", Style::default().fg(Color::Cyan)),
@@ -781,19 +725,6 @@ fn render_status(frame: &mut Frame, state: &AuthState, area: Rect) {
             Span::raw("Next  "),
             Span::styled("Esc ", Style::default().fg(Color::Cyan)),
             Span::raw("Cancel  "),
-            status_span(state),
-        ]),
-        (Tab::Gateways, Focus::List) => Line::from(vec![
-            Span::styled(" Tab ", Style::default().fg(Color::Cyan)),
-            Span::raw("Switch  "),
-            Span::styled("Enter ", Style::default().fg(Color::Cyan)),
-            Span::raw("Edit  "),
-            Span::styled("x ", Style::default().fg(Color::Cyan)),
-            Span::raw("Clear  "),
-            Span::styled("Ctrl+S ", Style::default().fg(Color::Cyan)),
-            Span::raw("Save  "),
-            Span::styled("q ", Style::default().fg(Color::Cyan)),
-            Span::raw("Quit  "),
             status_span(state),
         ]),
     };
