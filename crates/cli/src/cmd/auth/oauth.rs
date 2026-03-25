@@ -65,9 +65,7 @@ pub async fn login(name: &str) -> Result<()> {
         axum::serve(listener, app).await.ok();
     });
 
-    // Wait for the callback or timeout.
     let result = tokio::time::timeout(std::time::Duration::from_secs(120), rx).await;
-
     server.abort();
 
     match result {

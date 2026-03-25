@@ -98,37 +98,31 @@ impl Hub {
             }
 
             // Offer OAuth login for MCPs that declare auth = true.
-            let installed = crabhub::package::read_manifest_from(
-                self.path.as_deref().unwrap_or(&config_dir.join("hub")),
-                &pkg.split('/').next().unwrap_or(&pkg),
-                &pkg.split('/').nth(1).unwrap_or(&pkg),
-            );
-            if let Ok(installed) = installed {
-                for (name, mcp) in &installed.mcps {
-                    if mcp.auth
-                        && !wcore::paths::TOKENS_DIR
-                            .join(format!("{name}.json"))
-                            .exists()
-                    {
-                        println!();
-                        println!("MCP '{name}' requires authentication.");
-                        let confirm = dialoguer::Confirm::new()
-                            .with_prompt("Authenticate now?")
-                            .default(true)
-                            .interact()
-                            .unwrap_or(false);
-                        if confirm {
-                            if let Err(e) = oauth::login(name).await {
-                                println!("Authentication failed: {e}");
-                                println!("You can retry later with: crabtalk auth login {name}");
-                            } else {
-                                // Reload again so daemon connects with the new token.
-                                let _ = runner.reload().await;
-                                println!("Daemon reloaded.");
-                            }
+            // Check resolved manifests (covers both fresh install and re-install).
+            for (name, mcp) in &manifest.mcps {
+                if mcp.auth
+                    && !wcore::paths::TOKENS_DIR
+                        .join(format!("{name}.json"))
+                        .exists()
+                {
+                    println!();
+                    println!("MCP '{name}' requires authentication.");
+                    let confirm = dialoguer::Confirm::new()
+                        .with_prompt("Authenticate now?")
+                        .default(true)
+                        .interact()
+                        .unwrap_or(false);
+                    if confirm {
+                        if let Err(e) = oauth::login(name).await {
+                            println!("Authentication failed: {e}");
+                            println!("You can retry later with: crabtalk auth login {name}");
                         } else {
-                            println!("Skipped. Run `crabtalk auth login {name}` when ready.");
+                            // Reload again so daemon connects with the new token.
+                            let _ = runner.reload().await;
+                            println!("Daemon reloaded.");
                         }
+                    } else {
+                        println!("Skipped. Run `crabtalk auth login {name}` when ready.");
                     }
                 }
             }
