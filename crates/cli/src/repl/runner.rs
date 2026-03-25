@@ -125,6 +125,7 @@ impl Runner {
         cwd: Option<&'a Path>,
         new_chat: bool,
         resume_file: Option<String>,
+        sender: Option<String>,
     ) -> impl Stream<Item = Result<OutputChunk>> + Send + 'a {
         let cwd = cwd.map(|p| p.to_string_lossy().into_owned()).or_else(|| {
             std::env::current_dir()
@@ -136,7 +137,7 @@ impl Runner {
                 agent: agent.to_string(),
                 content: content.to_string(),
                 session: None,
-                sender: None,
+                sender,
                 cwd,
                 new_chat,
                 resume_file,

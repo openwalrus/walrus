@@ -111,12 +111,14 @@ impl Hub {
 
                 println!("Running setup…");
                 let conn_info = runner.conn_info().clone();
+                let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
                 let stream = runner.stream(
                     wcore::paths::DEFAULT_AGENT,
                     &prompt_text,
                     result.repo_dir.as_deref(),
                     false,
                     None,
+                    Some(os_user),
                 );
                 repl::stream_to_terminal(stream, &conn_info).await?;
                 println!();

@@ -53,10 +53,11 @@ impl ChatRepl {
         let mut new_chat = false;
         let mut resume_file: Option<String> = None;
         let mut chat_title = String::new();
+        let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
 
         // Load title from the latest session file if it exists.
         if let Some(path) =
-            wcore::find_latest_session(&wcore::paths::SESSIONS_DIR, &self.agent, "user")
+            wcore::find_latest_session(&wcore::paths::SESSIONS_DIR, &self.agent, &os_user)
             && let Ok((meta, _)) = wcore::Session::load_context(&path)
         {
             chat_title = meta.title;
@@ -124,9 +125,14 @@ impl ChatRepl {
             println!("\x1b[48;5;236m {} \x1b[0m", content);
             println!();
             let conn_info = self.runner.conn_info().clone();
-            let stream =
-                self.runner
-                    .stream(&self.agent, &content, None, new_chat, resume_file.take());
+            let stream = self.runner.stream(
+                &self.agent,
+                &content,
+                None,
+                new_chat,
+                resume_file.take(),
+                Some(os_user.clone()),
+            );
             stream_to_terminal(stream, &conn_info).await?;
             new_chat = false;
             println!();
