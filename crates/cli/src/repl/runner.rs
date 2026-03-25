@@ -109,6 +109,14 @@ impl Runner {
         })
     }
 
+    /// Create a new connection from existing connection info.
+    pub async fn connect_from(info: &ConnectionInfo) -> Result<Self> {
+        match info {
+            ConnectionInfo::Uds(path) => Self::connect(path).await,
+            ConnectionInfo::Tcp(port) => Self::connect_tcp(*port).await,
+        }
+    }
+
     /// Connection info for creating separate connections (e.g. for ReplyToAsk).
     pub fn conn_info(&self) -> &ConnectionInfo {
         &self.conn_info

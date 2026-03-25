@@ -1,21 +1,28 @@
-//! Interactive chat REPL with streaming output and persistent history.
+//! Full-screen interactive chat REPL with concurrent input and streaming.
 
 use crate::repl::{
+    chat::ChatEntry,
     command::{SlashResult, handle_slash},
-    input::{History, InputResult},
-    render::{MarkdownRenderer, welcome_banner},
+    input::{History, InputAction, InputState},
+    render::MarkdownRenderer,
     runner::{ConnectionInfo, OutputChunk, Runner, send_reply},
 };
 use anyhow::Result;
-use futures_core::Stream;
+use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use futures_util::StreamExt;
-use std::{path::PathBuf, pin::pin};
-use wcore::protocol::message::AskQuestion;
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::Paragraph,
+};
+use std::{collections::VecDeque, path::PathBuf, pin::pin, time::Duration};
+use tokio::sync::mpsc;
 
 mod ask;
 pub mod chat;
 pub mod command;
-mod input;
+pub mod input;
 pub mod render;
 pub mod runner;
 
@@ -23,8 +30,8 @@ pub mod runner;
 pub struct ChatRepl {
     runner: Runner,
     agent: String,
-    history: History,
     history_path: Option<PathBuf>,
+    history: History,
 }
 
 impl ChatRepl {
@@ -38,25 +45,18 @@ impl ChatRepl {
         Ok(Self {
             runner,
             agent,
-            history,
             history_path,
+            history,
         })
     }
 
-    /// Run the interactive REPL loop.
+    /// Run the full-screen interactive REPL loop.
     pub async fn run(&mut self) -> Result<()> {
-        // Fetch model name for banner (best-effort).
         let model = self.fetch_model_name().await;
-        println!("{}", welcome_banner(model.as_deref()));
-        println!();
-
-        let agent_name = self.agent.clone();
-        let mut new_chat = false;
-        let mut resume_file: Option<String> = None;
-        let mut chat_title = String::new();
+        let conn_info = self.runner.conn_info().clone();
         let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
 
-        // Load title from the latest session file if it exists.
+        let mut chat_title = String::new();
         if let Some(path) =
             wcore::find_latest_session(&wcore::paths::SESSIONS_DIR, &self.agent, &os_user)
             && let Ok((meta, _)) = wcore::Session::load_context(&path)
@@ -64,87 +64,43 @@ impl ChatRepl {
             chat_title = meta.title;
         }
 
-        loop {
-            let line = match input::read_line(&agent_name, &mut self.history, &chat_title) {
-                InputResult::Line(line) => line,
-                InputResult::Interrupt => continue,
-                InputResult::Eof => break,
-                InputResult::ClearScreen => {
-                    let _ = crossterm::execute!(
-                        std::io::stdout(),
-                        crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-                        crossterm::cursor::MoveTo(0, 0),
-                    );
-                    println!("{}", render::welcome_banner(None));
-                    println!();
-                    continue;
-                }
-            };
-            if line.is_empty() {
-                continue;
-            }
-            self.history.push(&line);
-            let content = match handle_slash(&line).await? {
-                SlashResult::Handled => continue,
-                SlashResult::NotSlash => line,
-                SlashResult::Forward(cmd) => {
-                    // Show the slash command dimmed.
-                    println!("{}", console::style(&cmd).dim());
-                    cmd
-                }
-                SlashResult::Exit => break,
-                SlashResult::Resume => {
-                    // Run the session console inline.
-                    let console = crate::cmd::console::Console;
-                    let socket_path = wcore::paths::SOCKET_PATH.to_path_buf();
-                    if let Ok(runner) = runner::Runner::connect(&socket_path).await
-                        && let Ok(Some(path)) = console.run(runner).await
-                    {
-                        resume_file = Some(path.to_string_lossy().into_owned());
-                        println!(
-                            "Resumed: {}",
-                            console::style(path.file_name().unwrap_or_default().to_string_lossy())
-                                .dim()
-                        );
-                    }
-                    continue;
-                }
-                SlashResult::Clear => {
-                    new_chat = true;
-                    // Clear the screen and move cursor to top.
-                    let _ = crossterm::execute!(
-                        std::io::stdout(),
-                        crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-                        crossterm::cursor::MoveTo(0, 0),
-                    );
-                    println!("{}", render::welcome_banner(None));
-                    println!();
-                    continue;
-                }
-            };
-            // Echo user input with gray background.
-            println!("\x1b[48;5;236m {} \x1b[0m", content);
-            println!();
-            let conn_info = self.runner.conn_info().clone();
-            let stream = self.runner.stream(
-                &self.agent,
-                &content,
-                None,
-                new_chat,
-                resume_file.take(),
-                Some(os_user.clone()),
-            );
-            stream_to_terminal(stream, &conn_info).await?;
-            new_chat = false;
-            println!();
-        }
+        let history = std::mem::replace(&mut self.history, History::new());
+        let mut app = App {
+            renderer: MarkdownRenderer::new(),
+            input: InputState::new(history),
+            scroll: 0,
+            message_queue: VecDeque::new(),
+            agent: self.agent.clone(),
+            chat_title,
+            new_chat: false,
+            resume_file: None,
+            dirty: true,
+            frame_count: 0,
+            skip_tool_result: 0,
+            streaming: false,
+            conn_info,
+            os_user,
+            model_name: model,
+        };
 
-        println!();
+        // Push welcome banner as first chat entry.
+        app.renderer.buffer.push(ChatEntry::Text(vec![welcome_line(
+            &app.agent,
+            app.model_name.as_deref(),
+        )]));
+
+        let mut terminal = crate::tui::setup()?;
+        let result = run_event_loop(&mut terminal, &mut app).await;
+
+        crate::tui::teardown(&mut terminal)?;
+
+        // Save history back.
+        self.history = std::mem::replace(&mut app.input.history, History::new());
         self.save_history();
-        Ok(())
+
+        result
     }
 
-    /// Try to extract the model name from daemon config.
     async fn fetch_model_name(&mut self) -> Option<String> {
         let config_json = self.runner.get_config().await.ok()?;
         let val: serde_json::Value = serde_json::from_str(&config_json).ok()?;
@@ -155,7 +111,6 @@ impl ChatRepl {
             .map(|s| s.to_string())
     }
 
-    /// Save history to disk.
     fn save_history(&self) {
         if let Some(ref path) = self.history_path {
             self.history.save(path);
@@ -163,96 +118,441 @@ impl ChatRepl {
     }
 }
 
-/// Resolve the history file path at `~/.crabtalk/history`.
 fn history_file_path() -> Option<PathBuf> {
     Some(wcore::paths::CONFIG_DIR.join("history"))
 }
 
-/// Consume a stream of output chunks and render them via `MarkdownRenderer`.
-pub(crate) async fn stream_to_terminal(
-    stream: impl Stream<Item = Result<OutputChunk>>,
-    conn_info: &ConnectionInfo,
+fn welcome_line(_agent: &str, model: Option<&str>) -> Line<'static> {
+    let model_part = match model {
+        Some(m) => format!(" ({m})"),
+        None => String::new(),
+    };
+    Line::from(vec![
+        Span::styled(
+            format!("  Crabtalk{model_part}"),
+            Style::new()
+                .fg(Color::Indexed(173))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " — Ctrl+D to exit",
+            Style::new()
+                .fg(Color::Indexed(173))
+                .add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+// ── App state ────────────────────────────────────────────────────
+
+struct App {
+    renderer: MarkdownRenderer,
+    input: InputState,
+    scroll: usize,
+    message_queue: VecDeque<String>,
+    agent: String,
+    chat_title: String,
+    new_chat: bool,
+    resume_file: Option<String>,
+    dirty: bool,
+    frame_count: u64,
+    skip_tool_result: u32,
+    streaming: bool,
+    conn_info: ConnectionInfo,
+    os_user: String,
+    model_name: Option<String>,
+}
+
+// ── Event loop ───────────────────────────────────────────────────
+
+async fn run_event_loop(
+    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+    app: &mut App,
 ) -> Result<()> {
-    let mut stream = pin!(stream);
-    let mut renderer = MarkdownRenderer::new();
-    renderer.start_waiting();
-    // After an AskUser interaction, skip the echoed ToolResult + ToolDone
-    // for the ask_user tool — the user already saw their own answer.
-    let mut skip_tool_result: u32 = 0;
+    let mut events = EventStream::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(33));
+    let mut chunk_rx: Option<mpsc::UnboundedReceiver<Result<OutputChunk>>> = None;
 
     loop {
+        // Draw when dirty.
+        if app.dirty {
+            let width = terminal.size()?.width as usize;
+            app.renderer.set_width(width.saturating_sub(2));
+            terminal.draw(|f| draw(f, app))?;
+            app.dirty = false;
+        }
+
         tokio::select! {
-            chunk = stream.next() => {
-                match chunk {
-                    Some(Ok(OutputChunk::Text(text))) => {
-                        renderer.push_text(&text);
-                    }
-                    Some(Ok(OutputChunk::Thinking(text))) => {
-                        renderer.push_thinking(&text);
-                    }
-                    Some(Ok(OutputChunk::ToolStart(calls))) => {
-                        renderer.push_tool_start(&calls);
-                    }
-                    Some(Ok(OutputChunk::ToolResult(_id, output))) => {
-                        if skip_tool_result > 0 {
-                            skip_tool_result -= 1;
-                        } else {
-                            renderer.push_tool_result(&output);
-                        }
-                    }
-                    Some(Ok(OutputChunk::ToolDone(success))) => {
-                        renderer.push_tool_done(success);
-                    }
-                    Some(Ok(OutputChunk::AskUser { questions, session })) => {
-                        renderer.finish();
-                        println!();
-                        match ask_user_interactive(&questions).await {
-                            Ok(reply) => {
-                                if let Err(e) = send_reply(conn_info, session, reply).await {
-                                    eprintln!("failed to send reply: {e}");
-                                }
-                                // Reset renderer — the ask TUI took over the terminal,
-                                // so cursor tracking in the old renderer is invalid.
-                                println!();
-                                renderer = MarkdownRenderer::new();
-                                // Skip the ask_user tool result echo.
-                                skip_tool_result += 1;
-                            }
-                            Err(_) => {
-                                // User cancelled (Ctrl+C / Esc) — abort this
-                                // response but keep the session alive.
-                                break;
-                            }
-                        }
+            // Branch 1: stream chunks from daemon.
+            recv = async {
+                if let Some(rx) = &mut chunk_rx {
+                    rx.recv().await
+                } else {
+                    std::future::pending().await
+                }
+            } => {
+                match recv {
+                    Some(Ok(chunk)) => {
+                        handle_chunk(chunk, app);
+                        app.dirty = true;
                     }
                     Some(Err(e)) => {
-                        renderer.finish();
-                        eprintln!("\nError: {e}");
-                        break;
+                        app.renderer.finish();
+                        app.renderer.buffer.push(ChatEntry::Text(vec![
+                            Line::from(Span::styled(
+                                format!("Error: {e}"),
+                                Style::new().fg(Color::Red),
+                            )),
+                        ]));
+                        chunk_rx = None;
+                        app.streaming = false;
+                        app.dirty = true;
                     }
-                    None => break,
+                    None => {
+                        // Stream ended.
+                        app.renderer.finish();
+                        chunk_rx = None;
+                        app.streaming = false;
+                        app.scroll = 0;
+                        // Send queued message if any.
+                        if let Some(msg) = app.message_queue.pop_front() {
+                            chunk_rx = Some(start_stream(app, &msg));
+                        }
+                        app.dirty = true;
+                    }
                 }
             }
-            _ = tokio::signal::ctrl_c() => {
-                renderer.finish();
-                println!();
-                break;
+
+            // Branch 2: terminal events.
+            event = events.next() => {
+                match event {
+                    Some(Ok(Event::Key(key))) => {
+                        // Scroll keys.
+                        if key.code == KeyCode::PageUp {
+                            let chat_lines = app.renderer.buffer.lines().len();
+                            app.scroll = app.scroll.saturating_add(10).min(chat_lines.saturating_sub(1));
+                            app.dirty = true;
+                            continue;
+                        }
+                        if key.code == KeyCode::PageDown {
+                            app.scroll = app.scroll.saturating_sub(10);
+                            app.dirty = true;
+                            continue;
+                        }
+
+                        // Ctrl+C during streaming: cancel stream.
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && key.code == KeyCode::Char('c')
+                            && app.streaming
+                        {
+                            app.renderer.finish();
+                            chunk_rx = None;
+                            app.streaming = false;
+                            app.dirty = true;
+                            continue;
+                        }
+
+                        match app.input.handle_key(key) {
+                            InputAction::Submit(content) => {
+                                if content.is_empty() {
+                                    app.dirty = true;
+                                    continue;
+                                }
+                                // Echo user input in chat.
+                                app.renderer.buffer.push(ChatEntry::Text(vec![
+                                    Line::raw(""),
+                                    Line::from(Span::styled(
+                                        format!(" {} ", &content),
+                                        Style::new().bg(Color::Indexed(236)),
+                                    )),
+                                    Line::raw(""),
+                                ]));
+                                app.scroll = 0;
+
+                                // Handle slash commands.
+                                if content.starts_with('/') {
+                                    match handle_slash(&content).await? {
+                                        SlashResult::Handled => {}
+                                        SlashResult::NotSlash => {
+                                            send_or_queue(app, &mut chunk_rx, content);
+                                        }
+                                        SlashResult::Forward(cmd) => {
+                                            send_or_queue(app, &mut chunk_rx, cmd);
+                                        }
+                                        SlashResult::Exit => return Ok(()),
+                                        SlashResult::Resume => {
+                                            // Temporarily leave fullscreen for console.
+                                            crate::tui::teardown(terminal)?;
+                                            let console = crate::cmd::console::Console;
+                                            let socket_path = wcore::paths::SOCKET_PATH.to_path_buf();
+                                            if let Ok(runner) = Runner::connect(&socket_path).await
+                                                && let Ok(Some(path)) = console.run(runner).await
+                                            {
+                                                app.resume_file = Some(path.to_string_lossy().into_owned());
+                                            }
+                                            *terminal = crate::tui::setup()?;
+                                        }
+                                        SlashResult::Clear => {
+                                            app.renderer.buffer.clear();
+                                            app.renderer = MarkdownRenderer::new();
+                                            app.new_chat = true;
+                                            app.renderer.buffer.push(ChatEntry::Text(vec![
+                                                welcome_line(&app.agent, app.model_name.as_deref()),
+                                            ]));
+                                        }
+                                    }
+                                } else {
+                                    send_or_queue(app, &mut chunk_rx, content);
+                                }
+                                app.dirty = true;
+                            }
+                            InputAction::Interrupt => {
+                                if !app.streaming {
+                                    app.dirty = true;
+                                }
+                            }
+                            InputAction::Eof => {
+                                if !app.streaming {
+                                    return Ok(());
+                                }
+                            }
+                            InputAction::Noop => {
+                                app.dirty = true;
+                            }
+                        }
+                    }
+                    Some(Ok(Event::Resize(_, _))) => {
+                        app.dirty = true;
+                    }
+                    Some(Err(_)) => break,
+                    _ => {}
+                }
+            }
+
+            // Branch 3: render tick (animation).
+            _ = tick.tick() => {
+                app.frame_count += 1;
+                if app.renderer.waiting {
+                    app.dirty = true;
+                }
             }
         }
     }
-
-    renderer.finish();
     Ok(())
 }
 
-/// Present structured questions via inline ratatui TUI.
-///
-/// Returns a JSON string mapping question text to selected label(s).
-async fn ask_user_interactive(questions: &[AskQuestion]) -> Result<String> {
-    let questions = questions.to_vec();
-    tokio::task::spawn_blocking(move || {
-        let answers = ask::run_ask_inline(&questions)?;
-        Ok(serde_json::to_string(&answers)?)
-    })
-    .await?
+fn send_or_queue(
+    app: &mut App,
+    chunk_rx: &mut Option<mpsc::UnboundedReceiver<Result<OutputChunk>>>,
+    content: String,
+) {
+    if app.streaming {
+        // Show queued indicator.
+        let display = format!("  ⏳ queued: {}", &content);
+        app.message_queue.push_back(content);
+        app.renderer
+            .buffer
+            .push(ChatEntry::Text(vec![Line::from(Span::styled(
+                display,
+                Style::new().add_modifier(Modifier::DIM),
+            ))]));
+    } else {
+        *chunk_rx = Some(start_stream(app, &content));
+    }
+}
+
+fn start_stream(app: &mut App, content: &str) -> mpsc::UnboundedReceiver<Result<OutputChunk>> {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let conn_info = app.conn_info.clone();
+    let agent = app.agent.clone();
+    let content = content.to_string();
+    let sender = Some(app.os_user.clone());
+    let new_chat = app.new_chat;
+    let resume_file = app.resume_file.take();
+
+    app.streaming = true;
+    app.renderer.start_waiting();
+    app.new_chat = false;
+
+    tokio::spawn(async move {
+        let runner = Runner::connect_from(&conn_info).await;
+        let mut runner = match runner {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = tx.send(Err(e));
+                return;
+            }
+        };
+        let cwd = std::env::current_dir().ok();
+        let stream = runner.stream(
+            &agent,
+            &content,
+            cwd.as_deref(),
+            new_chat,
+            resume_file,
+            sender,
+        );
+        let mut stream = pin!(stream);
+        while let Some(chunk) = stream.next().await {
+            if tx.send(chunk).is_err() {
+                break;
+            }
+        }
+    });
+
+    rx
+}
+
+fn handle_chunk(chunk: OutputChunk, app: &mut App) {
+    match chunk {
+        OutputChunk::Text(text) => {
+            app.renderer.push_text(&text);
+        }
+        OutputChunk::Thinking(text) => {
+            app.renderer.push_thinking(&text);
+        }
+        OutputChunk::ToolStart(calls) => {
+            app.renderer.push_tool_start(&calls);
+        }
+        OutputChunk::ToolResult(_id, output) => {
+            if app.skip_tool_result > 0 {
+                app.skip_tool_result -= 1;
+            } else {
+                app.renderer.push_tool_result(&output);
+            }
+        }
+        OutputChunk::ToolDone(success) => {
+            app.renderer.push_tool_done(success);
+        }
+        OutputChunk::AskUser { questions, session } => {
+            // For now, show questions in chat and note them.
+            // Full modal overlay will be added in Phase 3.
+            app.renderer.finish();
+            let mut lines = vec![Line::from(Span::styled(
+                "  Agent is asking a question:",
+                Style::new().fg(Color::Yellow),
+            ))];
+            for q in &questions {
+                lines.push(Line::from(format!("  {}", q.question)));
+                for opt in &q.options {
+                    lines.push(Line::from(Span::styled(
+                        format!("    - {}", opt.label),
+                        Style::new().add_modifier(Modifier::DIM),
+                    )));
+                }
+            }
+            app.renderer.buffer.push(ChatEntry::Text(lines));
+            // Send default answer for now (first option of each question).
+            let answers: std::collections::HashMap<String, String> = questions
+                .iter()
+                .map(|q| {
+                    let answer = q
+                        .options
+                        .first()
+                        .map(|o| o.label.clone())
+                        .unwrap_or_default();
+                    (q.question.clone(), answer)
+                })
+                .collect();
+            let reply = serde_json::to_string(&answers).unwrap_or_default();
+            let conn_info = app.conn_info.clone();
+            tokio::spawn(async move {
+                let _ = send_reply(&conn_info, session, reply).await;
+            });
+            app.skip_tool_result += 1;
+        }
+    }
+    // Auto-scroll to bottom on new content.
+    app.scroll = 0;
+}
+
+// ── Drawing ──────────────────────────────────────────────────────
+
+fn draw(frame: &mut ratatui::Frame, app: &App) {
+    let input_height = app.input.height().min(frame.area().height / 3).max(3);
+
+    let chunks = Layout::vertical([Constraint::Min(1), Constraint::Length(input_height)])
+        .split(frame.area());
+
+    // ── Chat area ──
+    draw_chat(frame, chunks[0], app);
+
+    // ── Input box ──
+    app.input
+        .render(frame, chunks[1], &app.agent, &app.chat_title);
+}
+
+fn draw_chat(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app: &App) {
+    let mut lines = app.renderer.buffer.lines();
+
+    // Append the partially-streamed current line.
+    if let Some(current) = app.renderer.current_line() {
+        lines.push(current);
+    }
+
+    // Waiting spinner.
+    if app.renderer.waiting {
+        let spinner_char = if app.frame_count % 30 < 15 {
+            "⏺"
+        } else {
+            " "
+        };
+        lines.push(Line::from(Span::styled(
+            spinner_char,
+            Style::new()
+                .fg(Color::Indexed(173))
+                .add_modifier(Modifier::DIM),
+        )));
+    }
+
+    let total_lines = lines.len() as u16;
+    let visible = area.height;
+
+    // Compute scroll offset.  scroll=0 means "follow bottom".
+    let max_scroll = total_lines.saturating_sub(visible);
+    let scroll_offset = if app.scroll == 0 {
+        max_scroll
+    } else {
+        max_scroll.saturating_sub(app.scroll as u16)
+    };
+
+    let paragraph = Paragraph::new(lines).scroll((scroll_offset, 0));
+    frame.render_widget(paragraph, area);
+}
+
+// ── Legacy helpers kept for other callers (e.g. hub.rs) ──────────
+
+/// Consume a stream of output chunks (legacy — used by hub.rs).
+pub(crate) async fn stream_to_terminal(
+    stream: impl futures_core::Stream<Item = Result<OutputChunk>>,
+    _conn_info: &ConnectionInfo,
+) -> Result<()> {
+    use std::io::Write;
+    let mut stream = pin!(stream);
+    let mut renderer = MarkdownRenderer::new();
+    renderer.start_waiting();
+
+    while let Some(chunk) = stream.next().await {
+        match chunk? {
+            OutputChunk::Text(text) => renderer.push_text(&text),
+            OutputChunk::Thinking(text) => renderer.push_thinking(&text),
+            OutputChunk::ToolStart(calls) => renderer.push_tool_start(&calls),
+            OutputChunk::ToolResult(_id, output) => renderer.push_tool_result(&output),
+            OutputChunk::ToolDone(success) => renderer.push_tool_done(success),
+            OutputChunk::AskUser { .. } => {}
+        }
+    }
+    renderer.finish();
+
+    // Dump buffer to stdout for legacy callers.
+    let lines = renderer.buffer.lines();
+    let mut stdout = std::io::stdout().lock();
+    for line in &lines {
+        for span in &line.spans {
+            write!(stdout, "{}", span.content)?;
+        }
+        writeln!(stdout)?;
+    }
+    stdout.flush()?;
+    Ok(())
 }

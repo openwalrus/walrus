@@ -744,3 +744,173 @@ fn show_dropdown(
         }
     }
 }
+
+// ── Full-screen input API ────────────────────────────────────────
+//
+// Used by the concurrent REPL (Phase 2).  The blocking `read_line` API
+// above is kept for backward compatibility until the old REPL is removed.
+
+/// Action returned by [`InputState::handle_key`].
+pub enum InputAction {
+    /// User submitted content (Enter).
+    Submit(String),
+    /// User pressed Ctrl+C.
+    Interrupt,
+    /// User pressed Ctrl+D on empty input.
+    Eof,
+    /// Nothing to do (key consumed internally).
+    Noop,
+}
+
+/// Input widget state for the full-screen REPL.
+pub struct InputState {
+    buf: InputBuffer,
+    pub history: History,
+}
+
+impl InputState {
+    pub fn new(history: History) -> Self {
+        Self {
+            buf: InputBuffer::new(),
+            history,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    /// Height of the input widget (content lines + 2 for borders).
+    pub fn height(&self) -> u16 {
+        self.buf.lines.len() as u16 + 2
+    }
+
+    /// Process a key event.  Returns an action if the REPL should react.
+    pub fn handle_key(&mut self, key: event::KeyEvent) -> InputAction {
+        // Ctrl+C
+        if key.modifiers.contains(event::KeyModifiers::CONTROL)
+            && key.code == event::KeyCode::Char('c')
+        {
+            return InputAction::Interrupt;
+        }
+        // Ctrl+D on empty
+        if key.modifiers.contains(event::KeyModifiers::CONTROL)
+            && key.code == event::KeyCode::Char('d')
+            && self.buf.is_empty()
+        {
+            return InputAction::Eof;
+        }
+
+        match key.code {
+            event::KeyCode::Enter => {
+                if key.modifiers.contains(event::KeyModifiers::SHIFT) {
+                    self.buf.insert_newline();
+                } else {
+                    let content = self.buf.content();
+                    self.history.push(&content);
+                    self.buf = InputBuffer::new();
+                    return InputAction::Submit(content);
+                }
+            }
+            event::KeyCode::Up => {
+                if self.buf.is_multiline() && self.buf.cursor.0 > 0 {
+                    self.buf.move_up();
+                } else if let Some(entry) = self.history.prev(&self.buf.content()) {
+                    self.buf = InputBuffer::from_str(entry);
+                }
+            }
+            event::KeyCode::Down => {
+                if self.buf.is_multiline() && self.buf.cursor.0 + 1 < self.buf.lines.len() {
+                    self.buf.move_down();
+                } else if let Some(entry) = self.history.next() {
+                    self.buf = InputBuffer::from_str(entry);
+                }
+            }
+            code => {
+                let old_len = self.buf.content().len();
+                self.buf.handle_key(code);
+                if self.buf.content().len() != old_len {
+                    self.history.reset_cursor();
+                }
+            }
+        }
+        InputAction::Noop
+    }
+
+    /// Render the input box into the given area.
+    pub fn render(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        agent: &str,
+        title: &str,
+    ) {
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(RStyle::default().fg(RColor::Rgb(136, 136, 136)))
+            .title_top(
+                Line::from(format!(" {agent} > "))
+                    .style(RStyle::default().fg(RColor::Rgb(215, 119, 87))),
+            );
+
+        if !title.is_empty() {
+            block = block.title_top(
+                Line::from(vec![
+                    Span::styled(
+                        format!(" {title} "),
+                        RStyle::default()
+                            .fg(RColor::White)
+                            .bg(RColor::Rgb(60, 60, 60)),
+                    ),
+                    Span::styled("─", RStyle::default().fg(RColor::Rgb(136, 136, 136))),
+                ])
+                .alignment(Alignment::Right),
+            );
+        }
+
+        let lines: Vec<Line> = self
+            .buf
+            .lines
+            .iter()
+            .enumerate()
+            .map(|(i, line)| {
+                let prefix = if i == 0 { "> " } else { ".. " };
+                let prefix_style = if i == 0 {
+                    RStyle::default().fg(RColor::Rgb(215, 119, 87))
+                } else {
+                    RStyle::default().fg(RColor::DarkGray)
+                };
+
+                if i == 0 && line.starts_with('/') {
+                    let (cmd, rest) = line.split_once(' ').unwrap_or((line, ""));
+                    let mut spans = vec![
+                        Span::styled(prefix, prefix_style),
+                        Span::styled(
+                            cmd.to_string(),
+                            RStyle::default().fg(RColor::Rgb(160, 160, 160)),
+                        ),
+                    ];
+                    if !rest.is_empty() {
+                        spans.push(Span::raw(format!(" {rest}")));
+                    }
+                    Line::from(spans)
+                } else {
+                    Line::from(vec![
+                        Span::styled(prefix, prefix_style),
+                        Span::raw(line.as_str()),
+                    ])
+                }
+            })
+            .collect();
+
+        let paragraph = Paragraph::new(lines).block(block);
+        frame.render_widget(paragraph, area);
+
+        // Position cursor inside the input box.
+        let (cur_line, cur_col) = self.buf.cursor;
+        let prefix_w: u16 = if cur_line == 0 { 2 } else { 3 };
+        let x = area.x + 1 + prefix_w + cur_col as u16;
+        let y = area.y + 1 + cur_line as u16;
+        frame.set_cursor_position((x, y));
+    }
+}
