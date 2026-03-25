@@ -1,5 +1,5 @@
 use crate::{
-    cmd::auth::{AuthState, Focus, McpData, Tab},
+    cmd::auth::{AuthState, Focus, McpData, McpSource, Tab},
     tui::{border_dim, border_focused, char_to_byte, handle_text_input, mask_token},
 };
 use anyhow::Result;
@@ -11,6 +11,21 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+fn selected_is_hub(state: &AuthState) -> bool {
+    state
+        .mcps
+        .get(state.mcp_selected)
+        .is_some_and(|m| matches!(m.source, McpSource::Hub(_)))
+}
+
+fn has_token(name: &str) -> bool {
+    wcore::paths::TOKENS_DIR
+        .join(format!("{name}.json"))
+        .exists()
+}
 
 // ── MCPs key handling ───────────────────────────────────────────────
 
@@ -33,7 +48,9 @@ pub(crate) fn handle_mcps_key(
                     }
                 }
                 KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-                    if let Some(mcp) = state.mcps.get(state.mcp_selected)
+                    if selected_is_hub(state) {
+                        state.status = String::from("Hub packages are read-only");
+                    } else if let Some(mcp) = state.mcps.get(state.mcp_selected)
                         && !mcp.env.is_empty()
                     {
                         state.mcp_env_selected = 0;
@@ -45,12 +62,25 @@ pub(crate) fn handle_mcps_key(
                 }
                 KeyCode::Char('n') => {
                     state.mcp_add_step = 0;
+                    state.mcp_add_http = false;
                     state.edit_buf = String::new();
                     state.cursor = 0;
                     state.focus = Focus::AddMcp;
                 }
+                KeyCode::Char('o') => {
+                    if let Some(mcp) = state.mcps.get(state.mcp_selected)
+                        && mcp.url.is_some()
+                    {
+                        state.pending_login = Some(mcp.name.clone());
+                        return Ok(Some(Ok(())));
+                    } else {
+                        state.status = String::from("OAuth only applies to HTTP MCPs");
+                    }
+                }
                 KeyCode::Char('d') | KeyCode::Delete => {
-                    if !state.mcps.is_empty() {
+                    if selected_is_hub(state) {
+                        state.status = String::from("Use `hub uninstall` to remove");
+                    } else if !state.mcps.is_empty() {
                         state.mcps.remove(state.mcp_selected);
                         if state.mcp_selected >= state.mcps.len() && !state.mcps.is_empty() {
                             state.mcp_selected = state.mcps.len() - 1;
@@ -130,7 +160,7 @@ fn handle_add_mcp(key: crossterm::event::KeyEvent, state: &mut AuthState) {
     match key.code {
         KeyCode::Esc => {
             // Cancel: remove partially added MCP if we already created one.
-            if state.mcp_add_step > 0 {
+            if state.mcp_add_step > 1 {
                 state.mcps.pop();
                 if state.mcp_selected >= state.mcps.len() && !state.mcps.is_empty() {
                     state.mcp_selected = state.mcps.len() - 1;
@@ -147,30 +177,39 @@ fn handle_add_mcp(key: crossterm::event::KeyEvent, state: &mut AuthState) {
                         state.status = String::from("Name cannot be empty");
                         return;
                     }
-                    state.mcps.push(McpData {
-                        name: buf,
-                        command: String::new(),
-                        args: Vec::new(),
-                        env: Vec::new(),
-                    });
-                    state.mcp_selected = state.mcps.len() - 1;
                     state.mcp_add_step = 1;
-                    state.edit_buf = String::new();
+                    state.edit_buf = buf;
                     state.cursor = 0;
-                    state.status = String::from("Enter command");
+                    state.status = String::from("Transport: s=stdio, h=http");
                 }
                 1 => {
-                    // Command step.
+                    // Transport step — handled by char keys below.
+                    state.status = String::from("Press s for stdio or h for http");
+                }
+                2 if state.mcp_add_http => {
+                    // URL step.
+                    if buf.is_empty() {
+                        state.status = String::from("URL cannot be empty");
+                        return;
+                    }
+                    if let Some(mcp) = state.mcps.last_mut() {
+                        mcp.url = Some(buf);
+                    }
+                    state.focus = Focus::List;
+                    state.status = String::from("MCP added");
+                }
+                2 => {
+                    // Command step (stdio).
                     if let Some(mcp) = state.mcps.last_mut() {
                         mcp.command = buf;
                     }
-                    state.mcp_add_step = 2;
+                    state.mcp_add_step = 3;
                     state.edit_buf = String::new();
                     state.cursor = 0;
                     state.status = String::from("Enter args (space-separated)");
                 }
-                2 => {
-                    // Args step.
+                3 => {
+                    // Args step (stdio).
                     if let Some(mcp) = state.mcps.last_mut() {
                         mcp.args = if buf.is_empty() {
                             Vec::new()
@@ -184,7 +223,33 @@ fn handle_add_mcp(key: crossterm::event::KeyEvent, state: &mut AuthState) {
                 _ => {}
             }
         }
-        _ => handle_text_input(key.code, &mut state.edit_buf, &mut state.cursor),
+        KeyCode::Char('s') | KeyCode::Char('h') if state.mcp_add_step == 1 => {
+            let is_http = key.code == KeyCode::Char('h');
+            state.mcp_add_http = is_http;
+            let name = state.edit_buf.clone();
+            state.mcps.push(McpData {
+                name,
+                command: String::new(),
+                args: Vec::new(),
+                env: Vec::new(),
+                url: None,
+                auth: false,
+                source: McpSource::Local,
+            });
+            state.mcp_selected = state.mcps.len() - 1;
+            state.mcp_add_step = 2;
+            state.edit_buf = String::new();
+            state.cursor = 0;
+            state.status = if is_http {
+                String::from("Enter URL")
+            } else {
+                String::from("Enter command")
+            };
+        }
+        _ if state.mcp_add_step != 1 => {
+            handle_text_input(key.code, &mut state.edit_buf, &mut state.cursor);
+        }
+        _ => {}
     }
 }
 
@@ -235,10 +300,12 @@ pub(crate) fn render_mcps(frame: &mut Frame, state: &AuthState, area: Rect) {
 }
 
 fn render_add_mcp(frame: &mut Frame, state: &AuthState, area: Rect) {
-    let step_label = match state.mcp_add_step {
-        0 => "Name",
-        1 => "Command",
-        2 => "Args (space-separated)",
+    let step_label = match (state.mcp_add_step, state.mcp_add_http) {
+        (0, _) => "Name",
+        (1, _) => "Transport (s=stdio, h=http)",
+        (2, true) => "URL",
+        (2, false) => "Command",
+        (3, _) => "Args (space-separated)",
         _ => "",
     };
     let block = Block::default()
@@ -248,20 +315,42 @@ fn render_add_mcp(frame: &mut Frame, state: &AuthState, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let byte_pos = char_to_byte(&state.edit_buf, state.cursor);
-    let mut s = state.edit_buf.clone();
-    s.insert(byte_pos, '|');
+    if state.mcp_add_step == 1 {
+        // Transport selector — no text input, just s/h keys.
+        let line = Line::from(vec![
+            Span::styled(" Press ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "s",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" for stdio, ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "h",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" for http", Style::default().fg(Color::DarkGray)),
+        ]);
+        frame.render_widget(Paragraph::new(line), inner);
+    } else {
+        let byte_pos = char_to_byte(&state.edit_buf, state.cursor);
+        let mut s = state.edit_buf.clone();
+        s.insert(byte_pos, '|');
 
-    let line = Line::from(vec![
-        Span::styled(
-            format!(" {step_label}: "),
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(s, Style::default().fg(Color::Green)),
-    ]);
-    frame.render_widget(Paragraph::new(line), inner);
+        let line = Line::from(vec![
+            Span::styled(
+                format!(" {step_label}: "),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(s, Style::default().fg(Color::Green)),
+        ]);
+        frame.render_widget(Paragraph::new(line), inner);
+    }
 }
 
 fn render_mcp_list(frame: &mut Frame, state: &AuthState, area: Rect) {
@@ -281,12 +370,29 @@ fn render_mcp_list(frame: &mut Frame, state: &AuthState, area: Rect) {
         .enumerate()
         .map(|(i, mcp)| {
             let marker = if i == state.mcp_selected { "> " } else { "  " };
-            let has_env = if mcp.env.iter().any(|(_, v)| !v.is_empty()) {
+
+            // Auth/status indicator.
+            let indicator = if mcp.url.is_some() {
+                if has_token(&mcp.name) {
+                    " \u{2713}" // ✓
+                } else if mcp.auth {
+                    " !" // needs login
+                } else {
+                    ""
+                }
+            } else if mcp.env.iter().any(|(_, v)| !v.is_empty()) {
                 " *"
             } else {
                 ""
             };
-            let text = format!("{marker}{}{has_env}", mcp.name);
+
+            let hub_tag = if matches!(mcp.source, McpSource::Hub(_)) {
+                " [hub]"
+            } else {
+                ""
+            };
+
+            let text = format!("{marker}{}{indicator}{hub_tag}", mcp.name);
             let style = if i == state.mcp_selected {
                 Style::default()
                     .fg(Color::Yellow)
@@ -336,27 +442,58 @@ fn render_mcp_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Command.
-    let cmd_val = if mcp.command.is_empty() {
-        Span::styled("(none)", dim_style)
-    } else {
-        Span::styled(&mcp.command, Style::default().fg(Color::White))
+    // Source.
+    let source_text = match &mcp.source {
+        McpSource::Local => "local",
+        McpSource::Hub(pkg) => pkg.as_str(),
     };
     lines.push(Line::from(vec![
-        Span::styled(" command: ", label_style),
-        cmd_val,
+        Span::styled("  source: ", label_style),
+        Span::styled(source_text, Style::default().fg(Color::DarkGray)),
     ]));
 
-    // Args.
-    let args_display = if mcp.args.is_empty() {
-        Span::styled("(none)", dim_style)
+    // Transport.
+    if let Some(ref url) = mcp.url {
+        lines.push(Line::from(vec![
+            Span::styled("     url: ", label_style),
+            Span::styled(url, Style::default().fg(Color::White)),
+        ]));
+
+        // Auth status.
+        let (auth_text, auth_color) = if has_token(&mcp.name) {
+            ("\u{2713} logged in", Color::Green)
+        } else if mcp.auth {
+            ("! not authenticated (press o)", Color::Red)
+        } else {
+            ("none", Color::DarkGray)
+        };
+        lines.push(Line::from(vec![
+            Span::styled("    auth: ", label_style),
+            Span::styled(auth_text, Style::default().fg(auth_color)),
+        ]));
     } else {
-        Span::styled(mcp.args.join(" "), Style::default().fg(Color::White))
-    };
-    lines.push(Line::from(vec![
-        Span::styled("    args: ", label_style),
-        args_display,
-    ]));
+        // Command.
+        let cmd_val = if mcp.command.is_empty() {
+            Span::styled("(none)", dim_style)
+        } else {
+            Span::styled(&mcp.command, Style::default().fg(Color::White))
+        };
+        lines.push(Line::from(vec![
+            Span::styled(" command: ", label_style),
+            cmd_val,
+        ]));
+
+        // Args.
+        let args_display = if mcp.args.is_empty() {
+            Span::styled("(none)", dim_style)
+        } else {
+            Span::styled(mcp.args.join(" "), Style::default().fg(Color::White))
+        };
+        lines.push(Line::from(vec![
+            Span::styled("    args: ", label_style),
+            args_display,
+        ]));
+    }
 
     // Separator.
     lines.push(Line::raw(""));

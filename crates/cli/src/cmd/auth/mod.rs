@@ -55,7 +55,13 @@ pub struct AuthLogout {
 impl Auth {
     pub async fn run(self) -> Result<()> {
         match self.command {
-            None => tui::run_app(AuthState::load, render, handle_key),
+            None => {
+                let state = tui::run_app_with_state(AuthState::load, render, handle_key)?;
+                if let Some(name) = state.pending_login {
+                    oauth::login(&name).await?;
+                }
+                Ok(())
+            }
             Some(AuthCommand::Login(cmd)) => oauth::login(&cmd.name).await,
             Some(AuthCommand::Logout(cmd)) => oauth::logout(&cmd.name),
         }
@@ -142,6 +148,15 @@ pub(crate) struct McpData {
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
     pub(crate) env: Vec<(String, String)>,
+    pub(crate) url: Option<String>,
+    pub(crate) auth: bool,
+    pub(crate) source: McpSource,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum McpSource {
+    Local,
+    Hub(String),
 }
 
 // ── Focus states ─────────────────────────────────────────────────────
@@ -175,7 +190,10 @@ pub(crate) struct AuthState {
     pub(crate) mcps: Vec<McpData>,
     pub(crate) mcp_selected: usize,
     pub(crate) mcp_env_selected: usize,
-    pub(crate) mcp_add_step: usize, // 0=name, 1=command, 2=args
+    pub(crate) mcp_add_step: usize, // 0=name, 1=transport, 2=command/url, 3=args
+    pub(crate) mcp_add_http: bool,  // true when adding an HTTP MCP
+    // OAuth.
+    pub(crate) pending_login: Option<String>,
     // Shared.
     pub(crate) status: String,
 }
@@ -292,12 +310,68 @@ impl AuthState {
                             env.push((k.to_string(), val));
                         }
                     }
+                    let url = tbl.get("url").and_then(|v| v.as_str()).map(String::from);
+                    let auth = tbl.get("auth").and_then(|v| v.as_bool()).unwrap_or(false);
                     mcps.push(McpData {
                         name: name.to_string(),
                         command,
                         args,
                         env,
+                        url,
+                        auth,
+                        source: McpSource::Local,
                     });
+                }
+            }
+        }
+
+        // Load hub-installed MCPs (read-only).
+        let packages_dir = wcore::paths::CONFIG_DIR.join(wcore::paths::PACKAGES_DIR);
+        if let Ok(scopes) = std::fs::read_dir(&packages_dir) {
+            for scope_entry in scopes.flatten() {
+                let scope_path = scope_entry.path();
+                let toml_files: Vec<_> = if scope_path.is_dir() {
+                    std::fs::read_dir(&scope_path)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().is_some_and(|e| e == "toml"))
+                        .collect()
+                } else if scope_path.extension().is_some_and(|e| e == "toml") {
+                    vec![scope_path.clone()]
+                } else {
+                    continue;
+                };
+
+                for toml_path in toml_files {
+                    let pkg_id = toml_path
+                        .strip_prefix(&packages_dir)
+                        .unwrap_or(&toml_path)
+                        .with_extension("")
+                        .to_string_lossy()
+                        .into_owned();
+                    if let Ok(Some(manifest)) = wcore::ManifestConfig::load(&toml_path) {
+                        for (name, cfg) in &manifest.mcps {
+                            // Skip if already loaded as local (local wins).
+                            if mcps.iter().any(|m| m.name == *name) {
+                                continue;
+                            }
+                            mcps.push(McpData {
+                                name: name.clone(),
+                                command: cfg.command.clone(),
+                                args: cfg.args.clone(),
+                                env: cfg
+                                    .env
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect(),
+                                url: cfg.url.clone(),
+                                auth: cfg.auth,
+                                source: McpSource::Hub(pkg_id.clone()),
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -318,6 +392,8 @@ impl AuthState {
             mcp_selected: 0,
             mcp_env_selected: 0,
             mcp_add_step: 0,
+            mcp_add_http: false,
+            pending_login: None,
             status: String::from("Ready"),
         })
     }
@@ -417,19 +493,31 @@ impl AuthState {
             .with_context(|| format!("invalid TOML in {}", manifest_path.display()))?;
 
         manifest_doc.remove("mcps");
-        if !self.mcps.is_empty() {
+        let local_mcps: Vec<_> = self
+            .mcps
+            .iter()
+            .filter(|m| m.source == McpSource::Local)
+            .collect();
+        if !local_mcps.is_empty() {
             let mut mcps_table = Table::new();
-            for mcp in &self.mcps {
+            for mcp in local_mcps {
                 let mut tbl = Table::new();
-                if !mcp.command.is_empty() {
-                    tbl.insert("command", value(&mcp.command));
-                }
-                if !mcp.args.is_empty() {
-                    let mut arr = Array::new();
-                    for a in &mcp.args {
-                        arr.push(a.as_str());
+                if let Some(ref url) = mcp.url {
+                    tbl.insert("url", value(url));
+                } else {
+                    if !mcp.command.is_empty() {
+                        tbl.insert("command", value(&mcp.command));
                     }
-                    tbl.insert("args", Item::Value(arr.into()));
+                    if !mcp.args.is_empty() {
+                        let mut arr = Array::new();
+                        for a in &mcp.args {
+                            arr.push(a.as_str());
+                        }
+                        tbl.insert("args", Item::Value(arr.into()));
+                    }
+                }
+                if mcp.auth {
+                    tbl.insert("auth", value(true));
                 }
                 if !mcp.env.is_empty() {
                     let mut env_tbl = Table::new();
@@ -678,6 +766,8 @@ fn render_status(frame: &mut Frame, state: &AuthState, area: Rect) {
             Span::raw("New  "),
             Span::styled("Enter ", Style::default().fg(Color::Cyan)),
             Span::raw("Edit  "),
+            Span::styled("o ", Style::default().fg(Color::Cyan)),
+            Span::raw("Login  "),
             Span::styled("d ", Style::default().fg(Color::Cyan)),
             Span::raw("Delete  "),
             Span::styled("Ctrl+S ", Style::default().fg(Color::Cyan)),

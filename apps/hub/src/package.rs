@@ -67,8 +67,13 @@ pub async fn install(
     let manifest = read_manifest_from(&hub_dir, scope, name)?;
     let manifest_src = hub_dir.join(scope).join(format!("{name}.toml"));
 
-    // Clone the source repo to .cache/repos/{slug}/ if it has a repository URL.
-    let repo_dir = if !manifest.package.repository.is_empty() {
+    // Clone the source repo if the package has resources that live in
+    // the repo (setup scripts, agents, or skills). Packages that only
+    // declare MCPs or commands don't need the repo — MCPs connect
+    // directly and commands are installed via `cargo install`.
+    let mcp_only =
+        manifest.package.setup.is_none() && manifest.agents.is_empty() && !manifest.mcps.is_empty();
+    let repo_dir = if !manifest.package.repository.is_empty() && !mcp_only {
         on_step("cloning source repo…");
         let slug = wcore::repo_slug(&manifest.package.repository);
         let dir = CONFIG_DIR.join(".cache").join("repos").join(&slug);

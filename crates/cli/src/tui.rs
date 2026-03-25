@@ -31,6 +31,23 @@ pub fn run_app<S>(
     result
 }
 
+/// Run a TUI application, returning the final state on exit.
+///
+/// Same as [`run_app`] but hands the state back to the caller so it can
+/// inspect flags set during the session (e.g. `pending_login`).
+pub fn run_app_with_state<S>(
+    init: impl FnOnce() -> Result<S>,
+    draw: impl Fn(&mut ratatui::Frame, &S),
+    handle_key: impl Fn(event::KeyEvent, &mut S) -> Result<Option<Result<()>>>,
+) -> Result<S> {
+    let mut terminal = setup()?;
+    let mut state = init()?;
+    let result = event_loop(&mut terminal, &mut state, &draw, &handle_key);
+    teardown(&mut terminal)?;
+    result?;
+    Ok(state)
+}
+
 /// Prepare terminal for TUI. Returns the terminal handle.
 /// Call `teardown` when done.
 pub fn setup() -> Result<Terminal<CrosstermBackend<Stdout>>> {
