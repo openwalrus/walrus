@@ -51,19 +51,31 @@ impl ChatRepl {
         })
     }
 
+    /// Resume a specific session file in the interactive REPL.
+    pub async fn resume(&mut self, path: PathBuf) -> Result<()> {
+        let title = wcore::Session::load_context(&path)
+            .ok()
+            .map(|(meta, _)| meta.title)
+            .unwrap_or_default();
+        let resume_file = Some(path.to_string_lossy().into_owned());
+        self.run_inner(title, resume_file).await
+    }
+
     /// Run the full-screen interactive REPL loop.
     pub async fn run(&mut self) -> Result<()> {
+        let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
+        let chat_title =
+            wcore::find_latest_session(&wcore::paths::SESSIONS_DIR, &self.agent, &os_user)
+                .and_then(|path| wcore::Session::load_context(&path).ok())
+                .map(|(meta, _)| meta.title)
+                .unwrap_or_default();
+        self.run_inner(chat_title, None).await
+    }
+
+    async fn run_inner(&mut self, chat_title: String, resume_file: Option<String>) -> Result<()> {
         let model = self.fetch_model_name().await;
         let conn_info = self.runner.conn_info().clone();
         let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
-
-        let mut chat_title = String::new();
-        if let Some(path) =
-            wcore::find_latest_session(&wcore::paths::SESSIONS_DIR, &self.agent, &os_user)
-            && let Ok((meta, _)) = wcore::Session::load_context(&path)
-        {
-            chat_title = meta.title;
-        }
 
         let history = std::mem::take(&mut self.history);
         let mut app = App {
@@ -74,7 +86,7 @@ impl ChatRepl {
             agent: self.agent.clone(),
             chat_title,
             new_chat: false,
-            resume_file: None,
+            resume_file,
             dirty: true,
             frame_count: 0,
             skip_tool_result: 0,
@@ -354,6 +366,7 @@ async fn run_event_loop(
                                             app.renderer.buffer.clear();
                                             app.renderer = MarkdownRenderer::new();
                                             app.new_chat = true;
+                                            app.chat_title.clear();
                                             app.renderer.buffer.push(ChatEntry::Text(vec![
                                                 welcome_line(&app.agent, app.model_name.as_deref()),
                                             ]));

@@ -53,7 +53,14 @@ impl Cli {
             }
             Command::Console(cmd) => {
                 let runner = connect_uds(&socket_path).await?;
-                cmd.run(runner).await.map(|_| ())
+                let selected = cmd.run(runner).await?;
+                if let Some(path) = selected {
+                    let runner = connect_uds(&socket_path).await?;
+                    let mut repl = crate::repl::ChatRepl::new(runner, "crab".into())?;
+                    repl.resume(path).await
+                } else {
+                    Ok(())
+                }
             }
             Command::Hub(cmd) => {
                 let mut runner = connect_uds(&socket_path).await?;
