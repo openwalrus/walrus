@@ -11,7 +11,7 @@ use crate::repl::chat::{
 use console::style;
 use heck::ToUpperCamelCase;
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
 };
 use std::sync::LazyLock;
@@ -133,7 +133,7 @@ impl MarkdownRenderer {
         if self.first_line || !self.started {
             // First line gets the ⏺ marker prefix.
             Some(Line::from(vec![
-                Span::styled("⏺ ", Style::new().fg(Color::Indexed(173))),
+                Span::styled("⏺ ", Style::new().add_modifier(Modifier::DIM)),
                 Span::raw(self.line_buf.clone()),
             ]))
         } else {
@@ -311,7 +311,7 @@ impl MarkdownRenderer {
             _ => {
                 // Use ⏺ marker on the first line, PAD otherwise.
                 let prefix = if self.first_line {
-                    Span::styled("⏺ ", Style::new().fg(Color::Indexed(173)))
+                    Span::styled("⏺ ", Style::new().add_modifier(Modifier::DIM))
                 } else {
                     Span::raw(PAD.to_string())
                 };
@@ -401,7 +401,7 @@ impl MarkdownRenderer {
                 .into_iter()
                 .skip_while(|s| s.content.chars().all(|c| c == ' '))
                 .collect();
-            let mut new_spans = vec![Span::styled("⏺ ", Style::new().fg(Color::Indexed(173)))];
+            let mut new_spans = vec![Span::styled("⏺ ", Style::new().add_modifier(Modifier::DIM))];
             new_spans.extend(spans);
             lines.insert(0, Line::from(new_spans));
         }

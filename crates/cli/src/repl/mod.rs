@@ -65,7 +65,7 @@ impl ChatRepl {
             chat_title = meta.title;
         }
 
-        let history = std::mem::replace(&mut self.history, History::new());
+        let history = std::mem::take(&mut self.history);
         let mut app = App {
             renderer: MarkdownRenderer::new(),
             input: InputState::new(history),
@@ -98,7 +98,7 @@ impl ChatRepl {
         crate::tui::teardown(&mut terminal)?;
 
         // Save history back.
-        self.history = std::mem::replace(&mut app.input.history, History::new());
+        self.history = std::mem::take(&mut app.input.history);
         self.save_history();
 
         result
@@ -504,9 +504,7 @@ fn draw_chat(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app: &App)
         };
         lines.push(Line::from(Span::styled(
             spinner_char,
-            Style::new()
-                .fg(Color::Indexed(173))
-                .add_modifier(Modifier::DIM),
+            Style::new().add_modifier(Modifier::DIM),
         )));
     }
 

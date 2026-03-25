@@ -72,6 +72,10 @@ impl ChatBuffer {
         self.entries.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Mutable access to entries (for updating tool labels in-place).
     pub fn entries_mut(&mut self) -> &mut Vec<ChatEntry> {
         &mut self.entries
@@ -85,11 +89,11 @@ impl ChatBuffer {
             ToolStatus::Failure
         };
         for entry in self.entries.iter_mut().rev() {
-            if let ChatEntry::ToolMarker { status: s, .. } = entry {
-                if *s == ToolStatus::Running {
-                    *s = status;
-                    return;
-                }
+            if let ChatEntry::ToolMarker { status: s, .. } = entry
+                && *s == ToolStatus::Running
+            {
+                *s = status;
+                return;
             }
         }
     }
