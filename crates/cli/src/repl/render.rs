@@ -164,8 +164,13 @@ impl MarkdownRenderer {
         for ch in chunk.chars() {
             if ch == '\n' {
                 let line = std::mem::take(&mut self.line_buf);
+                let non_empty = !line.is_empty();
                 self.render_line(&line);
-                self.first_line = false;
+                // Only consume first_line on actual content — blank lines
+                // (common at response start) must not eat the ⏺ marker.
+                if non_empty {
+                    self.first_line = false;
+                }
             } else {
                 self.line_buf.push(ch);
             }
@@ -206,9 +211,7 @@ impl MarkdownRenderer {
         self.finalize_line_buf();
         self.waiting = false;
 
-        if !self.last_was_blank {
-            self.buffer.push(ChatEntry::Blank);
-        }
+        self.buffer.push(ChatEntry::Blank);
 
         self.tool_labels.clear();
         self.tool_failed = false;
