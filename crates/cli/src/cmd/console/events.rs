@@ -10,6 +10,19 @@ use ratatui::{
 };
 use wcore::protocol::message::{AgentEventKind, AgentEventMsg};
 
+const SESSION_COLORS: &[Color] = &[
+    Color::LightMagenta,
+    Color::LightCyan,
+    Color::LightGreen,
+    Color::LightYellow,
+    Color::LightBlue,
+    Color::LightRed,
+];
+
+fn session_color(session_id: u64) -> Color {
+    SESSION_COLORS[session_id as usize % SESSION_COLORS.len()]
+}
+
 pub(super) struct EventEntry {
     pub(super) timestamp: String,
     pub(super) msg: AgentEventMsg,
@@ -67,6 +80,7 @@ pub(super) fn render_events(
                 format!(": {display}")
             };
             let kind_color = Color::Rgb(215, 119, 87);
+            let session_color = session_color(entry.msg.session);
             Line::from(vec![
                 Span::styled(
                     format!("  [{}] ", entry.timestamp),
@@ -75,7 +89,7 @@ pub(super) fn render_events(
                 Span::styled(
                     format!("{}({}) ", entry.msg.agent, entry.msg.session),
                     Style::default()
-                        .fg(Color::LightMagenta)
+                        .fg(session_color)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
