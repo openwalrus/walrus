@@ -20,7 +20,7 @@ crabtalk-command.workspace = true
 
 anyhow.workspace = true
 clap.workspace = true
-dialoguer.workspace = true
+crossterm.workspace = true
 futures-util.workspace = true
 serde_json.workspace = true
 teloxide.workspace = true

@@ -747,7 +747,7 @@ dependencies = [
  "crabtalk-core",
  "crabtalk-gateway",
  "crabtalk-transport",
- "dialoguer",
+ "crossterm 0.28.1",
  "futures-util",
  "serde_json",
  "teloxide",
