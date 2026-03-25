@@ -187,8 +187,9 @@ impl MarkdownRenderer {
                 if self.first_line {
                     // Erase the raw-streamed text and re-render through
                     // termimad so markdown formatting (bold, etc.) applies.
+                    // Keep first_line=true so render_md_line strips the
+                    // SKIN margin (⏺ is already on the line).
                     let _ = write!(self.out, "\r{ERASE_LINE}⏺ ");
-                    self.first_line = false;
                     let line = std::mem::take(&mut self.line_buf);
                     self.render_line(&line);
                 } else {
@@ -398,8 +399,9 @@ impl MarkdownRenderer {
                         self.flush_code_block_raw(&line);
                     }
                     _ => {
-                        self.ensure_started();
-                        self.render_md_line(&line);
+                        // Render the trailing text without termimad to avoid
+                        // margin changes at the end of the response.
+                        let _ = writeln!(self.out, "{PAD}{line}");
                     }
                 }
             }

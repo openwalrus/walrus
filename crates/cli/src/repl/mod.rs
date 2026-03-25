@@ -72,7 +72,14 @@ impl ChatRepl {
                 SlashResult::Exit => break,
                 SlashResult::Clear => {
                     new_chat = true;
-                    println!("Context cleared. Starting a new conversation.\n");
+                    // Clear the screen and move cursor to top.
+                    let _ = crossterm::execute!(
+                        std::io::stdout(),
+                        crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
+                        crossterm::cursor::MoveTo(0, 0),
+                    );
+                    println!("{}", render::welcome_banner(None));
+                    println!();
                     continue;
                 }
             };
@@ -158,6 +165,7 @@ pub(crate) async fn stream_to_terminal(
                                 }
                                 // Reset renderer — the ask TUI took over the terminal,
                                 // so cursor tracking in the old renderer is invalid.
+                                println!();
                                 renderer = MarkdownRenderer::new();
                                 // Skip the ask_user tool result echo.
                                 skip_tool_result += 1;
