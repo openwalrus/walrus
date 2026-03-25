@@ -5,7 +5,7 @@ use crabtalk_wechat::config::WechatConfig;
 
 const DEFAULT_BASE_URL: &str = "https://ilinkai.weixin.qq.com";
 
-#[crabtalk_command::command(kind = "client", label = "ai.crabtalk.gateway-wechat")]
+#[crabtalk_command::command(kind = "client", name = "wechat")]
 struct GatewayWechat;
 
 impl GatewayWechat {

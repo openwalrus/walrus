@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 
-#[crabtalk_command::command(kind = "client", label = "ai.crabtalk.gateway-telegram")]
+#[crabtalk_command::command(kind = "client", name = "telegram")]
 struct GatewayTelegram;
 
 impl GatewayTelegram {
