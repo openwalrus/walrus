@@ -1,54 +1,12 @@
-//! MCP server management commands.
+//! OAuth login/logout for MCP servers.
 
 use anyhow::{Context, Result};
-use clap::{Args, Subcommand};
 use daemon::hook::mcp::auth::FileCredentialStore;
 use rmcp::transport::{AuthorizationManager, AuthorizationSession};
 use std::sync::Arc;
 
-/// Manage MCP servers.
-#[derive(Args, Debug)]
-pub struct Mcp {
-    /// Subcommand.
-    #[command(subcommand)]
-    pub command: McpCommand,
-}
-
-/// MCP subcommands.
-#[derive(Subcommand, Debug)]
-pub enum McpCommand {
-    /// Authenticate with an MCP server via OAuth.
-    Login(McpLogin),
-    /// Remove stored OAuth tokens for an MCP server.
-    Logout(McpLogout),
-}
-
-/// Login arguments.
-#[derive(Args, Debug)]
-pub struct McpLogin {
-    /// MCP server name (as defined in manifest).
-    pub name: String,
-}
-
-/// Logout arguments.
-#[derive(Args, Debug)]
-pub struct McpLogout {
-    /// MCP server name.
-    pub name: String,
-}
-
 /// Callback port for the local OAuth redirect server.
 const CALLBACK_PORT: u16 = 19836;
-
-impl Mcp {
-    /// Run the MCP subcommand.
-    pub async fn run(self) -> Result<()> {
-        match self.command {
-            McpCommand::Login(cmd) => login(&cmd.name).await,
-            McpCommand::Logout(cmd) => logout(&cmd.name),
-        }
-    }
-}
 
 /// Look up an MCP server URL by name from resolved manifests.
 fn resolve_mcp_url(name: &str) -> Result<String> {
@@ -64,7 +22,7 @@ fn resolve_mcp_url(name: &str) -> Result<String> {
 }
 
 /// Run the OAuth login flow for an MCP server.
-async fn login(name: &str) -> Result<()> {
+pub async fn login(name: &str) -> Result<()> {
     let url = resolve_mcp_url(name)?;
     let redirect_uri = format!("http://localhost:{CALLBACK_PORT}/callback");
 
@@ -125,7 +83,7 @@ async fn login(name: &str) -> Result<()> {
 }
 
 /// Remove stored OAuth tokens for an MCP server.
-fn logout(name: &str) -> Result<()> {
+pub fn logout(name: &str) -> Result<()> {
     let path = wcore::paths::TOKENS_DIR.join(format!("{name}.json"));
     match std::fs::remove_file(&path) {
         Ok(()) => println!("Removed token for '{name}'."),

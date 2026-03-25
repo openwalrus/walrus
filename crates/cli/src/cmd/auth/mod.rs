@@ -18,15 +18,47 @@ use providers::{handle_providers_key, render_providers};
 
 mod gateways;
 mod mcps;
+mod oauth;
 mod providers;
 
 /// Configure providers, models, and gateway tokens interactively.
 #[derive(clap::Args, Debug)]
-pub struct Auth;
+pub struct Auth {
+    /// Auth subcommand. Opens TUI when omitted.
+    #[command(subcommand)]
+    pub command: Option<AuthCommand>,
+}
+
+/// Auth subcommands (OAuth flows for MCP servers).
+#[derive(clap::Subcommand, Debug)]
+pub enum AuthCommand {
+    /// Authenticate with an MCP server via OAuth.
+    Login(AuthLogin),
+    /// Remove stored OAuth tokens for an MCP server.
+    Logout(AuthLogout),
+}
+
+/// Login arguments.
+#[derive(clap::Args, Debug)]
+pub struct AuthLogin {
+    /// MCP server name (as defined in manifest).
+    pub name: String,
+}
+
+/// Logout arguments.
+#[derive(clap::Args, Debug)]
+pub struct AuthLogout {
+    /// MCP server name.
+    pub name: String,
+}
 
 impl Auth {
-    pub fn run(self) -> Result<()> {
-        tui::run_app(AuthState::load, render, handle_key)
+    pub async fn run(self) -> Result<()> {
+        match self.command {
+            None => tui::run_app(AuthState::load, render, handle_key),
+            Some(AuthCommand::Login(cmd)) => oauth::login(&cmd.name).await,
+            Some(AuthCommand::Logout(cmd)) => oauth::logout(&cmd.name),
+        }
     }
 }
 

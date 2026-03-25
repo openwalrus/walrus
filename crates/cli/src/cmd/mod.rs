@@ -12,7 +12,6 @@ pub mod console;
 pub mod daemon;
 pub mod external;
 pub mod hub;
-pub mod mcp;
 
 /// Crabtalk CLI client — connects to crabtalk daemon via Unix domain socket.
 #[derive(Parser, Debug)]
@@ -47,7 +46,7 @@ impl Cli {
     pub async fn run(self) -> Result<()> {
         let socket_path = wcore::paths::SOCKET_PATH.clone();
         match self.command {
-            Command::Auth(cmd) => cmd.run(),
+            Command::Auth(cmd) => cmd.run().await,
             Command::Attach(cmd) => {
                 let runner = connect(cmd.tcp, &socket_path).await?;
                 cmd.run(runner).await
@@ -67,7 +66,6 @@ impl Cli {
                 let mut runner = connect_uds(&socket_path).await?;
                 cmd.run(&mut runner).await
             }
-            Command::Mcp(cmd) => cmd.run().await,
             Command::Daemon(cmd) => cmd.run(&socket_path).await,
             Command::Ls => {
                 let run_dir = &*wcore::paths::RUN_DIR;
@@ -115,8 +113,6 @@ pub enum Command {
     Console(console::Console),
     /// Install or uninstall hub packages.
     Hub(hub::Hub),
-    /// Manage MCP servers (login, logout).
-    Mcp(mcp::Mcp),
     /// Manage the crabtalk daemon (run, start, stop, reload).
     Daemon(daemon::Daemon),
     /// List running services.
