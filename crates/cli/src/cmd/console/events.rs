@@ -10,6 +10,19 @@ use ratatui::{
 };
 use wcore::protocol::message::{AgentEventKind, AgentEventMsg};
 
+const SESSION_COLORS: &[Color] = &[
+    Color::LightMagenta,
+    Color::LightCyan,
+    Color::LightGreen,
+    Color::LightYellow,
+    Color::LightBlue,
+    Color::LightRed,
+];
+
+fn session_color(session_id: u64) -> Color {
+    SESSION_COLORS[session_id as usize % SESSION_COLORS.len()]
+}
+
 pub(super) struct EventEntry {
     pub(super) timestamp: String,
     pub(super) msg: AgentEventMsg,
@@ -26,16 +39,13 @@ pub(super) fn render_events(
         .borders(Borders::ALL)
         .border_style(border_focused());
 
-    // Filter: only tool calls and done events.
+    // Filter: only tool call events.
     let filtered: Vec<&&EventEntry> = events
         .iter()
         .filter(|e| {
             matches!(
                 AgentEventKind::try_from(e.msg.kind),
                 Ok(AgentEventKind::ToolStart)
-                    | Ok(AgentEventKind::ToolResult)
-                    | Ok(AgentEventKind::ToolsComplete)
-                    | Ok(AgentEventKind::Done)
             )
         })
         .collect();
@@ -56,13 +66,7 @@ pub(super) fn render_events(
         .skip(scroll_offset)
         .take(inner_height)
         .map(|entry| {
-            let kind_str = match AgentEventKind::try_from(entry.msg.kind) {
-                Ok(AgentEventKind::ToolStart) => "TOOL_START",
-                Ok(AgentEventKind::ToolResult) => "TOOL_RESULT",
-                Ok(AgentEventKind::ToolsComplete) => "TOOLS_DONE",
-                Ok(AgentEventKind::Done) => "DONE",
-                _ => "UNKNOWN",
-            };
+            let kind_str = "TOOL_CALL";
             let content_part = if entry.msg.content.is_empty() {
                 String::new()
             } else {
@@ -75,21 +79,17 @@ pub(super) fn render_events(
                 };
                 format!(": {display}")
             };
-            let kind_color = match AgentEventKind::try_from(entry.msg.kind) {
-                Ok(AgentEventKind::ToolStart) => Color::Rgb(215, 119, 87),
-                Ok(AgentEventKind::Done) => Color::Rgb(78, 186, 101),
-                Ok(AgentEventKind::ToolResult) => Color::Cyan,
-                _ => Color::White,
-            };
+            let kind_color = Color::Rgb(215, 119, 87);
+            let session_color = session_color(entry.msg.session);
             Line::from(vec![
                 Span::styled(
                     format!("  [{}] ", entry.timestamp),
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(
-                    format!("{}#{} ", entry.msg.agent, entry.msg.session),
+                    format!("{}({}) ", entry.msg.agent, entry.msg.session),
                     Style::default()
-                        .fg(Color::LightMagenta)
+                        .fg(session_color)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(

@@ -98,7 +98,8 @@ pub fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -
 pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
     let path = LOGS_DIR.join(format!("{log_name}.log"));
     if !path.exists() {
-        anyhow::bail!("log file not found: {}", path.display());
+        println!("no logs yet: {}", path.display());
+        return Ok(());
     }
 
     let args = if tail_args.is_empty() {
