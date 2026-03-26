@@ -226,7 +226,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
     pub async fn compact_session(&self, session_id: u64) -> Option<String> {
         let (agent_name, history) = {
             let session_mutex = self.sessions.read().await.get(&session_id)?.clone();
-            let session = session_mutex.lock().await;
+            let session = session_mutex.try_lock().ok()?;
             if session.history.is_empty() {
                 return None;
             }
