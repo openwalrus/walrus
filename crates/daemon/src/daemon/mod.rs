@@ -6,6 +6,7 @@
 
 use crate::{
     DaemonConfig,
+    cron::CronStore,
     daemon::event::{DaemonEvent, DaemonEventSender},
     hook::DaemonHook,
 };
@@ -16,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc, oneshot};
 use wcore::Runtime;
 
 pub(crate) mod builder;
@@ -40,6 +41,8 @@ pub struct Daemon {
     pub(crate) event_tx: DaemonEventSender,
     /// When the daemon was started (for uptime calculation).
     pub(crate) started_at: std::time::Instant,
+    /// Daemon-level cron scheduler. Survives runtime reloads.
+    pub(crate) crons: Arc<Mutex<CronStore>>,
 }
 
 impl Daemon {
@@ -55,7 +58,6 @@ impl Daemon {
         tracing::info!("loaded configuration from {}", config_path.display());
 
         let (event_tx, event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
-        let daemon = Daemon::build(&config, config_dir, event_tx.clone()).await?;
 
         // Broadcast shutdown — all subsystems subscribe.
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
@@ -65,6 +67,9 @@ impl Daemon {
             let _ = shutdown_rx.recv().await;
             let _ = shutdown_event_tx.send(DaemonEvent::Shutdown);
         });
+
+        let daemon =
+            Daemon::build(&config, config_dir, event_tx.clone(), shutdown_tx.clone()).await?;
 
         let d = daemon.clone();
         let event_loop_join = tokio::spawn(async move {

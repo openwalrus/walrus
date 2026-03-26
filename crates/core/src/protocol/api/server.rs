@@ -1,9 +1,9 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    AgentEventMsg, ClientMessage, ConfigMsg, DaemonStats, ErrorMsg, Pong, SendMsg, SendResponse,
-    ServerMessage, SessionInfo, SessionList, StreamEvent, StreamMsg, client_message,
-    server_message,
+    AgentEventMsg, ClientMessage, ConfigMsg, CreateCronMsg, CronInfo, CronList, DaemonStats,
+    ErrorMsg, Pong, SendMsg, SendResponse, ServerMessage, SessionInfo, SessionList, StreamEvent,
+    StreamMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -70,6 +70,18 @@ pub trait Server: Sync {
 
     /// Handle `GetStats` — return daemon-level stats.
     fn get_stats(&self) -> impl std::future::Future<Output = Result<DaemonStats>> + Send;
+
+    /// Handle `CreateCron` — create a new cron entry and start its timer.
+    fn create_cron(
+        &self,
+        req: CreateCronMsg,
+    ) -> impl std::future::Future<Output = Result<CronInfo>> + Send;
+
+    /// Handle `DeleteCron` — remove a cron entry and stop its timer.
+    fn delete_cron(&self, id: u64) -> impl std::future::Future<Output = Result<bool>> + Send;
+
+    /// Handle `ListCrons` — return all cron entries.
+    fn list_crons(&self) -> impl std::future::Future<Output = Result<CronList>> + Send;
 
     /// Handle `ReplyToAsk` — deliver a user reply to a pending `ask_user` tool call.
     fn reply_to_ask(
@@ -161,6 +173,29 @@ pub trait Server: Sync {
                     yield match self.get_stats().await {
                         Ok(stats) => ServerMessage {
                             msg: Some(server_message::Msg::Stats(stats)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::CreateCron(req) => {
+                    yield match self.create_cron(req).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::CronInfo(info)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::DeleteCron(req) => {
+                    yield match self.delete_cron(req.id).await {
+                        Ok(true) => server_pong(),
+                        Ok(false) => server_error(404, format!("cron {} not found", req.id)),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListCrons(_) => {
+                    yield match self.list_crons().await {
+                        Ok(list) => ServerMessage {
+                            msg: Some(server_message::Msg::CronList(list)),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };

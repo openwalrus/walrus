@@ -19,6 +19,9 @@ message ClientMessage {
     SubscribeEvents subscribe_events = 9;
     ReplyToAsk reply_to_ask = 10;
     GetStats get_stats = 11;
+    CreateCronMsg create_cron = 12;
+    DeleteCronMsg delete_cron = 13;
+    ListCronsMsg list_crons = 14;
   }
 }
 
@@ -60,6 +63,20 @@ message SetConfigMsg {
 
 message ReloadMsg {}
 
+message CreateCronMsg {
+  string schedule = 1;
+  string skill = 2;
+  uint64 session = 3;
+  optional string quiet_start = 4;
+  optional string quiet_end = 5;
+}
+
+message DeleteCronMsg {
+  uint64 id = 1;
+}
+
+message ListCronsMsg {}
+
 // ── Server Messages ──────────────────────────────────────────────
 
 message ServerMessage {
@@ -72,6 +89,8 @@ message ServerMessage {
     ConfigMsg config = 6;
     AgentEventMsg agent_event = 7;
     DaemonStats stats = 8;
+    CronInfo cron_info = 9;
+    CronList cron_list = 10;
   }
 }
 
@@ -198,4 +217,17 @@ message SessionList {
 
 message ConfigMsg {
   string config = 1;
+}
+
+message CronInfo {
+  uint64 id = 1;
+  string schedule = 2;
+  string skill = 3;
+  uint64 session = 4;
+  string quiet_start = 5;
+  string quiet_end = 6;
+}
+
+message CronList {
+  repeated CronInfo crons = 1;
 }

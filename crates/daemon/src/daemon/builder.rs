@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, broadcast};
 use wcore::{AgentConfig, Runtime, ToolRequest};
 
 /// Resolve qualified package references in an agent's skill list.
@@ -56,13 +56,21 @@ impl Daemon {
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: DaemonEventSender,
+        shutdown_tx: broadcast::Sender<()>,
     ) -> Result<Self> {
         let runtime = Self::build_runtime(config, config_dir, &event_tx).await?;
+        let mut cron_store = crate::cron::CronStore::load(
+            config_dir.join("crons.toml"),
+            event_tx.clone(),
+            shutdown_tx,
+        );
+        cron_store.start_all();
         Ok(Self {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),
             config_dir: config_dir.to_path_buf(),
             event_tx,
             started_at: std::time::Instant::now(),
+            crons: Arc::new(Mutex::new(cron_store)),
         })
     }
 

@@ -654,6 +654,7 @@ dependencies = [
  "crabtalk-model",
  "crabtalk-runtime",
  "crabtalk-transport",
+ "cron",
  "futures-core",
  "futures-util",
  "serde",
@@ -851,6 +852,18 @@ dependencies = [
  "quote",
  "strict",
  "syn",
+]
+
+[[package]]
+name = "cron"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "089df96cf6a25253b4b6b6744d86f91150a3d4df546f31a95def47976b8cba97"
+dependencies = [
+ "chrono",
+ "once_cell",
+ "phf",
+ "winnow",
 ]
 
 [[package]]

@@ -2,6 +2,7 @@
 //! scheduling. Personal agent, local-first.
 
 pub mod config;
+pub mod cron;
 pub mod daemon;
 pub mod hook;
 

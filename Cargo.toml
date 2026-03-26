@@ -40,6 +40,7 @@ syn = { version = "2", features = ["full"] }
 async-stream = "0.3"
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
+cron = "0.16"
 console = "0.15"
 crossterm = { version = "0.28", features = ["event-stream"] }
 dialoguer = "0.11"

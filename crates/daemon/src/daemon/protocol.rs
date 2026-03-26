@@ -1,6 +1,6 @@
 //! Server trait implementation for the Daemon.
 
-use crate::daemon::Daemon;
+use crate::{cron::CronEntry, daemon::Daemon};
 use anyhow::{Context, Result};
 use futures_util::{StreamExt, pin_mut};
 use std::sync::Arc;
@@ -8,9 +8,10 @@ use wcore::AgentEvent;
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AskOption, AskQuestion, AskUserEvent, DaemonStats, SendMsg, SendResponse,
-        SessionInfo, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
-        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
+        AgentEventMsg, AskOption, AskQuestion, AskUserEvent, CreateCronMsg, CronInfo, CronList,
+        DaemonStats, SendMsg, SendResponse, SessionInfo, StreamChunk, StreamEnd, StreamEvent,
+        StreamMsg, StreamStart, StreamThinking, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+        ToolsCompleteEvent, stream_event,
     },
 };
 
@@ -43,10 +44,11 @@ impl Server for Daemon {
                 id
             }
         };
-        if let (Some(ps), Some(pa)) = (parent_session, parent_agent) {
-            if let Ok(mut m) = rt.hook.bridge.parent_contexts.lock() {
-                m.insert(session_id, (ps, pa));
-            }
+        if let ((Some(ps), Some(pa)), Ok(mut m)) = (
+            (parent_session, parent_agent),
+            rt.hook.bridge.parent_contexts.lock(),
+        ) {
+            m.insert(session_id, (ps, pa));
         }
         let response = rt.send_to(session_id, &req.content, sender).await?;
         Ok(SendResponse {
@@ -244,6 +246,41 @@ impl Server for Daemon {
         })
     }
 
+    async fn create_cron(&self, req: CreateCronMsg) -> Result<CronInfo> {
+        // Validate the target session exists.
+        let rt = self.runtime.read().await.clone();
+        if rt.session(req.session).await.is_none() {
+            anyhow::bail!("session {} not found", req.session);
+        }
+        let entry = CronEntry {
+            id: 0, // assigned by store
+            schedule: req.schedule,
+            skill: req.skill,
+            session: req.session,
+            quiet_start: req.quiet_start,
+            quiet_end: req.quiet_end,
+        };
+        // Schedule validation happens inside CronStore::create.
+        let created = self
+            .crons
+            .lock()
+            .await
+            .create(entry)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(cron_entry_to_info(&created))
+    }
+
+    async fn delete_cron(&self, id: u64) -> Result<bool> {
+        Ok(self.crons.lock().await.delete(id))
+    }
+
+    async fn list_crons(&self) -> Result<CronList> {
+        let entries = self.crons.lock().await.list();
+        Ok(CronList {
+            crons: entries.iter().map(cron_entry_to_info).collect(),
+        })
+    }
+
     async fn reply_to_ask(&self, session: u64, content: String) -> Result<()> {
         let rt = self.runtime.read().await.clone();
         if let Some(tx) = rt.hook.bridge.pending_asks.lock().await.remove(&session) {
@@ -263,5 +300,16 @@ impl Daemon {
     /// Load the current `DaemonConfig` from disk.
     fn load_config(&self) -> Result<crate::DaemonConfig> {
         crate::DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))
+    }
+}
+
+fn cron_entry_to_info(e: &CronEntry) -> CronInfo {
+    CronInfo {
+        id: e.id,
+        schedule: e.schedule.clone(),
+        skill: e.skill.clone(),
+        session: e.session,
+        quiet_start: e.quiet_start.clone().unwrap_or_default(),
+        quiet_end: e.quiet_end.clone().unwrap_or_default(),
     }
 }
