@@ -28,6 +28,8 @@ pub enum AgentEvent {
         call_id: String,
         /// The output from the tool.
         output: String,
+        /// Wall-clock duration of the tool dispatch in milliseconds.
+        duration_ms: u64,
     },
     /// All tools completed, continuing to next iteration.
     ToolCallsComplete,

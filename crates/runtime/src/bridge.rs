@@ -23,8 +23,9 @@ pub trait RuntimeBridge: Send + Sync {
         &self,
         args: &str,
         agent: &str,
+        session_id: Option<u64>,
     ) -> impl std::future::Future<Output = String> + Send {
-        let _ = (args, agent);
+        let _ = (args, agent, session_id);
         async { "delegate is not available in this runtime mode".to_owned() }
     }
 

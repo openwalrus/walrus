@@ -38,6 +38,8 @@ pub struct Daemon {
     /// so agents can dispatch tool calls. Stored here so [`Daemon::reload`] can
     /// pass a fresh clone into the rebuilt runtime.
     pub(crate) event_tx: DaemonEventSender,
+    /// When the daemon was started (for uptime calculation).
+    pub(crate) started_at: std::time::Instant,
 }
 
 impl Daemon {
@@ -73,12 +75,35 @@ impl Daemon {
             let heartbeat_tx = event_tx.clone();
             let mut heartbeat_shutdown = shutdown_tx.subscribe();
             let interval_secs = agent.heartbeat.interval * 60;
+            let quiet_start = agent
+                .heartbeat
+                .quiet_start
+                .as_deref()
+                .and_then(|s| chrono::NaiveTime::parse_from_str(s, "%H:%M").ok());
+            let quiet_end = agent
+                .heartbeat
+                .quiet_end
+                .as_deref()
+                .and_then(|s| chrono::NaiveTime::parse_from_str(s, "%H:%M").ok());
             tokio::spawn(async move {
                 let mut tick = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
                 tick.tick().await; // skip the immediate first tick
                 loop {
                     tokio::select! {
                         _ = tick.tick() => {
+                            // Suppress during quiet hours.
+                            if let (Some(qs), Some(qe)) = (quiet_start, quiet_end) {
+                                let now = chrono::Local::now().time();
+                                let in_quiet = if qs <= qe {
+                                    now >= qs && now < qe
+                                } else {
+                                    // Wraps midnight (e.g., 23:00–07:00).
+                                    now >= qs || now < qe
+                                };
+                                if in_quiet {
+                                    continue;
+                                }
+                            }
                             let event = DaemonEvent::Heartbeat {
                                 agent: agent_name.clone(),
                             };

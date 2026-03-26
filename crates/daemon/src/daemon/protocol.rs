@@ -8,9 +8,9 @@ use wcore::AgentEvent;
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AskOption, AskQuestion, AskUserEvent, SendMsg, SendResponse, SessionInfo,
-        StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, ToolCallInfo,
-        ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
+        AgentEventMsg, AskOption, AskQuestion, AskUserEvent, DaemonStats, SendMsg, SendResponse,
+        SessionInfo, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
+        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, stream_event,
     },
 };
 
@@ -20,6 +20,8 @@ impl Server for Daemon {
         let sender = req.sender.as_deref().unwrap_or("");
         let created_by = if sender.is_empty() { "user" } else { sender };
         let cwd = req.cwd.map(std::path::PathBuf::from);
+        let parent_session = req.parent_session;
+        let parent_agent = req.parent_agent.clone();
         let session_id = match req.session {
             Some(id) => id,
             None => {
@@ -41,6 +43,14 @@ impl Server for Daemon {
                 id
             }
         };
+        if let (Some(ps), Some(pa)) = (parent_session, parent_agent) {
+            rt.hook
+                .bridge
+                .parent_contexts
+                .lock()
+                .await
+                .insert(session_id, (ps, pa));
+        }
         let response = rt.send_to(session_id, &req.content, sender).await?;
         Ok(SendResponse {
             agent: req.agent,
@@ -133,8 +143,8 @@ impl Server for Daemon {
                             yield StreamEvent { event: Some(stream_event::Event::AskUser(AskUserEvent { questions: ask_questions })) };
                         }
                     }
-                    AgentEvent::ToolResult { call_id, output } => {
-                        yield StreamEvent { event: Some(stream_event::Event::ToolResult(ToolResultEvent { call_id: call_id.to_string(), output })) };
+                    AgentEvent::ToolResult { call_id, output, duration_ms } => {
+                        yield StreamEvent { event: Some(stream_event::Event::ToolResult(ToolResultEvent { call_id: call_id.to_string(), output, duration_ms })) };
                     }
                     AgentEvent::ToolCallsComplete => {
                         yield StreamEvent { event: Some(stream_event::Event::ToolsComplete(ToolsCompleteEvent {})) };
@@ -220,6 +230,18 @@ impl Server for Daemon {
 
     async fn reload(&self) -> Result<()> {
         self.reload().await
+    }
+
+    async fn get_stats(&self) -> Result<DaemonStats> {
+        let rt = self.runtime.read().await.clone();
+        let active = rt.active_session_count().await;
+        let agents = rt.agents().len() as u32;
+        let uptime = self.started_at.elapsed().as_secs();
+        Ok(DaemonStats {
+            uptime_secs: uptime,
+            active_sessions: active as u32,
+            registered_agents: agents,
+        })
     }
 
     async fn reply_to_ask(&self, session: u64, content: String) -> Result<()> {

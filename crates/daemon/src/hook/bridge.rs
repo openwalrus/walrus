@@ -25,6 +25,8 @@ pub struct DaemonBridge {
     pub session_cwds: Arc<Mutex<HashMap<u64, PathBuf>>>,
     /// Broadcast channel for agent events (console subscription).
     pub events_tx: broadcast::Sender<AgentEventMsg>,
+    /// Delegation context: maps child session_id → (parent_session_id, parent_agent).
+    pub parent_contexts: Arc<Mutex<HashMap<u64, (u64, String)>>>,
 }
 
 impl DaemonBridge {
@@ -68,7 +70,7 @@ impl RuntimeBridge for DaemonBridge {
         }
     }
 
-    async fn dispatch_delegate(&self, args: &str, _agent: &str) -> String {
+    async fn dispatch_delegate(&self, args: &str, agent: &str, session_id: Option<u64>) -> String {
         let input: runtime::task::Delegate = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
@@ -76,7 +78,14 @@ impl RuntimeBridge for DaemonBridge {
 
         let mut handles = Vec::with_capacity(input.tasks.len());
         for task in input.tasks {
-            let handle = spawn_agent_task(task.agent.clone(), task.message, self.event_tx.clone());
+            let handle = spawn_agent_task(
+                task.agent.clone(),
+                task.message,
+                self.event_tx.clone(),
+                session_id,
+                Some(agent.to_string()),
+                self.parent_contexts.clone(),
+            );
             handles.push((task.agent, handle));
         }
 
@@ -131,9 +140,16 @@ impl RuntimeBridge for DaemonBridge {
                     .collect();
                 (AgentEventKind::ToolStart, labels.join(", "))
             }
-            AgentEvent::ToolResult { call_id, .. } => {
-                tracing::debug!(%agent, %call_id, "agent tool result");
-                (AgentEventKind::ToolResult, call_id.clone())
+            AgentEvent::ToolResult {
+                call_id,
+                duration_ms,
+                ..
+            } => {
+                tracing::debug!(%agent, %call_id, %duration_ms, "agent tool result");
+                (
+                    AgentEventKind::ToolResult,
+                    format!("{call_id}:{duration_ms}"),
+                )
             }
             AgentEvent::ToolCallsComplete => {
                 tracing::debug!(%agent, "agent tool calls complete");
@@ -153,11 +169,21 @@ impl RuntimeBridge for DaemonBridge {
                 (AgentEventKind::Done, String::new())
             }
         };
+        let (ps, pa) = self
+            .parent_contexts
+            .try_lock()
+            .ok()
+            .and_then(|m| m.get(&session_id).cloned())
+            .map(|(sid, ag)| (Some(sid), Some(ag)))
+            .unwrap_or((None, None));
         let _ = self.events_tx.send(AgentEventMsg {
             agent: agent.to_string(),
             session: session_id,
             kind: kind.into(),
             content,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            parent_session: ps,
+            parent_agent: pa,
         });
     }
 }
@@ -167,6 +193,9 @@ fn spawn_agent_task(
     agent: String,
     message: String,
     event_tx: DaemonEventSender,
+    parent_session: Option<u64>,
+    parent_agent: Option<String>,
+    parent_contexts: Arc<Mutex<HashMap<u64, (u64, String)>>>,
 ) -> tokio::task::JoinHandle<(Option<String>, Option<String>)> {
     tokio::spawn(async move {
         let (reply_tx, mut reply_rx) = mpsc::unbounded_channel();
@@ -178,6 +207,8 @@ fn spawn_agent_task(
             cwd: None,
             new_chat: false,
             resume_file: None,
+            parent_session,
+            parent_agent,
         });
         if event_tx
             .send(DaemonEvent::Message {
@@ -207,6 +238,8 @@ fn spawn_agent_task(
         }
 
         if let Some(sid) = session_id {
+            // Clean up parent context when session is killed.
+            parent_contexts.lock().await.remove(&sid);
             let (reply_tx, _) = mpsc::unbounded_channel();
             let _ = event_tx.send(DaemonEvent::Message {
                 msg: ClientMessage {

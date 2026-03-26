@@ -649,6 +649,7 @@ version = "0.0.15"
 dependencies = [
  "anyhow",
  "async-stream",
+ "chrono",
  "crabtalk-core",
  "crabtalk-model",
  "crabtalk-runtime",

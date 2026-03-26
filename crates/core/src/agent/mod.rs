@@ -315,15 +315,18 @@ impl<M: Model> Agent<M> {
                     let sender = last_sender(history);
                     yield AgentEvent::ToolCallsStart(tool_calls.clone());
                     for tc in &tool_calls {
+                        let tool_start = std::time::Instant::now();
                         let result = self
                             .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender, session_id)
                             .await;
+                        let duration_ms = tool_start.elapsed().as_millis() as u64;
                         let msg = Message::tool(&result, tc.id.clone());
                         history.push(msg.clone());
                         tool_results.push(msg);
                         yield AgentEvent::ToolResult {
                             call_id: tc.id.clone(),
                             output: result,
+                            duration_ms,
                         };
                     }
                     yield AgentEvent::ToolCallsComplete;

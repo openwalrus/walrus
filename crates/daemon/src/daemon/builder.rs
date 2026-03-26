@@ -62,6 +62,7 @@ impl Daemon {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),
             config_dir: config_dir.to_path_buf(),
             event_tx,
+            started_at: std::time::Instant::now(),
         })
     }
 
@@ -153,6 +154,7 @@ impl Daemon {
             pending_asks: Arc::new(Mutex::new(HashMap::new())),
             session_cwds: Arc::new(Mutex::new(HashMap::new())),
             events_tx,
+            parent_contexts: Arc::new(Mutex::new(HashMap::new())),
         };
 
         Ok(RuntimeHook::new(skills, mcp_handler, cwd, memory, bridge))

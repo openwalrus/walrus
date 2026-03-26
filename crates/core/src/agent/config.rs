@@ -133,4 +133,11 @@ pub struct HeartbeatConfig {
     /// System prompt for heartbeat-triggered agent runs.
     #[serde(default)]
     pub prompt: String,
+    /// Quiet hours start time ("HH:MM" format, local time). Heartbeats are
+    /// suppressed between `quiet_start` and `quiet_end`.
+    #[serde(default)]
+    pub quiet_start: Option<String>,
+    /// Quiet hours end time ("HH:MM" format, local time).
+    #[serde(default)]
+    pub quiet_end: Option<String>,
 }

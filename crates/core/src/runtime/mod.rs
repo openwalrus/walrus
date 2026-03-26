@@ -213,6 +213,11 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         self.active_sessions.read().await.contains(&id)
     }
 
+    /// Number of currently active sessions.
+    pub async fn active_session_count(&self) -> usize {
+        self.active_sessions.read().await.len()
+    }
+
     /// Move all sessions from this runtime into `dest`.
     ///
     /// Used during daemon reload to preserve gateway sessions. The `dest`

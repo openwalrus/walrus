@@ -1,8 +1,9 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    AgentEventMsg, ClientMessage, ConfigMsg, ErrorMsg, Pong, SendMsg, SendResponse, ServerMessage,
-    SessionInfo, SessionList, StreamEvent, StreamMsg, client_message, server_message,
+    AgentEventMsg, ClientMessage, ConfigMsg, DaemonStats, ErrorMsg, Pong, SendMsg, SendResponse,
+    ServerMessage, SessionInfo, SessionList, StreamEvent, StreamMsg, client_message,
+    server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -66,6 +67,9 @@ pub trait Server: Sync {
 
     /// Handle `Reload` — hot-reload runtime from disk.
     fn reload(&self) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `GetStats` — return daemon-level stats.
+    fn get_stats(&self) -> impl std::future::Future<Output = Result<DaemonStats>> + Send;
 
     /// Handle `ReplyToAsk` — deliver a user reply to a pending `ask_user` tool call.
     fn reply_to_ask(
@@ -151,6 +155,14 @@ pub trait Server: Sync {
                     yield match self.reply_to_ask(msg.session, msg.content).await {
                         Ok(()) => server_pong(),
                         Err(e) => server_error(404, e.to_string()),
+                    };
+                }
+                client_message::Msg::GetStats(_) => {
+                    yield match self.get_stats().await {
+                        Ok(stats) => ServerMessage {
+                            msg: Some(server_message::Msg::Stats(stats)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
                     };
                 }
             }
