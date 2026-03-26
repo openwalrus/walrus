@@ -137,7 +137,7 @@ impl RuntimeBridge for DaemonBridge {
                 ..
             } => {
                 tracing::debug!(%agent, %call_id, %duration_ms, "agent tool result");
-                (AgentEventKind::ToolResult, call_id.clone())
+                (AgentEventKind::ToolResult, format!("{duration_ms}ms"))
             }
             AgentEvent::ToolCallsComplete => {
                 tracing::debug!(%agent, "agent tool calls complete");

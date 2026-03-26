@@ -69,7 +69,13 @@ impl Console {
         let result = loop {
             // Drain pending events.
             while let Ok(msg) = state.event_rx.try_recv() {
-                let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+                let timestamp = chrono::DateTime::parse_from_rfc3339(&msg.timestamp)
+                    .map(|dt| {
+                        dt.with_timezone(&chrono::Local)
+                            .format("%H:%M:%S")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|_| chrono::Local::now().format("%H:%M:%S").to_string());
                 state.events.push_back(EventEntry { timestamp, msg });
                 if state.events.len() > 500 {
                     state.events.pop_front();

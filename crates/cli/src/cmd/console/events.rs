@@ -39,13 +39,12 @@ pub(super) fn render_events(
         .borders(Borders::ALL)
         .border_style(border_focused());
 
-    // Filter: only tool call events.
     let filtered: Vec<&&EventEntry> = events
         .iter()
         .filter(|e| {
             matches!(
                 AgentEventKind::try_from(e.msg.kind),
-                Ok(AgentEventKind::ToolStart)
+                Ok(AgentEventKind::ToolStart | AgentEventKind::ToolResult | AgentEventKind::Done)
             )
         })
         .collect();
@@ -66,11 +65,15 @@ pub(super) fn render_events(
         .skip(scroll_offset)
         .take(inner_height)
         .map(|entry| {
-            let kind_str = "TOOL_CALL";
+            let (kind_str, kind_color) = match AgentEventKind::try_from(entry.msg.kind) {
+                Ok(AgentEventKind::ToolStart) => ("TOOL_CALL", Color::Rgb(215, 119, 87)),
+                Ok(AgentEventKind::ToolResult) => ("TOOL_DONE", Color::Rgb(87, 187, 138)),
+                Ok(AgentEventKind::Done) => ("DONE", Color::DarkGray),
+                _ => ("EVENT", Color::DarkGray),
+            };
             let content_part = if entry.msg.content.is_empty() {
                 String::new()
             } else {
-                // Truncate long content (e.g. bash args) for display.
                 let c = &entry.msg.content;
                 let display = if c.len() > 60 {
                     format!("{}...", &c[..57])
@@ -79,7 +82,6 @@ pub(super) fn render_events(
                 };
                 format!(": {display}")
             };
-            let kind_color = Color::Rgb(215, 119, 87);
             let session_color = session_color(entry.msg.session);
             Line::from(vec![
                 Span::styled(
