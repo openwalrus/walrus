@@ -68,12 +68,7 @@ impl RuntimeBridge for DaemonBridge {
         }
     }
 
-    async fn dispatch_delegate(
-        &self,
-        args: &str,
-        _agent: &str,
-        _session_id: Option<u64>,
-    ) -> String {
+    async fn dispatch_delegate(&self, args: &str, _agent: &str) -> String {
         let input: runtime::task::Delegate = match serde_json::from_str(args) {
             Ok(v) => v,
             Err(e) => return format!("invalid arguments: {e}"),
