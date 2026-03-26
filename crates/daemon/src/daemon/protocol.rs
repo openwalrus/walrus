@@ -248,13 +248,14 @@ impl Server for Daemon {
             session: req.session,
             quiet_start: req.quiet_start,
             quiet_end: req.quiet_end,
+            once: req.once,
         };
         // Schedule validation happens inside CronStore::create.
         let created = self
             .crons
             .lock()
             .await
-            .create(entry)
+            .create(entry, self.crons.clone())
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(cron_entry_to_info(&created))
     }
@@ -300,5 +301,6 @@ fn cron_entry_to_info(e: &CronEntry) -> CronInfo {
         session: e.session,
         quiet_start: e.quiet_start.clone().unwrap_or_default(),
         quiet_end: e.quiet_end.clone().unwrap_or_default(),
+        once: e.once,
     }
 }

@@ -67,6 +67,7 @@ message CreateCronMsg {
   uint64 session = 3;
   optional string quiet_start = 4;
   optional string quiet_end = 5;
+  bool once = 6;
 }
 
 message DeleteCronMsg {
@@ -222,6 +223,7 @@ message CronInfo {
   uint64 session = 4;
   string quiet_start = 5;
   string quiet_end = 6;
+  bool once = 7;
 }
 
 message CronList {

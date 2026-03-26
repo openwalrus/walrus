@@ -59,18 +59,19 @@ impl Daemon {
         shutdown_tx: broadcast::Sender<()>,
     ) -> Result<Self> {
         let runtime = Self::build_runtime(config, config_dir, &event_tx).await?;
-        let mut cron_store = crate::cron::CronStore::load(
+        let cron_store = crate::cron::CronStore::load(
             config_dir.join("crons.toml"),
             event_tx.clone(),
             shutdown_tx,
         );
-        cron_store.start_all();
+        let crons = Arc::new(Mutex::new(cron_store));
+        crons.lock().await.start_all(crons.clone());
         Ok(Self {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),
             config_dir: config_dir.to_path_buf(),
             event_tx,
             started_at: std::time::Instant::now(),
-            crons: Arc::new(Mutex::new(cron_store)),
+            crons,
         })
     }
 

@@ -6,8 +6,11 @@
 
 use crate::daemon::event::{DaemonEvent, DaemonEventSender};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
-use tokio::{sync::broadcast, task::JoinHandle};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use tokio::{
+    sync::{Mutex, broadcast},
+    task::JoinHandle,
+};
 use wcore::protocol::message::{ClientMessage, SendMsg};
 
 /// Persistent cron entry.
@@ -21,6 +24,9 @@ pub struct CronEntry {
     pub quiet_start: Option<String>,
     #[serde(default)]
     pub quiet_end: Option<String>,
+    /// Fire once then self-delete.
+    #[serde(default)]
+    pub once: bool,
 }
 
 /// TOML file wrapper — `[[cron]]` array of tables.
@@ -85,10 +91,10 @@ impl CronStore {
     }
 
     /// Spawn timer tasks for all loaded entries.
-    pub fn start_all(&mut self) {
+    pub fn start_all(&mut self, store: Arc<Mutex<CronStore>>) {
         let ids: Vec<u64> = self.entries.keys().copied().collect();
         for id in ids {
-            self.spawn_timer(id);
+            self.spawn_timer(id, store.clone());
         }
         if !self.entries.is_empty() {
             tracing::info!("started {} cron timer(s)", self.entries.len());
@@ -97,12 +103,16 @@ impl CronStore {
 
     /// Create a new cron entry. Validates the schedule, assigns an ID,
     /// spawns the timer, and persists to disk.
-    pub fn create(&mut self, mut entry: CronEntry) -> Result<CronEntry, String> {
+    pub fn create(
+        &mut self,
+        mut entry: CronEntry,
+        store: Arc<Mutex<CronStore>>,
+    ) -> Result<CronEntry, String> {
         validate_schedule(&entry.schedule)?;
         entry.id = self.next_id;
         self.next_id += 1;
         self.entries.insert(entry.id, entry.clone());
-        self.spawn_timer(entry.id);
+        self.spawn_timer(entry.id, store);
         self.save();
         Ok(entry)
     }
@@ -151,18 +161,27 @@ impl CronStore {
     }
 
     /// Spawn a timer task for a single entry.
-    fn spawn_timer(&mut self, id: u64) {
+    /// One-shot crons self-delete through the `store` handle after firing.
+    fn spawn_timer(&mut self, id: u64, store: Arc<Mutex<CronStore>>) {
         let Some(entry) = self.entries.get(&id).cloned() else {
             return;
         };
         let event_tx = self.event_tx.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
-        let handle = tokio::spawn(run_cron_timer(entry, event_tx, shutdown_rx));
+        let once = entry.once;
+        let handle = tokio::spawn(async move {
+            run_cron_timer(entry, event_tx, shutdown_rx).await;
+            if once {
+                tracing::info!("cron {id}: one-shot completed, removing");
+                store.lock().await.delete(id);
+            }
+        });
         self.handles.insert(id, handle);
     }
 }
 
 /// Run a single cron timer loop until shutdown.
+/// Returns after first fire when `entry.once` is true.
 async fn run_cron_timer(
     entry: CronEntry,
     event_tx: DaemonEventSender,
@@ -172,11 +191,12 @@ async fn run_cron_timer(
     let schedule = cron::Schedule::from_str(&entry.schedule).expect("pre-validated schedule");
 
     tracing::info!(
-        "cron {}: started (schedule='{}', skill='{}', session={})",
+        "cron {}: started (schedule='{}', skill='{}', session={}, once={})",
         entry.id,
         entry.schedule,
         entry.skill,
         entry.session,
+        entry.once,
     );
 
     loop {
@@ -227,6 +247,10 @@ async fn run_cron_timer(
             msg,
             reply: reply_tx,
         });
+
+        if entry.once {
+            return;
+        }
     }
 }
 
