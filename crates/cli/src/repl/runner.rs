@@ -149,6 +149,7 @@ impl Runner {
                 cwd,
                 new_chat,
                 resume_file,
+                context_from: None,
             }))
             .take_while(|r| {
                 std::future::ready(!matches!(

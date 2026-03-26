@@ -42,7 +42,14 @@ impl Server for Daemon {
                 id
             }
         };
-        let response = rt.send_to(session_id, &req.content, sender).await?;
+        let content = if let Some(from_id) = req.context_from
+            && let Some(ctx) = rt.compact_session(from_id).await
+        {
+            format!("<context>\n{ctx}\n</context>\n\n{}", req.content)
+        } else {
+            req.content
+        };
+        let response = rt.send_to(session_id, &content, sender).await?;
         Ok(SendResponse {
             agent: req.agent,
             content: response.final_response.unwrap_or_default(),
@@ -57,6 +64,7 @@ impl Server for Daemon {
         let runtime = self.runtime.clone();
         let agent = req.agent;
         let content = req.content;
+        let context_from = req.context_from;
         let req_session = req.session;
         let sender = req.sender.unwrap_or_default();
         let cwd = req.cwd.map(std::path::PathBuf::from);
@@ -82,8 +90,16 @@ impl Server for Daemon {
                 }
             };
 
+            // Emit StreamStart first so the client sees feedback while compact runs.
             yield StreamEvent { event: Some(stream_event::Event::Start(StreamStart { agent: agent.clone(), session: session_id })) };
 
+            let content = if let Some(from_id) = context_from
+                && let Some(ctx) = rt.compact_session(from_id).await
+            {
+                format!("<context>\n{ctx}\n</context>\n\n{content}")
+            } else {
+                content
+            };
             let stream = rt.stream_to(session_id, &content, &sender);
             pin_mut!(stream);
             while let Some(event) = stream.next().await {

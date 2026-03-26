@@ -256,6 +256,7 @@ async fn tg_stream(
         cwd: None,
         new_chat: false,
         resume_file: None,
+        context_from: None,
     });
     let mut server_rx = client.send(client_msg).await;
     let mut acc = StreamAccumulator::new();
