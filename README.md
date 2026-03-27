@@ -23,37 +23,33 @@ crabtalk daemon start
 crabtalk attach
 ```
 
-Full config reference: [configuration][config].
+Full config reference: [`crates/daemon/config.toml`](crates/daemon/config.toml).
 
 ## How It Works
 
-Crabtalk is a daemon that runs [agents] and dispatches tools. The daemon
-ships with built-in [tools] (shell, task delegation, memory),
-[MCP][mcp] server integration, and [skills] (Markdown prompt files).
+Crabtalk is a daemon that runs agents and dispatches tools. The daemon
+ships with built-in tools (shell, task delegation, memory), MCP server
+integration, and skills (Markdown prompt files).
 
-Heavier capabilities live outside the daemon as [components] — independent
+Heavier capabilities live outside the daemon as components — independent
 binaries that install as system services and connect via auto-discovery
 (`crabtalk <name>` finds `crabtalk-<name>` on PATH):
 
-| Component              | What it does                                   |
-| ---------------------- | ---------------------------------------------- |
-| [Search][search]       | Meta-search aggregator                         |
-| [Telegram][telegram]   | Telegram gateway                               |
-| [WeChat][wechat]       | WeChat gateway                                 |
-| [Outlook][outlook]     | Outlook MCP server (email + calendar)          |
-| [Hub][hub]             | Package management                             |
+| Component    | What it does                          |
+| ------------ | ------------------------------------- |
+| Search       | Meta-search aggregator                |
+| Telegram     | Telegram gateway                      |
+| WeChat       | WeChat gateway                        |
+| Outlook      | Outlook MCP server (email + calendar) |
+| Hub          | Package management                    |
 
 The daemon stays small. Components run independently.
 
 ## Learn More
 
 - [The Crabtalk Book][book] — manifesto, architecture, and design RFCs
-- [Quickstart][quickstart] — first agent in 2 minutes
-- [Configuration][config] — crab.toml reference
-- [Providers][providers] — connect any LLM
-- [Components] — how components work
-- [Architecture][runtime] — runtime, event loop, hooks
-- [Why we built Crabtalk][blog]
+- [Configuration](crates/daemon/config.toml) — crab.toml reference
+- [Contributing](CONTRIBUTING.md) — architecture, layering, and data flow
 
 ## License
 
@@ -72,19 +68,3 @@ MIT OR Apache-2.0
 
 [book]: https://crabtalk.github.io/crabtalk
 [install]: https://crabtalk.ai/docs/crabtalk/getting-started/installation
-[quickstart]: https://crabtalk.ai/docs/crabtalk/getting-started/quickstart
-[config]: https://crabtalk.ai/docs/crabtalk/getting-started/configuration
-[providers]: https://crabtalk.ai/docs/crabtalk/models/providers
-[remote]: https://crabtalk.ai/docs/crabtalk/models/remote
-[agents]: https://crabtalk.ai/docs/development/concepts/agents
-[runtime]: https://crabtalk.ai/docs/development/concepts/runtime
-[components]: https://crabtalk.ai/docs/crabtalk/components
-[search]: https://crabtalk.ai/docs/crabtalk/components/search
-[telegram]: https://crabtalk.ai/docs/crabtalk/components/telegram
-[wechat]: https://crabtalk.ai/docs/crabtalk/components/wechat
-[outlook]: https://crabtalk.ai/docs/crabtalk/components/outlook
-[hub]: https://crabtalk.ai/docs/crabtalk/components/hub
-[tools]: https://crabtalk.ai/docs/development/tools/built-in
-[mcp]: https://crabtalk.ai/docs/development/tools/mcp
-[skills]: https://crabtalk.ai/docs/development/tools/skills
-[blog]: https://crabtalk.ai/blog/why-we-built-crabtalk

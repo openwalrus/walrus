@@ -8,4 +8,4 @@ broadcasts events to subscribers via `DownloadRegistry`.
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0

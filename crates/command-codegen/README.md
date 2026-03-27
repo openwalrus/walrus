@@ -8,4 +8,4 @@ variants, and an `exec` dispatcher for the annotated struct.
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0

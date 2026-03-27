@@ -9,4 +9,4 @@ clap enums. Supports MCP and client service kinds.
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0

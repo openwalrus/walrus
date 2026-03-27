@@ -9,4 +9,4 @@ module with `Model` trait, `Message`, `Tool`, `Request`, and `Response`.
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0

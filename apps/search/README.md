@@ -1,6 +1,6 @@
 # crabtalk-search
 
-Meta-search extension for Crabtalk agents. Aggregates results from DuckDuckGo
+Meta-search component for Crabtalk agents. Aggregates results from DuckDuckGo
 and Wikipedia with consensus-based ranking. No API keys required.
 
 ## Install
@@ -49,4 +49,4 @@ crabtalk-search engines
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0

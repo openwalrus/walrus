@@ -7,4 +7,4 @@ multi-model routing and `ProviderDef` for configuration.
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0

@@ -3,9 +3,8 @@
 The Crabtalk daemon.
 
 Runs as a background service, exposing agents over UDS and TCP. Manages
-agent configuration, skills, MCP servers, built-in memory, task delegation,
-and extension services.
+agent configuration, skills, MCP servers, built-in memory, and task delegation.
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0
