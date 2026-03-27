@@ -44,6 +44,7 @@ The daemon stays small. Commands run independently.
 
 ## Learn More
 
+- [The Crabtalk Book][book] — manifesto, architecture, and design RFCs
 - [Quickstart][quickstart] — first agent in 2 minutes
 - [Configuration][config] — crab.toml reference
 - [Providers][providers] — connect any LLM
@@ -66,6 +67,7 @@ GPL-3.0
 
 <!-- docs -->
 
+[book]: https://crabtalk.github.io/crabtalk
 [install]: https://crabtalk.ai/docs/crabtalk/getting-started/installation
 [quickstart]: https://crabtalk.ai/docs/crabtalk/getting-started/quickstart
 [config]: https://crabtalk.ai/docs/crabtalk/getting-started/configuration
