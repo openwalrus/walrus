@@ -101,6 +101,7 @@ fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> St
 /// Extra args (e.g. `-f`, `-n 100`) are passed through to `tail` on Unix.
 /// On Windows (or if `tail` is unavailable), falls back to reading the file natively.
 /// Defaults to showing the last 50 lines if no extra args are given.
+#[cfg(unix)]
 pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
     let path = LOGS_DIR.join(format!("{log_name}.log"));
     if !path.exists() {
@@ -108,40 +109,42 @@ pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Try tail on Unix; fall back to native reading on Windows or if tail fails.
-    #[cfg(unix)]
-    {
-        let args = if tail_args.is_empty() {
-            vec!["-n".to_owned(), "50".to_owned()]
-        } else {
-            tail_args.to_vec()
-        };
+    let args = if tail_args.is_empty() {
+        vec!["-n".to_owned(), "50".to_owned()]
+    } else {
+        tail_args.to_vec()
+    };
 
-        let status = std::process::Command::new("tail")
-            .args(&args)
-            .arg(&path)
-            .status()
-            .map_err(|e| anyhow::anyhow!("failed to run tail: {e}"))?;
-        if !status.success() {
-            anyhow::bail!("tail exited with {status}");
-        }
+    let status = std::process::Command::new("tail")
+        .args(&args)
+        .arg(&path)
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run tail: {e}"))?;
+    if !status.success() {
+        anyhow::bail!("tail exited with {status}");
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
+    use std::io::{BufRead, BufReader};
+
+    let path = LOGS_DIR.join(format!("{log_name}.log"));
+    if !path.exists() {
+        println!("no logs yet: {}", path.display());
         return Ok(());
     }
 
-    #[cfg(not(unix))]
-    {
-        use std::io::{BufRead, BufReader};
-
-        let n: usize = parse_tail_n(tail_args).unwrap_or(50);
-        let file = std::fs::File::open(&path)
-            .map_err(|e| anyhow::anyhow!("failed to open {}: {e}", path.display()))?;
-        let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
-        let start = lines.len().saturating_sub(n);
-        for line in &lines[start..] {
-            println!("{line}");
-        }
-        Ok(())
+    let n: usize = parse_tail_n(tail_args).unwrap_or(50);
+    let file = std::fs::File::open(&path)
+        .map_err(|e| anyhow::anyhow!("failed to open {}: {e}", path.display()))?;
+    let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
+    let start = lines.len().saturating_sub(n);
+    for line in &lines[start..] {
+        println!("{line}");
     }
+    Ok(())
 }
 
 /// Parse `-n <count>` from tail-style args. Returns None if not found.
