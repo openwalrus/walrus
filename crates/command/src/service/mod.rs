@@ -7,7 +7,9 @@ use wcore::paths::{CONFIG_DIR, LOGS_DIR, RUN_DIR};
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 mod unknown;
 
 // ── Low-level install/uninstall ─────────────────────────────────────
@@ -18,7 +20,10 @@ pub use macos::{TEMPLATE, install, is_installed, uninstall};
 #[cfg(target_os = "linux")]
 pub use linux::{TEMPLATE, install, is_installed, uninstall};
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "windows")]
+pub use windows::{install, is_installed, uninstall};
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub use unknown::{install, is_installed, uninstall};
 
 // ── Service trait ───────────────────────────────────────────────────
@@ -86,7 +91,7 @@ pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> 
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
+fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
     String::new()
 }
 
