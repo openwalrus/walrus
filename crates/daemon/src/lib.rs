@@ -10,8 +10,8 @@ pub use config::DaemonConfig;
 #[cfg(unix)]
 pub use daemon::setup_socket;
 pub use daemon::{
-    bridge_shutdown,
+    Daemon, DaemonHandle, bridge_shutdown,
     event::{DaemonEvent, DaemonEventSender},
-    setup_tcp, Daemon, DaemonHandle,
+    setup_tcp,
 };
 pub use hook::DaemonHook;
