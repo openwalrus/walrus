@@ -90,11 +90,12 @@ pub fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -
     String::new()
 }
 
-/// View service logs by delegating to `tail`.
+/// View service logs.
 ///
 /// `log_name` corresponds to the `{log_name}.log` file under `~/.crabtalk/logs/`.
-/// Extra args (e.g. `-f`, `-n 100`) are passed through to `tail`.
-/// Defaults to `-n 50` if no extra args are given.
+/// Extra args (e.g. `-f`, `-n 100`) are passed through to `tail` on Unix.
+/// On Windows (or if `tail` is unavailable), falls back to reading the file natively.
+/// Defaults to showing the last 50 lines if no extra args are given.
 pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
     let path = LOGS_DIR.join(format!("{log_name}.log"));
     if !path.exists() {
@@ -102,21 +103,55 @@ pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let args = if tail_args.is_empty() {
-        vec!["-n".to_owned(), "50".to_owned()]
-    } else {
-        tail_args.to_vec()
-    };
+    // Try tail on Unix; fall back to native reading on Windows or if tail fails.
+    #[cfg(unix)]
+    {
+        let args = if tail_args.is_empty() {
+            vec!["-n".to_owned(), "50".to_owned()]
+        } else {
+            tail_args.to_vec()
+        };
 
-    let status = std::process::Command::new("tail")
-        .args(&args)
-        .arg(&path)
-        .status()
-        .map_err(|e| anyhow::anyhow!("failed to run tail: {e}"))?;
-    if !status.success() {
-        anyhow::bail!("tail exited with {status}");
+        let status = std::process::Command::new("tail")
+            .args(&args)
+            .arg(&path)
+            .status()
+            .map_err(|e| anyhow::anyhow!("failed to run tail: {e}"))?;
+        if !status.success() {
+            anyhow::bail!("tail exited with {status}");
+        }
+        return Ok(());
     }
-    Ok(())
+
+    #[cfg(not(unix))]
+    {
+        use std::io::{BufRead, BufReader};
+
+        let n: usize = parse_tail_n(tail_args).unwrap_or(50);
+        let file = std::fs::File::open(&path)
+            .map_err(|e| anyhow::anyhow!("failed to open {}: {e}", path.display()))?;
+        let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
+        let start = lines.len().saturating_sub(n);
+        for line in &lines[start..] {
+            println!("{line}");
+        }
+        Ok(())
+    }
+}
+
+/// Parse `-n <count>` from tail-style args. Returns None if not found.
+#[cfg(not(unix))]
+fn parse_tail_n(args: &[String]) -> Option<usize> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "-n" {
+            return iter.next().and_then(|v| v.parse().ok());
+        }
+        if let Some(n) = arg.strip_prefix("-n") {
+            return n.parse().ok();
+        }
+    }
+    None
 }
 
 // ── MCP run helper ──────────────────────────────────────────────────

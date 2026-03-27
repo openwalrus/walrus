@@ -63,6 +63,8 @@ pub fn run(args: Vec<OsString>) -> Result<()> {
 /// Install Rust via rustup.
 fn install_rustup() -> Result<()> {
     eprintln!("installing Rust via rustup...");
+
+    #[cfg(unix)]
     let status = Command::new("sh")
         .args([
             "-c",
@@ -70,20 +72,29 @@ fn install_rustup() -> Result<()> {
         ])
         .status()
         .context("failed to run rustup installer")?;
+
+    #[cfg(windows)]
+    let status = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe; ./rustup-init.exe -y; Remove-Item rustup-init.exe",
+        ])
+        .status()
+        .context("failed to run rustup installer")?;
+
     if !status.success() {
         bail!("rustup installation failed");
     }
 
-    // Source cargo env so it's available for the rest of this process.
-    let cargo_env = format!("{}/.cargo/env", std::env::var("HOME").unwrap_or_default());
-    if std::path::Path::new(&cargo_env).exists()
-        && let Some(path) = Command::new("sh")
-            .args(["-c", &format!(". '{cargo_env}' && echo $PATH")])
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-    {
-        unsafe { std::env::set_var("PATH", path.trim()) }
+    // Add cargo bin to PATH so it's available for the rest of this process.
+    if let Some(home) = dirs::home_dir() {
+        let cargo_bin = home.join(".cargo").join("bin");
+        if cargo_bin.exists() {
+            let path = std::env::var("PATH").unwrap_or_default();
+            let sep = if cfg!(windows) { ";" } else { ":" };
+            unsafe { std::env::set_var("PATH", format!("{}{sep}{path}", cargo_bin.display())) }
+        }
     }
 
     if !has_cargo() {
@@ -119,17 +130,17 @@ fn find_binary(name: &str) -> Option<PathBuf> {
         }
     }
 
-    let path = std::env::var("PATH").unwrap_or_default();
-    for dir in path.split(':') {
-        let candidate = PathBuf::from(dir).join(name);
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(name);
         if candidate.exists() {
             return Some(candidate);
         }
     }
 
     // Fallback: ~/.cargo/bin may not be on PATH yet.
-    if let Ok(home) = std::env::var("HOME") {
-        let candidate = PathBuf::from(home).join(".cargo/bin").join(name);
+    if let Some(home) = dirs::home_dir() {
+        let candidate = home.join(".cargo/bin").join(name);
         if candidate.exists() {
             return Some(candidate);
         }
