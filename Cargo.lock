@@ -629,6 +629,7 @@ dependencies = [
  "async-stream",
  "chrono",
  "crabllm-core",
+ "crabtalk-core",
  "dirs",
  "futures-core",
  "futures-util",
@@ -740,6 +741,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yml",
+ "tempfile",
  "tokio",
  "tracing",
 ]
