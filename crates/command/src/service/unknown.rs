@@ -7,9 +7,9 @@ pub fn is_installed(_label: &str) -> bool {
 }
 
 pub fn install(_rendered: &str, _label: &str) -> Result<()> {
-    anyhow::bail!("service install is only supported on macOS and Linux")
+    anyhow::bail!("service install is only supported on macOS, Linux, and Windows")
 }
 
 pub fn uninstall(_label: &str) -> Result<()> {
-    anyhow::bail!("service uninstall is only supported on macOS and Linux")
+    anyhow::bail!("service uninstall is only supported on macOS, Linux, and Windows")
 }

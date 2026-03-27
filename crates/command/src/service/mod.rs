@@ -7,8 +7,10 @@ use wcore::paths::{CONFIG_DIR, LOGS_DIR, RUN_DIR};
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 mod unknown;
+#[cfg(target_os = "windows")]
+mod windows;
 
 // ── Low-level install/uninstall ─────────────────────────────────────
 
@@ -18,7 +20,10 @@ pub use macos::{TEMPLATE, install, is_installed, uninstall};
 #[cfg(target_os = "linux")]
 pub use linux::{TEMPLATE, install, is_installed, uninstall};
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "windows")]
+pub use windows::{TEMPLATE, install, is_installed, uninstall};
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub use unknown::{install, is_installed, uninstall};
 
 // ── Service trait ───────────────────────────────────────────────────
@@ -72,7 +77,7 @@ pub fn verbose_flag(count: u8) -> String {
 }
 
 /// Render the platform-specific service template for a [`Service`] implementor.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> String {
     let path_env = std::env::var("PATH").unwrap_or_default();
     TEMPLATE
@@ -85,16 +90,18 @@ pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> 
         .replace("{path}", &path_env)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
     String::new()
 }
 
-/// View service logs by delegating to `tail`.
+/// View service logs.
 ///
 /// `log_name` corresponds to the `{log_name}.log` file under `~/.crabtalk/logs/`.
-/// Extra args (e.g. `-f`, `-n 100`) are passed through to `tail`.
-/// Defaults to `-n 50` if no extra args are given.
+/// Extra args (e.g. `-f`, `-n 100`) are passed through to `tail` on Unix.
+/// On Windows (or if `tail` is unavailable), falls back to reading the file natively.
+/// Defaults to showing the last 50 lines if no extra args are given.
+#[cfg(unix)]
 pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
     let path = LOGS_DIR.join(format!("{log_name}.log"));
     if !path.exists() {
@@ -117,6 +124,42 @@ pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
         anyhow::bail!("tail exited with {status}");
     }
     Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn view_logs(log_name: &str, tail_args: &[String]) -> anyhow::Result<()> {
+    use std::io::{BufRead, BufReader};
+
+    let path = LOGS_DIR.join(format!("{log_name}.log"));
+    if !path.exists() {
+        println!("no logs yet: {}", path.display());
+        return Ok(());
+    }
+
+    let n: usize = parse_tail_n(tail_args).unwrap_or(50);
+    let file = std::fs::File::open(&path)
+        .map_err(|e| anyhow::anyhow!("failed to open {}: {e}", path.display()))?;
+    let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
+    let start = lines.len().saturating_sub(n);
+    for line in &lines[start..] {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// Parse `-n <count>` from tail-style args. Returns None if not found.
+#[cfg(not(unix))]
+fn parse_tail_n(args: &[String]) -> Option<usize> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "-n" {
+            return iter.next().and_then(|v| v.parse().ok());
+        }
+        if let Some(n) = arg.strip_prefix("-n") {
+            return n.parse().ok();
+        }
+    }
+    None
 }
 
 // ── MCP run helper ──────────────────────────────────────────────────

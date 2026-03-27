@@ -6,9 +6,11 @@ pub use loader::{DEFAULT_CONFIG, scaffold_config_dir};
 pub use runtime::{McpHandler, SystemConfig, mcp::McpServerConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+#[cfg(unix)]
+pub use wcore::paths::SOCKET_PATH;
 pub use wcore::{
     AgentConfig, ManifestConfig, ResolvedManifest, load_agents_dir, load_agents_dirs,
-    paths::{AGENTS_DIR, CONFIG_DIR, CONFIG_FILE, SKILLS_DIR, SOCKET_PATH},
+    paths::{AGENTS_DIR, CONFIG_DIR, CONFIG_FILE, SKILLS_DIR},
     resolve_manifests,
 };
 

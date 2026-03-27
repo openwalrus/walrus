@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
-use std::path::Path;
 
 mod logs;
 mod service;
@@ -44,20 +43,18 @@ pub enum DaemonCommand {
 }
 
 impl Daemon {
-    pub async fn run(self, socket_path: &Path) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
         match self.command {
             DaemonCommand::Run => start::start().await,
-            DaemonCommand::Reload => reload(socket_path).await,
+            DaemonCommand::Reload => {
+                let mut runner = crate::cmd::connect_default().await?;
+                runner.reload().await?;
+                println!("daemon reloaded");
+                Ok(())
+            }
             DaemonCommand::Logs { tail_args } => logs::logs(&tail_args),
             DaemonCommand::Start { force } => service::install(self.verbose.max(1), force),
             DaemonCommand::Stop => service::uninstall(),
         }
     }
-}
-
-async fn reload(socket_path: &Path) -> Result<()> {
-    let mut runner = crate::repl::runner::Runner::connect(socket_path).await?;
-    runner.reload().await?;
-    println!("daemon reloaded");
-    Ok(())
 }
