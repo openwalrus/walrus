@@ -58,8 +58,24 @@ pub trait McpService: Service {
 ```
 
 `run_mcp` binds a TCP listener on `127.0.0.1:0`, writes the port to
-`~/.crabtalk/run/{name}.port`, and serves the router. The daemon auto-discovers
-MCP services by scanning port files in that directory.
+`~/.crabtalk/run/{name}.port`, and serves the router.
+
+### Auto-discovery: port files, not subprocesses
+
+The daemon does not manage MCP servers as subprocesses. Other projects spawn MCP
+servers as child processes — if the child hangs or crashes, it can take the
+daemon with it. A broken subprocess can trigger broken daemon behavior: zombie
+processes, leaked file descriptors, blocked event loops.
+
+Crabtalk's approach: MCP servers are independent system services. Each writes a
+port file (`~/.crabtalk/run/{name}.port`) on startup. The daemon scans this
+directory at startup and discovers services automatically. No subprocess
+management, no shared fate.
+
+The contract is simple: write a port file, the daemon finds you. Crash? The
+daemon doesn't care — it was never your parent process. Restart? New port file,
+the daemon picks it up on next reload. This is the manifesto applied to tool
+servers: they connect as clients, they crash alone.
 
 ### Entry point
 

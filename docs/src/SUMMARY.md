@@ -6,6 +6,7 @@
 
 - [0009 - Transport](rfcs/0009-transport.md)
 - [0018 - Protocol](rfcs/0018-protocol.md)
+- [0027 - Model](rfcs/0027-model.md)
 - [0036 - Skill Loading](rfcs/0036-skill.md)
 - [0038 - Memory](rfcs/0038-memory.md)
 - [0043 - Command](rfcs/0043-command.md)
