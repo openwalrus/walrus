@@ -10,6 +10,9 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
+[features]
+test-utils = []
+
 [dependencies]
 # crabllm
 crabllm-core.workspace = true
@@ -28,6 +31,11 @@ serde_json.workspace = true
 tokio.workspace = true
 toml.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+crabtalk-core = { path = ".", features = ["test-utils"] }
+serde_json.workspace = true
+tempfile = "3"
 
 [build-dependencies]
 prost-build.workspace = true

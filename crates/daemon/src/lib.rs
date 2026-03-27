@@ -7,6 +7,11 @@ pub mod daemon;
 pub mod hook;
 
 pub use config::DaemonConfig;
-pub use daemon::event::{DaemonEvent, DaemonEventSender};
-pub use daemon::{Daemon, DaemonHandle, bridge_shutdown, setup_socket, setup_tcp};
+#[cfg(unix)]
+pub use daemon::setup_socket;
+pub use daemon::{
+    Daemon, DaemonHandle, bridge_shutdown,
+    event::{DaemonEvent, DaemonEventSender},
+    setup_tcp,
+};
 pub use hook::DaemonHook;
