@@ -17,7 +17,7 @@ Or `cargo install crabtalk`. See the [installation guide][install] for details.
 
 ```bash
 # Start the daemon
-crabtalk daemon install
+crabtalk daemon start
 
 # Chat with your agent
 crabtalk attach
@@ -31,16 +31,19 @@ Crabtalk is a daemon that runs [agents] and dispatches tools. The daemon
 ships with built-in [tools] (shell, task delegation, memory),
 [MCP][mcp] server integration, and [skills] (Markdown prompt files).
 
-Heavier capabilities live outside the daemon as [commands] — standalone
-binaries discovered via cargo-style dispatch (`crabtalk <name>` finds
-`crabtalk-<name>` on PATH):
+Heavier capabilities live outside the daemon as [components] — independent
+binaries that install as system services and connect via auto-discovery
+(`crabtalk <name>` finds `crabtalk-<name>` on PATH):
 
-| Command            | What it does                                 |
-| ------------------ | -------------------------------------------- |
-| [Search][search]   | Meta-search aggregator                       |
-| [Gateway][gateway] | Telegram adapter                             |
+| Component              | What it does                                   |
+| ---------------------- | ---------------------------------------------- |
+| [Search][search]       | Meta-search aggregator                         |
+| [Telegram][telegram]   | Telegram gateway                               |
+| [WeChat][wechat]       | WeChat gateway                                 |
+| [Outlook][outlook]     | Outlook MCP server (email + calendar)          |
+| [Hub][hub]             | Package management                             |
 
-The daemon stays small. Commands run independently.
+The daemon stays small. Components run independently.
 
 ## Learn More
 
@@ -48,13 +51,13 @@ The daemon stays small. Commands run independently.
 - [Quickstart][quickstart] — first agent in 2 minutes
 - [Configuration][config] — crab.toml reference
 - [Providers][providers] — connect any LLM
-- [Commands] — how commands work
+- [Components] — how components work
 - [Architecture][runtime] — runtime, event loop, hooks
 - [Why we built Crabtalk][blog]
 
 ## License
 
-GPL-3.0
+MIT OR Apache-2.0
 
 <!-- badges -->
 
@@ -75,9 +78,12 @@ GPL-3.0
 [remote]: https://crabtalk.ai/docs/crabtalk/models/remote
 [agents]: https://crabtalk.ai/docs/development/concepts/agents
 [runtime]: https://crabtalk.ai/docs/development/concepts/runtime
-[commands]: https://crabtalk.ai/docs/crabtalk/commands
-[search]: https://crabtalk.ai/docs/crabtalk/commands/search
-[gateway]: https://crabtalk.ai/docs/crabtalk/commands/gateway
+[components]: https://crabtalk.ai/docs/crabtalk/components
+[search]: https://crabtalk.ai/docs/crabtalk/components/search
+[telegram]: https://crabtalk.ai/docs/crabtalk/components/telegram
+[wechat]: https://crabtalk.ai/docs/crabtalk/components/wechat
+[outlook]: https://crabtalk.ai/docs/crabtalk/components/outlook
+[hub]: https://crabtalk.ai/docs/crabtalk/components/hub
 [tools]: https://crabtalk.ai/docs/development/tools/built-in
 [mcp]: https://crabtalk.ai/docs/development/tools/mcp
 [skills]: https://crabtalk.ai/docs/development/tools/skills
