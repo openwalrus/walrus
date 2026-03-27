@@ -1,6 +1,6 @@
 //! Context compaction — summarize conversation history and replace it.
 
-use crate::model::{Message, Model, Request};
+use crate::model::{Message, Model, Request, Role};
 
 pub(crate) const COMPACT_PROMPT: &str = include_str!("../../prompts/compact.md");
 
@@ -29,7 +29,14 @@ impl<M: Model> super::Agent<M> {
                 self.config.system_prompt
             )));
         }
-        messages.extend(history.iter().cloned());
+        let max_len = self.config.compact_tool_max_len;
+        messages.extend(history.iter().cloned().map(|mut m| {
+            if m.role == Role::Tool && m.content.len() > max_len {
+                m.content.truncate(m.content.floor_char_boundary(max_len));
+                m.content.push_str("... [truncated]");
+            }
+            m
+        }));
 
         let request = Request::new(model_name).with_messages(messages);
         match self.model.send(&request).await {
