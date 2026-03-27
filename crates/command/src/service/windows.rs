@@ -18,8 +18,14 @@ pub fn is_installed(label: &str) -> bool {
 
 /// Create and start a scheduled task from a rendered XML template.
 pub fn install(rendered: &str, label: &str) -> Result<()> {
+    // End any running instance before re-creating.
+    // /Create /F already overwrites the task definition, so no need to delete first.
     if is_installed(label) {
-        uninstall(label)?;
+        let _ = std::process::Command::new("schtasks")
+            .args(["/End", "/TN", label])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
 
     std::fs::create_dir_all(&*LOGS_DIR)?;
