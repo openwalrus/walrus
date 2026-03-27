@@ -64,9 +64,6 @@ impl Cli {
                 let mut runner = connect_default().await?;
                 cmd.run(&mut runner).await
             }
-            #[cfg(unix)]
-            Command::Daemon(cmd) => cmd.run(&wcore::paths::SOCKET_PATH).await,
-            #[cfg(not(unix))]
             Command::Daemon(cmd) => cmd.run().await,
             Command::Ls => {
                 let run_dir = &*wcore::paths::RUN_DIR;

@@ -43,28 +43,11 @@ pub enum DaemonCommand {
 }
 
 impl Daemon {
-    #[cfg(unix)]
-    pub async fn run(self, socket_path: &std::path::Path) -> Result<()> {
-        match self.command {
-            DaemonCommand::Run => start::start().await,
-            DaemonCommand::Reload => {
-                let mut runner = crate::repl::runner::Runner::connect(socket_path).await?;
-                runner.reload().await?;
-                println!("daemon reloaded");
-                Ok(())
-            }
-            DaemonCommand::Logs { tail_args } => logs::logs(&tail_args),
-            DaemonCommand::Start { force } => service::install(self.verbose.max(1), force),
-            DaemonCommand::Stop => service::uninstall(),
-        }
-    }
-
-    #[cfg(not(unix))]
     pub async fn run(self) -> Result<()> {
         match self.command {
             DaemonCommand::Run => start::start().await,
             DaemonCommand::Reload => {
-                let mut runner = crate::cmd::connect_tcp().await?;
+                let mut runner = crate::cmd::connect_default().await?;
                 runner.reload().await?;
                 println!("daemon reloaded");
                 Ok(())
