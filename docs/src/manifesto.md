@@ -1,43 +1,53 @@
 # Manifesto
 
-Crabtalk is daemon-based LLM agent infrastructure. Personal agent, local-first.
+Ownership is necessary for an open agent ecosystem.
 
-A single daemon runs on your machine, managing agents, sessions, tools, and
-connections. Clients — CLI, Telegram, anything with a socket — connect and talk.
-The daemon does the thinking. The client does the presenting.
+Ownership is not configuration. A configured agent is one where you picked from
+someone else's menu. An owned agent is one where you decided what's on the menu.
+Ownership is the power to compose your own stack.
 
-## What we stand for
+Every agent application today rebuilds session management, command dispatch, and
+event streaming from scratch — then bundles it alongside search, browser
+automation, PDF parsing, TTS, image processing, and dozens of tools you didn't
+ask for into one process. If you want a Telegram bot with search, you carry
+nineteen other channels and every integration. If you want a coding agent, you
+carry TTS and image generation. The process is theirs. The choices are theirs.
+You run it.
 
-**Challenge first.** "Why do we need this?" comes before "How do we build this?"
-If the answer is "it might be useful someday," kill it.
+This happens because the daemon layer is missing. Without it, every application
+must become the daemon. And a daemon that is also an application ships its
+opinion of what your agent should be.
 
-**Simplicity is the highest virtue.** Always choose the simplest solution that
-works. Fewer abstractions, fewer indirections, fewer files. Complex abstractions
-are a sign of confused thinking, not clever design.
+CrabTalk is that daemon layer. It manages sessions, dispatches commands, and
+streams the full execution lifecycle to your client. It does not bundle search.
+It does not bundle gateways. It does not bundle tools. You put what you need on
+your PATH. They connect as clients. They crash alone. They swap without
+restarts. The daemon never loads them.
 
-**Abstractions must earn their keep.** Prefer plain functions over traits with
-one implementor. Prefer inline logic over helpers used once. No generics, type
-parameters, or layers "for future use."
+An agent daemon is not an agent application. An agent daemon empowers you to
+build the application you want — and only the application you want. This is the
+essence of ownership.
 
-**Data structures first.** If the data structures are right, the code writes
-itself. If they're wrong, no amount of clever code will save it.
+We cannot expect agent platforms to give us ownership out of their beneficence.
+It is to their advantage to bundle, to lock in, to ship their choices as yours.
+We should expect that they will bundle. To fight against bundling is to fight
+against the incentive structure of platforms. Every feature they absorb is a
+choice they made for you. Every dependency they embed is a process boundary they
+erased. The only way to preserve choice is to never take it away in the first
+place — to build the layer that connects, and leave the rest to the user.
 
-**Say no.** Bad ideas, overcomplicated proposals, and solutions looking for
-problems get rejected. Be direct, not rude. Give the simpler alternative.
+We must build our own infrastructure if we expect to own our agents. We must
+build the layer that lets components connect, fail independently, and swap
+without ceremony.
 
-**Demand concrete examples.** "Show me the call site." "What does the error look
-like?" "Walk me through the actual failure." Handwaving is not design.
+We are building that layer. We are building it in Rust, in 8 megabytes, with
+every event streamed live — every tool call, every thinking step, every decision.
+Our code is open for all to read, to audit, to modify. We don't much care if you
+prefer a batteries-included experience. We know that a well-factored daemon
+outlasts any application built on top of it.
 
-**No laziness.** Find root causes. No temporary fixes, no temporary solutions.
+You could build an OpenClaw-like assistant or a Hermes-like agent on top of
+CrabTalk. You can't build a CrabTalk underneath them. The daemon must come
+first. The architecture must be right. Everything else follows.
 
-**Minimal impact.** Changes should only touch what's necessary.
-
-## How we build
-
-Discuss before coding. Explore the codebase, surface trade-offs, present
-options. Challenge the proposal — what problem does this actually solve? Is the
-problem real? Only implement after alignment.
-
-For bug fixes, think before fixing. Follow the bug wherever it leads. Will this
-fix introduce new bugs? Does it expose a design flaw that needs a refactor? Fix
-the bug, then fix what the bug revealed.
+Let us proceed.
