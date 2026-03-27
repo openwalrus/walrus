@@ -21,7 +21,7 @@ pub use macos::{TEMPLATE, install, is_installed, uninstall};
 pub use linux::{TEMPLATE, install, is_installed, uninstall};
 
 #[cfg(target_os = "windows")]
-pub use windows::{install, is_installed, uninstall};
+pub use windows::{TEMPLATE, install, is_installed, uninstall};
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub use unknown::{install, is_installed, uninstall};
@@ -77,7 +77,7 @@ pub fn verbose_flag(count: u8) -> String {
 }
 
 /// Render the platform-specific service template for a [`Service`] implementor.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> String {
     let path_env = std::env::var("PATH").unwrap_or_default();
     TEMPLATE
@@ -90,7 +90,7 @@ pub fn render_service_template(svc: &(impl Service + ?Sized), binary: &Path) -> 
         .replace("{path}", &path_env)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn render_service_template(_svc: &(impl Service + ?Sized), _binary: &Path) -> String {
     String::new()
 }
