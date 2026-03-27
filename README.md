@@ -67,4 +67,4 @@ MIT OR Apache-2.0
 <!-- docs -->
 
 [book]: https://crabtalk.github.io/crabtalk
-[install]: https://crabtalk.ai/docs/crabtalk/getting-started/installation
+[install]: https://www.crabtalk.ai/docs/getting-started/installation
