@@ -1,8 +1,9 @@
-# 0001 - Compact Session
+# 0078 - Compact Session
 
 - Feature Name: Compact Session Interface
 - Start Date: 2026-03-25
 - Discussion: [#78](https://github.com/crabtalk/crabtalk/issues/78)
+- Crates: core, daemon
 
 ## Summary
 

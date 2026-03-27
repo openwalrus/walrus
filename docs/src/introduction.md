@@ -14,26 +14,20 @@ For user-facing documentation (installation, configuration, commands), see
 
 ## RFCs
 
-Many changes to crabtalk — including new features, design decisions, and
-architectural contracts — are made through the RFC process. The "RFC" (request
-for comments) mechanism provides a consistent path for changes so that all
-contributors can be confident about the direction of the project.
-
-Not every change needs an RFC. Bug fixes, refactors, and small improvements go
-through normal pull requests. RFCs are for decisions that establish rules,
-contracts, or interfaces that others need to know about before building —
-features that shape how the system evolves.
-
 Code tells you *what* the system does. Git history tells you *when* it changed.
 RFCs tell you *why* — the problem, the alternatives considered, and the
 reasoning behind the choice. When you're about to build something new, RFCs are
 where you check whether the problem has been thought through before.
 
-### RFC format
+Not every change needs an RFC. Bug fixes, refactors, and small improvements go
+through normal pull requests. RFCs are for decisions that establish rules,
+contracts, or interfaces that others need to know about before building.
+
+### Format
 
 Each RFC is a markdown file with the following structure:
 
-- **Header** — Feature name, start date, link to discussion.
+- **Header** — Feature name, start date, link to discussion, affected crates.
 - **Summary** — One paragraph describing the decision.
 - **Motivation** — What problem does this solve? What use cases does it enable?
 - **Design** — The technical design. Contracts, responsibilities, interfaces.
@@ -49,5 +43,3 @@ Each RFC is a markdown file with the following structure:
 The RFC number is the issue number or the PR number that introduced the feature.
 RFCs are written *after* implementation, not before — they record decisions that
 were made, not proposals for decisions to come.
-
-
