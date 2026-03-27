@@ -72,7 +72,10 @@ async fn register_and_unregister_tool() {
 async fn create_session_requires_registered_agent() {
     let model = TestModel::with_chunks(vec![]);
     let runtime = Runtime::new(model, (), None).await;
-    let err = runtime.create_session("nonexistent", "user").await.unwrap_err();
+    let err = runtime
+        .create_session("nonexistent", "user")
+        .await
+        .unwrap_err();
     assert!(err.to_string().contains("not registered"));
 }
 
@@ -198,10 +201,7 @@ async fn stream_to_yields_correct_content() {
     let mut runtime = Runtime::new(model, (), None).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
-    let session_id = runtime
-        .create_session("crab", "test-stream")
-        .await
-        .unwrap();
+    let session_id = runtime.create_session("crab", "test-stream").await.unwrap();
 
     let mut events = Vec::new();
     let mut stream = std::pin::pin!(runtime.stream_to(session_id, "hi", ""));

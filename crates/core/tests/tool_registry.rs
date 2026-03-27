@@ -1,7 +1,7 @@
 //! Tests for ToolRegistry — schema-only tool store.
 
-use schemars::Schema;
 use crabtalk_core::{ToolRegistry, model::Tool};
+use schemars::Schema;
 
 fn tool(name: &str) -> Tool {
     Tool {

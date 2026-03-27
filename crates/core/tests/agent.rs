@@ -4,8 +4,7 @@ use crabtalk_core::{
     AgentBuilder, AgentConfig, AgentEvent, AgentStopReason,
     model::{
         Choice, CompletionMeta, Delta, FinishReason, FunctionCall, Message, Response, Role,
-        StreamChunk, ToolCall, Usage,
-        test_model::TestModel,
+        StreamChunk, ToolCall, Usage, test_model::TestModel,
     },
 };
 use futures_util::StreamExt;
@@ -146,9 +145,11 @@ async fn step_no_tool_sender_returns_error_message() {
     let step = agent.step(&mut history, None).await.unwrap();
 
     assert_eq!(step.tool_results.len(), 1);
-    assert!(step.tool_results[0]
-        .content
-        .contains("no tool sender configured"));
+    assert!(
+        step.tool_results[0]
+            .content
+            .contains("no tool sender configured")
+    );
 }
 
 #[tokio::test]
@@ -198,10 +199,7 @@ async fn run_stream_text_response() {
 async fn run_stream_tool_call_then_text() {
     let calls = vec![make_tool_call("recall", r#"{"query":"test"}"#)];
 
-    let model = TestModel::with_chunks(vec![
-        tool_chunks(calls),
-        text_chunks("answer"),
-    ]);
+    let model = TestModel::with_chunks(vec![tool_chunks(calls), text_chunks("answer")]);
 
     let (tool_tx, mut tool_rx) = mpsc::unbounded_channel();
     let agent = AgentBuilder::new(model)
@@ -287,10 +285,7 @@ async fn run_stream_multiple_tool_calls_in_one_step() {
         },
     ];
 
-    let model = TestModel::with_chunks(vec![
-        tool_chunks(calls),
-        text_chunks("done"),
-    ]);
+    let model = TestModel::with_chunks(vec![tool_chunks(calls), text_chunks("done")]);
 
     let (tool_tx, mut tool_rx) = mpsc::unbounded_channel();
     let agent = AgentBuilder::new(model)

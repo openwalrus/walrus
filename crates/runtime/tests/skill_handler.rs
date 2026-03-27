@@ -7,9 +7,8 @@ use tempfile::TempDir;
 fn write_skill(dir: &std::path::Path, name: &str) {
     let skill_dir = dir.join(name);
     fs::create_dir_all(&skill_dir).unwrap();
-    let content = format!(
-        "---\nname: {name}\ndescription: test skill\n---\nSkill body for {name}."
-    );
+    let content =
+        format!("---\nname: {name}\ndescription: test skill\n---\nSkill body for {name}.");
     fs::write(skill_dir.join("SKILL.md"), content).unwrap();
 }
 
@@ -33,11 +32,8 @@ fn load_from_multiple_dirs() {
     write_skill(dir1.path(), "skill-a");
     write_skill(dir2.path(), "skill-b");
 
-    let handler = SkillHandler::load(vec![
-        dir1.path().to_path_buf(),
-        dir2.path().to_path_buf(),
-    ])
-    .unwrap();
+    let handler =
+        SkillHandler::load(vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.len(), 2);
 }
@@ -87,11 +83,8 @@ fn load_conflict_first_dir_wins() {
     )
     .unwrap();
 
-    let handler = SkillHandler::load(vec![
-        dir1.path().to_path_buf(),
-        dir2.path().to_path_buf(),
-    ])
-    .unwrap();
+    let handler =
+        SkillHandler::load(vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.len(), 1);
     // First dir wins — verify it's from dir1

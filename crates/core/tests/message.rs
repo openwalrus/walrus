@@ -1,7 +1,7 @@
 //! Tests for Message constructors, MessageBuilder, and token estimation.
 
 use crabtalk_core::model::{
-    Message, MessageBuilder, Role, StreamChunk, ToolCall, FunctionCall, estimate_tokens,
+    FunctionCall, Message, MessageBuilder, Role, StreamChunk, ToolCall, estimate_tokens,
 };
 
 // --- Message constructors ---
@@ -83,7 +83,7 @@ fn estimate_tokens_includes_tool_calls() {
         index: 0,
         call_type: "function".into(),
         function: FunctionCall {
-            name: "bash".into(), // 4 chars
+            name: "bash".into(),                                   // 4 chars
             arguments: r#"{"command":"echo hello world"}"#.into(), // 30 chars
         },
     }];
@@ -95,7 +95,7 @@ fn estimate_tokens_includes_tool_calls() {
 #[test]
 fn estimate_tokens_slice() {
     let msgs = vec![
-        Message::user("hello"),           // 5 / 4 = 1
+        Message::user("hello"),                  // 5 / 4 = 1
         Message::assistant("world", None, None), // 5 / 4 = 1
     ];
     assert_eq!(estimate_tokens(&msgs), 2);

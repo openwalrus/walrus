@@ -1,8 +1,8 @@
 //! Tests for Session JSONL persistence and sender_slug.
 
+use crabtalk_core::{Session, find_latest_session, model::Message, sender_slug};
 use std::io::Write;
 use tempfile::TempDir;
-use crabtalk_core::{Session, model::Message, sender_slug, find_latest_session};
 
 #[test]
 fn sender_slug_basic() {
@@ -81,7 +81,10 @@ fn load_context_roundtrip() {
     let dir = TempDir::new().unwrap();
     let mut session = Session::new(1, "crab", "tester");
     session.init_file(dir.path());
-    session.append_messages(&[Message::user("hello"), Message::assistant("world", None, None)]);
+    session.append_messages(&[
+        Message::user("hello"),
+        Message::assistant("world", None, None),
+    ]);
 
     let (meta, messages) = Session::load_context(session.file_path.as_ref().unwrap()).unwrap();
     assert_eq!(meta.agent, "crab");
@@ -94,7 +97,10 @@ fn load_context_after_compact() {
     let dir = TempDir::new().unwrap();
     let mut session = Session::new(1, "crab", "user");
     session.init_file(dir.path());
-    session.append_messages(&[Message::user("old"), Message::assistant("old reply", None, None)]);
+    session.append_messages(&[
+        Message::user("old"),
+        Message::assistant("old reply", None, None),
+    ]);
     session.append_compact("summary of conversation");
     session.append_messages(&[Message::user("new")]);
 
@@ -112,13 +118,15 @@ fn set_title_renames_file() {
     let old_path = session.file_path.clone().unwrap();
     session.set_title("My Chat");
     assert_ne!(session.file_path.as_ref().unwrap(), &old_path);
-    assert!(session
-        .file_path
-        .as_ref()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .contains("my-chat"));
+    assert!(
+        session
+            .file_path
+            .as_ref()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("my-chat")
+    );
 }
 
 #[test]
@@ -191,7 +199,11 @@ fn find_latest_session_no_match() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("other_agent_user_1.jsonl");
     let mut f = std::fs::File::create(&path).unwrap();
-    writeln!(f, r#"{{"agent":"other","created_by":"user","created_at":"2024-01-01T00:00:00Z"}}"#).unwrap();
+    writeln!(
+        f,
+        r#"{{"agent":"other","created_by":"user","created_at":"2024-01-01T00:00:00Z"}}"#
+    )
+    .unwrap();
     assert!(find_latest_session(dir.path(), "crab", "user").is_none());
 }
 
@@ -203,7 +215,21 @@ fn seq_increments_across_init_file_calls() {
     let mut s2 = Session::new(2, "crab", "user");
     s2.init_file(dir.path());
     // s2 should have a higher seq number
-    let p1 = s1.file_path.unwrap().file_name().unwrap().to_str().unwrap().to_string();
-    let p2 = s2.file_path.unwrap().file_name().unwrap().to_str().unwrap().to_string();
+    let p1 = s1
+        .file_path
+        .unwrap()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let p2 = s2
+        .file_path
+        .unwrap()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     assert_ne!(p1, p2);
 }
