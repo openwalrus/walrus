@@ -1,0 +1,1430 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>The Crabtalk Book</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-853a3b5b.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-7813c9dc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Crabtalk Book</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/crabtalk/crabtalk" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>This is the crabtalk development book — the knowledge base you check before
+building. It captures what crabtalk stands for, how the system is shaped, and
+the design decisions that govern its evolution.</p>
+<p>For user-facing documentation (installation, configuration, commands), see
+<a href="https://crabtalk.ai">crabtalk.ai</a>.</p>
+<h2 id="how-this-book-is-organized"><a class="header" href="#how-this-book-is-organized">How this book is organized</a></h2>
+<ul>
+<li><strong><a href="#manifesto">Manifesto</a></strong> — What crabtalk is and what it stands for.</li>
+<li><strong>RFCs</strong> — Design decisions and features.</li>
+</ul>
+<h2 id="rfcs"><a class="header" href="#rfcs">RFCs</a></h2>
+<p>Code tells you <em>what</em> the system does. Git history tells you <em>when</em> it changed.
+RFCs tell you <em>why</em> — the problem, the alternatives considered, and the
+reasoning behind the choice. When you’re about to build something new, RFCs are
+where you check whether the problem has been thought through before.</p>
+<p>Not every change needs an RFC. Bug fixes, refactors, and small improvements go
+through normal pull requests. RFCs are for decisions that establish rules,
+contracts, or interfaces that others need to know about before building.</p>
+<h3 id="format"><a class="header" href="#format">Format</a></h3>
+<p>Each RFC is a markdown file with the following structure:</p>
+<ul>
+<li><strong>Header</strong> — Feature name, start date, link to discussion, affected crates.</li>
+<li><strong>Summary</strong> — One paragraph describing the decision.</li>
+<li><strong>Motivation</strong> — What problem does this solve? What use cases does it enable?</li>
+<li><strong>Design</strong> — The technical design. Contracts, responsibilities, interfaces.</li>
+<li><strong>Alternatives</strong> — What else was considered and why it was rejected.</li>
+<li><strong>Unresolved Questions</strong> — Open questions for future work.</li>
+</ul>
+<h3 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h3>
+<ol>
+<li>Open an issue on GitHub describing the feature or design problem.</li>
+<li>Implement it. Iterate through PRs until it’s merged.</li>
+<li>Once merged, write the RFC documenting the decision and add it to <code>SUMMARY.md</code>.</li>
+</ol>
+<p>The RFC number is the issue number or the PR number that introduced the feature.
+RFCs are written <em>after</em> implementation, not before — they record decisions that
+were made, not proposals for decisions to come.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="manifesto"><a class="header" href="#manifesto">Manifesto</a></h1>
+<p>Ownership is necessary for an open agent ecosystem.</p>
+<p>Ownership is not configuration. A configured agent is one where you picked from
+someone else’s menu. An owned agent is one where you decided what’s on the menu.
+Ownership is the power to compose your own stack.</p>
+<p>Every agent application today rebuilds session management, command dispatch, and
+event streaming from scratch — then bundles it alongside search, browser
+automation, PDF parsing, TTS, image processing, and dozens of tools you didn’t
+ask for into one process. If you want a Telegram bot with search, you carry
+nineteen other channels and every integration. If you want a coding agent, you
+carry TTS and image generation. The process is theirs. The choices are theirs.
+You run it.</p>
+<p>This happens because the daemon layer is missing. Without it, every application
+must become the daemon. And a daemon that is also an application ships its
+opinion of what your agent should be.</p>
+<p>CrabTalk is that daemon layer. It manages sessions, dispatches commands, and
+streams the full execution lifecycle to your client. It does not bundle search.
+It does not bundle gateways. It does not bundle tools. You put what you need on
+your PATH. They connect as clients. They crash alone. They swap without
+restarts. The daemon never loads them.</p>
+<p>An agent daemon is not an agent application. An agent daemon empowers you to
+build the application you want — and only the application you want. This is the
+essence of ownership.</p>
+<p>We cannot expect agent platforms to give us ownership out of their beneficence.
+It is to their advantage to bundle, to lock in, to ship their choices as yours.
+We should expect that they will bundle. The only way to preserve choice is to
+never take it away in the first place.</p>
+<p>We don’t much care if you prefer a batteries-included experience. You could
+build an OpenClaw-like assistant or a Hermes-like agent on top of CrabTalk. You
+can’t build a CrabTalk underneath them. The daemon must come first. The
+architecture must be right. Everything else follows.</p>
+<p>Let us proceed.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0000---compaction"><a class="header" href="#0000---compaction">0000 - Compaction</a></h1>
+<ul>
+<li>Feature Name: Auto-Compaction</li>
+<li>Start Date: 2025-12-01</li>
+<li>Discussion: foundational design</li>
+<li>Crates: core</li>
+</ul>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Automatic context management for conversations that outgrow the LLM’s context
+window. When history exceeds a token threshold, the agent uses the LLM itself
+to summarize the conversation into a compact briefing that replaces the full
+history. The conversation continues with no interruption.</p>
+<h2 id="motivation"><a class="header" href="#motivation">Motivation</a></h2>
+<p>LLM context windows are finite. A conversation that runs long enough — multi-step
+tool use, research sessions, debugging loops — will exceed the model’s limit.
+When that happens, the request fails. The user loses their session.</p>
+<p>Every LLM application has to solve this problem. The common approaches are:</p>
+<ul>
+<li><strong>Truncation</strong> — drop old messages. Cheap but lossy. The agent forgets
+decisions, context, and user preferences from earlier in the conversation.</li>
+<li><strong>Sliding window</strong> — keep the last N messages. Same problem: the agent loses
+the beginning of the conversation.</li>
+<li><strong>Retrieval</strong> — embed messages and retrieve relevant ones. Heavyweight:
+requires a vector store, an embedding model, and a retrieval strategy.</li>
+</ul>
+<p>Crabtalk’s approach: <strong>use the LLM to summarize itself.</strong> The same model that’s
+having the conversation produces a dense summary of everything important. The
+summary replaces the history. The conversation continues as if nothing happened.</p>
+<h2 id="design"><a class="header" href="#design">Design</a></h2>
+<h3 id="trigger"><a class="header" href="#trigger">Trigger</a></h3>
+<p>After each agent step (LLM response + tool results), the runtime estimates the
+token count of the current history. If it exceeds <code>compact_threshold</code> (default
+100,000 tokens), compaction fires automatically.</p>
+<p>Token estimation is a heuristic: ~4 characters per token, counting message
+content, reasoning content, and tool call arguments. It’s deliberately rough —
+the threshold is a safety margin, not a precise limit.</p>
+<h3 id="compaction"><a class="header" href="#compaction">Compaction</a></h3>
+<p>The agent sends the full history to the LLM with a compaction system prompt
+that instructs it to:</p>
+<p><strong>Preserve:</strong></p>
+<ul>
+<li>Agent identity (name, personality, relationship notes)</li>
+<li>User profile (name, preferences, context)</li>
+<li>Key decisions and their rationale</li>
+<li>Active tasks and their status</li>
+<li>Important facts, constraints, and preferences</li>
+<li>Tool results still relevant to ongoing work</li>
+</ul>
+<p><strong>Omit:</strong></p>
+<ul>
+<li>Greetings, filler, acknowledgements</li>
+<li>Superseded plans or abandoned approaches</li>
+<li>Tool calls whose results have been incorporated</li>
+</ul>
+<p>The compaction prompt also includes the agent’s system prompt, so the LLM
+preserves identity and profile information from <code>&lt;self&gt;</code>, <code>&lt;identity&gt;</code>, and
+<code>&lt;profile&gt;</code> blocks.</p>
+<p>The output is dense prose, not bullet points — it becomes the new conversation
+context and must be self-contained.</p>
+<h3 id="replacement"><a class="header" href="#replacement">Replacement</a></h3>
+<p>After compaction:</p>
+<ol>
+<li>The summary is yielded as an <code>AgentEvent::Compact { summary }</code>.</li>
+<li>The session history is replaced with a single user message containing the
+summary.</li>
+<li>A <code>[context compacted]</code> text delta is yielded so the user sees it happened.</li>
+<li>The agent loop continues — the next step sees the compact summary as its
+entire history.</li>
+</ol>
+<p>On disk, a <code>{"compact":"..."}</code> marker is appended to the session JSONL. On
+reload, <code>load_context</code> reads from the last compact marker forward. History
+before the marker is archived in place — still in the file, never deleted.</p>
+<h3 id="interaction-with-other-systems"><a class="header" href="#interaction-with-other-systems">Interaction with other systems</a></h3>
+<ul>
+<li><strong>Memory auto-recall</strong> — runs fresh every turn via <code>on_before_run</code>. Compaction
+doesn’t affect recall — memories are separate from conversation history.</li>
+<li><strong>Client-initiated compact</strong> (RFC 0078) — the same <code>Agent::compact()</code> method,
+but triggered by the client for @-mention handoff rather than by the token
+threshold.</li>
+<li><strong>Session persistence</strong> — compact markers are append-only in the JSONL. The
+full history survives on disk even after in-memory replacement.</li>
+</ul>
+<h3 id="configuration"><a class="header" href="#configuration">Configuration</a></h3>
+<p>Per-agent configurable. <code>None</code> disables auto-compaction. The default of 100,000
+tokens leaves headroom below most model context limits (128K–200K) for the
+system prompt, tool schemas, and injected context.</p>
+<h2 id="alternatives"><a class="header" href="#alternatives">Alternatives</a></h2>
+<p><strong>Truncation / sliding window.</strong> Cheap but the agent loses context. In a
+multi-step debugging session, forgetting the first half of the investigation
+means repeating work. Compaction preserves the substance while discarding the
+noise.</p>
+<p><strong>RAG over message history.</strong> Retrieve relevant messages via embeddings. More
+precise than compaction but requires infrastructure (vector store, embedding
+model) and adds latency to every turn. Compaction is zero-infrastructure — it
+uses the model already in the conversation.</p>
+<p><strong>No automatic compaction.</strong> Let the user manage context manually. Rejected
+because context overflow is invisible until the request fails. The user
+shouldn’t need to monitor token counts.</p>
+<h2 id="unresolved-questions"><a class="header" href="#unresolved-questions">Unresolved Questions</a></h2>
+<ul>
+<li>Should the compaction prompt be customizable per agent?</li>
+<li>Should the threshold adapt based on the model’s actual context limit rather
+than a fixed number?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0009---transport"><a class="header" href="#0009---transport">0009 - Transport</a></h1>
+<ul>
+<li>Feature Name: UDS and TCP Transport Layers</li>
+<li>Start Date: 2026-03-27</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/9">#9</a></li>
+<li>Crates: transport, core</li>
+</ul>
+<h2 id="summary-1"><a class="header" href="#summary-1">Summary</a></h2>
+<p>A transport layer providing Unix domain socket (UDS) and TCP connectivity
+between clients and the crabtalk daemon, built on a shared length-prefixed
+protobuf codec defined in <code>core</code>.</p>
+<h2 id="motivation-1"><a class="header" href="#motivation-1">Motivation</a></h2>
+<p>The daemon needs to accept connections from local CLI clients and remote clients
+(Telegram, web gateways). UDS is the natural choice for same-machine
+communication — no port management, filesystem-based access control. TCP is
+required for remote access and cross-platform support (Windows has no UDS).</p>
+<p>Both transports share identical framing and message types. The codec and message
+definitions belong in <code>core</code> so that any transport can use them without
+depending on each other. The <code>transport</code> crate provides the concrete connection
+machinery.</p>
+<h2 id="design-1"><a class="header" href="#design-1">Design</a></h2>
+<h3 id="codec-coreprotocolcodec"><a class="header" href="#codec-coreprotocolcodec">Codec (<code>core::protocol::codec</code>)</a></h3>
+<p>Wire format: <code>[u32 BE length][protobuf payload]</code>. The length prefix counts
+payload bytes only, excluding the 4-byte header itself.</p>
+<p>Two generic async functions operate over any <code>AsyncRead</code>/<code>AsyncWrite</code>:</p>
+<ul>
+<li><code>write_message&lt;W, T: Message&gt;(writer, msg)</code> — encode, length-prefix, flush.</li>
+<li><code>read_message&lt;R, T: Message + Default&gt;(reader)</code> — read length, read payload,
+decode.</li>
+</ul>
+<p>Maximum frame size is 16 MiB. Frames exceeding this limit produce a
+<code>FrameError::TooLarge</code>. EOF during the length read produces
+<code>FrameError::ConnectionClosed</code> (clean disconnect, not an error).</p>
+<h3 id="server-accept-loop"><a class="header" href="#server-accept-loop">Server accept loop</a></h3>
+<p>Both UDS and TCP servers share the same pattern:</p>
+<pre><code>accept_loop(listener, on_message, shutdown)
+</code></pre>
+<ul>
+<li><code>listener</code> — <code>UnixListener</code> or <code>TcpListener</code>.</li>
+<li><code>on_message: Fn(ClientMessage, Sender&lt;ServerMessage&gt;)</code> — called for
+each decoded client message. The sender is per-connection; the callback can
+send multiple <code>ServerMessage</code>s (streaming responses) or exactly one
+(request-response). The channel is unbounded because messages are small and
+flow-controlled by the protocol — the agent produces responses at LLM speed,
+far slower than socket drain speed.</li>
+<li><code>shutdown</code> — <code>oneshot::Receiver&lt;()&gt;</code> for graceful stop.</li>
+</ul>
+<p>Each accepted connection spawns two tasks: a read loop that decodes
+<code>ClientMessage</code>s and calls <code>on_message</code>, and a send task that drains the
+<code>UnboundedSender</code> and writes <code>ServerMessage</code>s back. When the read loop ends
+(EOF or error), the sender is dropped, which terminates the send task.</p>
+<h3 id="tcp-specifics"><a class="header" href="#tcp-specifics">TCP specifics</a></h3>
+<ul>
+<li>Default port: <code>6688</code>. If the port is in use, bind fails — another daemon may
+already be running.</li>
+<li><code>TCP_NODELAY</code> is set on all connections (low-latency interactive protocol).</li>
+<li><code>bind()</code> returns a <code>std::net::TcpListener</code> (non-blocking).</li>
+</ul>
+<h3 id="uds-specifics"><a class="header" href="#uds-specifics">UDS specifics</a></h3>
+<ul>
+<li>Unix-only (<code>#[cfg(unix)]</code>).</li>
+<li>Socket path is caller-provided (typically <code>~/.crabtalk/daemon.sock</code>).</li>
+<li>No port management or collision handling — the filesystem path is the
+identity.</li>
+</ul>
+<h3 id="client-trait-coreprotocolapiclient"><a class="header" href="#client-trait-coreprotocolapiclient">Client trait (<code>core::protocol::api::Client</code>)</a></h3>
+<p>Two required transport primitives:</p>
+<ul>
+<li><code>request(ClientMessage) -&gt; Result&lt;ServerMessage&gt;</code> — single round-trip.</li>
+<li><code>request_stream(ClientMessage) -&gt; Stream&lt;Item = Result&lt;ServerMessage&gt;&gt;</code> —
+send one message, read responses until the stream ends.</li>
+</ul>
+<p>Both UDS <code>Connection</code> and TCP <code>TcpConnection</code> implement <code>Client</code> identically:
+split the socket into owned read/write halves, write via codec, read via codec.
+The <code>request_stream</code> implementation reads indefinitely; typed provided methods
+on <code>Client</code> (e.g., <code>stream()</code>) handle sentinel detection (<code>StreamEnd</code>).</p>
+<p>Connections are not <code>Clone</code> — one connection per session. The client struct
+(<code>CrabtalkClient</code> / <code>TcpClient</code>) holds config and produces connections on
+demand.</p>
+<h2 id="alternatives-1"><a class="header" href="#alternatives-1">Alternatives</a></h2>
+<p><strong>tokio-util <code>LengthDelimitedCodec</code>.</strong> Would save the manual length-prefix
+code but adds a dependency for ~50 lines of straightforward framing. The
+hand-rolled codec is simpler to audit and has no extra allocations.</p>
+<p><strong>gRPC / tonic.</strong> Full RPC framework with HTTP/2 transport. Heavyweight for a
+local daemon protocol. The current design is simpler: raw protobuf over a
+length-prefixed stream, no HTTP layer, no service definitions beyond the
+<code>Server</code> trait.</p>
+<p><strong>Shared generic transport trait.</strong> UDS and TCP accept loops are nearly
+identical but kept as separate modules. A generic <code>Transport</code> trait would save
+~20 lines of duplication but add an abstraction with exactly two implementors.
+Not worth it.</p>
+<h2 id="unresolved-questions-1"><a class="header" href="#unresolved-questions-1">Unresolved Questions</a></h2>
+<ul>
+<li>Should the transport support TLS for TCP connections in non-localhost
+deployments?</li>
+<li>Should there be a connection timeout or keepalive at the transport level, or
+is the protocol-level <code>Ping</code>/<code>Pong</code> sufficient?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0018---protocol"><a class="header" href="#0018---protocol">0018 - Protocol</a></h1>
+<ul>
+<li>Feature Name: Wire Protocol</li>
+<li>Start Date: 2026-03-27</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/pull/18">#18</a></li>
+<li>Crates: core</li>
+</ul>
+<h2 id="summary-2"><a class="header" href="#summary-2">Summary</a></h2>
+<p>A protobuf-based wire protocol defining all client-server communication for the
+crabtalk daemon, with a <code>Server</code> trait for dispatch and a <code>Client</code> trait for
+typed request methods.</p>
+<h2 id="motivation-2"><a class="header" href="#motivation-2">Motivation</a></h2>
+<p>The daemon mediates between multiple clients (CLI, Telegram, web) and multiple
+agents. A well-defined wire protocol decouples client and server implementations
+and makes the contract explicit. Protobuf was chosen for compact binary
+encoding, language-neutral schema, and generated code via <code>prost</code>.</p>
+<h2 id="design-2"><a class="header" href="#design-2">Design</a></h2>
+<h3 id="wire-messages-crabtalkproto"><a class="header" href="#wire-messages-crabtalkproto">Wire messages (<code>crabtalk.proto</code>)</a></h3>
+<p>Two top-level envelopes using <code>oneof</code>:</p>
+<p><strong>ClientMessage</strong> — 15 variants:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Send</code></td><td>Run agent, return complete response</td></tr>
+<tr><td><code>Stream</code></td><td>Run agent, stream response events</td></tr>
+<tr><td><code>Ping</code></td><td>Keepalive</td></tr>
+<tr><td><code>Sessions</code></td><td>List active sessions</td></tr>
+<tr><td><code>Kill</code></td><td>Close a session</td></tr>
+<tr><td><code>GetConfig</code></td><td>Read daemon config</td></tr>
+<tr><td><code>SetConfig</code></td><td>Replace daemon config</td></tr>
+<tr><td><code>Reload</code></td><td>Hot-reload runtime</td></tr>
+<tr><td><code>SubscribeEvents</code></td><td>Stream agent events</td></tr>
+<tr><td><code>ReplyToAsk</code></td><td>Answer a pending <code>ask_user</code> prompt</td></tr>
+<tr><td><code>GetStats</code></td><td>Daemon stats</td></tr>
+<tr><td><code>CreateCron</code></td><td>Create cron entry</td></tr>
+<tr><td><code>DeleteCron</code></td><td>Delete cron entry</td></tr>
+<tr><td><code>ListCrons</code></td><td>List cron entries</td></tr>
+<tr><td><code>Compact</code></td><td>Compact session history</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>ServerMessage</strong> — 11 variants:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Response</code></td><td>Complete agent response</td></tr>
+<tr><td><code>Stream</code></td><td>Streaming event (see below)</td></tr>
+<tr><td><code>Error</code></td><td>Error with code and message</td></tr>
+<tr><td><code>Pong</code></td><td>Keepalive ack</td></tr>
+<tr><td><code>Sessions</code></td><td>Session list</td></tr>
+<tr><td><code>Config</code></td><td>Config JSON</td></tr>
+<tr><td><code>AgentEvent</code></td><td>Agent event (for subscriptions)</td></tr>
+<tr><td><code>Stats</code></td><td>Daemon stats</td></tr>
+<tr><td><code>CronInfo</code></td><td>Created cron entry</td></tr>
+<tr><td><code>CronList</code></td><td>All cron entries</td></tr>
+<tr><td><code>Compact</code></td><td>Compaction summary</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="streaming-events"><a class="header" href="#streaming-events">Streaming events</a></h3>
+<p><code>StreamEvent</code> is itself a <code>oneof</code> with 8 variants representing the lifecycle of
+a streamed agent response:</p>
+<ul>
+<li><code>Start { agent, session }</code> — stream opened.</li>
+<li><code>Chunk { content }</code> — text delta.</li>
+<li><code>Thinking { content }</code> — thinking/reasoning delta.</li>
+<li><code>ToolStart { calls[] }</code> — tool invocations beginning.</li>
+<li><code>ToolResult { call_id, output, duration_ms }</code> — single tool result.</li>
+<li><code>ToolsComplete</code> — all pending tool calls finished.</li>
+<li><code>AskUser { questions[] }</code> — agent needs user input.</li>
+<li><code>End { agent, error }</code> — stream closed (error is empty on success).</li>
+</ul>
+<p>The client reads <code>StreamEvent</code>s until it receives <code>End</code>, which is the terminal
+sentinel.</p>
+<h3 id="agent-events"><a class="header" href="#agent-events">Agent events</a></h3>
+<p><code>AgentEventMsg</code> carries a <code>kind</code> enum (<code>TEXT_DELTA</code>, <code>THINKING_DELTA</code>,
+<code>TOOL_START</code>, <code>TOOL_RESULT</code>, <code>TOOLS_COMPLETE</code>, <code>DONE</code>) plus agent name, session
+ID, content, and timestamp. Used by <code>SubscribeEvents</code> for live monitoring of all
+agent activity across sessions.</p>
+<p><code>AgentEventMsg</code> overlaps with <code>StreamEvent</code> — both represent the agent execution
+lifecycle. <code>StreamEvent</code> is the per-request streaming format (rich, typed
+variants). <code>AgentEventMsg</code> is the cross-session monitoring format (flat, single
+struct with a kind tag). The duplication exists because monitoring clients need a
+simpler, uniform shape to filter and display events from multiple agents.</p>
+<h3 id="server-trait"><a class="header" href="#server-trait">Server trait</a></h3>
+<p>One async method per <code>ClientMessage</code> variant. Implementations receive typed
+request structs and return typed responses:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>trait Server: Sync {
+    fn send(&amp;self, req: SendMsg) -&gt; Future&lt;Output = Result&lt;SendResponse&gt;&gt;;
+    fn stream(&amp;self, req: StreamMsg) -&gt; Stream&lt;Item = Result&lt;StreamEvent&gt;&gt;;
+    fn ping(&amp;self) -&gt; Future&lt;Output = Result&lt;()&gt;&gt;;
+    // ... one method per operation
+}
+<span class="boring">}</span></code></pre>
+<p>The provided <code>dispatch(&amp;self, msg: ClientMessage) -&gt; Stream&lt;Item = ServerMessage&gt;</code> method routes a raw <code>ClientMessage</code> to the correct handler.
+Request-response operations yield exactly one <code>ServerMessage</code>; streaming
+operations yield many. Errors are mapped to <code>ErrorMsg { code, message }</code> using HTTP status codes with
+their standard semantics: 400 (bad request), 404 (not found), 500 (internal
+error).</p>
+<h3 id="client-trait"><a class="header" href="#client-trait">Client trait</a></h3>
+<p>Two required transport primitives:</p>
+<ul>
+<li><code>request(ClientMessage) -&gt; Result&lt;ServerMessage&gt;</code> — single round-trip.</li>
+<li><code>request_stream(ClientMessage) -&gt; Stream&lt;Item = Result&lt;ServerMessage&gt;&gt;</code> —
+raw streaming read.</li>
+</ul>
+<p>Typed provided methods (<code>send</code>, <code>stream</code>, <code>ping</code>, <code>get_config</code>, <code>set_config</code>)
+handle message construction, response unwrapping, and sentinel detection. The
+<code>stream()</code> method consumes events via <code>take_while</code> until <code>StreamEnd</code> and maps
+each frame through <code>TryFrom&lt;ServerMessage&gt;</code> for type-safe event extraction.</p>
+<h3 id="conversions-messageconvert"><a class="header" href="#conversions-messageconvert">Conversions (<code>message::convert</code>)</a></h3>
+<p><code>From</code> impls wrap typed messages into envelopes (<code>SendMsg -&gt; ClientMessage</code>,
+<code>SendResponse -&gt; ServerMessage</code>). <code>TryFrom</code> impls unwrap in the other direction,
+returning an error for unexpected variants. This keeps call sites clean — no
+manual enum construction.</p>
+<h2 id="alternatives-2"><a class="header" href="#alternatives-2">Alternatives</a></h2>
+<p><strong>JSON over WebSocket.</strong> Simpler to debug with <code>curl</code>, but larger payloads and
+no schema enforcement. Protobuf catches schema mismatches at compile time.</p>
+<p><strong>gRPC service definitions.</strong> Would provide streaming and code generation out of
+the box, but brings HTTP/2, tower middleware, and tonic as dependencies. The
+current approach is lighter: raw protobuf frames over a length-prefixed stream,
+with hand-written trait dispatch.</p>
+<p><strong>Separate request/response ID correlation.</strong> The protocol is connection-scoped
+and sequential — one outstanding request per connection at a time. This is a
+fundamental design constraint: clients must wait for a response before sending
+the next request. No need for request IDs or multiplexing. If multiplexing is
+needed later, it belongs in the transport layer, not the protocol.</p>
+<h2 id="unresolved-questions-2"><a class="header" href="#unresolved-questions-2">Unresolved Questions</a></h2>
+<ul>
+<li>Should the protocol negotiate a version on connect to detect client/server
+mismatches?</li>
+<li>Should <code>StreamEnd</code> carry structured error information (code + message) instead
+of a plain string?</li>
+<li>Should there be a <code>ClientMessage</code> variant for subscribing to a specific
+session’s events rather than all events?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0027---model"><a class="header" href="#0027---model">0027 - Model</a></h1>
+<ul>
+<li>Feature Name: Model Abstraction Layer</li>
+<li>Start Date: 2026-01-25</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/27">#27</a></li>
+<li>Crates: model, core</li>
+</ul>
+<h2 id="summary-3"><a class="header" href="#summary-3">Summary</a></h2>
+<p>A provider registry that wraps multiple LLM backends (OpenAI, Anthropic, Google,
+Bedrock, Azure) behind a unified <code>Model</code> trait, with per-model provider
+instances, runtime model switching, and retry logic with exponential backoff.</p>
+<h2 id="motivation-3"><a class="header" href="#motivation-3">Motivation</a></h2>
+<p>The daemon talks to LLMs. Which LLM, from which provider, through which API —
+that’s configuration, not architecture. The agent code should call <code>model.send()</code>
+and not care whether it’s hitting Anthropic directly or an OpenAI-compatible
+proxy.</p>
+<p>This requires:</p>
+<ul>
+<li>A single trait that all providers implement.</li>
+<li>A registry that maps model names to provider instances.</li>
+<li>Runtime switching between models without restarting.</li>
+<li>Retry logic for transient failures (rate limits, timeouts).</li>
+<li>Type conversion between crabtalk’s message types and each provider’s wire
+format.</li>
+</ul>
+<h2 id="design-3"><a class="header" href="#design-3">Design</a></h2>
+<h3 id="model-trait-core"><a class="header" href="#model-trait-core">Model trait (core)</a></h3>
+<p>Defined in <code>wcore::model</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait Model: Clone + Send + Sync {
+    async fn send(&amp;self, request: &amp;Request) -&gt; Result&lt;Response&gt;;
+    fn stream(&amp;self, request: Request) -&gt; impl Stream&lt;Item = Result&lt;StreamChunk&gt;&gt;;
+    fn context_limit(&amp;self, model: &amp;str) -&gt; usize;
+    fn active_model(&amp;self) -&gt; String;
+}
+<span class="boring">}</span></code></pre>
+<p>The trait is in core because agents are generic over <code>Model</code>. The implementation
+lives in the model crate.</p>
+<h3 id="provider"><a class="header" href="#provider">Provider</a></h3>
+<p>Wraps <code>crabllm_provider::Provider</code> (the external multi-backend LLM library)
+behind the <code>Model</code> trait. Each <code>Provider</code> instance is bound to a specific model
+name and carries:</p>
+<ul>
+<li>The backend connection (OpenAI, Anthropic, Google, Bedrock, Azure).</li>
+<li>A shared HTTP client.</li>
+<li>Retry config: <code>max_retries</code> (default 2) and <code>timeout</code> (default 30s).</li>
+</ul>
+<p>Base URL normalization strips endpoint suffixes (<code>/chat/completions</code>,
+<code>/messages</code>) so both bare origins and full paths work in config.</p>
+<h3 id="providerregistry"><a class="header" href="#providerregistry">ProviderRegistry</a></h3>
+<p>Implements <code>Model</code> by routing requests to the correct provider based on the
+model name in the request.</p>
+<pre><code>ProviderRegistry
+├── providers: BTreeMap&lt;String, Provider&gt;   # keyed by model name
+├── active: String                          # default model
+└── client: reqwest::Client                 # shared across providers
+</code></pre>
+<ul>
+<li><strong>Construction</strong>: one <code>ProviderDef</code> can list multiple model names. Each gets
+its own <code>Provider</code> instance. Duplicate model names across definitions are
+rejected at validation time.</li>
+<li><strong>Routing</strong>: <code>send()</code> and <code>stream()</code> look up the provider by <code>request.model</code>.
+Callers get a clone of the provider — the registry lock is not held during
+LLM calls.</li>
+<li><strong>Switching</strong>: <code>switch(model)</code> changes the active default. Agents can still
+override per-request via the model field.</li>
+<li><strong>Hot add/remove</strong>: providers can be added or removed at runtime without
+rebuilding the registry.</li>
+</ul>
+<h3 id="retry-logic"><a class="header" href="#retry-logic">Retry logic</a></h3>
+<p>Non-streaming <code>send()</code> retries transient errors (rate limits, timeouts) with
+exponential backoff and full jitter:</p>
+<ul>
+<li>Initial backoff: 100ms, doubling each retry.</li>
+<li>Jitter: random duration in <code>[backoff/2, backoff]</code>.</li>
+<li>Max retries: configurable per provider (default 2).</li>
+<li>Non-transient errors (auth failures, invalid requests) fail immediately.</li>
+</ul>
+<p>Streaming does not retry — the connection is already established.</p>
+<h3 id="type-conversion"><a class="header" href="#type-conversion">Type conversion</a></h3>
+<p>A <code>convert</code> module translates between <code>wcore::model</code> types (Request, Response,
+Message, StreamChunk) and <code>crabllm_core</code> types (ChatCompletionRequest,
+ChatCompletionResponse). This isolates the external library’s types from the
+rest of the codebase.</p>
+<h2 id="alternatives-3"><a class="header" href="#alternatives-3">Alternatives</a></h2>
+<p><strong>Direct provider calls without a registry.</strong> Each agent holds its own provider.
+Rejected because runtime model switching and centralized configuration require
+a shared registry.</p>
+<p><strong>Trait objects instead of enum dispatch.</strong> <code>Box&lt;dyn Model&gt;</code> instead of the
+concrete <code>Provider</code> enum. Rejected because <code>Model</code> has generic return types
+(impl Stream) that prevent object safety. The enum dispatch via
+<code>crabllm_provider::Provider</code> handles this naturally.</p>
+<h2 id="unresolved-questions-3"><a class="header" href="#unresolved-questions-3">Unresolved Questions</a></h2>
+<ul>
+<li>Should the registry support fallback chains (try provider A, fall back to B)?</li>
+<li>Should streaming requests retry on connection failures before the first chunk?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0036---skill-loading"><a class="header" href="#0036---skill-loading">0036 - Skill Loading</a></h1>
+<ul>
+<li>Feature Name: Skill Loading</li>
+<li>Start Date: 2026-03-27</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/36">#36</a></li>
+<li>Crates: runtime</li>
+</ul>
+<h2 id="summary-4"><a class="header" href="#summary-4">Summary</a></h2>
+<p>How crabtalk discovers, loads, dispatches, hot-reloads, and scopes skills. The
+skill format follows the <a href="https://agentskills.io">agentskills.io</a> convention —
+this RFC covers the loading mechanism, not the format.</p>
+<h2 id="motivation-4"><a class="header" href="#motivation-4">Motivation</a></h2>
+<p>Agents need extensible behavior without recompilation. Skills are the simplest
+unit that works: a markdown file with a name, description, and a prompt body.
+No code generation, no plugin API, no runtime linking.</p>
+<p>The format is defined by <a href="https://agentskills.io">agentskills.io</a>. What crabtalk
+needs to decide is how skills are found on disk, how they’re resolved at
+runtime, how they stay current without restarts, and how agents are restricted
+to subsets of available skills.</p>
+<h2 id="design-4"><a class="header" href="#design-4">Design</a></h2>
+<h3 id="format-1"><a class="header" href="#format-1">Format</a></h3>
+<p>SKILL.md follows the <a href="https://agentskills.io">agentskills.io</a> convention.
+Required fields: <code>name</code>, <code>description</code>. Optional: <code>allowed-tools</code>. The markdown
+body is the skill prompt.</p>
+<h3 id="discovery"><a class="header" href="#discovery">Discovery</a></h3>
+<p><code>SkillHandler::load(dirs)</code> scans a list of directories (in config-defined order)
+recursively for <code>SKILL.md</code> files. Each skill lives in its own directory:</p>
+<pre><code>skills/
+  check-feeds/
+    SKILL.md
+  summarize/
+    SKILL.md
+</code></pre>
+<p>Nested organization is supported (<code>skills/category/my-skill/SKILL.md</code>). Hidden
+directories (<code>.</code>-prefixed) are skipped. Duplicate names across directories are
+detected and skipped with a warning — first-loaded wins, in config-defined
+directory order.</p>
+<h3 id="registry"><a class="header" href="#registry">Registry</a></h3>
+<p>A <code>Vec&lt;Skill&gt;</code> wrapped in <code>Mutex</code> inside <code>SkillHandler</code>. Linear scan — the
+registry is small enough that indexing is unnecessary. Supports <code>add</code>, <code>upsert</code>
+(replace by name), <code>contains</code>, and <code>skills</code> (list all).</p>
+<h3 id="dispatch"><a class="header" href="#dispatch">Dispatch</a></h3>
+<p>Exposed as a tool the agent can call. Input: <code>{ name: string }</code>.</p>
+<p>Resolution order:</p>
+<ol>
+<li><strong>Scope check</strong> — if the agent has a skill scope and the name is not in it,
+reject.</li>
+<li><strong>Path traversal guard</strong> — reject names containing <code>..</code>, <code>/</code>, or <code>\</code>.</li>
+<li><strong>Exact load from disk</strong> — for each skill directory, check
+<code>{dir}/{name}/SKILL.md</code>. If found, parse it, upsert into the registry,
+return the body.</li>
+<li><strong>Fuzzy fallback</strong> — if no exact match, substring search the registry by
+name and description. If input is empty, list all available skills
+(respecting scope).</li>
+</ol>
+<h3 id="hot-reload"><a class="header" href="#hot-reload">Hot reload</a></h3>
+<p>The upsert on exact load (step 3) is the hot-reload mechanism. When a skill is
+invoked, it’s always loaded fresh from disk and upserted into the registry.
+Skills can be updated on disk and picked up on next invocation without daemon
+restart.</p>
+<h3 id="slash-command-resolution"><a class="header" href="#slash-command-resolution">Slash command resolution</a></h3>
+<p>Before a message reaches the agent, <code>preprocess</code> resolves leading <code>/skill-name</code>
+commands. For each skill directory, it checks <code>{dir}/{name}/SKILL.md</code>. If found,
+the skill body is wrapped in a <code>&lt;skill&gt;</code> tag and injected into the message. This
+happens before tool dispatch — it’s prompt injection, not a tool call.</p>
+<h3 id="scoping"><a class="header" href="#scoping">Scoping</a></h3>
+<p>Agents can be restricted to a subset of skills via <code>AgentScope.skills</code>. If
+non-empty, only listed skills are available. Empty means unrestricted. Scoping
+applies to both exact load, fuzzy listing, and slash resolution.</p>
+<h2 id="alternatives-4"><a class="header" href="#alternatives-4">Alternatives</a></h2>
+<p><strong>Code-based plugins (dylib / WASM).</strong> Far more powerful but far more complex.
+Skills are prompt injection, not code execution. The simplicity of markdown
+files is the point.</p>
+<p><strong>Database-backed registry.</strong> Adds persistence complexity for a registry that
+rebuilds in milliseconds from disk. Not needed.</p>
+<h2 id="unresolved-questions-4"><a class="header" href="#unresolved-questions-4">Unresolved Questions</a></h2>
+<ul>
+<li>Should skills support arguments beyond the skill name (parameterized prompts)?</li>
+<li>Should <code>allowed-tools</code> be enforced at the runtime level? Currently it is not
+enforced — it exists in the format but has no runtime effect.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0038---memory"><a class="header" href="#0038---memory">0038 - Memory</a></h1>
+<ul>
+<li>Feature Name: Memory System</li>
+<li>Start Date: 2026-02-10</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/38">#38</a></li>
+<li>Crates: runtime</li>
+</ul>
+<h2 id="summary-5"><a class="header" href="#summary-5">Summary</a></h2>
+<p>File-per-entry memory with BM25-ranked recall, a curated index (MEMORY.md), and
+an identity file (Crab.md) for agent personality. No database — just files.</p>
+<h2 id="motivation-5"><a class="header" href="#motivation-5">Motivation</a></h2>
+<p>Agents need persistent knowledge across sessions. The original approach used a
+graph memory backed by a database, but that added operational weight and
+complexity for what is fundamentally a collection of text entries that need to
+be searched.</p>
+<p>The system must:</p>
+<ul>
+<li>Store entries as individual files (inspectable, editable by humans).</li>
+<li>Search by relevance, not just exact match.</li>
+<li>Inject relevant memories automatically before each agent turn.</li>
+<li>Support a curated overview (MEMORY.md) that is always present in context.</li>
+<li>Support an identity/soul file (Crab.md) for agent personality.</li>
+</ul>
+<h2 id="design-5"><a class="header" href="#design-5">Design</a></h2>
+<h3 id="directory-structure"><a class="header" href="#directory-structure">Directory structure</a></h3>
+<pre><code>~/.crabtalk/config/
+├── Crab.md                  # identity file (one level above memory/)
+└── memory/
+    ├── entries/
+    │   ├── entry-name.md
+    │   └── ...
+    └── MEMORY.md
+</code></pre>
+<p>Crab.md lives one level above <code>memory/</code> because it’s an agent-level identity
+file, not a memory entry. It’s shared across the config, not scoped to memory.</p>
+<h3 id="entry-format"><a class="header" href="#entry-format">Entry format</a></h3>
+<p>Frontmatter markdown. Each entry has a name, description (used for search), and
+content.</p>
+<pre><code class="language-markdown">---
+name: Entry Name
+description: Short searchable description
+---
+
+Long-form content here.
+</code></pre>
+<p>Filenames are slugified from the entry name: <code>entry-name.md</code>.</p>
+<h3 id="recall-pipeline"><a class="header" href="#recall-pipeline">Recall pipeline</a></h3>
+<p>BM25 scoring over all entries. The query is matched against the concatenation of
+description + content. Results are ranked by relevance and capped at
+<code>recall_limit</code> (configurable).</p>
+<h3 id="auto-recall"><a class="header" href="#auto-recall">Auto-recall</a></h3>
+<p>Before each agent turn (<code>on_before_run</code>), the system extracts the first 8 words
+of the last user message (an arbitrary cutoff — short enough to avoid noise,
+long enough to carry intent), runs <code>recall()</code>, and injects matching results as
+an auto-injected <code>&lt;recall&gt;</code> block. Auto-injected messages are not persisted and
+are refreshed every turn.</p>
+<h3 id="system-prompt-injection"><a class="header" href="#system-prompt-injection">System prompt injection</a></h3>
+<ul>
+<li><strong>MEMORY.md</strong> — injected as a <code>&lt;memory&gt;</code> block in the system prompt via
+<code>build_prompt()</code>. Always present if non-empty.</li>
+<li><strong>Crab.md</strong> — the identity file. Injected via <code>build_soul()</code>. Writing is
+gated by <code>soul_editable</code> config.</li>
+<li><strong>Memory prompt</strong> — instructions for the agent on how to use memory tools,
+included from <code>prompts/memory.md</code>.</li>
+</ul>
+<h3 id="tools"><a class="header" href="#tools">Tools</a></h3>
+<p>Four tools exposed to agents:</p>
+<ul>
+<li><code>remember(name, description, content)</code> — create or overwrite an entry.</li>
+<li><code>forget(name)</code> — delete an entry.</li>
+<li><code>recall(query, limit)</code> — BM25 search, returns formatted results.</li>
+<li><code>memory(content)</code> — overwrite MEMORY.md index.</li>
+</ul>
+<h2 id="alternatives-5"><a class="header" href="#alternatives-5">Alternatives</a></h2>
+<p><strong>Graph memory with database.</strong> The original system. Rejected for operational
+complexity. Files are simpler, inspectable, and sufficient for the use case.</p>
+<p><strong>Embedding-based search.</strong> Would require a vector store and embedding model.
+BM25 is fast, dependency-free, and works well enough for the entry sizes we
+deal with.</p>
+<p><strong>Single file storage.</strong> One big memory file instead of file-per-entry. Rejected
+because individual files are easier to inspect, edit, and version.</p>
+<h2 id="unresolved-questions-5"><a class="header" href="#unresolved-questions-5">Unresolved Questions</a></h2>
+<ul>
+<li>Should auto-recall use more than the first 8 words for the query?</li>
+<li>Should entries support tags or categories for non-BM25 filtering?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0043---component-system"><a class="header" href="#0043---component-system">0043 - Component System</a></h1>
+<ul>
+<li>Feature Name: Component System</li>
+<li>Start Date: 2026-02-15</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/43">#43</a></li>
+<li>Crates: command</li>
+</ul>
+<h2 id="summary-6"><a class="header" href="#summary-6">Summary</a></h2>
+<p>Crabtalk components are independent binaries that install as system services and
+connect to the daemon via auto-discovery. They crash alone, swap without
+restarts, and the daemon never loads them. This is the manifesto’s composition
+model made concrete.</p>
+<h2 id="motivation-6"><a class="header" href="#motivation-6">Motivation</a></h2>
+<p>The manifesto says: “You put what you need on your PATH. They connect as
+clients. They crash alone. They swap without restarts.”</p>
+<p>This requires a system where components — search, gateways, tool servers — are
+not subprocesses of the daemon. They’re independent programs that run as system
+services. The daemon discovers them at runtime. A broken component cannot take
+the daemon down.</p>
+<p>Other projects spawn MCP servers as child processes. If the child hangs or
+crashes, it can take the daemon with it: zombie processes, leaked file
+descriptors, blocked event loops. The subprocess model creates shared fate.
+The component model eliminates it.</p>
+<h2 id="design-6"><a class="header" href="#design-6">Design</a></h2>
+<h3 id="the-contract"><a class="header" href="#the-contract">The contract</a></h3>
+<p>A component is a binary that:</p>
+<ol>
+<li>Installs itself as a system service (launchd, systemd, or schtasks).</li>
+<li>Writes a port file to <code>~/.crabtalk/run/{name}.port</code> on startup.</li>
+<li>Serves an HTTP API (MCP protocol) on that port.</li>
+</ol>
+<p>The daemon scans <code>~/.crabtalk/run/*.port</code> at startup and discovers components
+automatically. No configuration needed — drop a component on PATH, install it,
+and the daemon finds it.</p>
+<h3 id="service-trait"><a class="header" href="#service-trait">Service trait</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait Service {
+    fn name(&amp;self) -&gt; &amp;str;        // "search"
+    fn description(&amp;self) -&gt; &amp;str; // human readable
+    fn label(&amp;self) -&gt; &amp;str;       // "ai.crabtalk.search"
+}
+<span class="boring">}</span></code></pre>
+<p>The trait provides default <code>start</code>, <code>stop</code>, and <code>logs</code> methods:</p>
+<ul>
+<li><strong>start</strong> — renders a platform-specific service template, installs and
+launches.</li>
+<li><strong>stop</strong> — uninstalls the service and removes the port file.</li>
+<li><strong>logs</strong> — tails <code>~/.crabtalk/logs/{name}.log</code>.</li>
+</ul>
+<h3 id="mcp-service"><a class="header" href="#mcp-service">MCP service</a></h3>
+<p>Components that expose tools to agents extend <code>McpService</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait McpService: Service {
+    fn router(&amp;self) -&gt; axum::Router;
+}
+<span class="boring">}</span></code></pre>
+<p><code>run_mcp</code> binds a TCP listener on <code>127.0.0.1:0</code>, writes the port to the
+run directory, and serves the router. The daemon discovers it on next scan.</p>
+<h3 id="platform-support"><a class="header" href="#platform-support">Platform support</a></h3>
+<p>Service templates are platform-specific:</p>
+<ul>
+<li><strong>macOS</strong> — launchd plist (<code>~/Library/LaunchAgents/</code>)</li>
+<li><strong>Linux</strong> — systemd user unit</li>
+<li><strong>Windows</strong> — schtasks with XML task definition</li>
+</ul>
+<h3 id="auto-discovery"><a class="header" href="#auto-discovery">Auto-discovery</a></h3>
+<p>The daemon scans <code>~/.crabtalk/run/*.port</code> for port files not already connected.
+Each file contains a port number. The daemon connects via
+<code>http://127.0.0.1:{port}/mcp</code>. No subprocess management, no shared fate.</p>
+<p>Crash? The daemon doesn’t care — it was never the component’s parent process.
+Restart? New port file, the daemon picks it up on next reload. Update a
+component? Install the new version, restart the service — the daemon sees the
+new port on next scan.</p>
+<h3 id="entry-point"><a class="header" href="#entry-point">Entry point</a></h3>
+<p>The <code>run()</code> function handles tracing init and tokio bootstrap for all component
+binaries.</p>
+<h2 id="alternatives-6"><a class="header" href="#alternatives-6">Alternatives</a></h2>
+<p><strong>Subprocess management.</strong> The daemon spawns and manages components as child
+processes. Rejected because shared fate — a broken child can break the daemon.
+This is the approach we explicitly designed against.</p>
+<p><strong>Docker / containerization.</strong> Run components in containers. Rejected because
+crabtalk is local-first. System services are the right abstraction for a
+personal daemon on your machine.</p>
+<p><strong>Shell scripts for service management.</strong> Works on Unix, breaks on Windows,
+drifts across components. A shared Rust crate is portable and stays consistent.</p>
+<h2 id="unresolved-questions-6"><a class="header" href="#unresolved-questions-6">Unresolved Questions</a></h2>
+<ul>
+<li>Should the Service trait support health checks?</li>
+<li>Should the daemon watch the run directory for new port files instead of
+scanning only at startup/reload?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0064---session"><a class="header" href="#0064---session">0064 - Session</a></h1>
+<ul>
+<li>Feature Name: Session System</li>
+<li>Start Date: 2026-02-25</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/64">#64</a></li>
+<li>Crates: core, daemon</li>
+</ul>
+<h2 id="summary-7"><a class="header" href="#summary-7">Summary</a></h2>
+<p>Append-only JSONL session persistence with compact markers, identity-based file
+naming, and an auto-injected message lifecycle that separates ephemeral context
+from durable history.</p>
+<h2 id="motivation-7"><a class="header" href="#motivation-7">Motivation</a></h2>
+<p>An agent daemon needs conversation persistence that is simple, inspectable, and
+crash-safe. Database-backed persistence adds operational weight for what is
+fundamentally a sequential log. The session format must support:</p>
+<ul>
+<li>Resuming conversations across daemon restarts.</li>
+<li>Compaction — summarizing long histories without losing them.</li>
+<li>Multiple identities — the same agent can talk to different users/platforms.</li>
+<li>Ephemeral context injection — memory recall, environment blocks, and agent
+descriptions must be fresh each run, never accumulating in history.</li>
+</ul>
+<h2 id="design-7"><a class="header" href="#design-7">Design</a></h2>
+<h3 id="file-format"><a class="header" href="#file-format">File format</a></h3>
+<p>Each session is a JSONL file. Line 1 is metadata, subsequent lines are messages
+or compact markers.</p>
+<pre><code>{"agent":"crab","created_by":"user","created_at":"...","title":"","uptime_secs":0}
+{"role":"user","content":"hello"}
+{"role":"assistant","content":"hi there"}
+{"compact":"Summary of conversation so far..."}
+{"role":"user","content":"what were we talking about?"}
+</code></pre>
+<h3 id="naming"><a class="header" href="#naming">Naming</a></h3>
+<p>Files live in a flat <code>sessions/</code> directory:
+<code>{agent}_{sender_slug}_{seq}.jsonl</code></p>
+<ul>
+<li><code>sender_slug</code> — sanitized identity (e.g. <code>user</code>, <code>tg-12345</code>).</li>
+<li><code>seq</code> — monotonically increasing per (agent, sender) pair.</li>
+<li>After <code>set_title</code>, the file is renamed to append a title slug.</li>
+</ul>
+<h3 id="compact-markers"><a class="header" href="#compact-markers">Compact markers</a></h3>
+<p>When history exceeds a threshold, the agent compacts: the LLM summarizes the
+conversation, and a <code>{"compact":"..."}</code> line is appended. On load,
+<code>load_context</code> reads from the <strong>last compact marker forward</strong>. The compact
+summary is injected as a <code>{"role":"user"}</code> message — the agent sees it as
+context, not as a special marker.</p>
+<p>History before the last compact marker is archived in place — still in the file,
+but not loaded. Nothing is deleted.</p>
+<h3 id="auto-injected-messages"><a class="header" href="#auto-injected-messages">Auto-injected messages</a></h3>
+<p>Messages marked <code>auto_injected: true</code> are:</p>
+<ul>
+<li><strong>Not persisted</strong> to JSONL (skipped in <code>append_messages</code>).</li>
+<li><strong>Stripped</strong> before each run (prevents accumulation).</li>
+<li><strong>Re-injected fresh</strong> via <code>Hook::on_before_run()</code> every execution.</li>
+</ul>
+<p>This covers memory recall results, environment blocks, agent description lists,
+and working directory announcements. They must be current, not stale from a
+previous run.</p>
+<h3 id="session-identity"><a class="header" href="#session-identity">Session identity</a></h3>
+<p>Sessions are bound to an (agent, sender) pair. <code>find_latest_session</code> scans the
+directory for the matching prefix and returns the highest seq number. New chats
+increment the seq.</p>
+<h3 id="uptime-tracking"><a class="header" href="#uptime-tracking">Uptime tracking</a></h3>
+<p>Each session tracks <code>uptime_secs</code> — accumulated active time, persisted to the
+meta line. The meta line is rewritten by reading the full file and writing it
+back with the updated first line. This is the one non-append operation — it
+trades the append-only guarantee for keeping metadata current. Crash during
+rewrite can lose the meta line but not the conversation history (messages are
+append-only and survive).</p>
+<h2 id="alternatives-7"><a class="header" href="#alternatives-7">Alternatives</a></h2>
+<p><strong>SQLite.</strong> Adds a dependency and operational surface for what is a sequential
+append log. JSONL files are inspectable with standard tools and trivially
+backupable. Appends are crash-safe (partial last line is just a truncated write).</p>
+<p><strong>One file per message.</strong> Too many files. The append-only JSONL approach gives
+one file per conversation with clear boundaries.</p>
+<p><strong>No compaction.</strong> Works for short conversations but becomes expensive as
+history grows. The compact marker approach keeps the file intact while bounding
+the working context.</p>
+<h2 id="unresolved-questions-7"><a class="header" href="#unresolved-questions-7">Unresolved Questions</a></h2>
+<ul>
+<li>Should session files be organized in date-based subdirectories for easier
+cleanup?</li>
+<li>Should compact threshold be per-agent configurable or global?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0075---hook"><a class="header" href="#0075---hook">0075 - Hook</a></h1>
+<ul>
+<li>Feature Name: Hook Lifecycle</li>
+<li>Start Date: 2026-03-15</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/pull/75">#75</a></li>
+<li>Crates: core, runtime, daemon</li>
+</ul>
+<h2 id="summary-8"><a class="header" href="#summary-8">Summary</a></h2>
+<p>The Hook trait is the central extensibility point for agent lifecycle. It
+defines five methods that the runtime calls at specific points: building an
+agent, registering tools, preprocessing input, injecting context before a run,
+and observing events. Everything that customizes agent behavior — skills, memory,
+MCP, scoping, prompt injection — composes through this trait.</p>
+<h2 id="motivation-8"><a class="header" href="#motivation-8">Motivation</a></h2>
+<p>When the runtime was split out of the daemon (#75), a clean interface was needed
+between the runtime (which executes agents) and the hook implementations (which
+customize them). The runtime must not know about skills, memory, MCP, or daemon
+infrastructure. It only knows it has a <code>Hook</code> and calls its methods at the right
+times.</p>
+<p>This separation enables two modes: the daemon (full hook with skills, MCP,
+memory, event broadcasting) and embedded use (no hook, or a minimal one).</p>
+<h2 id="design-8"><a class="header" href="#design-8">Design</a></h2>
+<h3 id="the-trait"><a class="header" href="#the-trait">The trait</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait Hook: Send + Sync {
+    fn on_build_agent(&amp;self, config: AgentConfig) -&gt; AgentConfig;
+    fn on_register_tools(&amp;self, tools: &amp;mut ToolRegistry) -&gt; impl Future&lt;Output = ()&gt;;
+    fn preprocess(&amp;self, agent: &amp;str, content: &amp;str) -&gt; String;
+    fn on_before_run(&amp;self, agent: &amp;str, session_id: u64, history: &amp;[Message]) -&gt; Vec&lt;Message&gt;;
+    fn on_event(&amp;self, agent: &amp;str, session_id: u64, event: &amp;AgentEvent);
+}
+<span class="boring">}</span></code></pre>
+<p>All methods have default no-op implementations. <code>()</code> implements <code>Hook</code>.</p>
+<h3 id="lifecycle-points"><a class="header" href="#lifecycle-points">Lifecycle points</a></h3>
+<p><strong><code>on_build_agent</code></strong> — called when an agent is registered with the runtime.
+Receives the agent config, returns a modified config. This is where the system
+prompt is composed. The <code>RuntimeHook</code> implementation chains:</p>
+<ol>
+<li>Environment block (OS, shell, platform).</li>
+<li>Memory prompt (MEMORY.md content as <code>&lt;memory&gt;</code> block).</li>
+<li>Resource hints (available MCP servers, available skills).</li>
+<li>Scope block (if agent has restricted skills/MCPs/members, appends a <code>&lt;scope&gt;</code>
+XML block listing allowed resources).</li>
+<li>Tool whitelist computation (restricts <code>config.tools</code> based on scope).</li>
+</ol>
+<p><strong><code>on_register_tools</code></strong> — called at runtime startup. Registers tool schemas
+(name, description, JSON schema) into the <code>ToolRegistry</code>. No handlers — dispatch
+is separate. <code>RuntimeHook</code> registers: OS tools, skill tool, task/delegate tool,
+ask_user tool, memory tools (if enabled), and MCP-discovered tools.</p>
+<p><strong><code>preprocess</code></strong> — called before a user message enters the conversation. Used
+for slash command resolution: <code>/skill-name args</code> is transformed into the skill
+body wrapped in a <code>&lt;skill&gt;</code> tag. Happens before tool dispatch.</p>
+<p><strong><code>on_before_run</code></strong> — called before each agent execution (send/stream). Returns
+messages to inject into the conversation. <code>RuntimeHook</code> injects:</p>
+<ol>
+<li>Agent descriptions (if the agent has delegation members).</li>
+<li>Memory auto-recall (BM25 search on last user message, as <code>&lt;recall&gt;</code> block).</li>
+<li>Working directory announcement (as <code>&lt;environment&gt;</code> block).</li>
+</ol>
+<p>All injected messages are marked <code>auto_injected: true</code> — they’re ephemeral, not
+persisted, stripped before each run, and refreshed.</p>
+<p><strong><code>on_event</code></strong> — called after each agent step. Receives every <code>AgentEvent</code>
+(text deltas, tool calls, completions). <code>DaemonBridge</code> uses this to broadcast
+events to console subscribers.</p>
+<h3 id="composition"><a class="header" href="#composition">Composition</a></h3>
+<p><code>RuntimeHook&lt;B: RuntimeBridge&gt;</code> is the engine hook. It composes <code>SkillHandler</code>,
+<code>McpHandler</code>, <code>Memory</code>, and <code>AgentScope</code> maps. It implements <code>Hook</code> by
+orchestrating all subsystems.</p>
+<p><code>DaemonHook</code> is a type alias: <code>RuntimeHook&lt;DaemonBridge&gt;</code>. The daemon bridge
+adds ask_user dispatch, delegate dispatch, session CWD, and event broadcasting.</p>
+<p>For embedded use, <code>RuntimeHook&lt;NoBridge&gt;</code> provides the full engine without
+daemon infrastructure.</p>
+<h3 id="tool-dispatch"><a class="header" href="#tool-dispatch">Tool dispatch</a></h3>
+<p><code>RuntimeHook::dispatch_tool</code> is the central routing table — a match on tool
+name. It’s not part of the <code>Hook</code> trait itself (the trait only registers
+schemas). The runtime calls <code>dispatch_tool</code> when an agent produces a tool call.
+Dispatch enforces scoping before routing.</p>
+<h2 id="alternatives-8"><a class="header" href="#alternatives-8">Alternatives</a></h2>
+<p><strong>Separate traits per concern.</strong> One trait for prompt building, one for tools,
+one for events. Rejected because they always compose together and the single
+trait is simpler to implement and reason about.</p>
+<p><strong>Closure-based hooks.</strong> Pass lambdas instead of a trait. Rejected because the
+hook needs shared state (skill registry, MCP connections, memory) that closures
+make awkward.</p>
+<h2 id="unresolved-questions-8"><a class="header" href="#unresolved-questions-8">Unresolved Questions</a></h2>
+<ul>
+<li>Should <code>on_build_agent</code> be async to support hooks that need I/O during agent
+construction?</li>
+<li>Should <code>preprocess</code> support returning multiple messages (e.g. for multi-skill
+invocation)?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0078---compact-session"><a class="header" href="#0078---compact-session">0078 - Compact Session</a></h1>
+<ul>
+<li>Feature Name: Compact Session Interface</li>
+<li>Start Date: 2026-03-25</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/78">#78</a></li>
+<li>Crates: core, daemon</li>
+</ul>
+<h2 id="summary-9"><a class="header" href="#summary-9">Summary</a></h2>
+<p>Expose session compaction as a protocol operation so clients can request a
+concise context summary on demand, enabling cross-agent context handoff with
+custom @-mention logic.</p>
+<h2 id="motivation-9"><a class="header" href="#motivation-9">Motivation</a></h2>
+<p>When a user @-mentions a different agent mid-conversation, the client needs to
+hand off context. The naive approaches don’t work:</p>
+<ul>
+<li><strong>Raw history</strong> includes irrelevant tool results, thinking tokens, and the
+previous agent’s system prompt — expensive and noisy.</li>
+<li><strong>No context</strong> means the target agent flies blind.</li>
+</ul>
+<p>Compact produces a focused briefing: the LLM summarizes the conversation into
+essential context. The target agent gets its own system prompt (warm in token
+cache) plus the compact summary plus the user’s query — high quality context,
+minimal tokens.</p>
+<p>The key insight: <strong>this belongs in the protocol, not the client.</strong> The daemon
+already has the session history and the LLM connection. The client just needs
+to say “compact session N” and get a summary back. But the <strong>mention logic
+itself stays in the client</strong> — the daemon doesn’t know about @-mentions, UI
+conventions, or which agent to route to. The client decides when and why to
+compact; the daemon does the summarization.</p>
+<h2 id="design-9"><a class="header" href="#design-9">Design</a></h2>
+<p>A <code>Compact</code> message is added to the protobuf protocol:</p>
+<ul>
+<li><strong>Request:</strong> <code>CompactRequest { session: u64 }</code> — client asks the daemon to
+compact a specific session.</li>
+<li><strong>Response:</strong> <code>CompactResponse { summary: string }</code> — the daemon returns the
+summarized context.</li>
+</ul>
+<p>The <code>Server</code> trait gains a <code>compact_session</code> method. The daemon implementation
+delegates to <code>Agent::compact()</code>, which sends the session history to the LLM
+with a compaction prompt that preserves identity and profile information.</p>
+<h3 id="what-the-daemon-does"><a class="header" href="#what-the-daemon-does">What the daemon does</a></h3>
+<ul>
+<li>Accepts the compact request via the protocol.</li>
+<li>Loads the session history.</li>
+<li>Calls the agent’s compact method (LLM summarization).</li>
+<li>Returns the summary string.</li>
+</ul>
+<h3 id="what-the-client-does"><a class="header" href="#what-the-client-does">What the client does</a></h3>
+<ul>
+<li>Detects @-mentions (its own UI logic).</li>
+<li>Requests compact of the current session.</li>
+<li>Creates or selects the target agent’s session.</li>
+<li>Sends the compact summary + user query to the target agent.</li>
+</ul>
+<h3 id="context-selection-alternatives"><a class="header" href="#context-selection-alternatives">Context selection alternatives</a></h3>
+<p>If compact is too slow for the use case:</p>
+<ul>
+<li><strong>BM25</strong> — already in the codebase for memory recall. Keyword-match messages
+against the query.</li>
+<li><strong>Last N messages</strong> — simplest. Often sufficient for short conversations.</li>
+</ul>
+<p>These are client-side decisions. The compact interface doesn’t preclude them.</p>
+<h2 id="alternatives-9"><a class="header" href="#alternatives-9">Alternatives</a></h2>
+<p><strong>Client-side compaction.</strong> The client could do its own summarization, but it
+would need LLM access and session history — duplicating what the daemon already
+has.</p>
+<p><strong>Automatic compaction on mention.</strong> The daemon could detect @-mentions and
+compact automatically. Rejected because mention syntax is a client concern —
+different clients have different conventions.</p>
+<h2 id="unresolved-questions-9"><a class="header" href="#unresolved-questions-9">Unresolved Questions</a></h2>
+<ul>
+<li>Should compact accept parameters (max tokens, focus query) to guide
+summarization?</li>
+<li>Should the daemon cache compact results for repeated handoffs within the same
+conversation?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0080---cron"><a class="header" href="#0080---cron">0080 - Cron</a></h1>
+<ul>
+<li>Feature Name: Daemon-Level Cron Scheduler</li>
+<li>Start Date: 2026-03-20</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/80">#80</a></li>
+<li>Crates: daemon</li>
+</ul>
+<h2 id="summary-10"><a class="header" href="#summary-10">Summary</a></h2>
+<p>A daemon-level cron system that triggers skills into sessions on a schedule,
+replacing the previous per-agent heartbeat mechanism.</p>
+<h2 id="motivation-10"><a class="header" href="#motivation-10">Motivation</a></h2>
+<p>Agents need periodic behavior — checking feeds, running maintenance, sending
+reminders. The original approach was a per-agent heartbeat config, but this was
+dead code and wrong-shaped: heartbeats are uniform intervals, while scheduled
+tasks need cron-style flexibility (every Monday at 9am, every 2 hours, etc.).</p>
+<p>The session already carries the agent and sender. A cron entry only needs to
+know which skill to fire and which session to fire it into.</p>
+<h2 id="design-10"><a class="header" href="#design-10">Design</a></h2>
+<p>A cron entry triggers a skill into a session on a schedule.</p>
+<h3 id="data-model"><a class="header" href="#data-model">Data model</a></h3>
+<pre><code class="language-toml">[[cron]]
+id = 1
+schedule = "0 */2 * * *"
+skill = "check-feeds"
+session = 12345
+quiet_start = "23:00"
+quiet_end = "07:00"
+once = false
+</code></pre>
+<ul>
+<li><code>id</code> — auto-incremented on create.</li>
+<li><code>schedule</code> — standard cron expression, validated on create and load.</li>
+<li><code>skill</code> — fired as <code>/{skill}</code> slash command into the session.</li>
+<li><code>session</code> — target session ID. The session determines the agent.</li>
+<li><code>quiet_start</code>/<code>quiet_end</code> — optional HH:MM window in the daemon’s local time.
+If fire time falls inside, skip silently. No queuing, no catch-up. Both must
+be set; if only one is provided, quiet hours are ignored.</li>
+<li><code>once</code> — fire once then delete from memory and disk.</li>
+</ul>
+<h3 id="persistence"><a class="header" href="#persistence">Persistence</a></h3>
+<p>Memory is authoritative at runtime. Disk (<code>crons.toml</code>) is recovery for
+restarts.</p>
+<ul>
+<li><strong>Startup</strong>: load from disk, start timers. Invalid schedules are skipped with
+a warning.</li>
+<li><strong>Create/Delete</strong>: mutate memory, start/stop timer, atomic write to disk
+(tmp + rename).</li>
+<li><strong>Runtime reload</strong>: crons stay in memory — they survive runtime swaps.</li>
+<li><strong>Daemon restart</strong>: reload from disk.</li>
+</ul>
+<h3 id="firing"><a class="header" href="#firing">Firing</a></h3>
+<p>Fire-and-forget via the daemon event channel. The cron sends a <code>ClientMessage</code>
+with content <code>/{skill}</code> and sender <code>"cron"</code>. The reply channel is dropped —
+output goes to session history only.</p>
+<h3 id="protocol"><a class="header" href="#protocol">Protocol</a></h3>
+<p>Three protocol operations on the <code>Server</code> trait:</p>
+<ul>
+<li><code>CreateCron { schedule, skill, session, quiet_start?, quiet_end? }</code> → <code>CronInfo</code></li>
+<li><code>DeleteCron { id }</code> → success/not found</li>
+<li><code>ListCrons</code> → <code>CronList</code></li>
+</ul>
+<p>Crons are process-lifetime, not session-lifetime. They survive runtime reloads,
+fire via the daemon event channel, and the runtime has no notion of time-based
+scheduling. This is a daemon concern.</p>
+<h2 id="alternatives-10"><a class="header" href="#alternatives-10">Alternatives</a></h2>
+<p><strong>Per-agent heartbeat config.</strong> The original approach. Rejected because it
+coupled scheduling to agent definition, couldn’t express cron-style schedules,
+and was dead code.</p>
+<p><strong>Client-side polling.</strong> A client can send messages on its own timer. This works
+but requires the client to be running. Daemon crons fire regardless of client
+state.</p>
+<h2 id="unresolved-questions-10"><a class="header" href="#unresolved-questions-10">Unresolved Questions</a></h2>
+<ul>
+<li>Should crons support arguments beyond the skill name?</li>
+<li>Should there be a max cron count to prevent resource exhaustion?</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="0082---scoping"><a class="header" href="#0082---scoping">0082 - Scoping</a></h1>
+<ul>
+<li>Feature Name: Agent Scoping</li>
+<li>Start Date: 2026-03-22</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/pull/82">#82</a></li>
+<li>Crates: runtime, core</li>
+</ul>
+<h2 id="summary-11"><a class="header" href="#summary-11">Summary</a></h2>
+<p>A whitelist-based scoping system that restricts what an agent can access: tools,
+skills, MCP servers, and delegation targets. Enforced at dispatch time and
+advertised in the system prompt. This is a security boundary, not a hint.</p>
+<h2 id="motivation-11"><a class="header" href="#motivation-11">Motivation</a></h2>
+<p>In multi-agent setups, a delegated sub-agent should not have the same
+capabilities as the primary agent. A research agent doesn’t need bash. A
+summarizer doesn’t need to delegate to other agents. Without scoping, every
+agent has access to everything — which means a misbehaving or confused agent
+can call tools it was never intended to use.</p>
+<p>Scoping solves this by letting agent configs declare exactly what resources are
+available. The runtime enforces it.</p>
+<h2 id="design-11"><a class="header" href="#design-11">Design</a></h2>
+<h3 id="agentscope"><a class="header" href="#agentscope">AgentScope</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AgentScope {
+    pub tools: Vec&lt;String&gt;,     // empty = unrestricted
+    pub members: Vec&lt;String&gt;,   // empty = no delegation
+    pub skills: Vec&lt;String&gt;,    // empty = all skills
+    pub mcps: Vec&lt;String&gt;,      // empty = all MCP servers
+}
+<span class="boring">}</span></code></pre>
+<p>Empty list means unrestricted. Non-empty means only listed items are allowed.
+This is an inclusive whitelist, not a denylist.</p>
+<h3 id="whitelist-computation"><a class="header" href="#whitelist-computation">Whitelist computation</a></h3>
+<p>When an agent has any scoping (non-empty skills, mcps, or members), the runtime
+computes a tool whitelist during <code>on_build_agent</code>:</p>
+<ol>
+<li>Start with <code>BASE_TOOLS</code>: <code>bash</code>, <code>ask_user</code> — always available.</li>
+<li>If memory is enabled: add <code>recall</code>, <code>remember</code>, <code>memory</code>, <code>forget</code>.</li>
+<li>If skills list is non-empty: add <code>skill</code> tool.</li>
+<li>If mcps list is non-empty: add <code>mcp</code> tool.</li>
+<li>If members list is non-empty: add <code>delegate</code> tool.</li>
+</ol>
+<p>The computed whitelist replaces <code>config.tools</code>. Tools not on the list are
+invisible to the agent.</p>
+<h3 id="prompt-injection"><a class="header" href="#prompt-injection">Prompt injection</a></h3>
+<p>A <code>&lt;scope&gt;</code> block is appended to the system prompt listing the agent’s allowed
+resources:</p>
+<pre><code class="language-xml">&lt;scope&gt;
+skills: check-feeds, summarize
+mcp servers: search
+members: researcher, writer
+&lt;/scope&gt;
+</code></pre>
+<p>This tells the agent what it can use. The agent doesn’t need to guess or
+discover — its boundaries are stated upfront.</p>
+<h3 id="enforcement"><a class="header" href="#enforcement">Enforcement</a></h3>
+<p>Scoping is enforced at four dispatch points:</p>
+<ul>
+<li><strong><code>dispatch_tool</code></strong> — rejects tool calls not in the agent’s tool whitelist.</li>
+<li><strong><code>dispatch_skill</code></strong> — rejects skill names not in the agent’s skill list.</li>
+<li><strong><code>dispatch_mcp</code></strong> — filters MCP server list to allowed servers.</li>
+<li><strong><code>dispatch_delegate</code></strong> — rejects delegation to agents not in the members
+list.</li>
+</ul>
+<p>Enforcement happens at runtime, not just at prompt time. Even if the LLM
+ignores the <code>&lt;scope&gt;</code> block and tries to call a restricted tool, the dispatch
+layer rejects it.</p>
+<h3 id="default-agent"><a class="header" href="#default-agent">Default agent</a></h3>
+<p>The default agent (primary) has no scope restrictions — empty lists on all
+four dimensions. Scoping is for sub-agents that need constrained access.</p>
+<h2 id="alternatives-11"><a class="header" href="#alternatives-11">Alternatives</a></h2>
+<p><strong>Denylist instead of whitelist.</strong> List what’s forbidden instead of what’s
+allowed. Rejected because allowlists are safer by default — a new tool or
+server is inaccessible until explicitly granted. Denylists require updating
+every time a new resource is added.</p>
+<p><strong>Prompt-only scoping.</strong> Tell the agent its restrictions in the prompt but
+don’t enforce at dispatch. Rejected because LLMs don’t reliably follow
+instructions — a determined or confused model will call tools it was told not
+to. Enforcement must be at the dispatch layer.</p>
+<h2 id="unresolved-questions-11"><a class="header" href="#unresolved-questions-11">Unresolved Questions</a></h2>
+<ul>
+<li>Should scoping support wildcard patterns (e.g. <code>mcp: search-*</code>)?</li>
+<li>Should scope violations be logged as security events for monitoring?</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
