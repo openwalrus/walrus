@@ -52,8 +52,8 @@ Files live in a flat `sessions/` directory:
 When history exceeds a threshold, the agent compacts: the LLM summarizes the
 conversation, and a `{"compact":"..."}` line is appended. On load,
 `load_context` reads from the **last compact marker forward**. The compact
-summary becomes a user message — the agent sees it as context, not as a
-special marker.
+summary is injected as a `{"role":"user"}` message — the agent sees it as
+context, not as a special marker.
 
 History before the last compact marker is archived in place — still in the file,
 but not loaded. Nothing is deleted.
@@ -79,13 +79,17 @@ increment the seq.
 ### Uptime tracking
 
 Each session tracks `uptime_secs` — accumulated active time, persisted to the
-meta line. The meta line is rewritten in place when title or uptime changes.
+meta line. The meta line is rewritten by reading the full file and writing it
+back with the updated first line. This is the one non-append operation — it
+trades the append-only guarantee for keeping metadata current. Crash during
+rewrite can lose the meta line but not the conversation history (messages are
+append-only and survive).
 
 ## Alternatives
 
 **SQLite.** Adds a dependency and operational surface for what is a sequential
-append log. JSONL files are inspectable with standard tools, trivially
-backupable, and crash-safe (partial last line is just a truncated append).
+append log. JSONL files are inspectable with standard tools and trivially
+backupable. Appends are crash-safe (partial last line is just a truncated write).
 
 **One file per message.** Too many files. The append-only JSONL approach gives
 one file per conversation with clear boundaries.
