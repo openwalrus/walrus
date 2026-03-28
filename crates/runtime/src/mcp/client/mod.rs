@@ -13,13 +13,13 @@ mod jsonrpc;
 mod stdio;
 
 pub enum McpPeer {
-    Stdio(stdio::StdioTransport),
+    Stdio(Box<stdio::StdioTransport>),
     Http(http::HttpTransport),
 }
 
 impl McpPeer {
     pub fn stdio(command: tokio::process::Command) -> Result<Self> {
-        Ok(Self::Stdio(stdio::StdioTransport::new(command)?))
+        Ok(Self::Stdio(Box::new(stdio::StdioTransport::new(command)?)))
     }
 
     pub fn http(url: &str) -> Self {
