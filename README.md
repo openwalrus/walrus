@@ -30,17 +30,8 @@ Full config reference: [`crates/daemon/config.toml`](crates/daemon/config.toml).
 The daemon ships with built-in tools (shell, task delegation, memory),
 MCP server integration, and skills (Markdown prompt files).
 
-Heavier capabilities live outside the daemon as independent binaries.
-They connect via auto-discovery (`crabtalk <name>` finds
-`crabtalk-<name>` on PATH):
-
-| Component    | What it does                          |
-| ------------ | ------------------------------------- |
-| Search       | Meta-search aggregator                |
-| Telegram     | Telegram gateway                      |
-| WeChat       | WeChat gateway                        |
-| Outlook      | Outlook MCP server (email + calendar) |
-| Hub          | Package management                    |
+Heavier capabilities live outside the daemon as [components](apps/) —
+independent binaries that connect via auto-discovery.
 
 ## Learn More
 
