@@ -93,7 +93,7 @@ fn to_ct_tool(tool: &Tool) -> CtTool {
             description: Some(tool.description.to_string()),
             parameters: Some(serde_json::to_value(&tool.parameters).unwrap_or_default()),
         },
-        strict: if tool.strict { Some(true) } else { None },
+        strict: None,
     }
 }
 

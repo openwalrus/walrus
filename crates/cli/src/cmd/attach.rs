@@ -41,6 +41,20 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         .interact()?;
     let preset = &PRESETS[idx];
 
+    // 1. Provider name — only for custom presets.
+    let provider_name = if preset.allows_custom_name() {
+        let name: String = Input::with_theme(&theme)
+            .with_prompt("Provider name (used as [provider.<name>] in config)")
+            .interact_text()?;
+        if name.is_empty() {
+            anyhow::bail!("provider name is required");
+        }
+        name
+    } else {
+        preset.name.to_string()
+    };
+
+    // 2. API key — skipped for ollama.
     let api_key = if preset.name != "ollama" {
         let key: String = Password::with_theme(&theme)
             .with_prompt("API key")
@@ -53,12 +67,25 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         None
     };
 
-    let base_url = if preset.name == "custom" {
-        Input::with_theme(&theme)
-            .with_prompt("Base URL")
-            .interact_text()?
-    } else {
+    // 3. Base URL — fixed (read-only) or editable (with default if available).
+    let base_url = if !preset.fixed_base_url.is_empty() {
+        println!("  Base URL: {} (fixed)", preset.fixed_base_url);
         preset.base_url.to_string()
+    } else {
+        let url: String = if !preset.base_url.is_empty() {
+            Input::with_theme(&theme)
+                .with_prompt("Base URL")
+                .default(preset.base_url.to_string())
+                .interact_text()?
+        } else {
+            Input::with_theme(&theme)
+                .with_prompt("Base URL")
+                .interact_text()?
+        };
+        if url.trim().is_empty() {
+            anyhow::bail!("base URL is required for {}", provider_name);
+        }
+        url
     };
 
     let model: String = if let Some(default) = default_model_for(preset.name) {
@@ -107,7 +134,7 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
     let mut models = Array::new();
     models.push(model.as_str());
     entry.insert("models", value(models));
-    provider_table.insert(preset.name, Item::Table(entry));
+    provider_table.insert(&provider_name, Item::Table(entry));
 
     std::fs::write(config_path, doc.to_string())?;
     println!("\nSaved to {}\n", config_path.display());

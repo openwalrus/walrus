@@ -6,6 +6,7 @@
 use crate::{config::ProviderDef, convert};
 use anyhow::Result;
 use async_stream::try_stream;
+use crabllm_core::ApiError;
 use crabllm_provider::Provider as CtProvider;
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -92,11 +93,11 @@ impl Model for Provider {
             let boxed = tokio::time::timeout(timeout, inner.chat_completion_stream(&client, &ct_req))
                 .await
                 .map_err(|_| anyhow::anyhow!("stream connection timed out"))?
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                .map_err(format_provider_error)?;
 
             let mut stream = std::pin::pin!(boxed);
             while let Some(chunk) = stream.next().await {
-                let ct_chunk = chunk.map_err(|e| anyhow::anyhow!("{e}"))?;
+                let ct_chunk = chunk.map_err(format_provider_error)?;
                 yield convert::from_ct_chunk(ct_chunk);
             }
         }
@@ -139,11 +140,11 @@ async fn send_with_retry(
                 tokio::time::sleep(jitter).await;
                 backoff *= 2;
             }
-            Err(e) => return Err(anyhow::anyhow!("{e}")),
+            Err(e) => return Err(format_provider_error(e)),
         }
     }
 
-    Err(anyhow::anyhow!("{}", last_err.unwrap()))
+    Err(format_provider_error(last_err.unwrap()))
 }
 
 /// Full jitter: random duration in [backoff/2, backoff].
@@ -154,4 +155,27 @@ fn jittered(backoff: Duration) -> Duration {
         return backoff;
     }
     Duration::from_millis(rand::rng().random_range(lo..=hi))
+}
+
+/// Convert a crabllm error into an anyhow error with a human-readable message.
+///
+/// For provider HTTP errors, attempts to parse the response body as an
+/// OpenAI-compatible API error and extract the `message` field.
+fn format_provider_error(e: crabllm_core::Error) -> anyhow::Error {
+    match e {
+        crabllm_core::Error::Provider { status, body } => {
+            let msg = serde_json::from_str::<ApiError>(&body)
+                .map(|api_err| api_err.error.message)
+                .unwrap_or_else(|_| truncate(&body, 200));
+            anyhow::anyhow!("provider error (HTTP {status}): {msg}")
+        }
+        other => anyhow::anyhow!("{other}"),
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => format!("{}...", &s[..i]),
+        None => s.to_string(),
+    }
 }
