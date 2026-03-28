@@ -173,16 +173,15 @@ impl ProviderData {
 
     /// Whether the base_url field is editable (not hardcoded by crabllm).
     pub(crate) fn base_url_editable(&self) -> bool {
-        self.preset().map_or(true, |p| p.base_url_editable())
+        self.preset().is_none_or(|p| p.base_url_editable())
     }
 
     /// The display URL — fixed if hardcoded, otherwise whatever the user set.
     pub(crate) fn display_base_url(&self) -> &str {
-        if let Some(preset) = self.preset() {
-            if !preset.fixed_base_url.is_empty() {
+        if let Some(preset) = self.preset()
+            && !preset.fixed_base_url.is_empty() {
                 return preset.fixed_base_url;
             }
-        }
         &self.base_url
     }
 }
