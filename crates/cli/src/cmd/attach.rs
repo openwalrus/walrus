@@ -41,18 +41,7 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         .interact()?;
     let preset = &PRESETS[idx];
 
-    let api_key = if preset.name != "ollama" {
-        let key: String = Password::with_theme(&theme)
-            .with_prompt("API key")
-            .interact()?;
-        if key.is_empty() {
-            anyhow::bail!("API key is required for {}", preset.name);
-        }
-        Some(key)
-    } else {
-        None
-    };
-
+    // 1. Provider name — only for custom presets.
     let provider_name = if preset.allows_custom_name() {
         let name: String = Input::with_theme(&theme)
             .with_prompt("Provider name (used as [provider.<name>] in config)")
@@ -65,14 +54,34 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         preset.name.to_string()
     };
 
-    let base_url = if preset.allows_custom_name() {
-        Input::with_theme(&theme)
-            .with_prompt("Base URL")
-            .interact_text()?
-    } else if !preset.fixed_base_url.is_empty() {
+    // 2. API key — skipped for ollama.
+    let api_key = if preset.name != "ollama" {
+        let key: String = Password::with_theme(&theme)
+            .with_prompt("API key")
+            .interact()?;
+        if key.is_empty() {
+            anyhow::bail!("API key is required for {}", preset.name);
+        }
+        Some(key)
+    } else {
+        None
+    };
+
+    // 3. Base URL — fixed (shown read-only), prompted, or silent default.
+    let base_url = if !preset.fixed_base_url.is_empty() {
         println!("  Base URL: {} (fixed)", preset.fixed_base_url);
         preset.base_url.to_string()
+    } else if preset.base_url.is_empty() {
+        // No default — must prompt (azure, custom).
+        let url: String = Input::with_theme(&theme)
+            .with_prompt("Base URL")
+            .interact_text()?;
+        if url.trim().is_empty() {
+            anyhow::bail!("base URL is required for {}", provider_name);
+        }
+        url
     } else {
+        // Has a sensible default (openai, ollama) — use it silently.
         preset.base_url.to_string()
     };
 
