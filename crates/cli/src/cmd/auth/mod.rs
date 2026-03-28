@@ -179,9 +179,10 @@ impl ProviderData {
     /// The display URL — fixed if hardcoded, otherwise whatever the user set.
     pub(crate) fn display_base_url(&self) -> &str {
         if let Some(preset) = self.preset()
-            && !preset.fixed_base_url.is_empty() {
-                return preset.fixed_base_url;
-            }
+            && !preset.fixed_base_url.is_empty()
+        {
+            return preset.fixed_base_url;
+        }
         &self.base_url
     }
 }
