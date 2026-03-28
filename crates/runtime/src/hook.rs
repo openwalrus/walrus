@@ -367,10 +367,11 @@ fn discover_project_instructions(cwd: &Path) -> Option<String> {
     let mut dir = cwd;
     loop {
         let candidate = dir.join("Crab.md");
-        if candidate.is_file() && !candidate.starts_with(config_dir) {
-            if let Ok(content) = std::fs::read_to_string(&candidate) {
-                return Some(content);
-            }
+        if candidate.is_file()
+            && !candidate.starts_with(config_dir)
+            && let Ok(content) = std::fs::read_to_string(&candidate)
+        {
+            return Some(content);
         }
         dir = dir.parent()?;
     }
