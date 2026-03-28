@@ -58,7 +58,6 @@ task_timeout = 300
 
 [system.memory]
 recall_limit = 5
-soul_editable = true
 
 # ---------------------------------------------------------------------------
 # Agents — per-agent configurations.

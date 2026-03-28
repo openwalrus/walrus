@@ -6,7 +6,6 @@ You have `remember`, `recall`, and `compact` tools.
 
 Store a durable fact. Requires `target`, `key`, and `value`:
 
-- **soul** — agent identity, values, relationship notes (SOUL.md per agent)
 - **user** — user profile: name, timezone, preferences (global User.toml)
 - **store** — searchable fact storage in the database
 
