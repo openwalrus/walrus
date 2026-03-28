@@ -25,6 +25,11 @@ pub struct Auth {}
 impl Auth {
     pub async fn run(self) -> Result<()> {
         tui::run_app(AuthState::load, render, handle_key)?;
+
+        // Reload daemon to pick up config changes (model, providers, MCPs).
+        if let Ok(mut runner) = crate::cmd::connect_default().await {
+            let _ = runner.reload().await;
+        }
         Ok(())
     }
 }

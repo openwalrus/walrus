@@ -1,5 +1,5 @@
 [book]
-title = "The Crabtalk Book"
+title = "The Crabtalk RFC Book"
 authors = ["clearloop"]
 language = "en"
 src = "src"
