@@ -8,7 +8,7 @@
 use crate::{
     bridge::RuntimeBridge, mcp::McpHandler, memory::Memory, os, skill, skill::SkillHandler,
 };
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::{Path, PathBuf}};
 use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
 
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
@@ -330,6 +330,13 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
         ));
         cwd_msg.auto_injected = true;
         messages.push(cwd_msg);
+        if let Some(instructions) = discover_project_instructions(&cwd) {
+            let mut msg = Message::user(format!(
+                "<project-instructions>\n{instructions}\n</project-instructions>"
+            ));
+            msg.auto_injected = true;
+            messages.push(msg);
+        }
         messages
     }
 
@@ -346,5 +353,22 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
 
     fn on_event(&self, agent: &str, session_id: u64, event: &AgentEvent) {
         self.bridge.on_agent_event(agent, session_id, event);
+    }
+}
+
+/// Walk up from `cwd` looking for a project `Crab.md` file.
+/// Skips any `Crab.md` under the global config dir to avoid
+/// double-injecting the global soul. Returns file contents if found.
+fn discover_project_instructions(cwd: &Path) -> Option<String> {
+    let config_dir = &*wcore::paths::CONFIG_DIR;
+    let mut dir = cwd;
+    loop {
+        let candidate = dir.join("Crab.md");
+        if candidate.is_file() && !candidate.starts_with(config_dir) {
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                return Some(content);
+            }
+        }
+        dir = dir.parent()?;
     }
 }
