@@ -151,7 +151,7 @@ impl RuntimeBridge for DaemonBridge {
                 tracing::info!(
                     %agent,
                     iterations = response.iterations,
-                    stop_reason = ?response.stop_reason,
+                    stop_reason = %response.stop_reason,
                     "agent run complete"
                 );
                 (AgentEventKind::Done, String::new())

@@ -75,3 +75,14 @@ pub enum AgentStopReason {
     /// Error during execution.
     Error(String),
 }
+
+impl std::fmt::Display for AgentStopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TextResponse => write!(f, "text_response"),
+            Self::MaxIterations => write!(f, "max_iterations"),
+            Self::NoAction => write!(f, "no_action"),
+            Self::Error(msg) => write!(f, "error: {msg}"),
+        }
+    }
+}
