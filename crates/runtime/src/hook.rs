@@ -333,9 +333,9 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
         ));
         cwd_msg.auto_injected = true;
         messages.push(cwd_msg);
-        if let Some(instructions) = discover_project_instructions(&cwd) {
+        if let Some(instructions) = discover_instructions(&cwd) {
             let mut msg = Message::user(format!(
-                "<project-instructions>\n{instructions}\n</project-instructions>"
+                "<instructions>\n{instructions}\n</instructions>"
             ));
             msg.auto_injected = true;
             messages.push(msg);
@@ -359,11 +359,21 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
     }
 }
 
-/// Walk up from `cwd` looking for a project `Crab.md` file.
-/// Skips any `Crab.md` under the global config dir to avoid
-/// double-injecting the global soul. Returns file contents if found.
-fn discover_project_instructions(cwd: &Path) -> Option<String> {
+/// Collect layered `Crab.md` instructions: global (`~/.crabtalk/Crab.md`)
+/// first, then any `Crab.md` files found walking up from `cwd` (root-first,
+/// project-last so project instructions take precedence).
+fn discover_instructions(cwd: &Path) -> Option<String> {
     let config_dir = &*wcore::paths::CONFIG_DIR;
+    let mut layers = Vec::new();
+
+    // Global instructions from config dir.
+    let global = config_dir.join("Crab.md");
+    if let Ok(content) = std::fs::read_to_string(&global) {
+        layers.push(content);
+    }
+
+    // Walk up from CWD collecting project Crab.md files.
+    let mut found = Vec::new();
     let mut dir = cwd;
     loop {
         let candidate = dir.join("Crab.md");
@@ -371,8 +381,18 @@ fn discover_project_instructions(cwd: &Path) -> Option<String> {
             && !candidate.starts_with(config_dir)
             && let Ok(content) = std::fs::read_to_string(&candidate)
         {
-            return Some(content);
+            found.push(content);
         }
-        dir = dir.parent()?;
+        match dir.parent() {
+            Some(p) => dir = p,
+            None => break,
+        }
     }
+    found.reverse();
+    layers.extend(found);
+
+    if layers.is_empty() {
+        return None;
+    }
+    Some(layers.join("\n\n"))
 }
