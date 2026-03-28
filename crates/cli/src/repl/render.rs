@@ -5,9 +5,7 @@
 //!
 //! All output goes into a [`ChatBuffer`] — nothing is written to stdout.
 
-use crate::repl::chat::{
-    ChatBuffer, ChatEntry, S_DIM, S_SUBTLE, SUBTLE, markdown_to_lines, syntect_to_ratatui,
-};
+use crate::repl::chat::{ChatBuffer, ChatEntry, S_DIM, S_SUBTLE, SUBTLE, markdown_to_lines};
 use console::style;
 use heck::ToUpperCamelCase;
 use ratatui::{
@@ -15,11 +13,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use std::sync::LazyLock;
-use syntect::{easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet};
 use termimad::MadSkin;
-
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// Text continuation indent (aligns with text after `⏺ `).
 const PAD: &str = "  ";
@@ -425,38 +419,15 @@ impl MarkdownRenderer {
         ])]));
     }
 
-    fn emit_code_block(&mut self, lang: &str, code: &str) {
-        let syntax = if lang.is_empty() {
-            SYNTAX_SET.find_syntax_plain_text()
-        } else {
-            SYNTAX_SET
-                .find_syntax_by_token(lang)
-                .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text())
-        };
-
-        let theme = &THEME_SET.themes["base16-ocean.dark"];
-        let mut h = HighlightLines::new(syntax, theme);
+    fn emit_code_block(&mut self, _lang: &str, code: &str) {
         let pipe_style = Style::new().fg(SUBTLE);
-
         let mut lines = Vec::new();
         for line in code.lines() {
-            match h.highlight_line(line, &SYNTAX_SET) {
-                Ok(ranges) => {
-                    let mut spans =
-                        vec![Span::raw(PAD.to_string()), Span::styled("│ ", pipe_style)];
-                    for (ss, text) in &ranges {
-                        spans.push(Span::styled(text.to_string(), syntect_to_ratatui(ss)));
-                    }
-                    lines.push(Line::from(spans));
-                }
-                Err(_) => {
-                    lines.push(Line::from(vec![
-                        Span::raw(PAD.to_string()),
-                        Span::styled("│ ", pipe_style),
-                        Span::raw(line.to_string()),
-                    ]));
-                }
-            }
+            lines.push(Line::from(vec![
+                Span::raw(PAD.to_string()),
+                Span::styled("│ ", pipe_style),
+                Span::raw(line.to_string()),
+            ]));
         }
         lines.push(Line::from(vec![
             Span::raw(PAD.to_string()),

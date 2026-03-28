@@ -187,14 +187,6 @@ fn kind_left_margin(kind: CompositeKind) -> usize {
     }
 }
 
-// ── Style conversion: syntect → ratatui ──────────────────────────
-
-/// Convert a syntect highlighting `Style` to a ratatui `Style`.
-pub fn syntect_to_ratatui(ss: &syntect::highlighting::Style) -> Style {
-    let fg = ss.foreground;
-    Style::default().fg(Color::Rgb(fg.r, fg.g, fg.b))
-}
-
 // ── Markdown → ratatui Lines ─────────────────────────────────────
 
 /// Render a markdown string through the given `MadSkin` (for wrapping and
