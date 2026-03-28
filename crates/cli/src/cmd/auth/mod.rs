@@ -72,6 +72,29 @@ pub(crate) struct Preset {
     pub(crate) name: &'static str,
     pub(crate) base_url: &'static str,
     pub(crate) standard: &'static str,
+    /// URL hardcoded in crabllm — shown read-only, not saved to config.
+    pub(crate) fixed_base_url: &'static str,
+}
+
+impl Preset {
+    /// Whether this preset allows user-defined provider names.
+    pub(crate) fn allows_custom_name(&self) -> bool {
+        self.name == "custom"
+    }
+
+    /// Whether the base_url field is editable for this preset.
+    pub(crate) fn base_url_editable(&self) -> bool {
+        self.fixed_base_url.is_empty()
+    }
+
+    /// The display URL — fixed if hardcoded, otherwise whatever the user set.
+    pub(crate) fn display_url(&self) -> &str {
+        if self.fixed_base_url.is_empty() {
+            self.base_url
+        } else {
+            self.fixed_base_url
+        }
+    }
 }
 
 pub(crate) const PRESETS: &[Preset] = &[
@@ -79,31 +102,37 @@ pub(crate) const PRESETS: &[Preset] = &[
         name: "anthropic",
         base_url: "",
         standard: "anthropic",
+        fixed_base_url: "https://api.anthropic.com/v1",
     },
     Preset {
         name: "openai",
         base_url: "https://api.openai.com/v1",
         standard: "openai_compat",
+        fixed_base_url: "",
     },
     Preset {
         name: "google",
         base_url: "",
         standard: "google",
+        fixed_base_url: "https://generativelanguage.googleapis.com/v1beta",
     },
     Preset {
         name: "ollama",
         base_url: "http://localhost:11434/v1",
         standard: "ollama",
+        fixed_base_url: "",
     },
     Preset {
         name: "azure",
         base_url: "",
         standard: "azure",
+        fixed_base_url: "",
     },
     Preset {
         name: "custom",
         base_url: "",
         standard: "openai_compat",
+        fixed_base_url: "",
     },
 ];
 
@@ -133,6 +162,31 @@ pub(crate) struct ProviderData {
     pub(crate) models: Vec<String>,
 }
 
+impl ProviderData {
+    /// Look up the preset for this provider by matching standard.
+    /// Returns None for providers with no matching preset (custom names).
+    pub(crate) fn preset(&self) -> Option<&'static Preset> {
+        PRESETS
+            .iter()
+            .find(|p| p.name == self.name && p.standard == self.standard)
+    }
+
+    /// Whether the base_url field is editable (not hardcoded by crabllm).
+    pub(crate) fn base_url_editable(&self) -> bool {
+        self.preset().map_or(true, |p| p.base_url_editable())
+    }
+
+    /// The display URL — fixed if hardcoded, otherwise whatever the user set.
+    pub(crate) fn display_base_url(&self) -> &str {
+        if let Some(preset) = self.preset() {
+            if !preset.fixed_base_url.is_empty() {
+                return preset.fixed_base_url;
+            }
+        }
+        &self.base_url
+    }
+}
+
 pub(crate) const PROVIDER_FIELDS: &[&str] = &["api_key", "base_url", "standard"];
 
 pub(crate) struct McpData {
@@ -158,6 +212,8 @@ pub(crate) enum Focus {
     List,
     Editing,
     PresetSelector,
+    /// Naming a custom provider after preset selection.
+    NamingProvider,
     AddModel,
     AddMcp,
 }
@@ -539,9 +595,9 @@ impl AuthState {
         }
     }
 
-    pub(crate) fn add_preset(&mut self, preset: &Preset) {
+    pub(crate) fn add_preset(&mut self, preset: &Preset, name: Option<&str>) {
         self.providers.push(ProviderData {
-            name: preset.name.to_string(),
+            name: name.unwrap_or(preset.name).to_string(),
             api_key: String::new(),
             base_url: preset.base_url.to_string(),
             standard: preset.standard.to_string(),
@@ -648,7 +704,7 @@ fn render(frame: &mut Frame, state: &AuthState) {
 
 fn render_status(frame: &mut Frame, state: &AuthState, area: Rect) {
     let help = match (state.tab, state.focus) {
-        (_, Focus::PresetSelector) => Line::from(vec![
+        (_, Focus::PresetSelector | Focus::NamingProvider) => Line::from(vec![
             Span::styled(" Enter ", Style::default().fg(Color::Cyan)),
             Span::raw("Select  "),
             Span::styled("Esc ", Style::default().fg(Color::Cyan)),

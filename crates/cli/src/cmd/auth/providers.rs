@@ -1,5 +1,8 @@
 use crate::{
-    cmd::auth::{AuthState, Focus, PRESETS, PROVIDER_FIELDS, Tab, TreeItem, commit_provider_edit},
+    cmd::auth::{
+        AuthState, Focus, PRESETS, PROVIDER_FIELDS, ProviderData, Tab, TreeItem,
+        commit_provider_edit,
+    },
     tui::{border_dim, border_focused, char_to_byte, handle_text_input, mask_token},
 };
 use anyhow::Result;
@@ -26,6 +29,10 @@ pub(crate) fn handle_providers_key(
         }
         Focus::PresetSelector => {
             handle_preset(key, state);
+            Ok(None)
+        }
+        Focus::NamingProvider => {
+            handle_naming_provider(key, state);
             Ok(None)
         }
         Focus::AddModel => {
@@ -137,6 +144,36 @@ fn handle_provider_list(
     Ok(None)
 }
 
+/// Advance to the next editable field, skipping non-editable ones.
+/// Returns the next field index, or None if no more fields.
+///
+/// Field index 1 is `PROVIDER_FIELDS[1]` ("base_url") — skipped for
+/// providers whose URL is hardcoded in crabllm.
+fn next_editable_field(provider: &ProviderData, from: usize) -> Option<usize> {
+    let mut next = from + 1;
+    while next < PROVIDER_FIELDS.len() {
+        if next == 1 && !provider.base_url_editable() {
+            next += 1;
+            continue;
+        }
+        return Some(next);
+    }
+    None
+}
+
+/// Move to the previous editable field, skipping non-editable ones.
+/// See `next_editable_field` for the field-index convention.
+fn prev_editable_field(provider: &ProviderData, from: usize) -> Option<usize> {
+    let mut prev = from.checked_sub(1)?;
+    loop {
+        if prev == 1 && !provider.base_url_editable() {
+            prev = prev.checked_sub(1)?;
+            continue;
+        }
+        return Some(prev);
+    }
+}
+
 fn handle_provider_editing(key: crossterm::event::KeyEvent, state: &mut AuthState) {
     match key.code {
         KeyCode::Esc => {
@@ -151,8 +188,7 @@ fn handle_provider_editing(key: crossterm::event::KeyEvent, state: &mut AuthStat
                     toggle_standard(state, pi);
                     return;
                 }
-                let next = field + 1;
-                if next < PROVIDER_FIELDS.len() {
+                if let Some(next) = next_editable_field(&state.providers[pi], field) {
                     state.editing_field = Some(next);
                     let val = state.provider_field_value(pi, next).to_string();
                     state.cursor = val.chars().count();
@@ -164,30 +200,26 @@ fn handle_provider_editing(key: crossterm::event::KeyEvent, state: &mut AuthStat
         }
         KeyCode::Up => {
             if let Some(field) = state.editing_field
-                && field > 0
+                && let Some(TreeItem::Provider(pi)) = state.selected_item()
+                && let Some(prev) = prev_editable_field(&state.providers[pi], field)
             {
                 commit_provider_edit(state);
-                let new_field = field - 1;
-                state.editing_field = Some(new_field);
-                if let Some(TreeItem::Provider(pi)) = state.selected_item() {
-                    let val = state.provider_field_value(pi, new_field).to_string();
-                    state.cursor = val.chars().count();
-                    state.edit_buf = val;
-                }
+                state.editing_field = Some(prev);
+                let val = state.provider_field_value(pi, prev).to_string();
+                state.cursor = val.chars().count();
+                state.edit_buf = val;
             }
         }
         KeyCode::Down => {
             if let Some(field) = state.editing_field
-                && field + 1 < PROVIDER_FIELDS.len()
+                && let Some(TreeItem::Provider(pi)) = state.selected_item()
+                && let Some(next) = next_editable_field(&state.providers[pi], field)
             {
                 commit_provider_edit(state);
-                let new_field = field + 1;
-                state.editing_field = Some(new_field);
-                if let Some(TreeItem::Provider(pi)) = state.selected_item() {
-                    let val = state.provider_field_value(pi, new_field).to_string();
-                    state.cursor = val.chars().count();
-                    state.edit_buf = val;
-                }
+                state.editing_field = Some(next);
+                let val = state.provider_field_value(pi, next).to_string();
+                state.cursor = val.chars().count();
+                state.edit_buf = val;
             }
         }
         KeyCode::Tab => {
@@ -212,6 +244,12 @@ const STANDARDS: &[&str] = &[
 
 fn toggle_standard(state: &mut AuthState, pi: usize) {
     let p = &mut state.providers[pi];
+    // Don't allow changing the standard for built-in presets — it would
+    // break the preset lookup and hide the fixed URL indicator.
+    if p.preset().is_some() {
+        state.status = String::from("Standard is fixed for built-in providers");
+        return;
+    }
     let cur = STANDARDS.iter().position(|s| *s == p.standard).unwrap_or(0);
     let next = (cur + 1) % STANDARDS.len();
     p.standard = STANDARDS[next].to_string();
@@ -233,11 +271,42 @@ fn handle_preset(key: crossterm::event::KeyEvent, state: &mut AuthState) {
             }
         }
         KeyCode::Enter => {
-            state.add_preset(&PRESETS[state.preset_idx]);
-            state.status = format!("Added provider: {}", PRESETS[state.preset_idx].name);
-            state.focus = Focus::List;
+            let preset = &PRESETS[state.preset_idx];
+            if preset.allows_custom_name() {
+                state.edit_buf.clear();
+                state.cursor = 0;
+                state.focus = Focus::NamingProvider;
+            } else {
+                state.add_preset(preset, None);
+                state.status = format!("Added provider: {}", preset.name);
+                state.focus = Focus::List;
+            }
         }
         _ => {}
+    }
+}
+
+fn handle_naming_provider(key: crossterm::event::KeyEvent, state: &mut AuthState) {
+    match key.code {
+        KeyCode::Esc => {
+            state.focus = Focus::PresetSelector;
+        }
+        KeyCode::Enter => {
+            let name = state.edit_buf.trim().to_string();
+            if name.is_empty() {
+                state.status = String::from("Provider name is required");
+                return;
+            }
+            if state.providers.iter().any(|p| p.name == name) {
+                state.status = format!("Provider '{}' already exists", name);
+                return;
+            }
+            let preset = &PRESETS[state.preset_idx];
+            state.add_preset(preset, Some(&name));
+            state.status = format!("Added provider: {}", name);
+            state.focus = Focus::List;
+        }
+        _ => handle_text_input(key.code, &mut state.edit_buf, &mut state.cursor),
     }
 }
 
@@ -367,12 +436,21 @@ fn render_provider_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
                 .enumerate()
                 .map(|(fi, label)| {
                     let is_editing = editing && state.editing_field == Some(fi);
+                    let is_fixed = fi == 1 && !p.base_url_editable();
                     let label_style = Style::default()
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD);
                     let label_span = Span::styled(format!(" {:>10}: ", label), label_style);
 
-                    let value = if is_editing {
+                    let value = if is_fixed {
+                        // Show the hardcoded URL as read-only.
+                        Span::styled(
+                            p.display_base_url(),
+                            Style::default()
+                                .fg(Color::DarkGray)
+                                .add_modifier(Modifier::ITALIC),
+                        )
+                    } else if is_editing {
                         if fi == 0 {
                             // Mask API key while editing — show * for each char, cursor as |.
                             let char_count = state.edit_buf.chars().count();
@@ -402,11 +480,18 @@ fn render_provider_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
                         }
                     };
 
-                    let indicator = if is_editing { " <" } else { "" };
+                    let indicator = if is_fixed {
+                        " (fixed)"
+                    } else if is_editing {
+                        " <"
+                    } else {
+                        ""
+                    };
+                    let indicator_color = if is_fixed { Color::DarkGray } else { Color::Yellow };
                     Line::from(vec![
                         label_span,
                         value,
-                        Span::styled(indicator, Style::default().fg(Color::Yellow)),
+                        Span::styled(indicator, Style::default().fg(indicator_color)),
                     ])
                 })
                 .collect();
@@ -464,6 +549,11 @@ fn render_provider_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
 }
 
 fn render_presets(frame: &mut Frame, state: &AuthState, area: Rect) {
+    if state.focus == Focus::NamingProvider {
+        render_naming_provider(frame, state, area);
+        return;
+    }
+
     let block = Block::default()
         .title(" Select Provider Preset ")
         .borders(Borders::ALL)
@@ -481,10 +571,11 @@ fn render_presets(frame: &mut Frame, state: &AuthState, area: Rect) {
             } else {
                 Style::default().fg(Color::White)
             };
-            let detail = if preset.base_url.is_empty() {
+            let url = preset.display_url();
+            let detail = if url.is_empty() {
                 String::new()
             } else {
-                format!("  ({})", preset.base_url)
+                format!("  ({})", url)
             };
             Line::from(vec![
                 Span::styled(format!("{marker}{}", preset.name), style),
@@ -499,4 +590,37 @@ fn render_presets(frame: &mut Frame, state: &AuthState, area: Rect) {
         .collect();
 
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn render_naming_provider(frame: &mut Frame, state: &AuthState, area: Rect) {
+    let block = Block::default()
+        .title(" Name Your Provider ")
+        .borders(Borders::ALL)
+        .border_style(border_focused());
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let byte_pos = char_to_byte(&state.edit_buf, state.cursor);
+    let mut s = state.edit_buf.clone();
+    s.insert(byte_pos, '|');
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(
+                " Provider name: ",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(s, Style::default().fg(Color::Green)),
+        ]),
+        Line::from(Span::styled(
+            " (used as [provider.<name>] in config.toml)",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        )),
+    ];
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }

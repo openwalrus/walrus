@@ -53,10 +53,25 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
         None
     };
 
-    let base_url = if preset.name == "custom" {
+    let provider_name = if preset.allows_custom_name() {
+        let name: String = Input::with_theme(&theme)
+            .with_prompt("Provider name (used as [provider.<name>] in config)")
+            .interact_text()?;
+        if name.is_empty() {
+            anyhow::bail!("provider name is required");
+        }
+        name
+    } else {
+        preset.name.to_string()
+    };
+
+    let base_url = if preset.allows_custom_name() {
         Input::with_theme(&theme)
             .with_prompt("Base URL")
             .interact_text()?
+    } else if !preset.fixed_base_url.is_empty() {
+        println!("  Base URL: {} (fixed)", preset.fixed_base_url);
+        preset.base_url.to_string()
     } else {
         preset.base_url.to_string()
     };
@@ -107,7 +122,7 @@ pub(crate) fn setup_provider(config_path: &Path) -> Result<()> {
     let mut models = Array::new();
     models.push(model.as_str());
     entry.insert("models", value(models));
-    provider_table.insert(preset.name, Item::Table(entry));
+    provider_table.insert(&provider_name, Item::Table(entry));
 
     std::fs::write(config_path, doc.to_string())?;
     println!("\nSaved to {}\n", config_path.display());
