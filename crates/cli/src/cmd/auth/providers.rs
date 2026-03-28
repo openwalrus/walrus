@@ -487,7 +487,11 @@ fn render_provider_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
                     } else {
                         ""
                     };
-                    let indicator_color = if is_fixed { Color::DarkGray } else { Color::Yellow };
+                    let indicator_color = if is_fixed {
+                        Color::DarkGray
+                    } else {
+                        Color::Yellow
+                    };
                     Line::from(vec![
                         label_span,
                         value,
