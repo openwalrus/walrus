@@ -2,7 +2,10 @@
 
 use runtime::{
     MemoryConfig,
-    memory::{Memory, storage::{MemStorage, Storage}},
+    memory::{
+        Memory,
+        storage::{MemStorage, Storage},
+    },
 };
 use std::path::PathBuf;
 
@@ -241,4 +244,3 @@ fn bm25_score_ranks() {
     assert!(!results.is_empty());
     assert_eq!(results[0].0, 1);
 }
-

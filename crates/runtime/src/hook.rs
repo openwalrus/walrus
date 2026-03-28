@@ -334,9 +334,7 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
         cwd_msg.auto_injected = true;
         messages.push(cwd_msg);
         if let Some(instructions) = discover_instructions(&cwd) {
-            let mut msg = Message::user(format!(
-                "<instructions>\n{instructions}\n</instructions>"
-            ));
+            let mut msg = Message::user(format!("<instructions>\n{instructions}\n</instructions>"));
             msg.auto_injected = true;
             messages.push(msg);
         }
