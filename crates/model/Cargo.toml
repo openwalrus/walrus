@@ -21,7 +21,6 @@ async-stream.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 rand.workspace = true
-openssl.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
