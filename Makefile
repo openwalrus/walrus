@@ -25,13 +25,13 @@ build-macos-arm64 = $(CARGO) --target aarch64-apple-darwin
 build-macos-amd64 = CC_x86_64_apple_darwin=$(CURDIR)/.cargo/cc-x86_64.sh $(CARGO) --target x86_64-apple-darwin
 build-linux-arm64 = $(LINUX_ARM64_ENV) $(CARGO) --target aarch64-unknown-linux-gnu
 build-linux-amd64 = CC_x86_64_unknown_linux_gnu=$(CURDIR)/.cargo/cc-x86_64-linux.sh $(LINUX_AMD64_ENV) $(CARGO) --target x86_64-unknown-linux-gnu
-build-windows-amd64 = $(CARGO) --target x86_64-pc-windows-msvc
+build-windows-amd64 = CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar $(CARGO) --target x86_64-pc-windows-gnu
 
 triple-macos-arm64 = aarch64-apple-darwin
 triple-macos-amd64 = x86_64-apple-darwin
 triple-linux-arm64 = aarch64-unknown-linux-gnu
 triple-linux-amd64 = x86_64-unknown-linux-gnu
-triple-windows-amd64 = x86_64-pc-windows-msvc
+triple-windows-amd64 = x86_64-pc-windows-gnu
 
 # Binary extension per platform (empty on Unix, .exe on Windows).
 ext-macos-arm64 =
