@@ -1,6 +1,6 @@
 //! Tool schemas and input types for OS tools.
 
-use crate::{Env, backend::Backend};
+use crate::{Env, host::Host};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -26,7 +26,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Bash::as_tool()]
 }
 
-impl<B: Backend> Env<B> {
+impl<H: Host> Env<H> {
     /// Dispatch a `bash` tool call — run a command directly.
     pub async fn dispatch_bash(&self, args: &str, session_id: Option<u64>) -> String {
         let input: Bash = match serde_json::from_str(args) {
@@ -34,7 +34,7 @@ impl<B: Backend> Env<B> {
             Err(e) => return format!("invalid arguments: {e}"),
         };
         let session_cwd = if let Some(id) = session_id {
-            self.bridge.session_cwd(id)
+            self.host.session_cwd(id)
         } else {
             None
         };

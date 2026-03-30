@@ -8,11 +8,11 @@ use crate::{
     DaemonConfig,
     cron::CronStore,
     daemon::event::{DaemonEvent, DaemonEventSender},
-    hook::backend::DaemonBackend,
+    hook::host::DaemonHost,
 };
 use anyhow::Result;
 use model::ProviderRegistry;
-use runtime::{Env, backend::Backend};
+use runtime::{Env, host::Host};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -26,14 +26,14 @@ mod protocol;
 
 /// Shared daemon state — holds the runtime. Cheap to clone (`Arc`-backed).
 ///
-/// Generic over the [`Backend`] type so downstream binaries can inject
+/// Generic over the [`Host`] type so downstream binaries can inject
 /// custom tool dispatch and server-specific behavior. The default backend
-/// is [`DaemonBackend`].
+/// is [`DaemonHost`].
 ///
 /// The runtime is stored behind `Arc<RwLock<Arc<Runtime>>>` so that
 /// [`Daemon::reload`] can swap it atomically while in-flight requests that
 /// already cloned the inner `Arc` complete normally.
-pub struct Daemon<B: Backend + 'static = DaemonBackend> {
+pub struct Daemon<B: Host + 'static = DaemonHost> {
     /// The crabtalk runtime, swappable via [`Daemon::reload`].
     #[allow(clippy::type_complexity)]
     pub runtime: Arc<RwLock<Arc<Runtime<ProviderRegistry, Env<B>>>>>,
@@ -49,7 +49,7 @@ pub struct Daemon<B: Backend + 'static = DaemonBackend> {
     pub(crate) crons: Arc<Mutex<CronStore>>,
 }
 
-impl<B: Backend + 'static> Clone for Daemon<B> {
+impl<B: Host + 'static> Clone for Daemon<B> {
     fn clone(&self) -> Self {
         Self {
             runtime: self.runtime.clone(),
@@ -61,13 +61,13 @@ impl<B: Backend + 'static> Clone for Daemon<B> {
     }
 }
 
-impl Daemon<DaemonBackend> {
-    /// Load config, build runtime with the default [`DaemonBackend`], and
+impl Daemon<DaemonHost> {
+    /// Load config, build runtime with the default [`DaemonHost`], and
     /// start the event loop.
-    pub async fn start(config_dir: &Path) -> Result<DaemonHandle<DaemonBackend>> {
+    pub async fn start(config_dir: &Path) -> Result<DaemonHandle<DaemonHost>> {
         Self::start_with(config_dir, |event_tx| {
             let (events_tx, _) = broadcast::channel(256);
-            DaemonBackend {
+            DaemonHost {
                 event_tx,
                 pending_asks: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 session_cwds: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -78,7 +78,7 @@ impl Daemon<DaemonBackend> {
     }
 }
 
-impl<B: Backend + 'static> Daemon<B> {
+impl<B: Host + 'static> Daemon<B> {
     /// Load config, build runtime with a custom backend, and start the
     /// event loop.
     ///
@@ -132,7 +132,7 @@ impl<B: Backend + 'static> Daemon<B> {
 ///
 /// The caller spawns transports (socket, TCP) using [`setup_socket`] and
 /// [`setup_tcp`], passing clones of `event_tx` and `shutdown_tx`.
-pub struct DaemonHandle<B: Backend + 'static = DaemonBackend> {
+pub struct DaemonHandle<B: Host + 'static = DaemonHost> {
     /// The loaded daemon configuration.
     pub config: DaemonConfig,
     /// Sender for injecting events into the daemon event loop.
@@ -147,7 +147,7 @@ pub struct DaemonHandle<B: Backend + 'static = DaemonBackend> {
     event_loop_join: Option<tokio::task::JoinHandle<()>>,
 }
 
-impl<B: Backend + 'static> DaemonHandle<B> {
+impl<B: Host + 'static> DaemonHandle<B> {
     /// Wait until the active model provider is ready.
     ///
     /// No-op for remote providers. Kept for API compatibility.

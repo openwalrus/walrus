@@ -1,7 +1,7 @@
 //! Tool schema for the built-in `ask_user` tool.
 //!
 //! Schema types live here. Dispatch logic is server-specific and lives in
-//! the [`Backend`](crate::backend::Backend) implementation.
+//! the [`Host`](crate::host::Host) implementation.
 
 use serde::Deserialize;
 use wcore::{

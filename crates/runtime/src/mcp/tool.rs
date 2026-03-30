@@ -1,6 +1,6 @@
 //! Tool dispatch and schema registration for the MCP tool.
 
-use crate::{Env, backend::Backend};
+use crate::{Env, host::Host};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use wcore::agent::ToolDescription;
@@ -20,7 +20,7 @@ impl ToolDescription for Mcp {
         "Call an MCP tool by name, or list available tools if no exact match.";
 }
 
-impl<B: Backend> Env<B> {
+impl<H: Host> Env<H> {
     pub async fn dispatch_mcp(&self, args: &str, agent: &str) -> String {
         let input: Mcp = match serde_json::from_str(args) {
             Ok(v) => v,

@@ -1,6 +1,6 @@
-//! Hook module — re-exports Env<DaemonBackend> as DaemonEnv.
+//! Hook module — re-exports Env<DaemonHost> as DaemonEnv.
 
-pub mod backend;
+pub mod host;
 
-/// The daemon's environment type — Env with DaemonBackend for server-specific dispatch.
-pub type DaemonEnv = runtime::Env<backend::DaemonBackend>;
+/// The daemon's environment type — Env with DaemonHost for server-specific dispatch.
+pub type DaemonEnv = runtime::Env<host::DaemonHost>;

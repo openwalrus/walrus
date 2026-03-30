@@ -9,7 +9,7 @@
 
 use crate::daemon::Daemon;
 use futures_util::{StreamExt, pin_mut};
-use runtime::backend::Backend;
+use runtime::host::Host;
 use tokio::sync::mpsc;
 use wcore::{
     ToolRequest,
@@ -40,7 +40,7 @@ pub type DaemonEventSender = mpsc::UnboundedSender<DaemonEvent>;
 
 // ── Event dispatch ───────────────────────────────────────────────────
 
-impl<B: Backend + 'static> Daemon<B> {
+impl<H: Host + 'static> Daemon<H> {
     /// Process events until [`DaemonEvent::Shutdown`] is received.
     ///
     /// Spawns a task for each event to avoid blocking on LLM calls.

@@ -1,13 +1,13 @@
-//! Backend — trait for server-specific tool dispatch.
+//! Host — trait for server-specific tool dispatch.
 //!
 //! The runtime crate defines this trait. The daemon implements it to provide
 //! `ask_user`, `delegate`, and per-session CWD resolution. Embedded users
-//! get [`NoBackend`] with no-op defaults.
+//! get [`NoHost`] with no-op defaults.
 
 use std::path::PathBuf;
 
 /// Trait for server-specific tool dispatch that the runtime cannot handle locally.
-pub trait Backend: Send + Sync + Clone {
+pub trait Host: Send + Sync + Clone {
     /// Handle `ask_user` — block until user replies.
     fn dispatch_ask_user(
         &self,
@@ -63,7 +63,7 @@ pub trait Backend: Send + Sync + Clone {
     }
 
     /// Subscribe to agent events. Returns `None` if event broadcasting
-    /// is not supported by this backend.
+    /// is not supported by this host.
     fn subscribe_events(
         &self,
     ) -> Option<tokio::sync::broadcast::Receiver<wcore::protocol::message::AgentEventMsg>> {
@@ -71,7 +71,7 @@ pub trait Backend: Send + Sync + Clone {
     }
 
     /// Handle a tool call not matched by the built-in dispatch table.
-    /// Downstream backends override this to inject private tools.
+    /// Downstream hosts override this to inject private tools.
     fn dispatch_custom_tool(
         &self,
         name: &str,
@@ -83,8 +83,8 @@ pub trait Backend: Send + Sync + Clone {
     }
 }
 
-/// No-op backend for embedded use.
+/// No-op host for embedded use.
 #[derive(Clone)]
-pub struct NoBackend;
+pub struct NoHost;
 
-impl Backend for NoBackend {}
+impl Host for NoHost {}

@@ -1,10 +1,10 @@
-//! DaemonBackend — server-specific Backend implementation.
+//! DaemonHost — server-specific Host implementation.
 //!
 //! Provides `ask_user` and `delegate` dispatch using daemon event channels,
 //! per-session CWD resolution, and agent event broadcasting.
 
 use crate::daemon::event::{DaemonEvent, DaemonEventSender};
-use runtime::backend::Backend;
+use runtime::host::Host;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use wcore::{
@@ -15,9 +15,9 @@ use wcore::{
 /// Timeout for waiting on user reply (5 minutes).
 const ASK_USER_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Server-specific backend for the daemon. Owns event channels and session state.
+/// Server-specific host for the daemon. Owns event channels and session state.
 #[derive(Clone)]
-pub struct DaemonBackend {
+pub struct DaemonHost {
     /// Event channel for task delegation.
     pub(crate) event_tx: DaemonEventSender,
     /// Pending `ask_user` oneshots, keyed by session_id.
@@ -28,7 +28,7 @@ pub struct DaemonBackend {
     pub(crate) events_tx: broadcast::Sender<AgentEventMsg>,
 }
 
-impl Backend for DaemonBackend {
+impl Host for DaemonHost {
     async fn dispatch_ask_user(&self, args: &str, session_id: Option<u64>) -> String {
         let input: runtime::ask_user::AskUser = match serde_json::from_str(args) {
             Ok(v) => v,

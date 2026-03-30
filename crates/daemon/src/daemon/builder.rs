@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use model::ProviderRegistry;
-use runtime::{Env, SkillHandler, backend::Backend, mcp::McpHandler, memory::Memory};
+use runtime::{Env, SkillHandler, host::Host, mcp::McpHandler, memory::Memory};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -47,7 +47,7 @@ fn resolve_package_skills(
 
 const SYSTEM_AGENT: &str = runtime::memory::DEFAULT_SOUL;
 
-impl<B: Backend + 'static> Daemon<B> {
+impl<H: Host + 'static> Daemon<H> {
     /// Build a fully-configured [`Daemon`] from the given config, config
     /// directory, event sender, and backend.
     pub(crate) async fn build(
@@ -55,9 +55,9 @@ impl<B: Backend + 'static> Daemon<B> {
         config_dir: &Path,
         event_tx: DaemonEventSender,
         shutdown_tx: broadcast::Sender<()>,
-        backend: B,
+        host: H,
     ) -> Result<Self> {
-        let runtime = Self::build_runtime(config, config_dir, &event_tx, backend).await?;
+        let runtime = Self::build_runtime(config, config_dir, &event_tx, host).await?;
         let cron_store = crate::cron::CronStore::load(
             config_dir.join("crons.toml"),
             event_tx.clone(),
@@ -80,12 +80,12 @@ impl<B: Backend + 'static> Daemon<B> {
     /// (channels, pending asks) is preserved across reloads.
     pub async fn reload(&self) -> Result<()> {
         let config = DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))?;
-        let backend = {
+        let host = {
             let old_rt = self.runtime.read().await;
-            old_rt.hook.bridge.clone()
+            old_rt.hook.host.clone()
         };
         let mut new_runtime =
-            Self::build_runtime(&config, &self.config_dir, &self.event_tx, backend).await?;
+            Self::build_runtime(&config, &self.config_dir, &self.event_tx, host).await?;
         {
             let old_runtime = self.runtime.read().await;
             (**old_runtime).transfer_sessions(&mut new_runtime).await;
@@ -100,11 +100,11 @@ impl<B: Backend + 'static> Daemon<B> {
         config: &DaemonConfig,
         config_dir: &Path,
         event_tx: &DaemonEventSender,
-        backend: B,
-    ) -> Result<Runtime<ProviderRegistry, Env<B>>> {
+        host: H,
+    ) -> Result<Runtime<ProviderRegistry, Env<H>>> {
         let manager = build_providers(config)?;
         let (manifest, _warnings) = resolve_manifests(config_dir);
-        let hook = build_env(config, config_dir, &manifest, backend).await?;
+        let hook = build_env(config, config_dir, &manifest, host).await?;
         let tool_tx = build_tool_sender(event_tx);
         let mut runtime = Runtime::new(manager, hook, Some(tool_tx)).await;
         load_agents(&mut runtime, config, &manifest)?;
@@ -130,12 +130,12 @@ fn build_providers(config: &DaemonConfig) -> Result<ProviderRegistry> {
 }
 
 /// Build the engine environment with all backends (skills, MCP, memory).
-async fn build_env<B: Backend>(
+async fn build_env<H: Host>(
     config: &DaemonConfig,
     config_dir: &Path,
     manifest: &ResolvedManifest,
-    backend: B,
-) -> Result<Env<B>> {
+    host: H,
+) -> Result<Env<H>> {
     let skills = SkillHandler::load(manifest.skill_dirs.clone()).unwrap_or_else(|e| {
         tracing::warn!("failed to load skills: {e}");
         SkillHandler::default()
@@ -163,7 +163,7 @@ async fn build_env<B: Backend>(
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
 
-    Ok(Env::new(skills, mcp_handler, cwd, memory, backend))
+    Ok(Env::new(skills, mcp_handler, cwd, memory, host))
 }
 
 /// Build a [`ToolSender`] that forwards [`ToolRequest`]s into the daemon
@@ -182,8 +182,8 @@ fn build_tool_sender(event_tx: &DaemonEventSender) -> wcore::ToolSender {
 }
 
 /// Load agents and add them to the runtime.
-fn load_agents<B: Backend + 'static>(
-    runtime: &mut Runtime<ProviderRegistry, Env<B>>,
+fn load_agents<H: Host + 'static>(
+    runtime: &mut Runtime<ProviderRegistry, Env<H>>,
     config: &DaemonConfig,
     manifest: &ResolvedManifest,
 ) -> Result<()> {

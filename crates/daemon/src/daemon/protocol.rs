@@ -3,7 +3,7 @@
 use crate::{cron::CronEntry, daemon::Daemon};
 use anyhow::{Context, Result};
 use futures_util::{StreamExt, pin_mut};
-use runtime::backend::Backend;
+use runtime::host::Host;
 use std::sync::Arc;
 use std::{
     collections::VecDeque,
@@ -21,7 +21,7 @@ use wcore::protocol::{
 };
 use wcore::{AgentEvent, AgentStep};
 
-impl<B: Backend + 'static> Server for Daemon<B> {
+impl<H: Host + 'static> Server for Daemon<H> {
     async fn send(&self, req: SendMsg) -> Result<SendResponse> {
         let rt: Arc<_> = self.runtime.read().await.clone();
         let sender = req.sender.as_deref().unwrap_or("");
@@ -38,7 +38,7 @@ impl<B: Backend + 'static> Server for Daemon<B> {
                     rt.get_or_create_session(&req.agent, created_by).await?
                 };
                 if let Some(ref cwd) = cwd {
-                    rt.hook.bridge.set_session_cwd(id, cwd.clone()).await;
+                    rt.hook.host.set_session_cwd(id, cwd.clone()).await;
                 }
                 id
             }
@@ -84,7 +84,7 @@ impl<B: Backend + 'static> Server for Daemon<B> {
                         rt.get_or_create_session(&agent, created_by.as_str()).await?
                     };
                     if let Some(ref cwd) = cwd {
-                        rt.hook.bridge.set_session_cwd(id, cwd.clone()).await;
+                        rt.hook.host.set_session_cwd(id, cwd.clone()).await;
                     }
                     id
                 }
@@ -214,7 +214,7 @@ impl<B: Backend + 'static> Server for Daemon<B> {
 
     async fn kill_session(&self, session: u64) -> Result<bool> {
         let rt = self.runtime.read().await.clone();
-        rt.hook.bridge.clear_session_state(session).await;
+        rt.hook.host.clear_session_state(session).await;
         Ok(rt.close_session(session).await)
     }
 
@@ -222,7 +222,7 @@ impl<B: Backend + 'static> Server for Daemon<B> {
         let runtime = self.runtime.clone();
         async_stream::try_stream! {
             let rt = runtime.read().await.clone();
-            let Some(mut rx) = rt.hook.bridge.subscribe_events() else {
+            let Some(mut rx) = rt.hook.host.subscribe_events() else {
                 return;
             };
             loop {
@@ -305,7 +305,7 @@ impl<B: Backend + 'static> Server for Daemon<B> {
 
     async fn reply_to_ask(&self, session: u64, content: String) -> Result<()> {
         let rt = self.runtime.read().await.clone();
-        if rt.hook.bridge.reply_to_ask(session, content).await? {
+        if rt.hook.host.reply_to_ask(session, content).await? {
             return Ok(());
         }
         anyhow::bail!("no pending ask_user for session {session}")
@@ -559,7 +559,7 @@ fn find_binary(name: &str) -> Result<std::path::PathBuf> {
     anyhow::bail!("binary '{name}' not found in PATH or ~/.cargo/bin")
 }
 
-impl<B: Backend + 'static> Daemon<B> {
+impl<H: Host + 'static> Daemon<H> {
     /// Load the current `DaemonConfig` from disk.
     fn load_config(&self) -> Result<crate::DaemonConfig> {
         crate::DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))

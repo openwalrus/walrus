@@ -44,7 +44,7 @@ Layer 4 ─ Adapters
 ### Daemon — Runtime
 
 The daemon constructs the runtime and feeds it messages. Tool calls come back
-through the event channel. `Backend` is the seam between embedded and
+through the event channel. `Host` is the seam between embedded and
 daemon modes.
 
 **Runtime never initiates I/O** — it only responds. If your feature needs to
@@ -85,8 +85,8 @@ Client (CLI/Telegram/etc) → UDS/TCP → Daemon event loop
 - `Session` — conversation history container
 - `Runtime<M, H>` — agents + sessions + tool dispatch
 - `Env<B>` — engine environment: skills, MCP, memory, tool routing
-- `Backend` — trait for server-specific tools (ask_user, delegate, session CWD)
-- `DaemonEnv` — type alias: `Env<DaemonBackend>`, adds event broadcasting
+- `Host` — trait for server-specific tools (ask_user, delegate, session CWD)
+- `DaemonEnv` — type alias: `Env<DaemonHost>`, adds event broadcasting
 - `DaemonEvent` — Message | ToolCall | Shutdown
 - `ToolRequest` — single tool call with reply channel
 - Protocol — `ClientMessage` / `ServerMessage` (protobuf)
