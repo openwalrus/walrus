@@ -2,9 +2,9 @@
 
 use crate::protocol::message::{
     AgentInfo, AgentList, ClientMessage, ConfigMsg, CreateAgentMsg, DeleteAgentMsg, ErrorMsg,
-    GetAgentMsg, GetConfig, ListAgentsMsg, Ping, SendMsg, SendResponse, ServerMessage,
-    SetConfigMsg, StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
-    stream_event,
+    GetAgentMsg, GetConfig, ListAgentsMsg, ListProvidersMsg, Ping, ProviderInfo, ProviderList,
+    SendMsg, SendResponse, ServerMessage, SetConfigMsg, StreamEvent, StreamMsg, UpdateAgentMsg,
+    client_message, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -250,6 +250,30 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Pong(_)),
                 } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all registered LLM providers.
+    fn list_providers(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListProviders(ListProvidersMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::ProviderList(ProviderList { providers })),
+                } => Ok(providers),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

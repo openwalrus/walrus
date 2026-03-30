@@ -7,8 +7,8 @@ pub use crate::protocol::proto::{
     AgentEventMsg, AgentInfo, AgentList, AskOption, AskQuestion, AskUserEvent, ClientMessage,
     CompactMsg, CompactResponse, ConfigMsg, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
     DaemonStats, DeleteAgentMsg, DeleteCronMsg, ErrorMsg, GetAgentMsg, GetConfig, GetStats,
-    KillMsg, ListAgentsMsg, ListCronsMsg, Ping, Pong, ReplyToAsk, SendMsg, SendResponse,
-    ServerMessage, SessionInfo, SessionList, SetConfigMsg, StreamChunk, StreamEnd, StreamEvent,
-    StreamMsg, StreamStart, StreamThinking, SubscribeEvents, TokenUsage, ToolCallInfo,
-    ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg,
+    KillMsg, ListAgentsMsg, ListCronsMsg, ListProvidersMsg, Ping, Pong, ProviderInfo, ProviderList,
+    ReplyToAsk, SendMsg, SendResponse, ServerMessage, SessionInfo, SessionList, SetConfigMsg,
+    StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, SubscribeEvents,
+    TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg,
 };

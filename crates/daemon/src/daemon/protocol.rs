@@ -8,10 +8,10 @@ use wcore::protocol::{
     api::Server,
     message::{
         AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, CreateAgentMsg,
-        CreateCronMsg, CronInfo, CronList, DaemonStats, SendMsg, SendResponse, SessionInfo,
-        StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, TokenUsage,
-        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg,
-        stream_event,
+        CreateCronMsg, CronInfo, CronList, DaemonStats, ProviderInfo, SendMsg, SendResponse,
+        SessionInfo, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
+        TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
+        UpdateAgentMsg, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -347,15 +347,13 @@ impl Server for Daemon {
     }
 
     async fn create_agent(&self, req: CreateAgentMsg) -> Result<AgentInfo> {
-        self.upsert_agent_in_manifest(&req.name, &req.config)
-            .await?;
+        self.write_agent_to_manifest(&req.name, &req.config, true)?;
         self.reload().await?;
         self.get_agent(req.name).await
     }
 
     async fn update_agent(&self, req: UpdateAgentMsg) -> Result<AgentInfo> {
-        self.upsert_agent_in_manifest(&req.name, &req.config)
-            .await?;
+        self.write_agent_to_manifest(&req.name, &req.config, false)?;
         self.reload().await?;
         self.get_agent(req.name).await
     }
@@ -386,6 +384,18 @@ impl Server for Daemon {
         }
         Ok(removed)
     }
+
+    async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
+        let rt = self.runtime.read().await.clone();
+        let entries = rt.model.list()?;
+        Ok(entries
+            .into_iter()
+            .map(|e| ProviderInfo {
+                name: e.name,
+                active: e.active,
+            })
+            .collect())
+    }
 }
 
 impl Daemon {
@@ -395,7 +405,16 @@ impl Daemon {
     }
 
     /// Write an agent config into the local manifest `[agents.<name>]`.
-    async fn upsert_agent_in_manifest(&self, name: &str, config_json: &str) -> Result<()> {
+    ///
+    /// If `expect_new` is true, fails when the agent already exists in the
+    /// manifest. If false, fails when it does not exist. The check and write
+    /// happen in the same synchronous block with no yield points.
+    fn write_agent_to_manifest(
+        &self,
+        name: &str,
+        config_json: &str,
+        expect_new: bool,
+    ) -> Result<()> {
         use toml_edit::DocumentMut;
 
         // Parse incoming JSON to validate it and convert to TOML value.
@@ -424,6 +443,14 @@ impl Daemon {
         let agents = doc["agents"]
             .as_table_mut()
             .context("[agents] is not a table")?;
+
+        let exists = agents.contains_key(name);
+        if expect_new && exists {
+            anyhow::bail!("agent '{name}' already exists in local manifest");
+        }
+        if !expect_new && !exists {
+            anyhow::bail!("agent '{name}' not found in local manifest");
+        }
 
         // Insert the agent as a sub-table.
         let mut agent_table = toml_edit::Table::new();

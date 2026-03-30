@@ -28,6 +28,7 @@ message ClientMessage {
     CreateAgentMsg create_agent = 18;
     UpdateAgentMsg update_agent = 19;
     DeleteAgentMsg delete_agent = 20;
+    ListProvidersMsg list_providers = 21;
   }
 }
 
@@ -106,6 +107,8 @@ message DeleteAgentMsg {
   string name = 1;
 }
 
+message ListProvidersMsg {}
+
 // ── Server Messages ──────────────────────────────────────────────
 
 message ServerMessage {
@@ -123,6 +126,7 @@ message ServerMessage {
     CompactResponse compact = 11;
     AgentInfo agent_info = 12;
     AgentList agent_list = 13;
+    ProviderList provider_list = 14;
   }
 }
 
@@ -290,4 +294,13 @@ message AgentInfo {
 
 message AgentList {
   repeated AgentInfo agents = 1;
+}
+
+message ProviderInfo {
+  string name = 1;
+  bool active = 2;
+}
+
+message ProviderList {
+  repeated ProviderInfo providers = 1;
 }
