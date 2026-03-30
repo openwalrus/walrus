@@ -1,0 +1,10 @@
+FROM rust:1.94 AS builder
+WORKDIR /src
+COPY . .
+RUN cargo build --release -p crabtalk-bench --bin mock-mcp
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /src/target/release/mock-mcp /usr/local/bin/mock-mcp
+EXPOSE 9090
+CMD ["mock-mcp"]

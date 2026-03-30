@@ -1,13 +1,20 @@
 //! Standalone mock MCP server for cross-framework benchmarks.
 //!
-//! Run with: `cargo run -p crabtalk-bench --bin mock-mcp`
+//! Usage:
+//!   cargo run -p crabtalk-bench --bin mock-mcp            # random port
+//!   cargo run -p crabtalk-bench --bin mock-mcp -- 9090    # fixed port
 
 use crabtalk_bench::{mock_mcp, task};
 
 #[tokio::main]
 async fn main() {
+    let port: u16 = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
     let tasks = task::tasks();
-    let (addr, _handle) = mock_mcp::start(&tasks).await;
+    let (addr, _handle) = mock_mcp::start_on(port, &tasks).await;
     eprintln!("mock MCP server listening on http://{addr}/mcp");
     eprintln!(
         "tools: {}",

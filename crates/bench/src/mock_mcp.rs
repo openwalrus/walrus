@@ -65,6 +65,11 @@ impl MockMcpHandle {
 
 /// Start the mock MCP server on a random port.
 pub async fn start(tasks: &[Task]) -> (SocketAddr, MockMcpHandle) {
+    start_on(0, tasks).await
+}
+
+/// Start the mock MCP server on a specific port (0 = random).
+pub async fn start_on(port: u16, tasks: &[Task]) -> (SocketAddr, MockMcpHandle) {
     let mut tool_schemas = Vec::new();
     let mut responses: HashMap<String, Vec<ResponseEntry>> = HashMap::new();
 
@@ -102,7 +107,9 @@ pub async fn start(tasks: &[Task]) -> (SocketAddr, MockMcpHandle) {
         .route("/mcp", post(handle_mcp))
         .with_state(state);
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
