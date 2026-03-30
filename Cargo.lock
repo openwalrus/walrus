@@ -555,6 +555,8 @@ dependencies = [
  "crabtalk-runtime",
  "criterion",
  "prost",
+ "serde_json",
+ "tempfile",
  "tokio",
 ]
 
