@@ -26,7 +26,7 @@ pub enum DaemonEvent {
         /// The parsed client message.
         msg: ClientMessage,
         /// Per-request reply channel for streaming `ServerMessage`s back.
-        reply: mpsc::UnboundedSender<ServerMessage>,
+        reply: mpsc::Sender<ServerMessage>,
     },
     /// A tool call from an agent, routed through `DaemonHook::dispatch_tool`.
     ToolCall(ToolRequest),
@@ -59,13 +59,13 @@ impl Daemon {
     }
 
     /// Dispatch a client message through the Server trait and stream replies.
-    fn handle_message(&self, msg: ClientMessage, reply: mpsc::UnboundedSender<ServerMessage>) {
+    fn handle_message(&self, msg: ClientMessage, reply: mpsc::Sender<ServerMessage>) {
         let daemon = self.clone();
         tokio::spawn(async move {
             let stream = daemon.dispatch(msg);
             pin_mut!(stream);
             while let Some(server_msg) = stream.next().await {
-                if reply.send(server_msg).is_err() {
+                if reply.send(server_msg).await.is_err() {
                     break;
                 }
             }

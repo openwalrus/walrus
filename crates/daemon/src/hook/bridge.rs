@@ -175,7 +175,7 @@ fn spawn_agent_task(
     event_tx: DaemonEventSender,
 ) -> tokio::task::JoinHandle<(Option<String>, Option<String>)> {
     tokio::spawn(async move {
-        let (reply_tx, mut reply_rx) = mpsc::unbounded_channel();
+        let (reply_tx, mut reply_rx) = mpsc::channel(transport::REPLY_CHANNEL_CAPACITY);
         let msg = ClientMessage::from(SendMsg {
             agent,
             content: message,
@@ -213,7 +213,7 @@ fn spawn_agent_task(
         }
 
         if let Some(sid) = session_id {
-            let (reply_tx, _) = mpsc::unbounded_channel();
+            let (reply_tx, _) = mpsc::channel(1);
             let _ = event_tx.send(DaemonEvent::Message {
                 msg: ClientMessage {
                     msg: Some(wcore::protocol::message::client_message::Msg::Kill(

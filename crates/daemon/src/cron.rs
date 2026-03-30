@@ -233,7 +233,7 @@ async fn run_cron_timer(
 
         // Fire-and-forget: reply channel is dropped, agent runs but
         // output goes to session history only.
-        let (reply_tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let (reply_tx, _) = tokio::sync::mpsc::channel(1);
         let msg = ClientMessage::from(SendMsg {
             agent: String::new(),
             content: format!("/{}", entry.skill),

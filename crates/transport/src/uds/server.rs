@@ -1,5 +1,6 @@
 //! Unix domain socket server — accept loop and per-connection message handler.
 
+use crate::REPLY_CHANNEL_CAPACITY;
 use tokio::{
     net::UnixListener,
     sync::{mpsc, oneshot},
@@ -19,7 +20,7 @@ pub async fn accept_loop<F>(
     on_message: F,
     mut shutdown: oneshot::Receiver<()>,
 ) where
-    F: Fn(ClientMessage, mpsc::UnboundedSender<ServerMessage>) + Clone + Send + 'static,
+    F: Fn(ClientMessage, mpsc::Sender<ServerMessage>) + Clone + Send + 'static,
 {
     loop {
         tokio::select! {
@@ -29,7 +30,7 @@ pub async fn accept_loop<F>(
                         let cb = on_message.clone();
                         tokio::spawn(async move {
                             let (mut reader, mut writer) = stream.into_split();
-                            let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
+                            let (tx, mut rx) = mpsc::channel::<ServerMessage>(REPLY_CHANNEL_CAPACITY);
                             let send_task = tokio::spawn(async move {
                                 while let Some(msg) = rx.recv().await {
                                     if let Err(e) = codec::write_message(&mut writer, &msg).await {
