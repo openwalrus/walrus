@@ -1,10 +1,10 @@
-//! DaemonBridge — server-specific RuntimeBridge implementation.
+//! DaemonHost — server-specific Host implementation.
 //!
 //! Provides `ask_user` and `delegate` dispatch using daemon event channels,
 //! per-session CWD resolution, and agent event broadcasting.
 
 use crate::daemon::event::{DaemonEvent, DaemonEventSender};
-use runtime::bridge::RuntimeBridge;
+use runtime::host::Host;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use wcore::{
@@ -15,26 +15,20 @@ use wcore::{
 /// Timeout for waiting on user reply (5 minutes).
 const ASK_USER_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Server-specific bridge for the daemon. Owns event channels and session state.
-pub struct DaemonBridge {
+/// Server-specific host for the daemon. Owns event channels and session state.
+#[derive(Clone)]
+pub struct DaemonHost {
     /// Event channel for task delegation.
-    pub event_tx: DaemonEventSender,
+    pub(crate) event_tx: DaemonEventSender,
     /// Pending `ask_user` oneshots, keyed by session_id.
-    pub pending_asks: Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>,
+    pub(crate) pending_asks: Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>,
     /// Per-session working directory overrides.
-    pub session_cwds: Arc<Mutex<HashMap<u64, PathBuf>>>,
+    pub(crate) session_cwds: Arc<Mutex<HashMap<u64, PathBuf>>>,
     /// Broadcast channel for agent events (console subscription).
-    pub events_tx: broadcast::Sender<AgentEventMsg>,
+    pub(crate) events_tx: broadcast::Sender<AgentEventMsg>,
 }
 
-impl DaemonBridge {
-    /// Subscribe to agent events (for console event streaming).
-    pub fn subscribe_events(&self) -> broadcast::Receiver<AgentEventMsg> {
-        self.events_tx.subscribe()
-    }
-}
-
-impl RuntimeBridge for DaemonBridge {
+impl Host for DaemonHost {
     async fn dispatch_ask_user(&self, args: &str, session_id: Option<u64>) -> String {
         let input: runtime::ask_user::AskUser = match serde_json::from_str(args) {
             Ok(v) => v,
@@ -165,6 +159,32 @@ impl RuntimeBridge for DaemonBridge {
             content,
             timestamp: chrono::Utc::now().to_rfc3339(),
         });
+    }
+
+    async fn reply_to_ask(&self, session: u64, content: String) -> anyhow::Result<bool> {
+        if let Some(tx) = self.pending_asks.lock().await.remove(&session) {
+            let _ = tx.send(content);
+            return Ok(true);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if let Some(tx) = self.pending_asks.lock().await.remove(&session) {
+            let _ = tx.send(content);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn set_session_cwd(&self, session: u64, cwd: std::path::PathBuf) {
+        self.session_cwds.lock().await.insert(session, cwd);
+    }
+
+    async fn clear_session_state(&self, session: u64) {
+        self.pending_asks.lock().await.remove(&session);
+        self.session_cwds.lock().await.remove(&session);
+    }
+
+    fn subscribe_events(&self) -> Option<broadcast::Receiver<AgentEventMsg>> {
+        Some(self.events_tx.subscribe())
     }
 }
 

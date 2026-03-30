@@ -1,6 +1,6 @@
 //! Tool dispatch and schema registration for the skill tool.
 
-use crate::{RuntimeHook, bridge::RuntimeBridge, skill::loader};
+use crate::{Env, host::Host, skill::loader};
 use serde::Deserialize;
 use wcore::{
     agent::{AsTool, ToolDescription},
@@ -22,7 +22,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Skill::as_tool()]
 }
 
-impl<B: RuntimeBridge> RuntimeHook<B> {
+impl<H: Host> Env<H> {
     pub async fn dispatch_skill(&self, args: &str, agent: &str) -> String {
         let input: Skill = match serde_json::from_str(args) {
             Ok(v) => v,

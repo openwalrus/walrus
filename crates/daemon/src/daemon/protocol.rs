@@ -3,19 +3,25 @@
 use crate::{cron::CronEntry, daemon::Daemon};
 use anyhow::{Context, Result};
 use futures_util::{StreamExt, pin_mut};
+use runtime::host::Host;
 use std::sync::Arc;
+use std::{
+    collections::VecDeque,
+    io::{BufRead, BufReader},
+};
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AskOption, AskQuestion, AskUserEvent, CreateCronMsg, CronInfo, CronList,
-        DaemonStats, SendMsg, SendResponse, SessionInfo, StreamChunk, StreamEnd, StreamEvent,
+        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, CreateAgentMsg,
+        CreateCronMsg, CronInfo, CronList, DaemonStats, InstallPackageMsg, PackageInfo,
+        ProviderInfo, SendMsg, SendResponse, SessionInfo, StreamChunk, StreamEnd, StreamEvent,
         StreamMsg, StreamStart, StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent,
-        ToolStartEvent, ToolsCompleteEvent, stream_event,
+        ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
 
-impl Server for Daemon {
+impl<H: Host + 'static> Server for Daemon<H> {
     async fn send(&self, req: SendMsg) -> Result<SendResponse> {
         let rt: Arc<_> = self.runtime.read().await.clone();
         let sender = req.sender.as_deref().unwrap_or("");
@@ -32,12 +38,7 @@ impl Server for Daemon {
                     rt.get_or_create_session(&req.agent, created_by).await?
                 };
                 if let Some(ref cwd) = cwd {
-                    rt.hook
-                        .bridge
-                        .session_cwds
-                        .lock()
-                        .await
-                        .insert(id, cwd.clone());
+                    rt.hook.host.set_session_cwd(id, cwd.clone()).await;
                 }
                 id
             }
@@ -83,7 +84,7 @@ impl Server for Daemon {
                         rt.get_or_create_session(&agent, created_by.as_str()).await?
                     };
                     if let Some(ref cwd) = cwd {
-                        rt.hook.bridge.session_cwds.lock().await.insert(id, cwd.clone());
+                        rt.hook.host.set_session_cwd(id, cwd.clone()).await;
                     }
                     id
                 }
@@ -213,8 +214,7 @@ impl Server for Daemon {
 
     async fn kill_session(&self, session: u64) -> Result<bool> {
         let rt = self.runtime.read().await.clone();
-        rt.hook.bridge.pending_asks.lock().await.remove(&session);
-        rt.hook.bridge.session_cwds.lock().await.remove(&session);
+        rt.hook.host.clear_session_state(session).await;
         Ok(rt.close_session(session).await)
     }
 
@@ -222,7 +222,9 @@ impl Server for Daemon {
         let runtime = self.runtime.clone();
         async_stream::try_stream! {
             let rt = runtime.read().await.clone();
-            let mut rx = rt.hook.bridge.subscribe_events();
+            let Some(mut rx) = rt.hook.host.subscribe_events() else {
+                return;
+            };
             loop {
                 match rx.recv().await {
                     Ok(event) => yield event,
@@ -303,23 +305,336 @@ impl Server for Daemon {
 
     async fn reply_to_ask(&self, session: u64, content: String) -> Result<()> {
         let rt = self.runtime.read().await.clone();
-        if let Some(tx) = rt.hook.bridge.pending_asks.lock().await.remove(&session) {
-            let _ = tx.send(content);
-            return Ok(());
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        if let Some(tx) = rt.hook.bridge.pending_asks.lock().await.remove(&session) {
-            let _ = tx.send(content);
+        if rt.hook.host.reply_to_ask(session, content).await? {
             return Ok(());
         }
         anyhow::bail!("no pending ask_user for session {session}")
     }
+
+    async fn list_agents(&self) -> Result<Vec<AgentInfo>> {
+        let rt = self.runtime.read().await.clone();
+        let agents = rt.agents();
+        agents
+            .into_iter()
+            .map(|config| {
+                let json =
+                    serde_json::to_string(&config).context("failed to serialize agent config")?;
+                Ok(AgentInfo {
+                    name: config.name,
+                    description: config.description,
+                    config: json,
+                })
+            })
+            .collect()
+    }
+
+    async fn get_agent(&self, name: String) -> Result<AgentInfo> {
+        let rt = self.runtime.read().await.clone();
+        let config = rt
+            .agent(&name)
+            .ok_or_else(|| anyhow::anyhow!("agent '{name}' not found"))?;
+        let json = serde_json::to_string(&config).context("failed to serialize agent config")?;
+        Ok(AgentInfo {
+            name: config.name,
+            description: config.description,
+            config: json,
+        })
+    }
+
+    async fn create_agent(&self, req: CreateAgentMsg) -> Result<AgentInfo> {
+        self.write_agent_to_manifest(&req.name, &req.config, true)?;
+        self.reload().await?;
+        self.get_agent(req.name).await
+    }
+
+    async fn update_agent(&self, req: UpdateAgentMsg) -> Result<AgentInfo> {
+        self.write_agent_to_manifest(&req.name, &req.config, false)?;
+        self.reload().await?;
+        self.get_agent(req.name).await
+    }
+
+    async fn delete_agent(&self, name: String) -> Result<bool> {
+        use toml_edit::DocumentMut;
+
+        let manifest_path = self
+            .config_dir
+            .join(wcore::paths::LOCAL_DIR)
+            .join("CrabTalk.toml");
+        if !manifest_path.exists() {
+            return Ok(false);
+        }
+        let content =
+            std::fs::read_to_string(&manifest_path).context("failed to read local manifest")?;
+        let mut doc: DocumentMut = content.parse().context("failed to parse local manifest")?;
+
+        let removed = doc
+            .get_mut("agents")
+            .and_then(|v| v.as_table_like_mut())
+            .and_then(|t| t.remove(&name))
+            .is_some();
+        if removed {
+            std::fs::write(&manifest_path, doc.to_string())
+                .context("failed to write local manifest")?;
+            self.reload().await?;
+        }
+        Ok(removed)
+    }
+
+    async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
+        let rt = self.runtime.read().await.clone();
+        let entries = rt.model.list()?;
+        Ok(entries
+            .into_iter()
+            .map(|e| ProviderInfo {
+                name: e.name,
+                active: e.active,
+            })
+            .collect())
+    }
+
+    async fn install_package(&self, req: InstallPackageMsg) -> Result<()> {
+        let branch = if req.branch.is_empty() {
+            None
+        } else {
+            Some(req.branch.as_str())
+        };
+        let path = if req.path.is_empty() {
+            None
+        } else {
+            Some(std::path::Path::new(&req.path))
+        };
+        crabhub::package::install(&req.package, branch, path, req.force, |msg| {
+            tracing::info!("{msg}");
+        })
+        .await?;
+        self.reload().await
+    }
+
+    async fn uninstall_package(&self, package: String) -> Result<()> {
+        crabhub::package::uninstall(&package, |msg| {
+            tracing::info!("{msg}");
+        })
+        .await?;
+        self.reload().await
+    }
+
+    async fn list_packages(&self) -> Result<Vec<PackageInfo>> {
+        let mut result: Vec<PackageInfo> = scan_package_manifests(&self.config_dir)
+            .into_iter()
+            .map(|(name, manifest)| PackageInfo {
+                name,
+                description: manifest.package.description,
+            })
+            .collect();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(result)
+    }
+
+    async fn start_service(&self, name: String, force: bool) -> Result<()> {
+        let cmd = self.find_command_service(&name)?;
+        let label = format!("ai.crabtalk.{name}");
+        if !force && crabtalk_command::service::is_installed(&label) {
+            anyhow::bail!("service '{name}' is already running, use force to restart");
+        }
+        let binary = find_binary(&cmd.krate)?;
+        let rendered = crabtalk_command::service::render_service_template(
+            &CommandService {
+                name: name.clone(),
+                description: cmd.description.clone(),
+                label: label.clone(),
+            },
+            &binary,
+        );
+        crabtalk_command::service::install(&rendered, &label)
+    }
+
+    async fn stop_service(&self, name: String) -> Result<()> {
+        let label = format!("ai.crabtalk.{name}");
+        crabtalk_command::service::uninstall(&label)?;
+        let _ = std::fs::remove_file(wcore::paths::service_port_file(&name));
+        Ok(())
+    }
+
+    async fn service_logs(&self, name: String, lines: u32) -> Result<String> {
+        let path = wcore::paths::service_log_path(&name);
+        if !path.exists() {
+            return Ok(format!("no logs yet: {}", path.display()));
+        }
+        let file =
+            std::fs::File::open(&path).context(format!("failed to open {}", path.display()))?;
+        let n = if lines == 0 { 50 } else { lines as usize };
+        let mut tail: VecDeque<String> = VecDeque::with_capacity(n);
+        for line in BufReader::new(file).lines() {
+            let line = line?;
+            if tail.len() == n {
+                tail.pop_front();
+            }
+            tail.push_back(line);
+        }
+        Ok(tail.into_iter().collect::<Vec<_>>().join("\n"))
+    }
 }
 
-impl Daemon {
+/// Service metadata for render_service_template.
+struct CommandService {
+    name: String,
+    description: String,
+    label: String,
+}
+
+impl crabtalk_command::service::Service for CommandService {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn description(&self) -> &str {
+        &self.description
+    }
+    fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+/// Scan `packages/` for installed hub manifests, returning `(scope/name, Manifest)` pairs.
+fn scan_package_manifests(
+    config_dir: &std::path::Path,
+) -> Vec<(String, crabhub::manifest::Manifest)> {
+    let packages_dir = config_dir.join(wcore::paths::PACKAGES_DIR);
+    let mut result = Vec::new();
+    let scopes = match std::fs::read_dir(&packages_dir) {
+        Ok(entries) => entries,
+        Err(_) => return result,
+    };
+    for scope_entry in scopes.flatten() {
+        let scope_path = scope_entry.path();
+        if !scope_path.is_dir() {
+            continue;
+        }
+        let scope = scope_entry.file_name().to_string_lossy().to_string();
+        let manifests = match std::fs::read_dir(&scope_path) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for manifest_entry in manifests.flatten() {
+            let path = manifest_entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            match toml::from_str::<crabhub::manifest::Manifest>(&content) {
+                Ok(manifest) => result.push((format!("{scope}/{name}"), manifest)),
+                Err(e) => {
+                    tracing::warn!("failed to parse manifest {}: {e}", path.display());
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Find a binary on PATH or in ~/.cargo/bin.
+fn find_binary(name: &str) -> Result<std::path::PathBuf> {
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(name);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+    let cargo_bin = wcore::paths::CONFIG_DIR
+        .parent()
+        .unwrap_or(std::path::Path::new("/"))
+        .join(".cargo/bin")
+        .join(name);
+    if cargo_bin.exists() {
+        return Ok(cargo_bin);
+    }
+    anyhow::bail!("binary '{name}' not found in PATH or ~/.cargo/bin")
+}
+
+impl<H: Host + 'static> Daemon<H> {
     /// Load the current `DaemonConfig` from disk.
     fn load_config(&self) -> Result<crate::DaemonConfig> {
         crate::DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))
+    }
+
+    /// Look up a command service by name from installed package manifests.
+    fn find_command_service(&self, name: &str) -> Result<crabhub::manifest::CommandConfig> {
+        for (_, manifest) in scan_package_manifests(&self.config_dir) {
+            if let Some(cmd) = manifest.commands.get(name) {
+                return Ok(cmd.clone());
+            }
+        }
+        anyhow::bail!("command service '{name}' not found in installed packages")
+    }
+
+    /// Write an agent config into the local manifest `[agents.<name>]`.
+    ///
+    /// If `expect_new` is true, fails when the agent already exists in the
+    /// manifest. If false, fails when it does not exist. The check and write
+    /// happen in the same synchronous block with no yield points.
+    fn write_agent_to_manifest(
+        &self,
+        name: &str,
+        config_json: &str,
+        expect_new: bool,
+    ) -> Result<()> {
+        use toml_edit::DocumentMut;
+
+        // Parse incoming JSON to validate it and convert to TOML value.
+        let config: wcore::AgentConfig =
+            serde_json::from_str(config_json).context("invalid AgentConfig JSON")?;
+        let toml_value = toml::to_string(&config).context("failed to serialize agent to TOML")?;
+        let agent_doc: DocumentMut = toml_value.parse().context("failed to parse agent TOML")?;
+
+        let manifest_path = self
+            .config_dir
+            .join(wcore::paths::LOCAL_DIR)
+            .join("CrabTalk.toml");
+        let mut doc: DocumentMut = if manifest_path.exists() {
+            std::fs::read_to_string(&manifest_path)
+                .context("failed to read local manifest")?
+                .parse()
+                .context("failed to parse local manifest")?
+        } else {
+            DocumentMut::default()
+        };
+
+        // Ensure [agents] table exists.
+        if doc.get("agents").is_none() {
+            doc.insert("agents", toml_edit::Item::Table(toml_edit::Table::new()));
+        }
+        let agents = doc["agents"]
+            .as_table_mut()
+            .context("[agents] is not a table")?;
+
+        let exists = agents.contains_key(name);
+        if expect_new && exists {
+            anyhow::bail!("agent '{name}' already exists in local manifest");
+        }
+        if !expect_new && !exists {
+            anyhow::bail!("agent '{name}' not found in local manifest");
+        }
+
+        // Insert the agent as a sub-table.
+        let mut agent_table = toml_edit::Table::new();
+        for (key, value) in agent_doc.as_table().iter() {
+            agent_table.insert(key, value.clone());
+        }
+        agents.insert(name, toml_edit::Item::Table(agent_table));
+
+        std::fs::create_dir_all(manifest_path.parent().context("no parent dir")?)
+            .context("failed to create local dir")?;
+        std::fs::write(&manifest_path, doc.to_string())
+            .context("failed to write local manifest")?;
+        Ok(())
     }
 }
 

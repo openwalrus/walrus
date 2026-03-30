@@ -1,9 +1,11 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    AgentEventMsg, ClientMessage, CompactResponse, ConfigMsg, CreateCronMsg, CronInfo, CronList,
-    DaemonStats, ErrorMsg, Pong, SendMsg, SendResponse, ServerMessage, SessionInfo, SessionList,
-    StreamEvent, StreamMsg, client_message, server_message,
+    AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConfigMsg, CreateAgentMsg,
+    CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPackageMsg, PackageInfo,
+    PackageList, Pong, ProviderInfo, ProviderList, SendMsg, SendResponse, ServerMessage,
+    ServiceLogOutput, SessionInfo, SessionList, StreamEvent, StreamMsg, UpdateAgentMsg,
+    client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -95,6 +97,66 @@ pub trait Server: Sync {
         session: u64,
         content: String,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `ListAgents` — return all registered agents.
+    fn list_agents(&self) -> impl std::future::Future<Output = Result<Vec<AgentInfo>>> + Send;
+
+    /// Handle `GetAgent` — return a single agent by name.
+    fn get_agent(
+        &self,
+        name: String,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send;
+
+    /// Handle `CreateAgent` — create a new agent from JSON config.
+    fn create_agent(
+        &self,
+        req: CreateAgentMsg,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send;
+
+    /// Handle `UpdateAgent` — update an existing agent from JSON config.
+    fn update_agent(
+        &self,
+        req: UpdateAgentMsg,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send;
+
+    /// Handle `DeleteAgent` — remove an agent by name.
+    fn delete_agent(&self, name: String) -> impl std::future::Future<Output = Result<bool>> + Send;
+
+    /// Handle `ListProviders` — return all registered LLM providers.
+    fn list_providers(&self)
+    -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send;
+
+    /// Handle `InstallPackage` — install a hub package and reload.
+    fn install_package(
+        &self,
+        req: InstallPackageMsg,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `UninstallPackage` — uninstall a hub package and reload.
+    fn uninstall_package(
+        &self,
+        package: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `ListPackages` — return all installed hub packages.
+    fn list_packages(&self) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send;
+
+    /// Handle `StartService` — install and start a command service.
+    fn start_service(
+        &self,
+        name: String,
+        force: bool,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `StopService` — stop and uninstall a command service.
+    fn stop_service(&self, name: String) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `ServiceLogs` — return recent log lines for a service.
+    fn service_logs(
+        &self,
+        name: String,
+        lines: u32,
+    ) -> impl std::future::Future<Output = Result<String>> + Send;
 
     /// Dispatch a `ClientMessage` to the appropriate handler method.
     ///
@@ -210,6 +272,102 @@ pub trait Server: Sync {
                     yield match self.compact_session(req.session).await {
                         Ok(summary) => ServerMessage {
                             msg: Some(server_message::Msg::Compact(CompactResponse { summary })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListAgents(_) => {
+                    yield match self.list_agents().await {
+                        Ok(agents) => ServerMessage {
+                            msg: Some(server_message::Msg::AgentList(AgentList { agents })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::GetAgent(req) => {
+                    yield match self.get_agent(req.name).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::AgentInfo(info)),
+                        },
+                        Err(e) => server_error(404, e.to_string()),
+                    };
+                }
+                client_message::Msg::CreateAgent(req) => {
+                    yield match self.create_agent(req).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::AgentInfo(info)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::UpdateAgent(req) => {
+                    yield match self.update_agent(req).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::AgentInfo(info)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::DeleteAgent(req) => {
+                    yield match self.delete_agent(req.name.clone()).await {
+                        Ok(true) => server_pong(),
+                        Ok(false) => server_error(
+                            404,
+                            format!("agent '{}' not found in local manifest", req.name),
+                        ),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListProviders(_) => {
+                    yield match self.list_providers().await {
+                        Ok(providers) => ServerMessage {
+                            msg: Some(server_message::Msg::ProviderList(ProviderList {
+                                providers,
+                            })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::InstallPackage(req) => {
+                    yield match self.install_package(req).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::UninstallPackage(req) => {
+                    yield match self.uninstall_package(req.package).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListPackages(_) => {
+                    yield match self.list_packages().await {
+                        Ok(packages) => ServerMessage {
+                            msg: Some(server_message::Msg::PackageList(PackageList {
+                                packages,
+                            })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::StartService(req) => {
+                    yield match self.start_service(req.name, req.force).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::StopService(req) => {
+                    yield match self.stop_service(req.name).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ServiceLogs(req) => {
+                    yield match self.service_logs(req.name, req.lines).await {
+                        Ok(content) => ServerMessage {
+                            msg: Some(server_message::Msg::ServiceLogOutput(
+                                ServiceLogOutput { content },
+                            )),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };

@@ -8,10 +8,11 @@ use crate::{
     DaemonConfig,
     cron::CronStore,
     daemon::event::{DaemonEvent, DaemonEventSender},
-    hook::DaemonHook,
+    hook::host::DaemonHost,
 };
 use anyhow::Result;
 use model::ProviderRegistry;
+use runtime::{Env, host::Host};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -25,13 +26,17 @@ mod protocol;
 
 /// Shared daemon state — holds the runtime. Cheap to clone (`Arc`-backed).
 ///
+/// Generic over the [`Host`] type so downstream binaries can inject
+/// custom tool dispatch and server-specific behavior. The default backend
+/// is [`DaemonHost`].
+///
 /// The runtime is stored behind `Arc<RwLock<Arc<Runtime>>>` so that
 /// [`Daemon::reload`] can swap it atomically while in-flight requests that
 /// already cloned the inner `Arc` complete normally.
-#[derive(Clone)]
-pub struct Daemon {
+pub struct Daemon<B: Host + 'static = DaemonHost> {
     /// The crabtalk runtime, swappable via [`Daemon::reload`].
-    pub runtime: Arc<RwLock<Arc<Runtime<ProviderRegistry, DaemonHook>>>>,
+    #[allow(clippy::type_complexity)]
+    pub runtime: Arc<RwLock<Arc<Runtime<ProviderRegistry, Env<B>>>>>,
     /// Config directory — stored so [`Daemon::reload`] can re-read config from disk.
     pub(crate) config_dir: PathBuf,
     /// Sender for the daemon event loop — cloned into `Runtime` as `ToolSender`
@@ -44,14 +49,45 @@ pub struct Daemon {
     pub(crate) crons: Arc<Mutex<CronStore>>,
 }
 
-impl Daemon {
-    /// Load config, build runtime, and start the event loop.
+impl<B: Host + 'static> Clone for Daemon<B> {
+    fn clone(&self) -> Self {
+        Self {
+            runtime: self.runtime.clone(),
+            config_dir: self.config_dir.clone(),
+            event_tx: self.event_tx.clone(),
+            started_at: self.started_at,
+            crons: self.crons.clone(),
+        }
+    }
+}
+
+impl Daemon<DaemonHost> {
+    /// Load config, build runtime with the default [`DaemonHost`], and
+    /// start the event loop.
+    pub async fn start(config_dir: &Path) -> Result<DaemonHandle<DaemonHost>> {
+        Self::start_with(config_dir, |event_tx| {
+            let (events_tx, _) = broadcast::channel(256);
+            DaemonHost {
+                event_tx,
+                pending_asks: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                session_cwds: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                events_tx,
+            }
+        })
+        .await
+    }
+}
+
+impl<B: Host + 'static> Daemon<B> {
+    /// Load config, build runtime with a custom backend, and start the
+    /// event loop.
     ///
-    /// Returns a [`DaemonHandle`] with the event sender exposed. The caller
-    /// spawns transports (socket, channels) using the handle's `event_tx`
-    /// and `shutdown_tx`, then integrates its own channels by cloning
-    /// `event_tx` and sending [`DaemonEvent::Message`] variants.
-    pub async fn start(config_dir: &Path) -> Result<DaemonHandle> {
+    /// The `build_backend` closure receives the [`DaemonEventSender`] so
+    /// the backend can inject events (e.g. for delegate dispatch).
+    pub async fn start_with(
+        config_dir: &Path,
+        build_backend: impl FnOnce(DaemonEventSender) -> B,
+    ) -> Result<DaemonHandle<B>> {
         let config_path = config_dir.join(wcore::paths::CONFIG_FILE);
         let config = DaemonConfig::load(&config_path)?;
         tracing::info!("loaded configuration from {}", config_path.display());
@@ -67,8 +103,15 @@ impl Daemon {
             let _ = shutdown_event_tx.send(DaemonEvent::Shutdown);
         });
 
-        let daemon =
-            Daemon::build(&config, config_dir, event_tx.clone(), shutdown_tx.clone()).await?;
+        let backend = build_backend(event_tx.clone());
+        let daemon = Daemon::build(
+            &config,
+            config_dir,
+            event_tx.clone(),
+            shutdown_tx.clone(),
+            backend,
+        )
+        .await?;
 
         let d = daemon.clone();
         let event_loop_join = tokio::spawn(async move {
@@ -89,7 +132,7 @@ impl Daemon {
 ///
 /// The caller spawns transports (socket, TCP) using [`setup_socket`] and
 /// [`setup_tcp`], passing clones of `event_tx` and `shutdown_tx`.
-pub struct DaemonHandle {
+pub struct DaemonHandle<B: Host + 'static = DaemonHost> {
     /// The loaded daemon configuration.
     pub config: DaemonConfig,
     /// Sender for injecting events into the daemon event loop.
@@ -100,11 +143,11 @@ pub struct DaemonHandle {
     pub shutdown_tx: broadcast::Sender<()>,
     /// The shared daemon state — exposed for backend/product servers that
     /// layer additional APIs on top.
-    pub daemon: Daemon,
+    pub daemon: Daemon<B>,
     event_loop_join: Option<tokio::task::JoinHandle<()>>,
 }
 
-impl DaemonHandle {
+impl<B: Host + 'static> DaemonHandle<B> {
     /// Wait until the active model provider is ready.
     ///
     /// No-op for remote providers. Kept for API compatibility.

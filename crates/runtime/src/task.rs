@@ -1,7 +1,7 @@
 //! Tool schema for the delegate tool.
 //!
 //! Schema types live here. Dispatch logic is server-specific and lives in
-//! the [`RuntimeBridge`](crate::bridge::RuntimeBridge) implementation.
+//! the [`Host`](crate::host::Host) implementation.
 
 use serde::Deserialize;
 use wcore::{

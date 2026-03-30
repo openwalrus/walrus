@@ -4,11 +4,12 @@
 //! [`DaemonEvent`] variants sent through a single `mpsc::unbounded_channel`.
 //! The [`Daemon`] processes them via [`handle_events`](Daemon::handle_events).
 //!
-//! Tool call routing is fully delegated to [`DaemonHook::dispatch_tool`] —
+//! Tool call routing is fully delegated to [`DaemonEnv::dispatch_tool`] —
 //! no tool name matching happens here.
 
 use crate::daemon::Daemon;
 use futures_util::{StreamExt, pin_mut};
+use runtime::host::Host;
 use tokio::sync::mpsc;
 use wcore::{
     ToolRequest,
@@ -28,7 +29,7 @@ pub enum DaemonEvent {
         /// Per-request reply channel for streaming `ServerMessage`s back.
         reply: mpsc::Sender<ServerMessage>,
     },
-    /// A tool call from an agent, routed through `DaemonHook::dispatch_tool`.
+    /// A tool call from an agent, routed through `DaemonEnv::dispatch_tool`.
     ToolCall(ToolRequest),
     /// Graceful shutdown request.
     Shutdown,
@@ -39,7 +40,7 @@ pub type DaemonEventSender = mpsc::UnboundedSender<DaemonEvent>;
 
 // ── Event dispatch ───────────────────────────────────────────────────
 
-impl Daemon {
+impl<H: Host + 'static> Daemon<H> {
     /// Process events until [`DaemonEvent::Shutdown`] is received.
     ///
     /// Spawns a task for each event to avoid blocking on LLM calls.
@@ -72,7 +73,7 @@ impl Daemon {
         });
     }
 
-    /// Route a tool call through `DaemonHook::dispatch_tool`.
+    /// Route a tool call through `Env::dispatch_tool`.
     fn handle_tool_call(&self, req: ToolRequest) {
         let runtime = self.runtime.clone();
         tokio::spawn(async move {

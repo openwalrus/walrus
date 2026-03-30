@@ -1,13 +1,11 @@
-//! RuntimeHook — the embeddable engine hook.
+//! Env — the embeddable engine environment.
 //!
-//! [`RuntimeHook`] composes skill, MCP, OS, and memory sub-hooks. It implements
+//! [`Env`] composes skill, MCP, OS, and memory sub-hooks. It implements
 //! `wcore::Hook` and provides the central `dispatch_tool` entry point. Server-
 //! specific tools (`ask_user`, `delegate`) are routed through the
-//! [`RuntimeBridge`](crate::bridge::RuntimeBridge).
+//! [`Host`](crate::host::Host).
 
-use crate::{
-    bridge::RuntimeBridge, mcp::McpHandler, memory::Memory, os, skill, skill::SkillHandler,
-};
+use crate::{host::Host, mcp::McpHandler, memory::Memory, os, skill, skill::SkillHandler};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -38,25 +36,25 @@ const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget"];
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &["delegate"];
 
-pub struct RuntimeHook<B: RuntimeBridge = crate::NoBridge> {
+pub struct Env<H: Host = crate::NoHost> {
     pub(crate) skills: SkillHandler,
     pub(crate) mcp: McpHandler,
     pub(crate) cwd: PathBuf,
     pub(crate) memory: Option<Memory>,
     pub(crate) scopes: BTreeMap<String, AgentScope>,
     pub(crate) agent_descriptions: BTreeMap<String, String>,
-    /// Bridge to server-specific functionality.
-    pub bridge: B,
+    /// Host providing server-specific functionality.
+    pub host: H,
 }
 
-impl<B: RuntimeBridge> RuntimeHook<B> {
-    /// Create a new RuntimeHook with the given backends.
+impl<H: Host> Env<H> {
+    /// Create a new Env with the given backends.
     pub fn new(
         skills: SkillHandler,
         mcp: McpHandler,
         cwd: PathBuf,
         memory: Option<Memory>,
-        bridge: B,
+        host: H,
     ) -> Self {
         Self {
             skills,
@@ -65,7 +63,7 @@ impl<B: RuntimeBridge> RuntimeHook<B> {
             memory,
             scopes: BTreeMap::new(),
             agent_descriptions: BTreeMap::new(),
-            bridge,
+            host,
         }
     }
 
@@ -202,7 +200,7 @@ impl<B: RuntimeBridge> RuntimeHook<B> {
                 }
             }
         }
-        self.bridge.dispatch_delegate(args, agent).await
+        self.host.dispatch_delegate(args, agent).await
     }
 
     /// Route a tool call by name to the appropriate handler.
@@ -233,13 +231,17 @@ impl<B: RuntimeBridge> RuntimeHook<B> {
             "memory" => self.dispatch_memory(args).await,
             "forget" => self.dispatch_forget(args).await,
             "delegate" => self.dispatch_delegate(args, agent).await,
-            "ask_user" => self.bridge.dispatch_ask_user(args, session_id).await,
-            name => format!("tool not available: {name}"),
+            "ask_user" => self.host.dispatch_ask_user(args, session_id).await,
+            name => {
+                self.host
+                    .dispatch_custom_tool(name, args, agent, session_id)
+                    .await
+            }
         }
     }
 }
 
-impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
+impl<H: Host + 'static> Hook for Env<H> {
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
         config.system_prompt.push_str(&os::environment_block());
 
@@ -324,7 +326,7 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
             messages.extend(mem.before_run(history));
         }
         let cwd = self
-            .bridge
+            .host
             .session_cwd(session_id)
             .unwrap_or_else(|| self.cwd.clone());
         let mut cwd_msg = Message::user(format!(
@@ -353,7 +355,7 @@ impl<B: RuntimeBridge + 'static> Hook for RuntimeHook<B> {
     }
 
     fn on_event(&self, agent: &str, session_id: u64, event: &AgentEvent) {
-        self.bridge.on_agent_event(agent, session_id, event);
+        self.host.on_agent_event(agent, session_id, event);
     }
 }
 

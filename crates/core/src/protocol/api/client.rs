@@ -1,8 +1,12 @@
 //! Client trait — transport primitives plus typed provided methods.
 
 use crate::protocol::message::{
-    ClientMessage, ConfigMsg, ErrorMsg, GetConfig, Ping, SendMsg, SendResponse, ServerMessage,
-    SetConfigMsg, StreamEvent, StreamMsg, client_message, server_message, stream_event,
+    AgentInfo, AgentList, ClientMessage, ConfigMsg, CreateAgentMsg, DeleteAgentMsg, ErrorMsg,
+    GetAgentMsg, GetConfig, InstallPackageMsg, ListAgentsMsg, ListPackagesMsg, ListProvidersMsg,
+    PackageInfo, PackageList, Ping, ProviderInfo, ProviderList, SendMsg, SendResponse,
+    ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetConfigMsg, StartServiceMsg, StopServiceMsg,
+    StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message, server_message,
+    stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -118,6 +122,327 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Pong(_)),
                 } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all registered agents.
+    fn list_agents(&mut self) -> impl std::future::Future<Output = Result<Vec<AgentInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListAgents(ListAgentsMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::AgentList(AgentList { agents })),
+                } => Ok(agents),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Get a single agent by name.
+    fn get_agent(
+        &mut self,
+        name: String,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::GetAgent(GetAgentMsg { name })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::AgentInfo(info)),
+                } => Ok(info),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Create an agent from JSON config.
+    fn create_agent(
+        &mut self,
+        name: String,
+        config: String,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::CreateAgent(CreateAgentMsg {
+                        name,
+                        config,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::AgentInfo(info)),
+                } => Ok(info),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Update an agent from JSON config.
+    fn update_agent(
+        &mut self,
+        name: String,
+        config: String,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::UpdateAgent(UpdateAgentMsg {
+                        name,
+                        config,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::AgentInfo(info)),
+                } => Ok(info),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Delete an agent by name.
+    fn delete_agent(
+        &mut self,
+        name: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::DeleteAgent(DeleteAgentMsg { name })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all registered LLM providers.
+    fn list_providers(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListProviders(ListProvidersMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::ProviderList(ProviderList { providers })),
+                } => Ok(providers),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Install a hub package.
+    fn install_package(
+        &mut self,
+        package: String,
+        branch: String,
+        path: String,
+        force: bool,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
+                        package,
+                        branch,
+                        path,
+                        force,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Uninstall a hub package.
+    fn uninstall_package(
+        &mut self,
+        package: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
+                        package,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List installed hub packages.
+    fn list_packages(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListPackages(ListPackagesMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::PackageList(PackageList { packages })),
+                } => Ok(packages),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Start a command service.
+    fn start_service(
+        &mut self,
+        name: String,
+        force: bool,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::StartService(StartServiceMsg {
+                        name,
+                        force,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Stop a command service.
+    fn stop_service(
+        &mut self,
+        name: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::StopService(StopServiceMsg { name })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Get recent log lines for a service.
+    fn service_logs(
+        &mut self,
+        name: String,
+        lines: u32,
+    ) -> impl std::future::Future<Output = Result<String>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ServiceLogs(ServiceLogsMsg {
+                        name,
+                        lines,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::ServiceLogOutput(ServiceLogOutput { content })),
+                } => Ok(content),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

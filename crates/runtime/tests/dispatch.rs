@@ -1,14 +1,14 @@
-//! Tests for RuntimeHook dispatch logic — no daemon, no network, no disk.
+//! Tests for Env dispatch logic — no daemon, no network, no disk.
 
-use crabtalk_runtime::{NoBridge, RuntimeHook, SkillHandler, mcp::McpHandler};
+use crabtalk_runtime::{Env, NoHost, SkillHandler, mcp::McpHandler};
 use std::path::PathBuf;
 use wcore::AgentConfig;
 
-async fn test_hook() -> RuntimeHook<NoBridge> {
+async fn test_hook() -> Env<NoHost> {
     let skills = SkillHandler::default();
     let mcp = McpHandler::load(&[]).await;
     let cwd = PathBuf::from("/test");
-    RuntimeHook::new(skills, mcp, cwd, None, NoBridge)
+    Env::new(skills, mcp, cwd, None, NoHost)
 }
 
 #[tokio::test]

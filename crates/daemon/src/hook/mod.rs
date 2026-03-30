@@ -1,6 +1,6 @@
-//! Hook module — re-exports RuntimeHook<DaemonBridge> as DaemonHook.
+//! Hook module — re-exports Env<DaemonHost> as DaemonEnv.
 
-pub mod bridge;
+pub mod host;
 
-/// The daemon's hook type — RuntimeHook with DaemonBridge for server-specific dispatch.
-pub type DaemonHook = runtime::RuntimeHook<bridge::DaemonBridge>;
+/// The daemon's environment type — Env with DaemonHost for server-specific dispatch.
+pub type DaemonEnv = runtime::Env<host::DaemonHost>;
