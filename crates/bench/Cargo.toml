@@ -1,0 +1,13 @@
+[package]
+name = "crabtalk-bench"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+runtime.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "bm25"
+harness = false
