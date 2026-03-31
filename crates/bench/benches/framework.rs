@@ -20,6 +20,16 @@ use crabtalk_bench::{
 };
 use criterion::{Criterion, criterion_group, criterion_main};
 
+struct ValidationRecord {
+    framework: &'static str,
+    task: &'static str,
+    expected_calls: usize,
+    actual_calls: usize,
+    success: bool,
+    wall_clock_ms: u64,
+    tool_names: Vec<String>,
+}
+
 fn env_port(var: &str, default: u16) -> u16 {
     std::env::var(var)
         .ok()
@@ -87,18 +97,75 @@ fn bench_framework(c: &mut Criterion) {
         group.measurement_time(std::time::Duration::from_secs(30));
 
         for (name, _, gw) in &gateways {
+            // Load this task's responses before benchmarking. Subsequent
+            // iterations reuse the last scripted response per tool, which is
+            // fine for latency measurement — correctness is checked in the
+            // validation pass below.
+            mcp_handle.load_task(task);
             group.bench_function(*name, |b| {
-                // Mock MCP state isn't reset between iterations — after the first
-                // iteration exhausts scripted responses, subsequent ones always get
-                // the last response. This is fine for latency measurement; the
-                // validation pass (Phase 3) tests correctness separately.
                 b.iter(|| gw.run_task(&rt, task));
             });
         }
         group.finish();
     }
 
+    // ── Validation pass: run each task once per framework, collect metrics ──
+    let mut records = Vec::new();
+    for task in &task_defs {
+        for (name, _, gw) in &gateways {
+            mcp_handle.load_task(task);
+            let result = gw.run_task(&rt, task);
+            let metrics = mcp_handle.metrics();
+            records.push(ValidationRecord {
+                framework: name,
+                task: task.name,
+                expected_calls: task.expected_tool_calls,
+                actual_calls: metrics.len(),
+                success: result.success,
+                wall_clock_ms: result.wall_clock_ms,
+                tool_names: metrics.iter().map(|r| r.tool.clone()).collect(),
+            });
+        }
+    }
+    print_summary(&records);
+
     rt.block_on(mcp_handle.shutdown());
+}
+
+fn print_summary(records: &[ValidationRecord]) {
+    eprintln!();
+    eprintln!(
+        "{:<22} {:<12} {:<8} {:<14} {:>10}",
+        "TASK", "FRAMEWORK", "STATUS", "TOOL CALLS", "TIME(ms)"
+    );
+    eprintln!("{}", "-".repeat(68));
+    for r in records {
+        let status = if r.success { "OK" } else { "FAIL" };
+        let calls = if r.actual_calls == r.expected_calls {
+            format!("{}/{}", r.actual_calls, r.expected_calls)
+        } else {
+            format!("{}/{} !", r.actual_calls, r.expected_calls)
+        };
+        eprintln!(
+            "{:<22} {:<12} {:<8} {:<14} {:>10}",
+            r.task, r.framework, status, calls, r.wall_clock_ms
+        );
+    }
+
+    let mismatches: Vec<_> = records
+        .iter()
+        .filter(|r| r.actual_calls != r.expected_calls)
+        .collect();
+    if !mismatches.is_empty() {
+        eprintln!();
+        eprintln!("Tool call mismatches:");
+        for r in &mismatches {
+            eprintln!(
+                "  {}/{}: expected {}, got {} -- {:?}",
+                r.task, r.framework, r.expected_calls, r.actual_calls, r.tool_names
+            );
+        }
+    }
 }
 
 criterion_group!(benches, bench_framework);

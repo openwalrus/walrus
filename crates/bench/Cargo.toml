@@ -20,7 +20,6 @@ reqwest = { workspace = true, features = ["json"] }
 gateway.workspace = true
 transport.workspace = true
 tracing.workspace = true
-libc.workspace = true
 
 [[bin]]
 name = "mock-mcp"

@@ -24,7 +24,7 @@ pub struct ToolCallRecord {
 
 struct MockState {
     tools: Value,
-    responses: HashMap<String, Vec<ResponseEntry>>,
+    responses: Arc<Mutex<HashMap<String, Vec<ResponseEntry>>>>,
     call_counts: Arc<Mutex<HashMap<String, usize>>>,
     records: Arc<Mutex<Vec<ToolCallRecord>>>,
 }
@@ -39,6 +39,7 @@ pub struct MockMcpHandle {
     addr: SocketAddr,
     records: Arc<Mutex<Vec<ToolCallRecord>>>,
     call_counts: Arc<Mutex<HashMap<String, usize>>>,
+    responses: Arc<Mutex<HashMap<String, Vec<ResponseEntry>>>>,
     shutdown: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -53,10 +54,25 @@ impl MockMcpHandle {
         self.records.lock().unwrap().clone()
     }
 
-    /// Reset metrics and call counts between tasks.
-    pub fn reset(&self) {
-        self.records.lock().unwrap().clear();
+    /// Load a single task's responses, replacing any previous responses.
+    /// Also clears call counts and recorded metrics.
+    ///
+    /// Lock order matches handle_mcp: responses → call_counts, then records.
+    pub fn load_task(&self, task: &Task) {
+        let mut responses = self.responses.lock().unwrap();
+        responses.clear();
+        for resp in &task.responses {
+            responses
+                .entry(resp.tool.to_string())
+                .or_default()
+                .push(ResponseEntry {
+                    output: resp.output.to_string(),
+                    is_error: resp.is_error,
+                });
+        }
+        drop(responses);
         self.call_counts.lock().unwrap().clear();
+        self.records.lock().unwrap().clear();
     }
 
     /// Shut down the server.
@@ -68,7 +84,6 @@ impl MockMcpHandle {
 /// Start the mock MCP server on a specific port (0 = random).
 pub async fn start(port: u16, tasks: &[Task]) -> MockMcpHandle {
     let mut tool_schemas = Vec::new();
-    let mut responses: HashMap<String, Vec<ResponseEntry>> = HashMap::new();
 
     for task in tasks {
         for tool in &task.tools {
@@ -81,22 +96,14 @@ pub async fn start(port: u16, tasks: &[Task]) -> MockMcpHandle {
                 }));
             }
         }
-        for resp in &task.responses {
-            responses
-                .entry(resp.tool.to_string())
-                .or_default()
-                .push(ResponseEntry {
-                    output: resp.output.to_string(),
-                    is_error: resp.is_error,
-                });
-        }
     }
 
     let records = Arc::new(Mutex::new(Vec::new()));
     let call_counts = Arc::new(Mutex::new(HashMap::new()));
+    let responses = Arc::new(Mutex::new(HashMap::new()));
     let state = Arc::new(MockState {
         tools: json!({ "tools": tool_schemas }),
-        responses,
+        responses: Arc::clone(&responses),
         call_counts: Arc::clone(&call_counts),
         records: Arc::clone(&records),
     });
@@ -124,6 +131,7 @@ pub async fn start(port: u16, tasks: &[Task]) -> MockMcpHandle {
         addr,
         records,
         call_counts,
+        responses,
         shutdown: shutdown_tx,
     }
 }
@@ -156,10 +164,10 @@ async fn handle_mcp(
             });
 
             // Get the next scripted response for this tool.
+            let responses = state.responses.lock().unwrap();
             let mut counts = state.call_counts.lock().unwrap();
             let idx = counts.entry(name.to_string()).or_insert(0);
-            let entry = state
-                .responses
+            let entry = responses
                 .get(name)
                 .and_then(|v| v.get(*idx).or_else(|| v.last()));
             *idx += 1;
