@@ -181,6 +181,7 @@ impl McpData {
             auth: self.auth,
             auto_restart: self.auto_restart,
             source: String::new(), // always local when saving
+            enabled: true,
         }
     }
 }

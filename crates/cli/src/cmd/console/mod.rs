@@ -34,7 +34,7 @@ impl Console {
     pub async fn run(self, mut runner: Runner) -> Result<Option<std::path::PathBuf>> {
         // Spawn background event subscription task.
         let (event_tx, event_rx) = mpsc::unbounded_channel::<AgentEventMsg>();
-        let conn_info = runner.conn_info().clone();
+        let conn_info = runner.conn_info.clone();
         tokio::spawn(async move {
             let Ok(mut sub_runner) = Runner::connect_from(&conn_info).await else {
                 return;

@@ -93,7 +93,7 @@ pub enum ConnectionInfo {
 /// (list_providers, set_provider, list_mcps, etc.) are callable directly.
 pub struct Runner {
     transport: Transport,
-    conn_info: ConnectionInfo,
+    pub conn_info: ConnectionInfo,
 }
 
 impl std::ops::Deref for Runner {
@@ -141,11 +141,6 @@ impl Runner {
             ConnectionInfo::Uds(path) => Self::connect(path).await,
             ConnectionInfo::Tcp(port) => Self::connect_tcp(*port).await,
         }
-    }
-
-    /// Connection info for creating separate connections (e.g. for ReplyToAsk).
-    pub fn conn_info(&self) -> &ConnectionInfo {
-        &self.conn_info
     }
 
     /// Stream a response, yielding typed output chunks.

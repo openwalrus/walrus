@@ -4,9 +4,9 @@ use crate::protocol::message::{
     AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConfigMsg,
     ConversationInfo, ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
     DaemonStats, ErrorMsg, HubEvent, InstallPackageMsg, McpInfo, McpList, PackageInfo, PackageList,
-    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, SendMsg,
-    SendResponse, ServerMessage, ServiceLogOutput, SessionInfo, SessionList, SkillList,
-    StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind,
+    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SessionInfo, SessionList, SkillInfo,
+    SkillList, StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -136,8 +136,16 @@ pub trait Server: Sync {
     /// Handle `ListPackages` — return all installed hub packages.
     fn list_packages(&self) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send;
 
-    /// Handle `ListSkills` — return all available skill names.
-    fn list_skills(&self) -> impl std::future::Future<Output = Result<Vec<String>>> + Send;
+    /// Handle `ListSkills` — return all available skills with enabled state.
+    fn list_skills(&self) -> impl std::future::Future<Output = Result<Vec<SkillInfo>>> + Send;
+
+    /// Handle `SetEnabled` — enable or disable a provider, MCP, or skill.
+    fn set_enabled(
+        &self,
+        kind: ResourceKind,
+        name: String,
+        enabled: bool,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Handle `ListConversations` — return historical conversations from disk.
     fn list_conversations(
@@ -406,9 +414,17 @@ pub trait Server: Sync {
                 }
                 client_message::Msg::ListSkills(_) => {
                     yield match self.list_skills().await {
-                        Ok(names) => ServerMessage {
-                            msg: Some(server_message::Msg::SkillList(SkillList { names })),
+                        Ok(skills) => ServerMessage {
+                            msg: Some(server_message::Msg::SkillList(SkillList { skills })),
                         },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetEnabled(req) => {
+                    let kind = ResourceKind::try_from(req.kind)
+                        .unwrap_or(ResourceKind::Unknown);
+                    yield match self.set_enabled(kind, req.name, req.enabled).await {
+                        Ok(()) => server_pong(),
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
