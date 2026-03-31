@@ -2,10 +2,10 @@
 
 use crate::protocol::message::{
     AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConfigMsg, CreateAgentMsg,
-    CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPackageMsg, PackageInfo,
-    PackageList, Pong, ProviderInfo, ProviderList, SendMsg, SendResponse, ServerMessage,
-    ServiceLogOutput, SessionInfo, SessionList, StreamEvent, StreamMsg, UpdateAgentMsg,
-    client_message, server_message,
+    CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, HubEvent, InstallPackageMsg,
+    PackageInfo, PackageList, Pong, ProviderInfo, ProviderList, SendMsg, SendResponse,
+    ServerMessage, ServiceLogOutput, SessionInfo, SessionList, StreamEvent, StreamMsg,
+    UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -126,17 +126,14 @@ pub trait Server: Sync {
     fn list_providers(&self)
     -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send;
 
-    /// Handle `InstallPackage` — install a hub package and reload.
+    /// Handle `InstallPackage` — install a hub package, stream progress.
     fn install_package(
         &self,
         req: InstallPackageMsg,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    ) -> impl Stream<Item = Result<HubEvent>> + Send;
 
-    /// Handle `UninstallPackage` — uninstall a hub package and reload.
-    fn uninstall_package(
-        &self,
-        package: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Handle `UninstallPackage` — uninstall a hub package, stream progress.
+    fn uninstall_package(&self, package: String) -> impl Stream<Item = Result<HubEvent>> + Send;
 
     /// Handle `ListPackages` — return all installed hub packages.
     fn list_packages(&self) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send;
@@ -329,16 +326,18 @@ pub trait Server: Sync {
                     };
                 }
                 client_message::Msg::InstallPackage(req) => {
-                    yield match self.install_package(req).await {
-                        Ok(()) => server_pong(),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
+                    let s = self.install_package(req);
+                    tokio::pin!(s);
+                    while let Some(result) = s.next().await {
+                        yield result_to_msg(result);
+                    }
                 }
                 client_message::Msg::UninstallPackage(req) => {
-                    yield match self.uninstall_package(req.package).await {
-                        Ok(()) => server_pong(),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
+                    let s = self.uninstall_package(req.package);
+                    tokio::pin!(s);
+                    while let Some(result) = s.next().await {
+                        yield result_to_msg(result);
+                    }
                 }
                 client_message::Msg::ListPackages(_) => {
                     yield match self.list_packages().await {

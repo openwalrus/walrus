@@ -2,11 +2,11 @@
 
 use crate::protocol::message::{
     AgentInfo, AgentList, ClientMessage, ConfigMsg, CreateAgentMsg, DeleteAgentMsg, ErrorMsg,
-    GetAgentMsg, GetConfig, InstallPackageMsg, ListAgentsMsg, ListPackagesMsg, ListProvidersMsg,
-    PackageInfo, PackageList, Ping, ProviderInfo, ProviderList, SendMsg, SendResponse,
-    ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetConfigMsg, StartServiceMsg, StopServiceMsg,
-    StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message, server_message,
-    stream_event,
+    GetAgentMsg, GetConfig, HubEvent, InstallPackageMsg, ListAgentsMsg, ListPackagesMsg,
+    ListProvidersMsg, PackageInfo, PackageList, Ping, ProviderInfo, ProviderList, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetConfigMsg, StartServiceMsg,
+    StopServiceMsg, StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message,
+    hub_event, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -286,64 +286,56 @@ pub trait Client: Send {
         }
     }
 
-    /// Install a hub package.
+    /// Install a hub package, streaming progress events.
     fn install_package(
         &mut self,
         package: String,
         branch: String,
         path: String,
         force: bool,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
-                        package,
-                        branch,
-                        path,
-                        force,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
+    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + '_ {
+        self.request_stream(ClientMessage {
+            msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
+                package,
+                branch,
+                path,
+                force,
+            })),
+        })
+        .take_while(|r| {
+            std::future::ready(!matches!(
+                r,
+                Ok(ServerMessage {
+                    msg: Some(server_message::Msg::HubEvent(HubEvent {
+                        event: Some(hub_event::Event::Done(d))
+                    }))
+                }) if d.error.is_empty()
+            ))
+        })
+        .map(|r| r.and_then(hub_event::Event::try_from))
     }
 
-    /// Uninstall a hub package.
+    /// Uninstall a hub package, streaming progress events.
     fn uninstall_package(
         &mut self,
         package: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
-                        package,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
+    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + '_ {
+        self.request_stream(ClientMessage {
+            msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
+                package,
+            })),
+        })
+        .take_while(|r| {
+            std::future::ready(!matches!(
+                r,
+                Ok(ServerMessage {
+                    msg: Some(server_message::Msg::HubEvent(HubEvent {
+                        event: Some(hub_event::Event::Done(d))
+                    }))
+                }) if d.error.is_empty()
+            ))
+        })
+        .map(|r| r.and_then(hub_event::Event::try_from))
     }
 
     /// List installed hub packages.

@@ -13,10 +13,11 @@ use wcore::protocol::{
     api::Server,
     message::{
         AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, CreateAgentMsg,
-        CreateCronMsg, CronInfo, CronList, DaemonStats, InstallPackageMsg, PackageInfo,
-        ProviderInfo, SendMsg, SendResponse, SessionInfo, StreamChunk, StreamEnd, StreamEvent,
-        StreamMsg, StreamStart, StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent,
-        ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg, stream_event,
+        CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent, HubSetupOutput, HubStep,
+        HubWarning, InstallPackageMsg, PackageInfo, ProviderInfo, SendMsg, SendResponse,
+        SessionInfo, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
+        TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
+        UpdateAgentMsg, hub_event, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -392,30 +393,167 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .collect())
     }
 
-    async fn install_package(&self, req: InstallPackageMsg) -> Result<()> {
-        let branch = if req.branch.is_empty() {
-            None
-        } else {
-            Some(req.branch.as_str())
-        };
-        let path = if req.path.is_empty() {
-            None
-        } else {
-            Some(std::path::Path::new(&req.path))
-        };
-        crabhub::package::install(&req.package, branch, path, req.force, |msg| {
-            tracing::info!("{msg}");
-        })
-        .await?;
-        self.reload().await
+    fn install_package(
+        &self,
+        req: InstallPackageMsg,
+    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+        let daemon = self.clone();
+        async_stream::try_stream! {
+            let package = req.package;
+            let branch = req.branch;
+            let path = req.path;
+            let force = req.force;
+
+            // Channel bridge: sync on_step callback → async stream.
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let handle = tokio::spawn({
+                let branch = branch.clone();
+                let path = path.clone();
+                let package = package.clone();
+                async move {
+                    let branch = if branch.is_empty() { None } else { Some(branch.as_str()) };
+                    let path = if path.is_empty() { None } else { Some(std::path::Path::new(&path)) };
+                    crabhub::package::install(&package, branch, path, force, |msg| {
+                        let _ = tx.send(msg.to_string());
+                    })
+                    .await
+                }
+            });
+
+            // Drain progress messages while install runs.
+            tokio::pin!(handle);
+            let task_result;
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => yield hub_step(&m),
+                            None => {
+                                // Sender dropped — task finished, await it.
+                                task_result = handle.await;
+                                break;
+                            }
+                        }
+                    }
+                    result = &mut handle => {
+                        rx.close();
+                        while let Some(m) = rx.recv().await {
+                            yield hub_step(&m);
+                        }
+                        task_result = result;
+                        break;
+                    }
+                }
+            }
+            let install_result = task_result
+                .context("install task panicked")??;
+
+            // Reload daemon to pick up new components.
+            yield hub_step("reloading daemon…");
+            daemon.reload().await?;
+
+            // Conflict and auth warnings.
+            let (manifest, mut warnings) = wcore::resolve_manifests(&daemon.config_dir);
+            warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
+            for w in &warnings {
+                yield hub_warning(w);
+            }
+            for (name, mcp) in &manifest.mcps {
+                if mcp.auth
+                    && !wcore::paths::TOKENS_DIR.join(format!("{name}.json")).exists()
+                {
+                    yield hub_warning(&format!("MCP '{name}' requires authentication"));
+                }
+            }
+
+            yield hub_step("configure env vars in config.toml [env] section if needed");
+
+            // Setup::Prompt — run inference through the runtime.
+            if let Some(wcore::Setup::Prompt { ref prompt }) = install_result.setup {
+                let prompt_text = if prompt.ends_with(".md") {
+                    let repo_dir = install_result.repo_dir.as_ref()
+                        .context("prompt setup requires a repository but none was cloned")?;
+                    let raw = tokio::fs::read_to_string(repo_dir.join(prompt))
+                        .await
+                        .with_context(|| format!("failed to read setup prompt: {prompt}"))?;
+                    raw.replace("<REPO_DIR>", &repo_dir.display().to_string())
+                } else {
+                    prompt.clone()
+                };
+
+                yield hub_step("running setup…");
+                let rt = daemon.runtime.read().await.clone();
+                let session_id = rt
+                    .create_session(wcore::paths::DEFAULT_AGENT, "hub-setup")
+                    .await?;
+                let stream = rt.stream_to(session_id, &prompt_text, "hub-setup");
+                futures_util::pin_mut!(stream);
+                while let Some(event) = stream.next().await {
+                    match event {
+                        AgentEvent::TextDelta(text) => {
+                            yield hub_setup_output(&text);
+                        }
+                        AgentEvent::Done(resp) => {
+                            if let wcore::AgentStopReason::Error(ref e) = resp.stop_reason {
+                                yield hub_done(e);
+                                return;
+                            }
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            yield hub_done("");
+        }
     }
 
-    async fn uninstall_package(&self, package: String) -> Result<()> {
-        crabhub::package::uninstall(&package, |msg| {
-            tracing::info!("{msg}");
-        })
-        .await?;
-        self.reload().await
+    fn uninstall_package(
+        &self,
+        package: String,
+    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+        let daemon = self.clone();
+        async_stream::try_stream! {
+            // Channel bridge for on_step callback.
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let pkg = package.clone();
+            let handle = tokio::spawn(async move {
+                crabhub::package::uninstall(&pkg, |msg| {
+                    let _ = tx.send(msg.to_string());
+                })
+                .await
+            });
+
+            tokio::pin!(handle);
+            let task_result;
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => yield hub_step(&m),
+                            None => {
+                                task_result = handle.await;
+                                break;
+                            }
+                        }
+                    }
+                    result = &mut handle => {
+                        rx.close();
+                        while let Some(m) = rx.recv().await {
+                            yield hub_step(&m);
+                        }
+                        task_result = result;
+                        break;
+                    }
+                }
+            }
+            task_result.context("uninstall task panicked")??;
+
+            yield hub_step("reloading daemon…");
+            daemon.reload().await?;
+            yield hub_done("");
+        }
     }
 
     async fn list_packages(&self) -> Result<Vec<PackageInfo>> {
@@ -635,6 +773,38 @@ impl<H: Host + 'static> Daemon<H> {
         std::fs::write(&manifest_path, doc.to_string())
             .context("failed to write local manifest")?;
         Ok(())
+    }
+}
+
+fn hub_step(message: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::Step(HubStep {
+            message: message.to_string(),
+        })),
+    }
+}
+
+fn hub_warning(message: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::Warning(HubWarning {
+            message: message.to_string(),
+        })),
+    }
+}
+
+fn hub_setup_output(content: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::SetupOutput(HubSetupOutput {
+            content: content.to_string(),
+        })),
+    }
+}
+
+fn hub_done(error: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::Done(HubDone {
+            error: error.to_string(),
+        })),
     }
 }
 

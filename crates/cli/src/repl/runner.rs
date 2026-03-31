@@ -13,8 +13,9 @@ use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        AgentEventMsg, AskQuestion, ClientMessage, ConfigMsg, GetConfig, KillMsg, ReplyToAsk,
-        ServerMessage, SessionInfo, StreamMsg, SubscribeEvents, client_message, server_message,
+        AgentEventMsg, AskQuestion, ClientMessage, ConfigMsg, GetConfig, HubEvent,
+        InstallPackageMsg, KillMsg, ReplyToAsk, ServerMessage, SessionInfo, StreamMsg,
+        SubscribeEvents, UninstallPackageMsg, client_message, hub_event, server_message,
         stream_event,
     },
 };
@@ -298,6 +299,90 @@ impl Runner {
                     Ok(_) => None,
                     Err(e) => Some(Err(e)),
                 }
+            })
+    }
+
+    /// Install a hub package, streaming progress events.
+    pub fn install_package<'a>(
+        &'a mut self,
+        package: &str,
+        branch: &str,
+        path: &str,
+        force: bool,
+    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + 'a {
+        self.transport
+            .request_stream(ClientMessage {
+                msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
+                    package: package.to_string(),
+                    branch: branch.to_string(),
+                    path: path.to_string(),
+                    force,
+                })),
+            })
+            .take_while(|r| {
+                std::future::ready(!matches!(
+                    r,
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::HubEvent(HubEvent {
+                            event: Some(hub_event::Event::Done(d))
+                        }))
+                    }) if d.error.is_empty()
+                ))
+            })
+            .filter_map(|r| {
+                std::future::ready(match r {
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::HubEvent(e)),
+                    }) => e.event.map(Ok),
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::Error(e)),
+                    }) => Some(Err(anyhow::anyhow!(
+                        "server error ({}): {}",
+                        e.code,
+                        e.message
+                    ))),
+                    Ok(_) => None,
+                    Err(e) => Some(Err(e)),
+                })
+            })
+    }
+
+    /// Uninstall a hub package, streaming progress events.
+    pub fn uninstall_package<'a>(
+        &'a mut self,
+        package: &str,
+    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + 'a {
+        self.transport
+            .request_stream(ClientMessage {
+                msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
+                    package: package.to_string(),
+                })),
+            })
+            .take_while(|r| {
+                std::future::ready(!matches!(
+                    r,
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::HubEvent(HubEvent {
+                            event: Some(hub_event::Event::Done(d))
+                        }))
+                    }) if d.error.is_empty()
+                ))
+            })
+            .filter_map(|r| {
+                std::future::ready(match r {
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::HubEvent(e)),
+                    }) => e.event.map(Ok),
+                    Ok(ServerMessage {
+                        msg: Some(server_message::Msg::Error(e)),
+                    }) => Some(Err(anyhow::anyhow!(
+                        "server error ({}): {}",
+                        e.code,
+                        e.message
+                    ))),
+                    Ok(_) => None,
+                    Err(e) => Some(Err(e)),
+                })
             })
     }
 

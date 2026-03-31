@@ -1,8 +1,8 @@
 //! Conversions between protocol message types.
 
 use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, ReplyToAsk, SendMsg, SendResponse, ServerMessage, StreamEvent,
-    StreamMsg, client_message, server_message, stream_event,
+    AgentEventMsg, ClientMessage, HubEvent, ReplyToAsk, SendMsg, SendResponse, ServerMessage,
+    StreamEvent, StreamMsg, client_message, hub_event, server_message, stream_event,
 };
 
 // ── ClientMessage constructors ───────────────────────────────────
@@ -57,6 +57,14 @@ impl From<AgentEventMsg> for ServerMessage {
     }
 }
 
+impl From<HubEvent> for ServerMessage {
+    fn from(e: HubEvent) -> Self {
+        Self {
+            msg: Some(server_message::Msg::HubEvent(e)),
+        }
+    }
+}
+
 // ── TryFrom<ServerMessage> ───────────────────────────────────────
 
 fn error_or_unexpected(msg: ServerMessage) -> anyhow::Error {
@@ -84,6 +92,18 @@ impl TryFrom<ServerMessage> for stream_event::Event {
         match msg.msg {
             Some(server_message::Msg::Stream(e)) => {
                 e.event.ok_or_else(|| anyhow::anyhow!("empty stream event"))
+            }
+            _ => Err(error_or_unexpected(msg)),
+        }
+    }
+}
+
+impl TryFrom<ServerMessage> for hub_event::Event {
+    type Error = anyhow::Error;
+    fn try_from(msg: ServerMessage) -> anyhow::Result<Self> {
+        match msg.msg {
+            Some(server_message::Msg::HubEvent(e)) => {
+                e.event.ok_or_else(|| anyhow::anyhow!("empty hub event"))
             }
             _ => Err(error_or_unexpected(msg)),
         }

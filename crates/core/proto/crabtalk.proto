@@ -162,6 +162,7 @@ message ServerMessage {
     ProviderList provider_list = 14;
     PackageList package_list = 15;
     ServiceLogOutput service_log_output = 16;
+    HubEvent hub_event = 17;
   }
 }
 
@@ -351,4 +352,31 @@ message PackageList {
 
 message ServiceLogOutput {
   string content = 1;
+}
+
+// ── Hub Events ──────────────────────────────────────────────────
+
+message HubEvent {
+  oneof event {
+    HubStep step = 1;
+    HubWarning warning = 2;
+    HubSetupOutput setup_output = 3;
+    HubDone done = 4;
+  }
+}
+
+message HubStep {
+  string message = 1;
+}
+
+message HubWarning {
+  string message = 1;
+}
+
+message HubSetupOutput {
+  string content = 1;
+}
+
+message HubDone {
+  string error = 1;
 }
