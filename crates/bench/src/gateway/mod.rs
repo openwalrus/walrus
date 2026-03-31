@@ -36,13 +36,9 @@ pub fn check_reachable(port: u16) -> bool {
 }
 
 /// Time a future and wrap the result in a TaskResult.
-pub async fn timed<F, Fut>(f: F) -> TaskResult
-where
-    F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = Result<String, String>>,
-{
+pub async fn timed(f: impl std::future::Future<Output = Result<String, String>>) -> TaskResult {
     let start = Instant::now();
-    let result = f().await;
+    let result = f.await;
     let wall_clock_ms = start.elapsed().as_millis() as u64;
 
     match result {

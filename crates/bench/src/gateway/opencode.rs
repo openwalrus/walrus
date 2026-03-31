@@ -27,7 +27,7 @@ impl Gateway for OpenCodeGateway {
         let client = self.client.clone();
         let prompt = task.prompt.to_string();
         rt.block_on(async move {
-            timed(|| async {
+            timed(async {
                 // Create a new session.
                 let session_resp: serde_json::Value = client
                     .post(format!("{base_url}/sessions"))

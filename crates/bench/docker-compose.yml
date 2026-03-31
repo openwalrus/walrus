@@ -88,6 +88,7 @@ services:
       - hermes
     command: cargo bench -p crabtalk-bench --bench framework
     environment:
+      MOCK_MCP_PORT: "9090"
       OPENCLAW_TOKEN: ""
 
 volumes:

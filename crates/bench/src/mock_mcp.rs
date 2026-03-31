@@ -22,24 +22,27 @@ pub struct ToolCallRecord {
     pub timestamp: Instant,
 }
 
-struct MockState {
-    tools: Value,
-    responses: Arc<Mutex<HashMap<String, Vec<ResponseEntry>>>>,
-    call_counts: Arc<Mutex<HashMap<String, usize>>>,
-    records: Arc<Mutex<Vec<ToolCallRecord>>>,
-}
-
 struct ResponseEntry {
     output: String,
     is_error: bool,
 }
 
+/// Mutable server state behind a single mutex.
+struct MockInner {
+    tool_schemas: Value,
+    responses: HashMap<String, Vec<ResponseEntry>>,
+    call_counts: HashMap<String, usize>,
+    records: Vec<ToolCallRecord>,
+}
+
+struct MockState {
+    inner: Arc<Mutex<MockInner>>,
+}
+
 /// Handle to a running mock MCP server.
 pub struct MockMcpHandle {
     addr: SocketAddr,
-    records: Arc<Mutex<Vec<ToolCallRecord>>>,
-    call_counts: Arc<Mutex<HashMap<String, usize>>>,
-    responses: Arc<Mutex<HashMap<String, Vec<ResponseEntry>>>>,
+    inner: Arc<Mutex<MockInner>>,
     shutdown: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -51,18 +54,25 @@ impl MockMcpHandle {
 
     /// Collected tool call records.
     pub fn metrics(&self) -> Vec<ToolCallRecord> {
-        self.records.lock().unwrap().clone()
+        self.inner.lock().unwrap().records.clone()
     }
 
-    /// Load a single task's responses, replacing any previous responses.
-    /// Also clears call counts and recorded metrics.
-    ///
-    /// Lock order matches handle_mcp: responses → call_counts, then records.
+    /// Load a single task's tools and responses, replacing any previous state.
     pub fn load_task(&self, task: &Task) {
-        let mut responses = self.responses.lock().unwrap();
-        responses.clear();
+        let mut inner = self.inner.lock().unwrap();
+        inner.records.clear();
+        inner.call_counts.clear();
+        inner.responses.clear();
+        inner.tool_schemas = json!({
+            "tools": task.tools.iter().map(|t| json!({
+                "name": t.name,
+                "description": t.description,
+                "inputSchema": t.parameters,
+            })).collect::<Vec<_>>()
+        });
         for resp in &task.responses {
-            responses
+            inner
+                .responses
                 .entry(resp.tool.to_string())
                 .or_default()
                 .push(ResponseEntry {
@@ -70,9 +80,6 @@ impl MockMcpHandle {
                     is_error: resp.is_error,
                 });
         }
-        drop(responses);
-        self.call_counts.lock().unwrap().clear();
-        self.records.lock().unwrap().clear();
     }
 
     /// Shut down the server.
@@ -83,11 +90,10 @@ impl MockMcpHandle {
 
 /// Start the mock MCP server on a specific port (0 = random).
 pub async fn start(port: u16, tasks: &[Task]) -> MockMcpHandle {
+    // Build initial tool schemas from all tasks (for standalone binary use).
     let mut tool_schemas = Vec::new();
-
     for task in tasks {
         for tool in &task.tools {
-            // Deduplicate tools by name.
             if !tool_schemas.iter().any(|t: &Value| t["name"] == tool.name) {
                 tool_schemas.push(json!({
                     "name": tool.name,
@@ -98,14 +104,15 @@ pub async fn start(port: u16, tasks: &[Task]) -> MockMcpHandle {
         }
     }
 
-    let records = Arc::new(Mutex::new(Vec::new()));
-    let call_counts = Arc::new(Mutex::new(HashMap::new()));
-    let responses = Arc::new(Mutex::new(HashMap::new()));
+    let inner = Arc::new(Mutex::new(MockInner {
+        tool_schemas: json!({ "tools": tool_schemas }),
+        responses: HashMap::new(),
+        call_counts: HashMap::new(),
+        records: Vec::new(),
+    }));
+
     let state = Arc::new(MockState {
-        tools: json!({ "tools": tool_schemas }),
-        responses: Arc::clone(&responses),
-        call_counts: Arc::clone(&call_counts),
-        records: Arc::clone(&records),
+        inner: Arc::clone(&inner),
     });
 
     let app = Router::new()
@@ -129,9 +136,7 @@ pub async fn start(port: u16, tasks: &[Task]) -> MockMcpHandle {
 
     MockMcpHandle {
         addr,
-        records,
-        call_counts,
-        responses,
+        inner,
         shutdown: shutdown_tx,
     }
 }
@@ -150,29 +155,31 @@ async fn handle_mcp(
             "capabilities": { "tools": {} }
         }),
 
-        "tools/list" => state.tools.clone(),
+        "tools/list" => state.inner.lock().unwrap().tool_schemas.clone(),
 
         "tools/call" => {
             let name = body["params"]["name"].as_str().unwrap_or("");
             let args = body["params"]["arguments"].clone();
 
+            let mut inner = state.inner.lock().unwrap();
+
             // Record the call.
-            state.records.lock().unwrap().push(ToolCallRecord {
+            inner.records.push(ToolCallRecord {
                 tool: name.to_string(),
                 args: args.clone(),
                 timestamp: Instant::now(),
             });
 
             // Get the next scripted response for this tool.
-            let responses = state.responses.lock().unwrap();
-            let mut counts = state.call_counts.lock().unwrap();
-            let idx = counts.entry(name.to_string()).or_insert(0);
-            let entry = responses
-                .get(name)
-                .and_then(|v| v.get(*idx).or_else(|| v.last()));
-            *idx += 1;
+            let count = inner.call_counts.entry(name.to_string()).or_insert(0);
+            let idx = *count;
+            *count += 1;
 
-            match entry {
+            match inner
+                .responses
+                .get(name)
+                .and_then(|v| v.get(idx).or(v.last()))
+            {
                 Some(r) => json!({
                     "content": [{ "type": "text", "text": r.output }],
                     "isError": r.is_error

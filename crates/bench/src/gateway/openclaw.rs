@@ -30,7 +30,7 @@ impl Gateway for OpenClawGateway {
         let client = self.client.clone();
         let prompt = task.prompt.to_string();
         rt.block_on(async move {
-            timed(|| async {
+            timed(async {
                 let resp = client
                     .post(&url)
                     .bearer_auth(&token)

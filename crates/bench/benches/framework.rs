@@ -3,19 +3,20 @@
 //! Prerequisites:
 //! 1. Local LLM via ollama (fixed model version)
 //! 2. Frameworks running and connected to mock MCP + same LLM.
-//!    Mock MCP is started in-process automatically.
+//!    When MOCK_MCP_PORT is unset, mock MCP starts in-process on a random port.
+//!    When MOCK_MCP_PORT is set (e.g. Docker), the external server is used.
 //!    Unreachable frameworks are skipped with a warning.
 //!
 //! Ports are configurable via env vars:
-//!   MOCK_MCP_PORT (default: 0 = random), CRABTALK_PORT (6688),
-//!   OPENCLAW_PORT (18789), OPENCODE_PORT (4096), HERMES_PORT (8080)
+//!   MOCK_MCP_PORT, CRABTALK_PORT (6688), OPENCLAW_PORT (18789),
+//!   OPENCODE_PORT (4096), HERMES_PORT (8080)
 
 use crabtalk_bench::{
     gateway::{
         Gateway, check_reachable, crabtalk::CrabtalkGateway, hermes::HermesGateway,
         openclaw::OpenClawGateway, opencode::OpenCodeGateway,
     },
-    mock_mcp,
+    mock_mcp::{self, MockMcpHandle},
     task::tasks,
 };
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -44,9 +45,19 @@ fn bench_framework(c: &mut Criterion) {
         .unwrap();
 
     let task_defs = tasks();
-    let mcp_port = env_port("MOCK_MCP_PORT", 0);
-    let mcp_handle = rt.block_on(mock_mcp::start(mcp_port, &task_defs));
-    eprintln!("mock MCP listening at http://{}/mcp", mcp_handle.addr());
+
+    // Start mock MCP in-process unless an external one is configured.
+    let mcp_handle: Option<MockMcpHandle> = if std::env::var("MOCK_MCP_PORT").is_ok() {
+        eprintln!(
+            "using external mock MCP on port {}",
+            env_port("MOCK_MCP_PORT", 9090)
+        );
+        None
+    } else {
+        let handle = rt.block_on(mock_mcp::start(0, &task_defs));
+        eprintln!("mock MCP listening at http://{}/mcp", handle.addr());
+        Some(handle)
+    };
 
     let all_gateways: Vec<(&str, u16, Box<dyn Gateway>)> = vec![
         {
@@ -92,16 +103,13 @@ fn bench_framework(c: &mut Criterion) {
 
     for task in &task_defs {
         let mut group = c.benchmark_group(task.name);
-        // These are real LLM calls — use fewer samples and longer measurement.
         group.sample_size(10);
         group.measurement_time(std::time::Duration::from_secs(30));
 
         for (name, _, gw) in &gateways {
-            // Load this task's responses before benchmarking. Subsequent
-            // iterations reuse the last scripted response per tool, which is
-            // fine for latency measurement — correctness is checked in the
-            // validation pass below.
-            mcp_handle.load_task(task);
+            if let Some(ref h) = mcp_handle {
+                h.load_task(task);
+            }
             group.bench_function(*name, |b| {
                 b.iter(|| gw.run_task(&rt, task));
             });
@@ -109,27 +117,31 @@ fn bench_framework(c: &mut Criterion) {
         group.finish();
     }
 
-    // ── Validation pass: run each task once per framework, collect metrics ──
-    let mut records = Vec::new();
-    for task in &task_defs {
-        for (name, _, gw) in &gateways {
-            mcp_handle.load_task(task);
-            let result = gw.run_task(&rt, task);
-            let metrics = mcp_handle.metrics();
-            records.push(ValidationRecord {
-                framework: name,
-                task: task.name,
-                expected_calls: task.expected_tool_calls,
-                actual_calls: metrics.len(),
-                success: result.success,
-                wall_clock_ms: result.wall_clock_ms,
-                tool_names: metrics.iter().map(|r| r.tool.clone()).collect(),
-            });
+    // Validation pass only when we control the mock MCP.
+    if let Some(ref handle) = mcp_handle {
+        let mut records = Vec::new();
+        for task in &task_defs {
+            for (name, _, gw) in &gateways {
+                handle.load_task(task);
+                let result = gw.run_task(&rt, task);
+                let metrics = handle.metrics();
+                records.push(ValidationRecord {
+                    framework: name,
+                    task: task.name,
+                    expected_calls: task.expected_tool_calls,
+                    actual_calls: metrics.len(),
+                    success: result.success,
+                    wall_clock_ms: result.wall_clock_ms,
+                    tool_names: metrics.iter().map(|r| r.tool.clone()).collect(),
+                });
+            }
         }
+        print_summary(&records);
     }
-    print_summary(&records);
 
-    rt.block_on(mcp_handle.shutdown());
+    if let Some(handle) = mcp_handle {
+        rt.block_on(handle.shutdown());
+    }
 }
 
 fn print_summary(records: &[ValidationRecord]) {

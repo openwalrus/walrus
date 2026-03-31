@@ -22,7 +22,7 @@ impl Gateway for CrabtalkGateway {
         let port = self.port;
         let prompt = task.prompt.to_string();
         rt.block_on(async move {
-            timed(|| async {
+            timed(async {
                 let client = DaemonClient::tcp(port);
                 let msg = SendMsg {
                     agent: "crab".into(),

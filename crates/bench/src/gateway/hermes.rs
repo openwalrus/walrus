@@ -27,7 +27,7 @@ impl Gateway for HermesGateway {
         let client = self.client.clone();
         let prompt = task.prompt.to_string();
         rt.block_on(async move {
-            timed(|| async {
+            timed(async {
                 let resp: serde_json::Value = client
                     .post(&url)
                     .json(&json!({
