@@ -422,6 +422,7 @@ message McpInfo {
   string url = 5;
   bool auth = 6;
   string source = 7;
+  bool auto_restart = 8;
 }
 
 message McpList {

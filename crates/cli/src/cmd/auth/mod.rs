@@ -176,6 +176,7 @@ pub(crate) struct McpData {
     pub(crate) env: Vec<(String, String)>,
     pub(crate) url: Option<String>,
     pub(crate) auth: bool,
+    pub(crate) auto_restart: bool,
     pub(crate) source: McpSource,
 }
 
@@ -188,6 +189,7 @@ impl McpData {
             env: self.env.iter().cloned().collect(),
             url: self.url.clone().unwrap_or_default(),
             auth: self.auth,
+            auto_restart: self.auto_restart,
             source: String::new(), // always local when saving
         }
     }
@@ -270,7 +272,8 @@ impl AuthState {
                 env: m.env.into_iter().collect(),
                 url: if m.url.is_empty() { None } else { Some(m.url) },
                 auth: m.auth,
-                source: if m.source.is_empty() {
+                auto_restart: m.auto_restart,
+                source: if m.source.is_empty() || m.source == "local" {
                     McpSource::Local
                 } else {
                     McpSource::Hub(m.source)

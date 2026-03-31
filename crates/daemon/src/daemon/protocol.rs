@@ -587,7 +587,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .join("CrabTalk.toml");
         if let Ok(Some(manifest)) = wcore::ManifestConfig::load(&manifest_path) {
             for (name, cfg) in &manifest.mcps {
-                mcps.push(mcp_to_info(name, cfg, ""));
+                mcps.push(mcp_to_info(name, cfg, "local"));
             }
         }
 
@@ -609,6 +609,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                     url: mcp_res.url.clone().unwrap_or_default(),
                     auth: mcp_res.auth,
                     source: pkg_id.clone(),
+                    auto_restart: mcp_res.auto_restart,
                 });
             }
         }
@@ -658,6 +659,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
                 }
                 if mcp.auth {
                     tbl.insert("auth", value(true));
+                }
+                if mcp.auto_restart {
+                    tbl.insert("auto_restart", value(true));
                 }
                 if !mcp.env.is_empty() {
                     let mut env_tbl = Table::new();
@@ -717,12 +721,19 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .with_context(|| format!("failed to write {}", config_path.display()))?;
         self.reload().await?;
 
+        // Return the config as actually loaded by the daemon, not the input.
+        let loaded_config = self.load_config()?;
+        let loaded_json = loaded_config
+            .provider
+            .get(&name)
+            .and_then(|def| serde_json::to_string(def).ok())
+            .unwrap_or_default();
         let rt = self.runtime.read().await.clone();
         let active = rt.model.provider_name_for(&name).is_some_and(|n| n == name);
         Ok(ProviderInfo {
             name,
             active,
-            config,
+            config: loaded_json,
         })
     }
 
@@ -752,6 +763,16 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
     async fn set_active_model(&self, model: String) -> Result<()> {
         use toml_edit::{DocumentMut, Item, Table, value};
+
+        // Validate model exists in some provider.
+        let daemon_config = self.load_config()?;
+        let model_exists = daemon_config
+            .provider
+            .values()
+            .any(|def| def.models.iter().any(|m| m == &model));
+        if !model_exists {
+            anyhow::bail!("model '{model}' not found in any provider");
+        }
 
         let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
         let content = std::fs::read_to_string(&config_path)
@@ -1203,6 +1224,7 @@ fn mcp_to_info(name: &str, cfg: &wcore::McpServerConfig, source: &str) -> McpInf
         url: cfg.url.clone().unwrap_or_default(),
         auth: cfg.auth,
         source: source.to_string(),
+        auto_restart: cfg.auto_restart,
     }
 }
 
