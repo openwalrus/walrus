@@ -3,10 +3,10 @@
 use crate::protocol::message::{
     AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConfigMsg,
     ConversationInfo, ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
-    DaemonStats, ErrorMsg, HubEvent, InstallPackageMsg, PackageInfo, PackageList, Pong,
-    ProviderInfo, ProviderList, SendMsg, SendResponse, ServerMessage, ServiceLogOutput,
-    SessionInfo, SessionList, SkillList, StreamEvent, StreamMsg, UpdateAgentMsg, client_message,
-    server_message,
+    DaemonStats, ErrorMsg, HubEvent, InstallPackageMsg, McpInfo, McpList, PackageInfo, PackageList,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, SessionInfo, SessionList, SkillList,
+    StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -148,6 +148,37 @@ pub trait Server: Sync {
         agent: String,
         sender: String,
     ) -> impl std::future::Future<Output = Result<Vec<ConversationInfo>>> + Send;
+
+    /// Handle `ListMcps` — return all MCP server configs with source info.
+    fn list_mcps(&self) -> impl std::future::Future<Output = Result<Vec<McpInfo>>> + Send;
+
+    /// Handle `SetLocalMcps` — replace local MCPs in CrabTalk.toml.
+    fn set_local_mcps(
+        &self,
+        mcps: Vec<McpInfo>,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `SetProvider` — create or update a provider in config.toml.
+    fn set_provider(
+        &self,
+        name: String,
+        config: String,
+    ) -> impl std::future::Future<Output = Result<ProviderInfo>> + Send;
+
+    /// Handle `DeleteProvider` — remove a provider from config.toml.
+    fn delete_provider(&self, name: String)
+    -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `SetActiveModel` — update the active model in config.toml.
+    fn set_active_model(
+        &self,
+        model: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `ListProviderPresets` — return provider preset templates.
+    fn list_provider_presets(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<ProviderPresetInfo>>> + Send;
 
     /// Handle `StartService` — install and start a command service.
     fn start_service(
@@ -396,6 +427,52 @@ pub trait Server: Sync {
                             msg: Some(server_message::Msg::ConversationList(ConversationList {
                                 conversations,
                             })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListMcps(_) => {
+                    yield match self.list_mcps().await {
+                        Ok(mcps) => ServerMessage {
+                            msg: Some(server_message::Msg::McpList(McpList { mcps })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetLocalMcps(req) => {
+                    yield match self.set_local_mcps(req.mcps).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetProvider(req) => {
+                    yield match self.set_provider(req.name, req.config).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::ProviderList(ProviderList {
+                                providers: vec![info],
+                            })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::DeleteProvider(req) => {
+                    yield match self.delete_provider(req.name.clone()).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetActiveModel(req) => {
+                    yield match self.set_active_model(req.model).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListProviderPresets(_) => {
+                    yield match self.list_provider_presets().await {
+                        Ok(presets) => ServerMessage {
+                            msg: Some(server_message::Msg::ProviderPresetList(
+                                ProviderPresetList { presets },
+                            )),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };

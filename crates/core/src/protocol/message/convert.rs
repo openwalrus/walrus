@@ -1,8 +1,9 @@
 //! Conversions between protocol message types.
 
+use crate::config::ApiStandard;
 use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, HubEvent, ReplyToAsk, SendMsg, SendResponse, ServerMessage,
-    StreamEvent, StreamMsg, client_message, hub_event, server_message, stream_event,
+    AgentEventMsg, ClientMessage, HubEvent, ProviderKind, ReplyToAsk, SendMsg, SendResponse,
+    ServerMessage, StreamEvent, StreamMsg, client_message, hub_event, server_message, stream_event,
 };
 
 // ── ClientMessage constructors ───────────────────────────────────
@@ -94,6 +95,20 @@ impl TryFrom<ServerMessage> for stream_event::Event {
                 e.event.ok_or_else(|| anyhow::anyhow!("empty stream event"))
             }
             _ => Err(error_or_unexpected(msg)),
+        }
+    }
+}
+
+impl From<ApiStandard> for ProviderKind {
+    fn from(kind: ApiStandard) -> Self {
+        match kind {
+            ApiStandard::OpenaiCompat => Self::Openai,
+            ApiStandard::Anthropic => Self::Anthropic,
+            ApiStandard::Google => Self::Google,
+            ApiStandard::Bedrock => Self::Bedrock,
+            ApiStandard::Ollama => Self::Ollama,
+            ApiStandard::Azure => Self::Azure,
+            ApiStandard::LlamaCpp => Self::LlamaCpp,
         }
     }
 }

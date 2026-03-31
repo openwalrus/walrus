@@ -37,6 +37,12 @@ message ClientMessage {
     ServiceLogsMsg service_logs = 27;
     ListSkillsMsg list_skills = 28;
     ListConversationsMsg list_conversations = 29;
+    ListMcpsMsg list_mcps = 30;
+    SetLocalMcpsMsg set_local_mcps = 31;
+    SetProviderMsg set_provider = 32;
+    DeleteProviderMsg delete_provider = 33;
+    SetActiveModelMsg set_active_model = 34;
+    ListProviderPresetsMsg list_provider_presets = 35;
   }
 }
 
@@ -137,6 +143,27 @@ message ListConversationsMsg {
   string sender = 2;
 }
 
+message ListMcpsMsg {}
+
+message SetLocalMcpsMsg {
+  repeated McpInfo mcps = 1;
+}
+
+message SetProviderMsg {
+  string name = 1;
+  string config = 2;
+}
+
+message DeleteProviderMsg {
+  string name = 1;
+}
+
+message SetActiveModelMsg {
+  string model = 1;
+}
+
+message ListProviderPresetsMsg {}
+
 message StartServiceMsg {
   string name = 1;
   bool force = 2;
@@ -174,6 +201,8 @@ message ServerMessage {
     HubEvent hub_event = 17;
     SkillList skill_list = 18;
     ConversationList conversation_list = 19;
+    McpList mcp_list = 20;
+    ProviderPresetList provider_preset_list = 21;
   }
 }
 
@@ -346,6 +375,7 @@ message AgentList {
 message ProviderInfo {
   string name = 1;
   bool active = 2;
+  string config = 3;
 }
 
 message ProviderList {
@@ -382,6 +412,42 @@ message ConversationInfo {
 
 message ConversationList {
   repeated ConversationInfo conversations = 1;
+}
+
+message McpInfo {
+  string name = 1;
+  string command = 2;
+  repeated string args = 3;
+  map<string, string> env = 4;
+  string url = 5;
+  bool auth = 6;
+  string source = 7;
+}
+
+message McpList {
+  repeated McpInfo mcps = 1;
+}
+
+enum ProviderKind {
+  OPENAI = 0;
+  ANTHROPIC = 1;
+  GOOGLE = 2;
+  BEDROCK = 3;
+  OLLAMA = 4;
+  AZURE = 5;
+  LLAMA_CPP = 6;
+}
+
+message ProviderPresetInfo {
+  string name = 1;
+  ProviderKind kind = 2;
+  string base_url = 3;
+  string fixed_base_url = 4;
+  string default_model = 5;
+}
+
+message ProviderPresetList {
+  repeated ProviderPresetInfo presets = 1;
 }
 
 // ── Hub Events ──────────────────────────────────────────────────
