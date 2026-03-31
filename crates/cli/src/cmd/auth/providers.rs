@@ -273,12 +273,21 @@ fn handle_preset(key: crossterm::event::KeyEvent, state: &mut AuthState) {
         KeyCode::Enter => {
             let preset = &PROVIDER_PRESETS[state.preset_idx];
             if state.providers.iter().any(|p| p.name == preset.name) {
-                state.status = format!("Provider '{}' already exists", preset.name);
+                // Name taken — prompt for a custom name.
+                state.edit_buf = preset.name.to_string();
+                state.cursor = state.edit_buf.len();
+                state.focus = Focus::NamingProvider;
             } else {
                 state.add_preset(preset, None);
                 state.status = format!("Added provider: {}", preset.name);
                 state.focus = Focus::List;
             }
+        }
+        // Custom name for any preset.
+        KeyCode::Char('n') => {
+            state.edit_buf.clear();
+            state.cursor = 0;
+            state.focus = Focus::NamingProvider;
         }
         _ => {}
     }
