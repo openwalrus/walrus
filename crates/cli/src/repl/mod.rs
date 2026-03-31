@@ -127,13 +127,12 @@ impl ChatRepl {
     }
 
     async fn fetch_model_name(&mut self) -> Option<String> {
-        let config_json = self.runner.get_config().await.ok()?;
-        let val: serde_json::Value = serde_json::from_str(&config_json).ok()?;
-        val.get("system")?
-            .get("crab")?
-            .get("model")?
-            .as_str()
-            .map(|s| s.to_string())
+        let stats = self.runner.get_stats().await.ok()?;
+        if stats.active_model.is_empty() {
+            None
+        } else {
+            Some(stats.active_model)
+        }
     }
 
     fn save_history(&self) {

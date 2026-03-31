@@ -31,20 +31,10 @@ impl Auth {
 
         // Load via protocol.
         let provider_infos = runner.list_providers().await?;
-        let config_json = runner.get_config().await?;
+        let stats = runner.get_stats().await?;
         let mcp_infos = runner.list_mcps().await?;
         let initial_names: Vec<String> = provider_infos.iter().map(|p| p.name.clone()).collect();
-
-        let active_model = serde_json::from_str::<serde_json::Value>(&config_json)
-            .ok()
-            .and_then(|v| {
-                v.get("system")?
-                    .get("crab")?
-                    .get("model")?
-                    .as_str()
-                    .map(String::from)
-            })
-            .unwrap_or_default();
+        let active_model = stats.active_model;
 
         let state = tui::run_app_with_state(
             || AuthState::from_protocol(provider_infos, active_model, mcp_infos),

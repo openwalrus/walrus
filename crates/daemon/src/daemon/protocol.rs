@@ -237,11 +237,6 @@ impl<H: Host + 'static> Server for Daemon<H> {
         }
     }
 
-    async fn get_config(&self) -> Result<String> {
-        let config = self.load_config()?;
-        serde_json::to_string(&config).context("failed to serialize config")
-    }
-
     async fn reload(&self) -> Result<()> {
         self.reload().await
     }
@@ -251,10 +246,12 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let active = rt.active_session_count().await;
         let agents = rt.agents().len() as u32;
         let uptime = self.started_at.elapsed().as_secs();
+        let active_model = rt.model.active_model_name().unwrap_or_default();
         Ok(DaemonStats {
             uptime_secs: uptime,
             active_sessions: active as u32,
             registered_agents: agents,
+            active_model,
         })
     }
 

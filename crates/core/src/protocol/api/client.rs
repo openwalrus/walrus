@@ -1,8 +1,8 @@
 //! Client trait — transport primitives plus typed provided methods.
 
 use crate::protocol::message::{
-    AgentInfo, AgentList, ClientMessage, ConfigMsg, ConversationInfo, ConversationList,
-    CreateAgentMsg, DeleteAgentMsg, DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetConfig, HubEvent,
+    AgentInfo, AgentList, ClientMessage, ConversationInfo, ConversationList, CreateAgentMsg,
+    DaemonStats, DeleteAgentMsg, DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetStats, HubEvent,
     InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListPackagesMsg,
     ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, PackageInfo,
     PackageList, Ping, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList,
@@ -88,18 +88,18 @@ pub trait Client: Send {
         }
     }
 
-    /// Get the full daemon config as JSON.
-    fn get_config(&mut self) -> impl std::future::Future<Output = Result<String>> + Send {
+    /// Get daemon stats including the active model name.
+    fn get_stats(&mut self) -> impl std::future::Future<Output = Result<DaemonStats>> + Send {
         async move {
             match self
                 .request(ClientMessage {
-                    msg: Some(client_message::Msg::GetConfig(GetConfig {})),
+                    msg: Some(client_message::Msg::GetStats(GetStats {})),
                 })
                 .await?
             {
                 ServerMessage {
-                    msg: Some(server_message::Msg::Config(ConfigMsg { config })),
-                } => Ok(config),
+                    msg: Some(server_message::Msg::Stats(stats)),
+                } => Ok(stats),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

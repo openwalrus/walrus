@@ -241,6 +241,7 @@ message DaemonStats {
   uint64 uptime_secs = 1;
   uint32 active_sessions = 2;
   uint32 registered_agents = 3;
+  string active_model = 4;
 }
 
 message Pong {}
