@@ -16,8 +16,8 @@ pub use crate::protocol::proto::{
     ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, PackageInfo, PackageList, Ping, Pong,
     ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, ReplyToAsk, SendMsg,
     SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SessionInfo, SessionList,
-    SetActiveModelMsg, SetConfigMsg, SetLocalMcpsMsg, SetProviderMsg, SkillList, StartServiceMsg,
-    StopServiceMsg, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
-    SubscribeEvents, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
+    SetActiveModelMsg, SetLocalMcpsMsg, SetProviderMsg, SkillList, StartServiceMsg, StopServiceMsg,
+    StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, SubscribeEvents,
+    TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
     UninstallPackageMsg, UpdateAgentMsg,
 };

@@ -6,7 +6,7 @@ use crate::protocol::message::{
     InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListPackagesMsg,
     ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, PackageInfo,
     PackageList, Ping, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, SendMsg,
-    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetConfigMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
     SetLocalMcpsMsg, SetProviderMsg, SkillList, StartServiceMsg, StopServiceMsg, StreamEvent,
     StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message, hub_event, server_message,
     stream_event,
@@ -100,31 +100,6 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Config(ConfigMsg { config })),
                 } => Ok(config),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
-    /// Replace the full daemon config from JSON.
-    fn set_config(
-        &mut self,
-        config: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::SetConfig(SetConfigMsg { config })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

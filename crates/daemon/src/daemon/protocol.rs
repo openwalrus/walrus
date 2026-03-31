@@ -242,17 +242,6 @@ impl<H: Host + 'static> Server for Daemon<H> {
         serde_json::to_string(&config).context("failed to serialize config")
     }
 
-    async fn set_config(&self, config: String) -> Result<()> {
-        let parsed: crate::DaemonConfig =
-            serde_json::from_str(&config).context("invalid DaemonConfig JSON")?;
-        let toml_str =
-            toml::to_string_pretty(&parsed).context("failed to serialize config to TOML")?;
-        let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
-        std::fs::write(&config_path, toml_str)
-            .with_context(|| format!("failed to write {}", config_path.display()))?;
-        self.reload().await
-    }
-
     async fn reload(&self) -> Result<()> {
         self.reload().await
     }

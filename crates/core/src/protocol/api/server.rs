@@ -65,9 +65,6 @@ pub trait Server: Sync {
     /// Handle `GetConfig` — return the full daemon config as JSON.
     fn get_config(&self) -> impl std::future::Future<Output = Result<String>> + Send;
 
-    /// Handle `SetConfig` — replace the daemon config from JSON.
-    fn set_config(&self, config: String) -> impl std::future::Future<Output = Result<()>> + Send;
-
     /// Handle `Reload` — hot-reload runtime from disk.
     fn reload(&self) -> impl std::future::Future<Output = Result<()>> + Send;
 
@@ -248,12 +245,6 @@ pub trait Server: Sync {
                         Ok(config) => ServerMessage {
                             msg: Some(server_message::Msg::Config(ConfigMsg { config })),
                         },
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
-                client_message::Msg::SetConfig(set_config_msg) => {
-                    yield match self.set_config(set_config_msg.config).await {
-                        Ok(()) => server_pong(),
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
