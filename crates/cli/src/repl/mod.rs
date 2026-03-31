@@ -19,6 +19,7 @@ use ratatui::{
 };
 use std::{collections::VecDeque, path::PathBuf, pin::pin, time::Duration};
 use tokio::sync::mpsc;
+use wcore::protocol::api::Client;
 
 mod ask;
 pub mod chat;
