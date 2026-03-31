@@ -224,6 +224,7 @@ fn handle_add_mcp(key: crossterm::event::KeyEvent, state: &mut AuthState) {
                 env: Vec::new(),
                 url: None,
                 auth: false,
+                auto_restart: false,
                 source: McpSource::Local,
             });
             state.mcp_selected = state.mcps.len() - 1;

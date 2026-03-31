@@ -8,33 +8,50 @@ option swift_prefix = "CrabtalkProto_";
 
 message ClientMessage {
   oneof msg {
+    // Execution
     SendMsg send = 1;
     StreamMsg stream = 2;
-    Ping ping = 3;
+    ReplyToAsk reply_to_ask = 3;
+    // Session management
     Sessions sessions = 4;
     KillMsg kill = 5;
-    GetConfig get_config = 6;
-    SetConfigMsg set_config = 7;
-    ReloadMsg reload = 8;
-    SubscribeEvents subscribe_events = 9;
-    ReplyToAsk reply_to_ask = 10;
-    GetStats get_stats = 11;
-    CreateCronMsg create_cron = 12;
-    DeleteCronMsg delete_cron = 13;
-    ListCronsMsg list_crons = 14;
-    CompactMsg compact = 15;
-    ListAgentsMsg list_agents = 16;
-    GetAgentMsg get_agent = 17;
-    CreateAgentMsg create_agent = 18;
-    UpdateAgentMsg update_agent = 19;
-    DeleteAgentMsg delete_agent = 20;
-    ListProvidersMsg list_providers = 21;
-    InstallPackageMsg install_package = 22;
-    UninstallPackageMsg uninstall_package = 23;
-    ListPackagesMsg list_packages = 24;
-    StartServiceMsg start_service = 25;
-    StopServiceMsg stop_service = 26;
-    ServiceLogsMsg service_logs = 27;
+    CompactMsg compact = 6;
+    ListConversationsMsg list_conversations = 7;
+    // Provider management
+    ListProvidersMsg list_providers = 8;
+    SetProviderMsg set_provider = 9;
+    DeleteProviderMsg delete_provider = 10;
+    SetActiveModelMsg set_active_model = 11;
+    ListProviderPresetsMsg list_provider_presets = 12;
+    // MCP management
+    ListMcpsMsg list_mcps = 13;
+    SetLocalMcpsMsg set_local_mcps = 14;
+    // Agent management
+    ListAgentsMsg list_agents = 15;
+    GetAgentMsg get_agent = 16;
+    CreateAgentMsg create_agent = 17;
+    UpdateAgentMsg update_agent = 18;
+    DeleteAgentMsg delete_agent = 19;
+    // Hub / packages
+    InstallPackageMsg install_package = 20;
+    UninstallPackageMsg uninstall_package = 21;
+    ListPackagesMsg list_packages = 22;
+    // Skills
+    ListSkillsMsg list_skills = 23;
+    // Services
+    StartServiceMsg start_service = 24;
+    StopServiceMsg stop_service = 25;
+    ServiceLogsMsg service_logs = 26;
+    // Cron
+    CreateCronMsg create_cron = 27;
+    DeleteCronMsg delete_cron = 28;
+    ListCronsMsg list_crons = 29;
+    // Daemon lifecycle
+    Ping ping = 30;
+    GetConfig get_config = 31;
+    ReloadMsg reload = 32;
+    GetStats get_stats = 33;
+    SubscribeEvents subscribe_events = 34;
   }
 }
 
@@ -66,10 +83,6 @@ message GetStats {}
 
 message KillMsg {
   uint64 session = 1;
-}
-
-message SetConfigMsg {
-  string config = 1;
 }
 
 message ReloadMsg {}
@@ -128,6 +141,34 @@ message UninstallPackageMsg {
 
 message ListPackagesMsg {}
 
+message ListSkillsMsg {}
+
+message ListConversationsMsg {
+  string agent = 1;
+  string sender = 2;
+}
+
+message ListMcpsMsg {}
+
+message SetLocalMcpsMsg {
+  repeated McpInfo mcps = 1;
+}
+
+message SetProviderMsg {
+  string name = 1;
+  string config = 2;
+}
+
+message DeleteProviderMsg {
+  string name = 1;
+}
+
+message SetActiveModelMsg {
+  string model = 1;
+}
+
+message ListProviderPresetsMsg {}
+
 message StartServiceMsg {
   string name = 1;
   bool force = 2;
@@ -146,22 +187,38 @@ message ServiceLogsMsg {
 
 message ServerMessage {
   oneof msg {
-    SendResponse response = 1;
-    StreamEvent stream = 2;
-    ErrorMsg error = 3;
-    Pong pong = 4;
+    // Common
+    ErrorMsg error = 1;
+    Pong pong = 2;
+    // Execution
+    SendResponse response = 3;
+    StreamEvent stream = 4;
+    // Session
     SessionList sessions = 5;
-    ConfigMsg config = 6;
-    AgentEventMsg agent_event = 7;
-    DaemonStats stats = 8;
-    CronInfo cron_info = 9;
-    CronList cron_list = 10;
-    CompactResponse compact = 11;
-    AgentInfo agent_info = 12;
-    AgentList agent_list = 13;
-    ProviderList provider_list = 14;
-    PackageList package_list = 15;
+    CompactResponse compact = 6;
+    ConversationList conversation_list = 7;
+    // Provider
+    ProviderList provider_list = 8;
+    ProviderPresetList provider_preset_list = 9;
+    // MCP
+    McpList mcp_list = 10;
+    // Agent
+    AgentInfo agent_info = 11;
+    AgentList agent_list = 12;
+    // Hub / packages
+    HubEvent hub_event = 13;
+    PackageList package_list = 14;
+    // Skills
+    SkillList skill_list = 15;
+    // Services
     ServiceLogOutput service_log_output = 16;
+    // Cron
+    CronInfo cron_info = 17;
+    CronList cron_list = 18;
+    // Daemon lifecycle
+    ConfigMsg config = 19;
+    DaemonStats stats = 20;
+    AgentEventMsg agent_event = 21;
   }
 }
 
@@ -334,6 +391,7 @@ message AgentList {
 message ProviderInfo {
   string name = 1;
   bool active = 2;
+  string config = 3;
 }
 
 message ProviderList {
@@ -351,4 +409,88 @@ message PackageList {
 
 message ServiceLogOutput {
   string content = 1;
+}
+
+message SkillList {
+  repeated string names = 1;
+}
+
+message ConversationInfo {
+  string agent = 1;
+  string sender = 2;
+  uint32 seq = 3;
+  string title = 4;
+  string file_path = 5;
+  uint64 message_count = 6;
+  uint64 alive_secs = 7;
+  string date = 8;
+}
+
+message ConversationList {
+  repeated ConversationInfo conversations = 1;
+}
+
+message McpInfo {
+  string name = 1;
+  string command = 2;
+  repeated string args = 3;
+  map<string, string> env = 4;
+  string url = 5;
+  bool auth = 6;
+  string source = 7;
+  bool auto_restart = 8;
+}
+
+message McpList {
+  repeated McpInfo mcps = 1;
+}
+
+enum ProviderKind {
+  PROVIDER_KIND_UNKNOWN = 0;
+  OPENAI = 1;
+  ANTHROPIC = 2;
+  GOOGLE = 3;
+  BEDROCK = 4;
+  OLLAMA = 5;
+  AZURE = 6;
+  LLAMA_CPP = 7;
+}
+
+message ProviderPresetInfo {
+  string name = 1;
+  ProviderKind kind = 2;
+  string base_url = 3;
+  string fixed_base_url = 4;
+  string default_model = 5;
+}
+
+message ProviderPresetList {
+  repeated ProviderPresetInfo presets = 1;
+}
+
+// ── Hub Events ──────────────────────────────────────────────────
+
+message HubEvent {
+  oneof event {
+    HubStep step = 1;
+    HubWarning warning = 2;
+    HubSetupOutput setup_output = 3;
+    HubDone done = 4;
+  }
+}
+
+message HubStep {
+  string message = 1;
+}
+
+message HubWarning {
+  string message = 1;
+}
+
+message HubSetupOutput {
+  string content = 1;
+}
+
+message HubDone {
+  string error = 1;
 }

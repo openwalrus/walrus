@@ -77,10 +77,11 @@ impl ChatRepl {
         let conn_info = self.runner.conn_info().clone();
         let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
 
+        let skill_names = self.runner.list_skills().await.unwrap_or_default();
         let history = std::mem::take(&mut self.history);
         let mut app = App {
             renderer: MarkdownRenderer::new(),
-            input: InputState::new(history),
+            input: InputState::new(history, skill_names),
             scroll: 0,
             message_queue: VecDeque::new(),
             agent: self.agent.clone(),
@@ -559,41 +560,4 @@ fn draw_chat(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app: &App)
 
     let paragraph = Paragraph::new(lines).scroll((scroll_offset, 0));
     frame.render_widget(paragraph, area);
-}
-
-// ── Legacy helpers kept for other callers (e.g. hub.rs) ──────────
-
-/// Consume a stream of output chunks (legacy — used by hub.rs).
-pub(crate) async fn stream_to_terminal(
-    stream: impl futures_core::Stream<Item = Result<OutputChunk>>,
-    _conn_info: &ConnectionInfo,
-) -> Result<()> {
-    use std::io::Write;
-    let mut stream = pin!(stream);
-    let mut renderer = MarkdownRenderer::new();
-    renderer.start_waiting();
-
-    while let Some(chunk) = stream.next().await {
-        match chunk? {
-            OutputChunk::Text(text) => renderer.push_text(&text),
-            OutputChunk::Thinking(text) => renderer.push_thinking(&text),
-            OutputChunk::ToolStart(calls) => renderer.push_tool_start(&calls),
-            OutputChunk::ToolResult(_id, output) => renderer.push_tool_result(&output),
-            OutputChunk::ToolDone(success) => renderer.push_tool_done(success),
-            OutputChunk::AskUser { .. } => {}
-        }
-    }
-    renderer.finish();
-
-    // Dump buffer to stdout for legacy callers.
-    let lines = renderer.buffer.lines(0);
-    let mut stdout = std::io::stdout().lock();
-    for line in &lines {
-        for span in &line.spans {
-            write!(stdout, "{}", span.content)?;
-        }
-        writeln!(stdout)?;
-    }
-    stdout.flush()?;
-    Ok(())
 }

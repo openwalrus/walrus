@@ -1,11 +1,12 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConfigMsg, CreateAgentMsg,
-    CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPackageMsg, PackageInfo,
-    PackageList, Pong, ProviderInfo, ProviderList, SendMsg, SendResponse, ServerMessage,
-    ServiceLogOutput, SessionInfo, SessionList, StreamEvent, StreamMsg, UpdateAgentMsg,
-    client_message, server_message,
+    AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConfigMsg,
+    ConversationInfo, ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
+    DaemonStats, ErrorMsg, HubEvent, InstallPackageMsg, McpInfo, McpList, PackageInfo, PackageList,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, SessionInfo, SessionList, SkillList,
+    StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -63,9 +64,6 @@ pub trait Server: Sync {
 
     /// Handle `GetConfig` — return the full daemon config as JSON.
     fn get_config(&self) -> impl std::future::Future<Output = Result<String>> + Send;
-
-    /// Handle `SetConfig` — replace the daemon config from JSON.
-    fn set_config(&self, config: String) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Handle `Reload` — hot-reload runtime from disk.
     fn reload(&self) -> impl std::future::Future<Output = Result<()>> + Send;
@@ -126,20 +124,58 @@ pub trait Server: Sync {
     fn list_providers(&self)
     -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send;
 
-    /// Handle `InstallPackage` — install a hub package and reload.
+    /// Handle `InstallPackage` — install a hub package, stream progress.
     fn install_package(
         &self,
         req: InstallPackageMsg,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    ) -> impl Stream<Item = Result<HubEvent>> + Send;
 
-    /// Handle `UninstallPackage` — uninstall a hub package and reload.
-    fn uninstall_package(
-        &self,
-        package: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Handle `UninstallPackage` — uninstall a hub package, stream progress.
+    fn uninstall_package(&self, package: String) -> impl Stream<Item = Result<HubEvent>> + Send;
 
     /// Handle `ListPackages` — return all installed hub packages.
     fn list_packages(&self) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send;
+
+    /// Handle `ListSkills` — return all available skill names.
+    fn list_skills(&self) -> impl std::future::Future<Output = Result<Vec<String>>> + Send;
+
+    /// Handle `ListConversations` — return historical conversations from disk.
+    fn list_conversations(
+        &self,
+        agent: String,
+        sender: String,
+    ) -> impl std::future::Future<Output = Result<Vec<ConversationInfo>>> + Send;
+
+    /// Handle `ListMcps` — return all MCP server configs with source info.
+    fn list_mcps(&self) -> impl std::future::Future<Output = Result<Vec<McpInfo>>> + Send;
+
+    /// Handle `SetLocalMcps` — replace local MCPs in CrabTalk.toml.
+    fn set_local_mcps(
+        &self,
+        mcps: Vec<McpInfo>,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `SetProvider` — create or update a provider in config.toml.
+    fn set_provider(
+        &self,
+        name: String,
+        config: String,
+    ) -> impl std::future::Future<Output = Result<ProviderInfo>> + Send;
+
+    /// Handle `DeleteProvider` — remove a provider from config.toml.
+    fn delete_provider(&self, name: String)
+    -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `SetActiveModel` — update the active model in config.toml.
+    fn set_active_model(
+        &self,
+        model: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `ListProviderPresets` — return provider preset templates.
+    fn list_provider_presets(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<ProviderPresetInfo>>> + Send;
 
     /// Handle `StartService` — install and start a command service.
     fn start_service(
@@ -209,12 +245,6 @@ pub trait Server: Sync {
                         Ok(config) => ServerMessage {
                             msg: Some(server_message::Msg::Config(ConfigMsg { config })),
                         },
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
-                client_message::Msg::SetConfig(set_config_msg) => {
-                    yield match self.set_config(set_config_msg.config).await {
-                        Ok(()) => server_pong(),
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
@@ -329,16 +359,18 @@ pub trait Server: Sync {
                     };
                 }
                 client_message::Msg::InstallPackage(req) => {
-                    yield match self.install_package(req).await {
-                        Ok(()) => server_pong(),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
+                    let s = self.install_package(req);
+                    tokio::pin!(s);
+                    while let Some(result) = s.next().await {
+                        yield result_to_msg(result);
+                    }
                 }
                 client_message::Msg::UninstallPackage(req) => {
-                    yield match self.uninstall_package(req.package).await {
-                        Ok(()) => server_pong(),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
+                    let s = self.uninstall_package(req.package);
+                    tokio::pin!(s);
+                    while let Some(result) = s.next().await {
+                        yield result_to_msg(result);
+                    }
                 }
                 client_message::Msg::ListPackages(_) => {
                     yield match self.list_packages().await {
@@ -367,6 +399,70 @@ pub trait Server: Sync {
                         Ok(content) => ServerMessage {
                             msg: Some(server_message::Msg::ServiceLogOutput(
                                 ServiceLogOutput { content },
+                            )),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListSkills(_) => {
+                    yield match self.list_skills().await {
+                        Ok(names) => ServerMessage {
+                            msg: Some(server_message::Msg::SkillList(SkillList { names })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListConversations(req) => {
+                    yield match self.list_conversations(req.agent, req.sender).await {
+                        Ok(conversations) => ServerMessage {
+                            msg: Some(server_message::Msg::ConversationList(ConversationList {
+                                conversations,
+                            })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListMcps(_) => {
+                    yield match self.list_mcps().await {
+                        Ok(mcps) => ServerMessage {
+                            msg: Some(server_message::Msg::McpList(McpList { mcps })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetLocalMcps(req) => {
+                    yield match self.set_local_mcps(req.mcps).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetProvider(req) => {
+                    yield match self.set_provider(req.name, req.config).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::ProviderList(ProviderList {
+                                providers: vec![info],
+                            })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::DeleteProvider(req) => {
+                    yield match self.delete_provider(req.name.clone()).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SetActiveModel(req) => {
+                    yield match self.set_active_model(req.model).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListProviderPresets(_) => {
+                    yield match self.list_provider_presets().await {
+                        Ok(presets) => ServerMessage {
+                            msg: Some(server_message::Msg::ProviderPresetList(
+                                ProviderPresetList { presets },
                             )),
                         },
                         Err(e) => server_error(500, e.to_string()),

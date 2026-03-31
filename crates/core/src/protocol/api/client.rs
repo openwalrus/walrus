@@ -1,11 +1,14 @@
 //! Client trait — transport primitives plus typed provided methods.
 
 use crate::protocol::message::{
-    AgentInfo, AgentList, ClientMessage, ConfigMsg, CreateAgentMsg, DeleteAgentMsg, ErrorMsg,
-    GetAgentMsg, GetConfig, InstallPackageMsg, ListAgentsMsg, ListPackagesMsg, ListProvidersMsg,
-    PackageInfo, PackageList, Ping, ProviderInfo, ProviderList, SendMsg, SendResponse,
-    ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetConfigMsg, StartServiceMsg, StopServiceMsg,
-    StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message, server_message,
+    AgentInfo, AgentList, ClientMessage, ConfigMsg, ConversationInfo, ConversationList,
+    CreateAgentMsg, DeleteAgentMsg, DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetConfig, HubEvent,
+    InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListPackagesMsg,
+    ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, PackageInfo,
+    PackageList, Ping, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
+    SetLocalMcpsMsg, SetProviderMsg, SkillList, StartServiceMsg, StopServiceMsg, StreamEvent,
+    StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message, hub_event, server_message,
     stream_event,
 };
 use anyhow::Result;
@@ -97,31 +100,6 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Config(ConfigMsg { config })),
                 } => Ok(config),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
-    /// Replace the full daemon config from JSON.
-    fn set_config(
-        &mut self,
-        config: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::SetConfig(SetConfigMsg { config })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {
@@ -286,64 +264,56 @@ pub trait Client: Send {
         }
     }
 
-    /// Install a hub package.
+    /// Install a hub package, streaming progress events.
     fn install_package(
         &mut self,
         package: String,
         branch: String,
         path: String,
         force: bool,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
-                        package,
-                        branch,
-                        path,
-                        force,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
+    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + '_ {
+        self.request_stream(ClientMessage {
+            msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
+                package,
+                branch,
+                path,
+                force,
+            })),
+        })
+        .take_while(|r| {
+            std::future::ready(!matches!(
+                r,
+                Ok(ServerMessage {
+                    msg: Some(server_message::Msg::HubEvent(HubEvent {
+                        event: Some(hub_event::Event::Done(d))
+                    }))
+                }) if d.error.is_empty()
+            ))
+        })
+        .map(|r| r.and_then(hub_event::Event::try_from))
     }
 
-    /// Uninstall a hub package.
+    /// Uninstall a hub package, streaming progress events.
     fn uninstall_package(
         &mut self,
         package: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
-                        package,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
+    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + '_ {
+        self.request_stream(ClientMessage {
+            msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
+                package,
+            })),
+        })
+        .take_while(|r| {
+            std::future::ready(!matches!(
+                r,
+                Ok(ServerMessage {
+                    msg: Some(server_message::Msg::HubEvent(HubEvent {
+                        event: Some(hub_event::Event::Done(d))
+                    }))
+                }) if d.error.is_empty()
+            ))
+        })
+        .map(|r| r.and_then(hub_event::Event::try_from))
     }
 
     /// List installed hub packages.
@@ -365,6 +335,183 @@ pub trait Client: Send {
                 } => {
                     anyhow::bail!("server error ({code}): {message}")
                 }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List historical conversations from disk.
+    fn list_conversations(
+        &mut self,
+        agent: String,
+        sender: String,
+    ) -> impl std::future::Future<Output = Result<Vec<ConversationInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListConversations(
+                        ListConversationsMsg { agent, sender },
+                    )),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg:
+                        Some(server_message::Msg::ConversationList(ConversationList { conversations })),
+                } => Ok(conversations),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all MCP server configs.
+    fn list_mcps(&mut self) -> impl std::future::Future<Output = Result<Vec<McpInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListMcps(ListMcpsMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::McpList(McpList { mcps })),
+                } => Ok(mcps),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Replace all local MCPs in CrabTalk.toml.
+    fn set_local_mcps(
+        &mut self,
+        mcps: Vec<McpInfo>,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::SetLocalMcps(SetLocalMcpsMsg { mcps })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Create or update a provider.
+    fn set_provider(
+        &mut self,
+        name: String,
+        config: String,
+    ) -> impl std::future::Future<Output = Result<ProviderInfo>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::SetProvider(SetProviderMsg {
+                        name,
+                        config,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::ProviderList(ProviderList { providers })),
+                } => providers
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("empty provider list in response")),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Delete a provider by name.
+    fn delete_provider(
+        &mut self,
+        name: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::DeleteProvider(DeleteProviderMsg {
+                        name,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Set the active model.
+    fn set_active_model(
+        &mut self,
+        model: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::SetActiveModel(SetActiveModelMsg {
+                        model,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List provider presets.
+    fn list_provider_presets(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<ProviderPresetInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListProviderPresets(
+                        ListProviderPresetsMsg {},
+                    )),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg:
+                        Some(server_message::Msg::ProviderPresetList(ProviderPresetList { presets })),
+                } => Ok(presets),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
                 other => anyhow::bail!("unexpected response: {other:?}"),
             }
         }
@@ -414,6 +561,28 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Pong(_)),
                 } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all available skill names.
+    fn list_skills(&mut self) -> impl std::future::Future<Output = Result<Vec<String>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListSkills(ListSkillsMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::SkillList(SkillList { names })),
+                } => Ok(names),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

@@ -1,11 +1,12 @@
 //! Hub package management command.
 
-use crate::repl::{self, runner::Runner};
+use crate::repl::runner::Runner;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use crabhub::manifest::Manifest;
+use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
-use wcore::Setup;
+use wcore::protocol::message::hub_event;
 
 /// Manage hub packages.
 #[derive(Args, Debug)]
@@ -59,90 +60,48 @@ pub struct HubPackage {
 impl Hub {
     /// Run the hub command.
     pub async fn run(self, runner: &mut Runner) -> Result<()> {
-        if let HubCommand::Test(t) = self.command {
-            return test_manifest(&t.path);
-        }
+        let branch = self.branch.as_deref().unwrap_or("");
+        let path = self
+            .path
+            .as_deref()
+            .map(|p| p.to_string_lossy())
+            .unwrap_or_default();
 
-        let (pkg, force, is_install) = match self.command {
-            HubCommand::Install(p) => (p.package, p.force, true),
-            HubCommand::Uninstall(p) => (p.package, false, false),
-            HubCommand::Test(_) => unreachable!(),
-        };
-
-        let on_step = |msg: &str| println!("  {msg}");
-
-        if is_install {
-            let result = crabhub::package::install(
-                &pkg,
-                self.branch.as_deref(),
-                self.path.as_deref(),
-                force,
-                on_step,
-            )
-            .await?;
-            println!("Done: {pkg}");
-
-            // Reload daemon to pick up new components.
-            let _ = runner.reload().await;
-            println!("Daemon reloaded.");
-
-            // Check for conflicts with existing packages.
-            let config_dir = &*wcore::paths::CONFIG_DIR;
-            let (manifest, mut warnings) = wcore::resolve_manifests(config_dir);
-            warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
-            for w in &warnings {
-                tracing::warn!("{w}");
-            }
-
-            // Warn about MCPs that require authentication.
-            for (name, mcp) in &manifest.mcps {
-                if mcp.auth
-                    && !wcore::paths::TOKENS_DIR
-                        .join(format!("{name}.json"))
-                        .exists()
-                {
-                    println!("MCP '{name}' requires authentication.");
+        match self.command {
+            HubCommand::Test(t) => return test_manifest(&t.path),
+            HubCommand::Install(p) => {
+                let mut stream =
+                    std::pin::pin!(runner.install_package(&p.package, branch, &path, p.force));
+                while let Some(event) = stream.next().await {
+                    match event? {
+                        hub_event::Event::Step(s) => println!("  {}", s.message),
+                        hub_event::Event::Warning(w) => eprintln!("  warning: {}", w.message),
+                        hub_event::Event::SetupOutput(o) => print!("{}", o.content),
+                        hub_event::Event::Done(d) => {
+                            if !d.error.is_empty() {
+                                anyhow::bail!("{}", d.error);
+                            }
+                        }
+                    }
                 }
+                println!("Done: {}", p.package);
             }
-
-            // Run prompt-type setup via inference.
-            if let Some(Setup::Prompt { ref prompt }) = result.setup {
-                let prompt_text = if prompt.ends_with(".md") {
-                    let repo_dir = result
-                        .repo_dir
-                        .as_ref()
-                        .context("prompt setup requires a repository but none was cloned")?;
-                    let raw = std::fs::read_to_string(repo_dir.join(prompt))
-                        .with_context(|| format!("failed to read setup prompt: {}", prompt))?;
-                    // Replace <REPO_DIR> placeholder with the actual cached repo path.
-                    raw.replace("<REPO_DIR>", &repo_dir.display().to_string())
-                } else {
-                    prompt.clone()
-                };
-
-                println!("Running setup…");
-                let conn_info = runner.conn_info().clone();
-                let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
-                let stream = runner.stream(
-                    wcore::paths::DEFAULT_AGENT,
-                    &prompt_text,
-                    result.repo_dir.as_deref(),
-                    false,
-                    None,
-                    Some(os_user),
-                );
-                repl::stream_to_terminal(stream, &conn_info).await?;
-                println!();
+            HubCommand::Uninstall(p) => {
+                let mut stream = std::pin::pin!(runner.uninstall_package(&p.package));
+                while let Some(event) = stream.next().await {
+                    match event? {
+                        hub_event::Event::Step(s) => println!("  {}", s.message),
+                        hub_event::Event::Warning(w) => eprintln!("  warning: {}", w.message),
+                        hub_event::Event::SetupOutput(o) => print!("{}", o.content),
+                        hub_event::Event::Done(d) => {
+                            if !d.error.is_empty() {
+                                anyhow::bail!("{}", d.error);
+                            }
+                        }
+                    }
+                }
+                println!("Done: {}", p.package);
             }
-
-            println!("Configure env vars in config.toml [env] section if needed.");
-        } else {
-            crabhub::package::uninstall(&pkg, on_step).await?;
-            println!("Done: {pkg}");
-
-            // Reload daemon to drop removed components.
-            let _ = runner.reload().await;
-            println!("Daemon reloaded.");
         }
 
         Ok(())

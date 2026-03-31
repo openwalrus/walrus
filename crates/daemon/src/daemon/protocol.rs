@@ -12,11 +12,13 @@ use std::{
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, CreateAgentMsg,
-        CreateCronMsg, CronInfo, CronList, DaemonStats, InstallPackageMsg, PackageInfo,
-        ProviderInfo, SendMsg, SendResponse, SessionInfo, StreamChunk, StreamEnd, StreamEvent,
-        StreamMsg, StreamStart, StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent,
-        ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg, stream_event,
+        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationInfo,
+        CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent,
+        HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, PackageInfo, ProviderInfo,
+        ProviderPresetInfo, SendMsg, SendResponse, SessionInfo, StreamChunk, StreamEnd,
+        StreamEvent, StreamMsg, StreamStart, StreamThinking, TokenUsage, ToolCallInfo,
+        ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg, hub_event,
+        stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -240,17 +242,6 @@ impl<H: Host + 'static> Server for Daemon<H> {
         serde_json::to_string(&config).context("failed to serialize config")
     }
 
-    async fn set_config(&self, config: String) -> Result<()> {
-        let parsed: crate::DaemonConfig =
-            serde_json::from_str(&config).context("invalid DaemonConfig JSON")?;
-        let toml_str =
-            toml::to_string_pretty(&parsed).context("failed to serialize config to TOML")?;
-        let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
-        std::fs::write(&config_path, toml_str)
-            .with_context(|| format!("failed to write {}", config_path.display()))?;
-        self.reload().await
-    }
-
     async fn reload(&self) -> Result<()> {
         self.reload().await
     }
@@ -383,39 +374,439 @@ impl<H: Host + 'static> Server for Daemon<H> {
     async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
         let rt = self.runtime.read().await.clone();
         let entries = rt.model.list()?;
+        let config = self.load_config()?;
         Ok(entries
             .into_iter()
-            .map(|e| ProviderInfo {
-                name: e.name,
-                active: e.active,
+            .map(|e| {
+                let cfg_json = config
+                    .provider
+                    .get(&e.name)
+                    .and_then(|def| serde_json::to_string(def).ok())
+                    .unwrap_or_default();
+                ProviderInfo {
+                    name: e.name,
+                    active: e.active,
+                    config: cfg_json,
+                }
             })
             .collect())
     }
 
-    async fn install_package(&self, req: InstallPackageMsg) -> Result<()> {
-        let branch = if req.branch.is_empty() {
-            None
+    fn install_package(
+        &self,
+        req: InstallPackageMsg,
+    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+        let daemon = self.clone();
+        async_stream::try_stream! {
+            let package = req.package;
+            let branch = req.branch;
+            let path = req.path;
+            let force = req.force;
+
+            // Channel bridge: sync on_step callback → async stream.
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let handle = tokio::spawn({
+                let branch = branch.clone();
+                let path = path.clone();
+                let package = package.clone();
+                async move {
+                    let branch = if branch.is_empty() { None } else { Some(branch.as_str()) };
+                    let path = if path.is_empty() { None } else { Some(std::path::Path::new(&path)) };
+                    crabhub::package::install(&package, branch, path, force, |msg| {
+                        let _ = tx.send(msg.to_string());
+                    })
+                    .await
+                }
+            });
+
+            // Drain progress messages while install runs.
+            tokio::pin!(handle);
+            let task_result;
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => yield hub_step(&m),
+                            None => {
+                                // Sender dropped — task finished, await it.
+                                task_result = handle.await;
+                                break;
+                            }
+                        }
+                    }
+                    result = &mut handle => {
+                        rx.close();
+                        while let Some(m) = rx.recv().await {
+                            yield hub_step(&m);
+                        }
+                        task_result = result;
+                        break;
+                    }
+                }
+            }
+            let install_result = task_result
+                .context("install task panicked")??;
+
+            // Reload daemon to pick up new components.
+            yield hub_step("reloading daemon…");
+            daemon.reload().await?;
+
+            // Conflict and auth warnings.
+            let (manifest, mut warnings) = wcore::resolve_manifests(&daemon.config_dir);
+            warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
+            for w in &warnings {
+                yield hub_warning(w);
+            }
+            for (name, mcp) in &manifest.mcps {
+                if mcp.auth
+                    && !wcore::paths::TOKENS_DIR.join(format!("{name}.json")).exists()
+                {
+                    yield hub_warning(&format!("MCP '{name}' requires authentication"));
+                }
+            }
+
+            yield hub_step("configure env vars in config.toml [env] section if needed");
+
+            // Setup::Prompt — run inference through the runtime.
+            if let Some(wcore::Setup::Prompt { ref prompt }) = install_result.setup {
+                let prompt_text = if prompt.ends_with(".md") {
+                    let repo_dir = install_result.repo_dir.as_ref()
+                        .context("prompt setup requires a repository but none was cloned")?;
+                    let raw = tokio::fs::read_to_string(repo_dir.join(prompt))
+                        .await
+                        .with_context(|| format!("failed to read setup prompt: {prompt}"))?;
+                    raw.replace("<REPO_DIR>", &repo_dir.display().to_string())
+                } else {
+                    prompt.clone()
+                };
+
+                yield hub_step("running setup…");
+                let rt = daemon.runtime.read().await.clone();
+                let session_id = rt
+                    .create_session(wcore::paths::DEFAULT_AGENT, "hub-setup")
+                    .await?;
+                let stream = rt.stream_to(session_id, &prompt_text, "hub-setup");
+                futures_util::pin_mut!(stream);
+                while let Some(event) = stream.next().await {
+                    match event {
+                        AgentEvent::TextDelta(text) => {
+                            yield hub_setup_output(&text);
+                        }
+                        AgentEvent::Done(resp) => {
+                            if let wcore::AgentStopReason::Error(ref e) = resp.stop_reason {
+                                yield hub_done(e);
+                                return;
+                            }
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            yield hub_done("");
+        }
+    }
+
+    fn uninstall_package(
+        &self,
+        package: String,
+    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+        let daemon = self.clone();
+        async_stream::try_stream! {
+            // Channel bridge for on_step callback.
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let pkg = package.clone();
+            let handle = tokio::spawn(async move {
+                crabhub::package::uninstall(&pkg, |msg| {
+                    let _ = tx.send(msg.to_string());
+                })
+                .await
+            });
+
+            tokio::pin!(handle);
+            let task_result;
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => yield hub_step(&m),
+                            None => {
+                                task_result = handle.await;
+                                break;
+                            }
+                        }
+                    }
+                    result = &mut handle => {
+                        rx.close();
+                        while let Some(m) = rx.recv().await {
+                            yield hub_step(&m);
+                        }
+                        task_result = result;
+                        break;
+                    }
+                }
+            }
+            task_result.context("uninstall task panicked")??;
+
+            yield hub_step("reloading daemon…");
+            daemon.reload().await?;
+            yield hub_done("");
+        }
+    }
+
+    async fn list_conversations(
+        &self,
+        agent: String,
+        sender: String,
+    ) -> Result<Vec<ConversationInfo>> {
+        let sessions_dir = self.config_dir.join("sessions");
+        tokio::task::spawn_blocking(move || scan_conversations_all(&sessions_dir, &agent, &sender))
+            .await
+            .context("conversation scan task panicked")
+    }
+
+    async fn list_mcps(&self) -> Result<Vec<McpInfo>> {
+        let mut mcps = Vec::new();
+
+        // Local MCPs from CrabTalk.toml.
+        let manifest_path = self
+            .config_dir
+            .join(wcore::paths::LOCAL_DIR)
+            .join("CrabTalk.toml");
+        if let Ok(Some(manifest)) = wcore::ManifestConfig::load(&manifest_path) {
+            for (name, cfg) in &manifest.mcps {
+                mcps.push(mcp_to_info(name, cfg, "local"));
+            }
+        }
+
+        // Hub-installed MCPs from packages.
+        for (pkg_id, manifest) in scan_package_manifests(&self.config_dir) {
+            for (name, mcp_res) in &manifest.mcps {
+                if mcps.iter().any(|m| m.name == *name) {
+                    continue; // local wins
+                }
+                mcps.push(McpInfo {
+                    name: name.clone(),
+                    command: mcp_res.command.clone(),
+                    args: mcp_res.args.clone(),
+                    env: mcp_res
+                        .env
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                    url: mcp_res.url.clone().unwrap_or_default(),
+                    auth: mcp_res.auth,
+                    source: pkg_id.clone(),
+                    auto_restart: mcp_res.auto_restart,
+                });
+            }
+        }
+
+        Ok(mcps)
+    }
+
+    async fn set_local_mcps(&self, mcps: Vec<McpInfo>) -> Result<()> {
+        use toml_edit::{Array, DocumentMut, Item, Table, value};
+
+        let manifest_path = self
+            .config_dir
+            .join(wcore::paths::LOCAL_DIR)
+            .join("CrabTalk.toml");
+        let local_dir = self.config_dir.join(wcore::paths::LOCAL_DIR);
+        std::fs::create_dir_all(&local_dir)
+            .with_context(|| format!("cannot create {}", local_dir.display()))?;
+
+        let content = if manifest_path.exists() {
+            std::fs::read_to_string(&manifest_path)
+                .with_context(|| format!("cannot read {}", manifest_path.display()))?
         } else {
-            Some(req.branch.as_str())
+            String::new()
         };
-        let path = if req.path.is_empty() {
-            None
-        } else {
-            Some(std::path::Path::new(&req.path))
-        };
-        crabhub::package::install(&req.package, branch, path, req.force, |msg| {
-            tracing::info!("{msg}");
-        })
-        .await?;
+        let mut doc: DocumentMut = content
+            .parse()
+            .with_context(|| format!("invalid TOML in {}", manifest_path.display()))?;
+
+        doc.remove("mcps");
+        if !mcps.is_empty() {
+            let mut mcps_table = Table::new();
+            for mcp in &mcps {
+                let mut tbl = Table::new();
+                if !mcp.url.is_empty() {
+                    tbl.insert("url", value(&mcp.url));
+                } else {
+                    if !mcp.command.is_empty() {
+                        tbl.insert("command", value(&mcp.command));
+                    }
+                    if !mcp.args.is_empty() {
+                        let mut arr = Array::new();
+                        for a in &mcp.args {
+                            arr.push(a.as_str());
+                        }
+                        tbl.insert("args", Item::Value(arr.into()));
+                    }
+                }
+                if mcp.auth {
+                    tbl.insert("auth", value(true));
+                }
+                if mcp.auto_restart {
+                    tbl.insert("auto_restart", value(true));
+                }
+                if !mcp.env.is_empty() {
+                    let mut env_tbl = Table::new();
+                    for (k, v) in &mcp.env {
+                        env_tbl.insert(k, value(v));
+                    }
+                    tbl.insert("env", Item::Table(env_tbl));
+                }
+                mcps_table.insert(&mcp.name, Item::Table(tbl));
+            }
+            doc.insert("mcps", Item::Table(mcps_table));
+        }
+
+        std::fs::write(&manifest_path, doc.to_string())
+            .with_context(|| format!("failed to write {}", manifest_path.display()))?;
         self.reload().await
     }
 
-    async fn uninstall_package(&self, package: String) -> Result<()> {
-        crabhub::package::uninstall(&package, |msg| {
-            tracing::info!("{msg}");
+    async fn set_provider(&self, name: String, config: String) -> Result<ProviderInfo> {
+        use toml_edit::DocumentMut;
+
+        let def: wcore::ProviderDef =
+            serde_json::from_str(&config).context("invalid ProviderDef JSON")?;
+
+        // Validate before writing: merge with existing providers and check.
+        let daemon_config = self.load_config()?;
+        let mut all_providers = daemon_config.provider;
+        all_providers.insert(name.clone(), def.clone());
+        model::validate_providers(&all_providers)?;
+
+        let toml_value = toml::to_string(&def).context("failed to serialize provider to TOML")?;
+        let provider_doc: DocumentMut = toml_value
+            .parse()
+            .context("failed to parse provider TOML")?;
+
+        let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
+        let content = std::fs::read_to_string(&config_path)
+            .with_context(|| format!("cannot read {}", config_path.display()))?;
+        let mut doc: DocumentMut = content
+            .parse()
+            .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
+
+        if doc.get("provider").is_none() {
+            doc.insert("provider", toml_edit::Item::Table(toml_edit::Table::new()));
+        }
+        let provider_table = doc["provider"]
+            .as_table_mut()
+            .context("[provider] is not a table")?;
+
+        let mut entry = toml_edit::Table::new();
+        for (key, value) in provider_doc.as_table().iter() {
+            entry.insert(key, value.clone());
+        }
+        provider_table.insert(&name, toml_edit::Item::Table(entry));
+
+        std::fs::write(&config_path, doc.to_string())
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
+        self.reload().await?;
+
+        // Return the config as actually loaded by the daemon, not the input.
+        let loaded_config = self.load_config()?;
+        let loaded_json = loaded_config
+            .provider
+            .get(&name)
+            .and_then(|def| serde_json::to_string(def).ok())
+            .unwrap_or_default();
+        let rt = self.runtime.read().await.clone();
+        let active = rt.model.provider_name_for(&name).is_some_and(|n| n == name);
+        Ok(ProviderInfo {
+            name,
+            active,
+            config: loaded_json,
         })
-        .await?;
+    }
+
+    async fn delete_provider(&self, name: String) -> Result<()> {
+        use toml_edit::DocumentMut;
+
+        let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
+        let content = std::fs::read_to_string(&config_path)
+            .with_context(|| format!("cannot read {}", config_path.display()))?;
+        let mut doc: DocumentMut = content
+            .parse()
+            .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
+
+        let removed = doc
+            .get_mut("provider")
+            .and_then(|v| v.as_table_mut())
+            .and_then(|t| t.remove(&name))
+            .is_some();
+        if !removed {
+            anyhow::bail!("provider '{name}' not found");
+        }
+
+        std::fs::write(&config_path, doc.to_string())
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
         self.reload().await
+    }
+
+    async fn set_active_model(&self, model: String) -> Result<()> {
+        use toml_edit::{DocumentMut, Item, Table, value};
+
+        // Validate model exists in some provider.
+        let daemon_config = self.load_config()?;
+        let model_exists = daemon_config
+            .provider
+            .values()
+            .any(|def| def.models.iter().any(|m| m == &model));
+        if !model_exists {
+            anyhow::bail!("model '{model}' not found in any provider");
+        }
+
+        let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
+        let content = std::fs::read_to_string(&config_path)
+            .with_context(|| format!("cannot read {}", config_path.display()))?;
+        let mut doc: DocumentMut = content
+            .parse()
+            .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
+
+        if doc.get("system").is_none() {
+            doc.insert("system", Item::Table(Table::new()));
+        }
+        if let Some(system) = doc.get_mut("system").and_then(|s| s.as_table_mut()) {
+            if system.get("crab").is_none() {
+                system.insert("crab", Item::Table(Table::new()));
+            }
+            if let Some(crab) = system.get_mut("crab").and_then(|w| w.as_table_mut()) {
+                crab.insert("model", value(&model));
+            }
+        }
+
+        std::fs::write(&config_path, doc.to_string())
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
+        self.reload().await
+    }
+
+    async fn list_provider_presets(&self) -> Result<Vec<ProviderPresetInfo>> {
+        Ok(wcore::config::PROVIDER_PRESETS
+            .iter()
+            .map(|p| ProviderPresetInfo {
+                name: p.name.to_string(),
+                kind: wcore::protocol::message::ProtoProviderKind::from(p.kind).into(),
+                base_url: p.base_url.to_string(),
+                fixed_base_url: p.fixed_base_url.to_string(),
+                default_model: p.default_model.to_string(),
+            })
+            .collect())
+    }
+
+    async fn list_skills(&self) -> Result<Vec<String>> {
+        let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
+        let mut names = std::collections::BTreeSet::new();
+        for dir in &manifest.skill_dirs {
+            names.extend(wcore::scan_skill_names(dir));
+        }
+        Ok(names.into_iter().collect())
     }
 
     async fn list_packages(&self) -> Result<Vec<PackageInfo>> {
@@ -635,6 +1026,194 @@ impl<H: Host + 'static> Daemon<H> {
         std::fs::write(&manifest_path, doc.to_string())
             .context("failed to write local manifest")?;
         Ok(())
+    }
+}
+
+fn hub_step(message: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::Step(HubStep {
+            message: message.to_string(),
+        })),
+    }
+}
+
+fn hub_warning(message: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::Warning(HubWarning {
+            message: message.to_string(),
+        })),
+    }
+}
+
+fn hub_setup_output(content: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::SetupOutput(HubSetupOutput {
+            content: content.to_string(),
+        })),
+    }
+}
+
+fn hub_done(error: &str) -> HubEvent {
+    HubEvent {
+        event: Some(hub_event::Event::Done(HubDone {
+            error: error.to_string(),
+        })),
+    }
+}
+
+/// Scan session files and return conversation info.
+///
+/// If `agent` and `sender` are both empty, returns all conversations.
+/// Otherwise, filters to the given identity.
+fn scan_conversations_all(
+    sessions_dir: &std::path::Path,
+    agent: &str,
+    sender: &str,
+) -> Vec<ConversationInfo> {
+    let Ok(entries) = std::fs::read_dir(sessions_dir) else {
+        return Vec::new();
+    };
+
+    let filter_prefix = if !agent.is_empty() && !sender.is_empty() {
+        Some(format!("{}_{}_", agent, wcore::sender_slug(sender)))
+    } else {
+        None
+    };
+
+    let today = chrono::Local::now().date_naive();
+    let mut results = Vec::new();
+
+    for file in entries.flatten() {
+        let path = file.path();
+        if path.is_dir() {
+            continue;
+        }
+        let name = file.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.ends_with(".jsonl") {
+            continue;
+        }
+
+        if let Some(ref prefix) = filter_prefix
+            && !name.starts_with(prefix)
+        {
+            continue;
+        }
+
+        let Some((file_agent, file_sender, seq, title)) = parse_session_filename(name) else {
+            continue;
+        };
+
+        if filter_prefix.is_none() && !agent.is_empty() && file_agent != agent {
+            continue;
+        }
+
+        let mtime = file
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        let (alive_secs, message_count) = read_session_file_stats(&path);
+        let date = mtime_to_label(mtime, today);
+
+        results.push((
+            mtime,
+            ConversationInfo {
+                agent: file_agent,
+                sender: file_sender,
+                seq,
+                title,
+                file_path: path.to_string_lossy().into_owned(),
+                message_count,
+                alive_secs,
+                date,
+            },
+        ));
+    }
+
+    // Sort by mtime descending (most recently active first).
+    results.sort_by(|a, b| b.0.cmp(&a.0));
+    results.into_iter().map(|(_, info)| info).collect()
+}
+
+/// Parse a session filename into (agent, sender, seq, title).
+///
+/// Format: `{agent}_{sender}_{seq}[_{title}].jsonl`
+fn parse_session_filename(name: &str) -> Option<(String, String, u32, String)> {
+    let stem = name.strip_suffix(".jsonl")?;
+    let parts: Vec<&str> = stem.split('_').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    // Find the first numeric part after position 1 (that's the seq).
+    for i in 2..parts.len() {
+        if !parts[i].is_empty() && parts[i].chars().all(|c| c.is_ascii_digit()) {
+            let agent = parts[0].to_string();
+            let sender = parts[1..i].join("_");
+            let seq: u32 = parts[i].parse().ok()?;
+            let title = if i + 1 < parts.len() {
+                parts[i + 1..].join("_")
+            } else {
+                String::new()
+            };
+            return Some((agent, sender, seq, title));
+        }
+    }
+    None
+}
+
+/// Read uptime_secs from meta line and count message lines.
+fn read_session_file_stats(path: &std::path::Path) -> (u64, u64) {
+    use std::io::{BufRead, BufReader};
+
+    let Ok(file) = std::fs::File::open(path) else {
+        return (0, 0);
+    };
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+
+    let uptime = lines
+        .next()
+        .and_then(|l| l.ok())
+        .and_then(|l| {
+            let v: serde_json::Value = serde_json::from_str(&l).ok()?;
+            v.get("uptime_secs")?.as_u64()
+        })
+        .unwrap_or(0);
+
+    let msg_count = lines
+        .map_while(|l| l.ok())
+        .filter(|l| !l.trim().is_empty() && !l.contains("\"compact\""))
+        .count() as u64;
+
+    (uptime, msg_count)
+}
+
+/// Convert a file mtime to a human-readable date label.
+fn mtime_to_label(mtime: std::time::SystemTime, today: chrono::NaiveDate) -> String {
+    let date = chrono::DateTime::<chrono::Local>::from(mtime).date_naive();
+    if date == today {
+        "Today".to_string()
+    } else if date == today - chrono::Duration::days(1) {
+        "Yesterday".to_string()
+    } else {
+        date.format("%Y-%m-%d").to_string()
+    }
+}
+
+fn mcp_to_info(name: &str, cfg: &wcore::McpServerConfig, source: &str) -> McpInfo {
+    McpInfo {
+        name: name.to_string(),
+        command: cfg.command.clone(),
+        args: cfg.args.clone(),
+        env: cfg
+            .env
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        url: cfg.url.clone().unwrap_or_default(),
+        auth: cfg.auth,
+        source: source.to_string(),
+        auto_restart: cfg.auto_restart,
     }
 }
 
