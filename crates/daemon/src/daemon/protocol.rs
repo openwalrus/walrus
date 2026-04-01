@@ -13,11 +13,11 @@ use wcore::protocol::{
     api::Server,
     message::{
         AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationInfo,
-        CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent,
-        HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, ModelInfo, PackageInfo,
-        ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse,
-        SessionInfo, SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg,
-        StreamStart, StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+        CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent, HubStep,
+        HubWarning, InstallPackageMsg, McpInfo, ModelInfo, PackageInfo, ProtoProviderKind,
+        ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse, SessionInfo,
+        SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
+        StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
         ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
     },
 };
@@ -454,44 +454,29 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
             yield hub_step("configure env vars in config.toml [env] section if needed");
 
-            // Setup::Prompt — run inference through the runtime.
-            if let Some(wcore::Setup::Prompt { ref prompt }) = install_result.setup {
-                let prompt_text = if prompt.ends_with(".md") {
-                    let repo_dir = install_result.repo_dir.as_ref()
-                        .context("prompt setup requires a repository but none was cloned")?;
-                    let raw = tokio::fs::read_to_string(repo_dir.join(prompt))
-                        .await
-                        .with_context(|| format!("failed to read setup prompt: {prompt}"))?;
-                    raw.replace("<REPO_DIR>", &repo_dir.display().to_string())
-                } else {
-                    prompt.clone()
-                };
-
-                yield hub_step("running setup…");
-                let rt = daemon.runtime.read().await.clone();
-                let session_id = rt
-                    .create_session(wcore::paths::DEFAULT_AGENT, "hub-setup")
-                    .await?;
-                let stream = rt.stream_to(session_id, &prompt_text, "hub-setup");
-                futures_util::pin_mut!(stream);
-                while let Some(event) = stream.next().await {
-                    match event {
-                        AgentEvent::TextDelta(text) => {
-                            yield hub_setup_output(&text);
-                        }
-                        AgentEvent::Done(resp) => {
-                            if let wcore::AgentStopReason::Error(ref e) = resp.stop_reason {
-                                yield hub_done(e);
-                                return;
-                            }
-                            break;
-                        }
-                        _ => {}
+            // Resolve setup prompt text (if any) and return it to the client.
+            // The client runs the setup via the normal `stream` RPC so the user
+            // sees full LLM output, tool calls, and can answer ask_user prompts.
+            let setup_prompt = match install_result.setup {
+                Some(wcore::Setup::Prompt { ref prompt }) => {
+                    if prompt.ends_with(".md") {
+                        let repo_dir = install_result.repo_dir.as_ref()
+                            .context("prompt setup requires a repository but none was cloned")?;
+                        let raw = tokio::fs::read_to_string(repo_dir.join(prompt))
+                            .await
+                            .with_context(|| format!("failed to read setup prompt: {prompt}"))?;
+                        raw.replace("<REPO_DIR>", &repo_dir.display().to_string())
+                    } else {
+                        prompt.clone()
                     }
                 }
-            }
+                _ => String::new(),
+            };
 
-            yield hub_done("");
+            yield HubEvent { event: Some(hub_event::Event::Done(HubDone {
+                error: String::new(),
+                setup_prompt,
+            })) };
         }
     }
 
@@ -1165,18 +1150,11 @@ fn hub_warning(message: &str) -> HubEvent {
     }
 }
 
-fn hub_setup_output(content: &str) -> HubEvent {
-    HubEvent {
-        event: Some(hub_event::Event::SetupOutput(HubSetupOutput {
-            content: content.to_string(),
-        })),
-    }
-}
-
 fn hub_done(error: &str) -> HubEvent {
     HubEvent {
         event: Some(hub_event::Event::Done(HubDone {
             error: error.to_string(),
+            setup_prompt: String::new(),
         })),
     }
 }

@@ -552,4 +552,5 @@ message HubSetupOutput {
 
 message HubDone {
   string error = 1;
+  string setup_prompt = 2;
 }

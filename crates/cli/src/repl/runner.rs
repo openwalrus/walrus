@@ -331,15 +331,21 @@ impl Runner {
                     force,
                 })),
             })
-            .take_while(|r| {
-                std::future::ready(!matches!(
-                    r,
+            .scan(false, |done, item| {
+                if *done {
+                    return std::future::ready(None);
+                }
+                if matches!(
+                    &item,
                     Ok(ServerMessage {
                         msg: Some(server_message::Msg::HubEvent(HubEvent {
-                            event: Some(hub_event::Event::Done(d))
+                            event: Some(hub_event::Event::Done(_))
                         }))
-                    }) if d.error.is_empty()
-                ))
+                    })
+                ) {
+                    *done = true;
+                }
+                std::future::ready(Some(item))
             })
             .filter_map(|r| {
                 std::future::ready(match r {
@@ -370,15 +376,21 @@ impl Runner {
                     package: package.to_string(),
                 })),
             })
-            .take_while(|r| {
-                std::future::ready(!matches!(
-                    r,
+            .scan(false, |done, item| {
+                if *done {
+                    return std::future::ready(None);
+                }
+                if matches!(
+                    &item,
                     Ok(ServerMessage {
                         msg: Some(server_message::Msg::HubEvent(HubEvent {
-                            event: Some(hub_event::Event::Done(d))
+                            event: Some(hub_event::Event::Done(_))
                         }))
-                    }) if d.error.is_empty()
-                ))
+                    })
+                ) {
+                    *done = true;
+                }
+                std::future::ready(Some(item))
             })
             .filter_map(|r| {
                 std::future::ready(match r {
