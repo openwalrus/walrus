@@ -76,27 +76,57 @@ pub async fn install(
         None
     };
 
-    // Run setup script from the cached repo.
+    // Run setup script from the cached repo, streaming output line by line.
     if let Some(ref setup) = manifest.package.setup
         && let Some(ref dir) = repo_dir
     {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        use tokio::process::Command;
+
         let script = &setup.script;
         on_step("running setup script…");
         let is_file = !script.contains(' ') && dir.join(script).is_file();
-        let status = if is_file {
-            tokio::process::Command::new("bash")
+        let mut child = if is_file {
+            Command::new("bash")
                 .arg(script)
                 .current_dir(dir)
-                .status()
-                .await
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
         } else {
-            tokio::process::Command::new("bash")
+            Command::new("bash")
                 .args(["-c", script])
                 .current_dir(dir)
-                .status()
-                .await
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
         }
-        .with_context(|| format!("failed to run setup script: {script}"))?;
+        .with_context(|| format!("failed to spawn setup script: {script}"))?;
+
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let mut stdout_lines = BufReader::new(stdout).lines();
+        let mut stderr_lines = BufReader::new(stderr).lines();
+
+        loop {
+            tokio::select! {
+                line = stdout_lines.next_line() => match line {
+                    Ok(Some(line)) => on_step(&line),
+                    Ok(None) => break,
+                    Err(_) => break,
+                },
+                line = stderr_lines.next_line() => match line {
+                    Ok(Some(line)) => on_step(&line),
+                    Ok(None) => {}
+                    Err(_) => {}
+                },
+            }
+        }
+
+        let status = child
+            .wait()
+            .await
+            .with_context(|| format!("failed to wait for setup script: {script}"))?;
         anyhow::ensure!(status.success(), "setup script exited with {status}");
     }
 
