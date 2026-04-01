@@ -16,9 +16,9 @@ use wcore::protocol::{
         CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent,
         HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, PackageInfo, ProviderInfo,
         ProviderPresetInfo, ResourceKind, SendMsg, SendResponse, SessionInfo, SkillInfo,
-        StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, TokenUsage,
-        ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg,
-        hub_event, stream_event,
+        SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
+        TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
+        UpdateAgentMsg, hub_event, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -578,7 +578,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
             Ok(Some(local)) => {
                 for (name, cfg) in &local.mcps {
                     let enabled = !local.disabled.mcps.contains(name);
-                    mcps.push(mcp_to_info(name, cfg, "local", enabled));
+                    mcps.push(mcp_to_info(name, cfg, "local", SourceKind::Local, enabled));
                 }
                 local.disabled.mcps
             }
@@ -593,7 +593,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                 }
                 let enabled = !disabled_mcps.contains(name);
                 let cfg = mcp_res.to_server_config();
-                mcps.push(mcp_to_info(name, &cfg, &pkg_id, enabled));
+                mcps.push(mcp_to_info(name, &cfg, &pkg_id, SourceKind::Package, enabled));
             }
         }
 
@@ -799,17 +799,48 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
     async fn list_skills(&self) -> Result<Vec<SkillInfo>> {
         let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
-        let mut names = std::collections::BTreeSet::new();
+        let local_skills_dir = self.config_dir.join(wcore::paths::SKILLS_DIR);
+
+        // Reverse-lookup: dir path → package id.
+        let dir_to_pkg: std::collections::BTreeMap<_, _> = manifest
+            .package_skill_dirs
+            .iter()
+            .map(|(id, dir)| (dir.clone(), id.clone()))
+            .collect();
+
+        let mut seen = std::collections::BTreeSet::new();
+        let mut skills = Vec::new();
+
         for dir in &manifest.skill_dirs {
-            names.extend(wcore::scan_skill_names(dir));
-        }
-        Ok(names
-            .into_iter()
-            .map(|name| {
+            let (source, source_kind) = if *dir == local_skills_dir {
+                ("local".to_string(), SourceKind::Local)
+            } else if let Some(pkg_id) = dir_to_pkg.get(dir) {
+                (pkg_id.clone(), SourceKind::Package)
+            } else {
+                let name = dir
+                    .components()
+                    .rev()
+                    .nth(1)
+                    .and_then(|c| c.as_os_str().to_str())
+                    .and_then(|s| s.strip_prefix('.'))
+                    .unwrap_or("external");
+                (name.to_string(), SourceKind::External)
+            };
+
+            for name in wcore::scan_skill_names(dir) {
+                if !seen.insert(name.clone()) {
+                    continue;
+                }
                 let enabled = !manifest.disabled.skills.contains(&name);
-                SkillInfo { name, enabled }
-            })
-            .collect())
+                skills.push(SkillInfo {
+                    name,
+                    enabled,
+                    source: source.clone(),
+                    source_kind: source_kind.into(),
+                });
+            }
+        }
+        Ok(skills)
     }
 
     async fn set_enabled(&self, kind: ResourceKind, name: String, enabled: bool) -> Result<()> {
@@ -1273,7 +1304,13 @@ fn mtime_to_label(mtime: std::time::SystemTime, today: chrono::NaiveDate) -> Str
     }
 }
 
-fn mcp_to_info(name: &str, cfg: &wcore::McpServerConfig, source: &str, enabled: bool) -> McpInfo {
+fn mcp_to_info(
+    name: &str,
+    cfg: &wcore::McpServerConfig,
+    source: &str,
+    source_kind: SourceKind,
+    enabled: bool,
+) -> McpInfo {
     McpInfo {
         name: name.to_string(),
         command: cfg.command.clone(),
@@ -1288,6 +1325,7 @@ fn mcp_to_info(name: &str, cfg: &wcore::McpServerConfig, source: &str, enabled: 
         source: source.to_string(),
         auto_restart: cfg.auto_restart,
         enabled,
+        source_kind: source_kind.into(),
     }
 }
 

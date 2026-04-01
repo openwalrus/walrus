@@ -152,6 +152,13 @@ enum ResourceKind {
   SKILL = 3;
 }
 
+enum SourceKind {
+  SOURCE_KIND_UNKNOWN = 0;
+  LOCAL = 1;
+  PACKAGE = 2;
+  EXTERNAL = 3;
+}
+
 message SetEnabledMsg {
   ResourceKind kind = 1;
   string name = 2;
@@ -431,6 +438,8 @@ message ServiceLogOutput {
 message SkillInfo {
   string name = 1;
   bool enabled = 2;
+  string source = 3;
+  SourceKind source_kind = 4;
 }
 
 message SkillList {
@@ -462,6 +471,7 @@ message McpInfo {
   string source = 7;
   bool auto_restart = 8;
   bool enabled = 9;
+  SourceKind source_kind = 10;
 }
 
 message McpList {
