@@ -97,6 +97,10 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 url = "2"
 
+[patch.crates-io]
+crabllm-core = { path = "crabllm-core" }
+crabllm-provider = { path = "crabllm-provider" }
+
 [profile.prod]
 inherits = "release"
 opt-level = 3
