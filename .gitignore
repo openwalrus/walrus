@@ -17,3 +17,5 @@ Cargo.toml.orig
 TODOs.md
 spec
 res
+*.local.json
+*.local.md
