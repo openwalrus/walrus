@@ -491,9 +491,9 @@ dependencies = [
 
 [[package]]
 name = "crabllm-core"
-version = "0.0.11"
+version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09167c417c2a1033213e80708ed5262d8ef04b0924dbdedb54735a205ab1f13a"
+checksum = "620270d9c0241a55b29fddbcdc8279c2f9c86f3800298e75bdb5df4c59dc380c"
 dependencies = [
  "serde",
  "serde_json",
@@ -501,9 +501,9 @@ dependencies = [
 
 [[package]]
 name = "crabllm-provider"
-version = "0.0.11"
+version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7742ea7f39e02119ea6a5335a1bd1ac8190f565d17d0149ccc9a7d7f3a6b11c4"
+checksum = "663cb4383ca791ec38a3c57dcf44ecd690aef0e2f3c19dd3b322cc53f33b3406"
 dependencies = [
  "bytes",
  "crabllm-core",

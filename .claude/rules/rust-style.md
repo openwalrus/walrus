@@ -25,6 +25,10 @@
 
 - Binary entry points always go in `src/bin/main.rs`, never `src/main.rs`. Use `[[bin]] path = "src/bin/main.rs"` in `Cargo.toml`.
 
+## Constants
+
+- Extract magic strings (API prefixes, header values, URL paths) to `const` when they carry semantic meaning or could cause silent bugs if mistyped. Format strings and error messages are fine inline.
+
 ## No Indirection
 
 - Prefer plain functions over traits with one implementor.
