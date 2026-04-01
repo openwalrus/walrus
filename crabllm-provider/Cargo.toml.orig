@@ -1,0 +1,31 @@
+[package]
+name = "crabllm-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Provider dispatch for the crabllm LLM API gateway"
+keywords = ["llm", "openai", "anthropic", "gemini", "bedrock"]
+categories = ["web-programming::http-client", "network-programming"]
+
+[features]
+native-tls = ["reqwest/native-tls"]
+rustls = ["reqwest/rustls"]
+provider-bedrock = ["hmac", "sha2"]
+
+[dependencies]
+crabllm-core.workspace = true
+
+# crates-io
+bytes.workspace = true
+futures.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+# optional (bedrock)
+hmac = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
