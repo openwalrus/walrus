@@ -3,10 +3,10 @@
 use crate::protocol::message::{
     AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConversationInfo,
     ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg,
-    HubEvent, InstallPackageMsg, McpInfo, McpList, PackageInfo, PackageList, Pong, ProviderInfo,
-    ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind, SendMsg, SendResponse,
-    ServerMessage, ServiceLogOutput, SessionInfo, SessionList, SkillInfo, SkillList, StreamEvent,
-    StreamMsg, UpdateAgentMsg, client_message, server_message,
+    HubEvent, InstallPackageMsg, McpInfo, McpList, ModelInfo, ModelList, PackageInfo, PackageList,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind,
+    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SessionInfo, SessionList, SkillInfo,
+    SkillList, StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -135,6 +135,9 @@ pub trait Server: Sync {
 
     /// Handle `ListSkills` — return all available skills with enabled state.
     fn list_skills(&self) -> impl std::future::Future<Output = Result<Vec<SkillInfo>>> + Send;
+
+    /// Handle `ListModels` — return all resolved models with provider and active state.
+    fn list_models(&self) -> impl std::future::Future<Output = Result<Vec<ModelInfo>>> + Send;
 
     /// Handle `SetEnabled` — enable or disable a provider, MCP, or skill.
     fn set_enabled(
@@ -408,6 +411,14 @@ pub trait Server: Sync {
                     yield match self.list_skills().await {
                         Ok(skills) => ServerMessage {
                             msg: Some(server_message::Msg::SkillList(SkillList { skills })),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListModels(_) => {
+                    yield match self.list_models().await {
+                        Ok(models) => ServerMessage {
+                            msg: Some(server_message::Msg::ModelList(ModelList { models })),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };

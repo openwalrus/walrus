@@ -14,11 +14,11 @@ use wcore::protocol::{
     message::{
         AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationInfo,
         CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent,
-        HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, PackageInfo, ProviderInfo,
-        ProviderPresetInfo, ResourceKind, SendMsg, SendResponse, SessionInfo, SkillInfo,
-        SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
-        TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
-        UpdateAgentMsg, hub_event, stream_event,
+        HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, ModelInfo, PackageInfo,
+        ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse,
+        SessionInfo, SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg,
+        StreamStart, StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+        ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -841,6 +841,29 @@ impl<H: Host + 'static> Server for Daemon<H> {
             }
         }
         Ok(skills)
+    }
+
+    async fn list_models(&self) -> Result<Vec<ModelInfo>> {
+        let rt = self.runtime.read().await.clone();
+        let config = self.load_config()?;
+        let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
+        let active_model = rt.model.active_model_name().unwrap_or_default();
+
+        let mut models = Vec::new();
+        for (provider_name, def) in &config.provider {
+            let enabled = !manifest.disabled.providers.contains(provider_name);
+            let kind: i32 = ProtoProviderKind::from(def.kind).into();
+            for model_name in &def.models {
+                models.push(ModelInfo {
+                    name: model_name.clone(),
+                    provider: provider_name.clone(),
+                    active: *model_name == active_model,
+                    enabled,
+                    kind,
+                });
+            }
+        }
+        Ok(models)
     }
 
     async fn set_enabled(&self, kind: ResourceKind, name: String, enabled: bool) -> Result<()> {

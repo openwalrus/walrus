@@ -40,6 +40,8 @@ message ClientMessage {
     ListSkillsMsg list_skills = 23;
     // Enable/disable
     SetEnabledMsg set_enabled = 35;
+    // Models
+    ListModelsMsg list_models = 36;
     // Services
     StartServiceMsg start_service = 24;
     StopServiceMsg stop_service = 25;
@@ -145,6 +147,8 @@ message ListPackagesMsg {}
 
 message ListSkillsMsg {}
 
+message ListModelsMsg {}
+
 enum ResourceKind {
   RESOURCE_KIND_UNKNOWN = 0;
   PROVIDER = 1;
@@ -232,6 +236,8 @@ message ServerMessage {
     PackageList package_list = 14;
     // Skills
     SkillList skill_list = 15;
+    // Models
+    ModelList model_list = 22;
     // Services
     ServiceLogOutput service_log_output = 16;
     // Cron
@@ -444,6 +450,18 @@ message SkillInfo {
 
 message SkillList {
   repeated SkillInfo skills = 1;
+}
+
+message ModelInfo {
+  string name = 1;
+  string provider = 2;
+  bool active = 3;
+  bool enabled = 4;
+  ProviderKind kind = 5;
+}
+
+message ModelList {
+  repeated ModelInfo models = 1;
 }
 
 message ConversationInfo {

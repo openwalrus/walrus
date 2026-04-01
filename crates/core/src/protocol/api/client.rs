@@ -3,13 +3,13 @@
 use crate::protocol::message::{
     AgentInfo, AgentList, ClientMessage, ConversationInfo, ConversationList, CreateAgentMsg,
     DaemonStats, DeleteAgentMsg, DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetStats, HubEvent,
-    InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListPackagesMsg,
-    ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, PackageInfo,
-    PackageList, Ping, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList,
-    ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg,
-    SetActiveModelMsg, SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList,
-    StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg,
-    client_message, hub_event, server_message, stream_event,
+    InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListModelsMsg,
+    ListPackagesMsg, ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList,
+    ModelInfo, ModelList, PackageInfo, PackageList, Ping, ProviderInfo, ProviderList,
+    ProviderPresetInfo, ProviderPresetList, ResourceKind, SendMsg, SendResponse, ServerMessage,
+    ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetEnabledMsg, SetLocalMcpsMsg,
+    SetProviderMsg, SkillInfo, SkillList, StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg,
+    UninstallPackageMsg, UpdateAgentMsg, client_message, hub_event, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -583,6 +583,30 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::SkillList(SkillList { skills })),
                 } => Ok(skills),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all resolved models with provider and active state.
+    fn list_models(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<ModelInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListModels(ListModelsMsg {})),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::ModelList(ModelList { models })),
+                } => Ok(models),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {
