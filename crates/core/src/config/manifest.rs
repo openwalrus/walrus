@@ -314,10 +314,10 @@ fn scan_skill_names_inner(dir: &Path, results: &mut Vec<String>) {
         }
 
         let skill_file = path.join("SKILL.md");
-        if skill_file.exists() {
-            if let Some(name) = extract_skill_name(&skill_file) {
-                results.push(name);
-            }
+        if skill_file.exists()
+            && let Some(name) = extract_skill_name(&skill_file)
+        {
+            results.push(name);
         }
         scan_skill_names_inner(&path, results);
     }
