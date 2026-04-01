@@ -318,9 +318,8 @@ fn scan_skill_names_inner(dir: &Path, results: &mut Vec<String>) {
             if let Some(name) = extract_skill_name(&skill_file) {
                 results.push(name);
             }
-        } else {
-            scan_skill_names_inner(&path, results);
         }
+        scan_skill_names_inner(&path, results);
     }
 }
 
