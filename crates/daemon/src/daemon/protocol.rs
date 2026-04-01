@@ -358,7 +358,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
     async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
         let rt = self.runtime.read().await.clone();
         let config = self.load_config()?;
-        let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
+        let (manifest, _) = self.resolve_manifests()?;
         Ok(config
             .provider
             .iter()
@@ -439,7 +439,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
             daemon.reload().await?;
 
             // Conflict and auth warnings.
-            let (manifest, mut warnings) = wcore::resolve_manifests(&daemon.config_dir);
+            let (manifest, mut warnings) = daemon.resolve_manifests()?;
             warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
             for w in &warnings {
                 yield hub_warning(w);
@@ -534,6 +534,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
     }
 
     async fn list_mcps(&self) -> Result<Vec<McpInfo>> {
+        let config = self.load_config()?;
         let mut mcps = Vec::new();
 
         // Local MCPs from CrabTalk.toml.
@@ -541,16 +542,12 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .config_dir
             .join(wcore::paths::LOCAL_DIR)
             .join("CrabTalk.toml");
-        let disabled_mcps = match wcore::ManifestConfig::load(&manifest_path) {
-            Ok(Some(local)) => {
-                for (name, cfg) in &local.mcps {
-                    let enabled = !local.disabled.mcps.contains(name);
-                    mcps.push(mcp_to_info(name, cfg, "local", SourceKind::Local, enabled));
-                }
-                local.disabled.mcps
+        if let Ok(Some(local)) = wcore::ManifestConfig::load(&manifest_path) {
+            for (name, cfg) in &local.mcps {
+                let enabled = !config.disabled.mcps.contains(name);
+                mcps.push(mcp_to_info(name, cfg, "local", SourceKind::Local, enabled));
             }
-            _ => Vec::new(),
-        };
+        }
 
         // Hub-installed MCPs from packages.
         for (pkg_id, pkg_manifest) in scan_package_manifests(&self.config_dir) {
@@ -558,7 +555,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                 if mcps.iter().any(|m| m.name == *name) {
                     continue; // local wins
                 }
-                let enabled = !disabled_mcps.contains(name);
+                let enabled = !config.disabled.mcps.contains(name);
                 let cfg = mcp_res.to_server_config();
                 mcps.push(mcp_to_info(
                     name,
@@ -686,8 +683,8 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .unwrap_or_default();
         let rt = self.runtime.read().await.clone();
         let active = rt.model.provider_name_for(&name).is_some_and(|n| n == name);
-        let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
-        let enabled = !manifest.disabled.providers.contains(&name);
+        let config = self.load_config()?;
+        let enabled = !config.disabled.providers.contains(&name);
         Ok(ProviderInfo {
             name,
             active,
@@ -771,7 +768,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
     }
 
     async fn list_skills(&self) -> Result<Vec<SkillInfo>> {
-        let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
+        let (manifest, _) = self.resolve_manifests()?;
         let local_skills_dir = self.config_dir.join(wcore::paths::SKILLS_DIR);
 
         // Reverse-lookup: dir path → package id.
@@ -819,12 +816,11 @@ impl<H: Host + 'static> Server for Daemon<H> {
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         let rt = self.runtime.read().await.clone();
         let config = self.load_config()?;
-        let (manifest, _) = wcore::resolve_manifests(&self.config_dir);
         let active_model = rt.model.active_model_name().unwrap_or_default();
 
         let mut models = Vec::new();
         for (provider_name, def) in &config.provider {
-            let enabled = !manifest.disabled.providers.contains(provider_name);
+            let enabled = !config.disabled.providers.contains(provider_name);
             let kind: i32 = ProtoProviderKind::from(def.kind).into();
             for model_name in &def.models {
                 models.push(ModelInfo {
@@ -857,23 +853,12 @@ impl<H: Host + 'static> Server for Daemon<H> {
             }
         }
 
-        let manifest_path = self
-            .config_dir
-            .join(wcore::paths::LOCAL_DIR)
-            .join("CrabTalk.toml");
-        let local_dir = self.config_dir.join(wcore::paths::LOCAL_DIR);
-        std::fs::create_dir_all(&local_dir)
-            .with_context(|| format!("cannot create {}", local_dir.display()))?;
-
-        let content = if manifest_path.exists() {
-            std::fs::read_to_string(&manifest_path)
-                .with_context(|| format!("cannot read {}", manifest_path.display()))?
-        } else {
-            String::new()
-        };
+        let config_path = self.config_dir.join(wcore::paths::CONFIG_FILE);
+        let content = std::fs::read_to_string(&config_path)
+            .with_context(|| format!("cannot read {}", config_path.display()))?;
         let mut doc: DocumentMut = content
             .parse()
-            .with_context(|| format!("invalid TOML in {}", manifest_path.display()))?;
+            .with_context(|| format!("invalid TOML in {}", config_path.display()))?;
 
         if doc.get("disabled").is_none() {
             doc.insert("disabled", toml_edit::Item::Table(toml_edit::Table::new()));
@@ -904,8 +889,8 @@ impl<H: Host + 'static> Server for Daemon<H> {
             arr.push(&name);
         }
 
-        std::fs::write(&manifest_path, doc.to_string())
-            .with_context(|| format!("failed to write {}", manifest_path.display()))?;
+        std::fs::write(&config_path, doc.to_string())
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
         self.reload().await
     }
 
@@ -1054,6 +1039,14 @@ impl<H: Host + 'static> Daemon<H> {
     /// Load the current `DaemonConfig` from disk.
     fn load_config(&self) -> Result<crate::DaemonConfig> {
         crate::DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))
+    }
+
+    /// Resolve manifests and apply disabled items from config.toml.
+    fn resolve_manifests(&self) -> Result<(wcore::ResolvedManifest, Vec<String>)> {
+        let config = self.load_config()?;
+        let (mut manifest, warnings) = wcore::resolve_manifests(&self.config_dir);
+        manifest.disabled = config.disabled;
+        Ok((manifest, warnings))
     }
 
     /// Look up a command service by name from installed package manifests.

@@ -102,7 +102,8 @@ impl<H: Host + 'static> Daemon<H> {
         event_tx: &DaemonEventSender,
         host: H,
     ) -> Result<Runtime<ProviderRegistry, Env<H>>> {
-        let (manifest, _warnings) = resolve_manifests(config_dir);
+        let (mut manifest, _warnings) = resolve_manifests(config_dir);
+        manifest.disabled = config.disabled.clone();
         let manager = build_providers(config, &manifest.disabled)?;
         let hook = build_env(config, config_dir, &manifest, host).await?;
         let tool_tx = build_tool_sender(event_tx);

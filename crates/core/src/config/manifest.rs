@@ -134,7 +134,7 @@ pub fn resolve_manifests(config_dir: &Path) -> (ResolvedManifest, Vec<String>) {
     // Load local manifest.
     let local_manifest_path = config_dir.join(LOCAL_DIR).join("CrabTalk.toml");
     if let Ok(Some(manifest)) = ManifestConfig::load(&local_manifest_path) {
-        resolved.disabled = manifest.disabled.clone();
+        // NOTE: disabled items are read from config.toml, not from manifests.
         merge_manifest(&mut resolved, &manifest, "local", &mut warnings);
     }
 

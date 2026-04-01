@@ -40,6 +40,9 @@ pub struct DaemonConfig {
     /// Environment variables passed to all MCP server processes at spawn time.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
+    /// Disabled resources (providers, MCPs, skills).
+    #[serde(default)]
+    pub disabled: wcore::config::DisabledItems,
 }
 
 impl DaemonConfig {

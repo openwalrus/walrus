@@ -87,6 +87,12 @@ fn migrate_layout(config_dir: &Path) {
     if config_path.exists() {
         migrate_mcps_agents(&config_path, &local_dir.join("CrabTalk.toml"));
     }
+
+    // Phase 3: move [disabled] from local/CrabTalk.toml → config.toml
+    let manifest_path = local_dir.join("CrabTalk.toml");
+    if manifest_path.exists() && config_path.exists() {
+        migrate_disabled(&manifest_path, &config_path);
+    }
 }
 
 /// Extract `[mcps.*]` and `[agents.*]` sections from config.toml into
@@ -154,5 +160,54 @@ fn migrate_mcps_agents(config_path: &Path, manifest_path: &Path) {
     }
     if let Err(e) = std::fs::write(config_path, doc.to_string()) {
         tracing::warn!("failed to update config.toml after migration: {e}");
+    }
+}
+
+/// Move `[disabled]` from `local/CrabTalk.toml` to `config.toml`.
+fn migrate_disabled(manifest_path: &Path, config_path: &Path) {
+    use toml_edit::DocumentMut;
+
+    let Ok(manifest_content) = std::fs::read_to_string(manifest_path) else {
+        return;
+    };
+    let Ok(mut manifest_doc) = manifest_content.parse::<DocumentMut>() else {
+        return;
+    };
+
+    let has_disabled = manifest_doc
+        .get("disabled")
+        .and_then(|v| v.as_table())
+        .is_some_and(|t| !t.is_empty());
+    if !has_disabled {
+        return;
+    }
+
+    let Ok(config_content) = std::fs::read_to_string(config_path) else {
+        return;
+    };
+    let Ok(mut config_doc) = config_content.parse::<DocumentMut>() else {
+        return;
+    };
+
+    // Only migrate if config.toml doesn't already have [disabled].
+    if config_doc
+        .get("disabled")
+        .and_then(|v| v.as_table())
+        .is_some_and(|t| !t.is_empty())
+    {
+        return;
+    }
+
+    if let Some(disabled) = manifest_doc.remove("disabled") {
+        config_doc.insert("disabled", disabled);
+        if let Err(e) = std::fs::write(config_path, config_doc.to_string()) {
+            tracing::warn!("failed to write config.toml during disabled migration: {e}");
+            return;
+        }
+        if let Err(e) = std::fs::write(manifest_path, manifest_doc.to_string()) {
+            tracing::warn!("failed to update local/CrabTalk.toml after disabled migration: {e}");
+            return;
+        }
+        tracing::info!("migrated [disabled] from local/CrabTalk.toml → config.toml");
     }
 }
