@@ -17,14 +17,17 @@ mod service;
 #[derive(Parser, Debug)]
 #[command(name = "crabtalk", about = "Crabtalk — AI agent platform")]
 pub struct Cli {
+    /// Start the daemon service without entering chat.
+    #[arg(long, conflicts_with_all = ["foreground", "stop", "events"])]
+    pub start: bool,
     /// Run the daemon in the foreground.
-    #[arg(long, conflicts_with_all = ["stop", "events"])]
+    #[arg(long, conflicts_with_all = ["start", "stop", "events"])]
     pub foreground: bool,
     /// Stop the daemon service.
-    #[arg(long, conflicts_with_all = ["foreground", "events"])]
+    #[arg(long, conflicts_with_all = ["start", "foreground", "events"])]
     pub stop: bool,
     /// Stream daemon events.
-    #[arg(long, conflicts_with_all = ["foreground", "stop"])]
+    #[arg(long, conflicts_with_all = ["start", "foreground", "stop"])]
     pub events: bool,
     /// Increase log verbosity (-v = info, -vv = debug, -vvv = trace).
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -59,6 +62,15 @@ impl Cli {
     /// Parse and dispatch the CLI command.
     pub async fn run(self) -> Result<()> {
         // Flags take priority over subcommands.
+        if self.start {
+            daemon::config::scaffold_config_dir(&wcore::paths::CONFIG_DIR)?;
+            let config_path = wcore::paths::CONFIG_DIR.join(wcore::paths::CONFIG_FILE);
+            let config = daemon::DaemonConfig::load(&config_path)?;
+            if config.provider.is_empty() {
+                attach::setup_provider(&config_path)?;
+            }
+            return service::install(self.verbose.max(1), false);
+        }
         if self.foreground {
             return foreground::start().await;
         }
