@@ -2,8 +2,9 @@
 
 use crate::config::ApiStandard;
 use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, HubEvent, ProviderKind, ReplyToAsk, SendMsg, SendResponse,
-    ServerMessage, StreamEvent, StreamMsg, client_message, hub_event, server_message, stream_event,
+    AgentEventMsg, ClientMessage, ConversationHistory, HubEvent, ProviderKind, ReplyToAsk, SendMsg,
+    SendResponse, ServerMessage, StreamEvent, StreamMsg, client_message, hub_event, server_message,
+    stream_event,
 };
 
 // ── ClientMessage constructors ───────────────────────────────────
@@ -62,6 +63,14 @@ impl From<HubEvent> for ServerMessage {
     fn from(e: HubEvent) -> Self {
         Self {
             msg: Some(server_message::Msg::HubEvent(e)),
+        }
+    }
+}
+
+impl From<ConversationHistory> for ServerMessage {
+    fn from(h: ConversationHistory) -> Self {
+        Self {
+            msg: Some(server_message::Msg::ConversationHistory(h)),
         }
     }
 }

@@ -161,6 +161,8 @@ pub(crate) struct McpData {
     pub(crate) auth: bool,
     pub(crate) auto_restart: bool,
     pub(crate) source: McpSource,
+    pub(crate) status: i32,
+    pub(crate) tool_count: u32,
 }
 
 impl McpData {
@@ -176,6 +178,9 @@ impl McpData {
             source: String::new(), // always local when saving
             enabled: true,
             source_kind: SourceKind::Local.into(),
+            status: 0,
+            error: String::new(),
+            tool_count: 0,
         }
     }
 }
@@ -263,6 +268,8 @@ impl AuthState {
                 } else {
                     McpSource::Hub(m.source)
                 },
+                status: m.status,
+                tool_count: m.tool_count,
             })
             .collect();
 

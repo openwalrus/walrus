@@ -12,13 +12,14 @@ use std::{
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationInfo,
-        CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent,
-        HubPackageInfo, HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, ModelInfo,
-        PackageInfo, ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg,
-        SendResponse, SessionInfo, SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent,
-        StreamMsg, StreamStart, StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent,
-        ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
+        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationHistory,
+        ConversationInfo, ConversationMessage, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
+        DaemonStats, HubDone, HubEvent, HubPackageInfo, HubSetupOutput, HubStep, HubWarning,
+        InstallPackageMsg, McpInfo, McpStatus, ModelInfo, PackageInfo, ProtoProviderKind,
+        ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse, SessionInfo,
+        SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
+        StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+        ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -200,14 +201,13 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let mut infos = Vec::with_capacity(sessions.len());
         for s in sessions {
             let s = s.lock().await;
-            let active = rt.is_active(s.id).await;
             infos.push(SessionInfo {
                 id: s.id,
                 agent: s.agent.to_string(),
                 created_by: s.created_by.to_string(),
                 message_count: s.history.len() as u64,
                 alive_secs: s.uptime_secs,
-                active,
+                active: false,
                 title: s.title.clone(),
             });
         }
@@ -243,7 +243,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
     async fn get_stats(&self) -> Result<DaemonStats> {
         let rt = self.runtime.read().await.clone();
-        let active = rt.active_session_count().await;
+        let active = rt.session_count().await;
         let agents = rt.agents().len() as u32;
         let uptime = self.started_at.elapsed().as_secs();
         let active_model = rt.model.active_model_name().unwrap_or_default();
@@ -528,8 +528,52 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .context("conversation scan task panicked")
     }
 
+    async fn get_conversation_history(&self, file_path: String) -> Result<ConversationHistory> {
+        let path = std::path::PathBuf::from(&file_path);
+        anyhow::ensure!(path.exists(), "session file not found: {file_path}");
+        let (meta, messages) =
+            tokio::task::spawn_blocking(move || wcore::Session::load_context(&path))
+                .await
+                .context("load_context task panicked")??;
+        Ok(ConversationHistory {
+            title: meta.title,
+            agent: meta.agent,
+            messages: messages
+                .into_iter()
+                .filter(|m| {
+                    !matches!(
+                        m.role,
+                        wcore::model::Role::System | wcore::model::Role::Tool
+                    )
+                })
+                .map(|m| ConversationMessage {
+                    role: serde_json::to_value(&m.role)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_default(),
+                    content: m.content,
+                })
+                .collect(),
+        })
+    }
+
+    async fn delete_conversation(&self, file_path: String) -> Result<()> {
+        let path = std::path::Path::new(&file_path);
+        anyhow::ensure!(path.exists(), "session file not found: {file_path}");
+        std::fs::remove_file(path).with_context(|| format!("failed to delete {file_path}"))?;
+        Ok(())
+    }
+
     async fn list_mcps(&self) -> Result<Vec<McpInfo>> {
         let config = self.load_config()?;
+        let rt = self.runtime.read().await.clone();
+        let connected: std::collections::BTreeMap<String, usize> = rt
+            .hook
+            .mcp_servers()
+            .into_iter()
+            .map(|(name, tools)| (name, tools.len()))
+            .collect();
+
         let mut mcps = Vec::new();
 
         // Local MCPs from CrabTalk.toml.
@@ -540,7 +584,16 @@ impl<H: Host + 'static> Server for Daemon<H> {
         if let Ok(Some(local)) = wcore::ManifestConfig::load(&manifest_path) {
             for (name, cfg) in &local.mcps {
                 let enabled = !config.disabled.mcps.contains(name);
-                mcps.push(mcp_to_info(name, cfg, "local", SourceKind::Local, enabled));
+                let (status, tool_count) = mcp_status(&connected, name, enabled);
+                mcps.push(mcp_to_info(
+                    name,
+                    cfg,
+                    "local",
+                    SourceKind::Local,
+                    enabled,
+                    status,
+                    tool_count,
+                ));
             }
         }
 
@@ -551,6 +604,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                     continue; // local wins
                 }
                 let enabled = !config.disabled.mcps.contains(name);
+                let (status, tool_count) = mcp_status(&connected, name, enabled);
                 let cfg = mcp_res.to_server_config();
                 mcps.push(mcp_to_info(
                     name,
@@ -558,6 +612,8 @@ impl<H: Host + 'static> Server for Daemon<H> {
                     &pkg_id,
                     SourceKind::Package,
                     enabled,
+                    status,
+                    tool_count,
                 ));
             }
         }
@@ -1303,12 +1359,28 @@ fn mtime_to_label(mtime: std::time::SystemTime, today: chrono::NaiveDate) -> Str
     }
 }
 
+fn mcp_status(
+    connected: &std::collections::BTreeMap<String, usize>,
+    name: &str,
+    enabled: bool,
+) -> (McpStatus, u32) {
+    if !enabled {
+        return (McpStatus::Disconnected, 0);
+    }
+    match connected.get(name) {
+        Some(&count) => (McpStatus::Connected, count as u32),
+        None => (McpStatus::Failed, 0),
+    }
+}
+
 fn mcp_to_info(
     name: &str,
     cfg: &wcore::McpServerConfig,
     source: &str,
     source_kind: SourceKind,
     enabled: bool,
+    status: McpStatus,
+    tool_count: u32,
 ) -> McpInfo {
     McpInfo {
         name: name.to_string(),
@@ -1325,6 +1397,9 @@ fn mcp_to_info(
         auto_restart: cfg.auto_restart,
         enabled,
         source_kind: source_kind.into(),
+        status: status.into(),
+        error: String::new(),
+        tool_count,
     }
 }
 

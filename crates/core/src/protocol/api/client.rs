@@ -1,13 +1,14 @@
 //! Client trait — transport primitives plus typed provided methods.
 
 use crate::protocol::message::{
-    AgentInfo, AgentList, ClientMessage, ConversationInfo, ConversationList, CreateAgentMsg,
-    DaemonStats, DeleteAgentMsg, DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetStats, HubEvent,
-    HubPackageInfo, HubPackageList, InstallPackageMsg, ListAgentsMsg, ListConversationsMsg,
-    ListMcpsMsg, ListModelsMsg, ListPackagesMsg, ListProviderPresetsMsg, ListProvidersMsg,
-    ListSkillsMsg, McpInfo, McpList, ModelInfo, ModelList, PackageInfo, PackageList, Ping,
-    ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind, SearchHubMsg,
-    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
+    AgentInfo, AgentList, ClientMessage, ConversationHistory, ConversationInfo, ConversationList,
+    CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteProviderMsg,
+    ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats, HubEvent, HubPackageInfo,
+    HubPackageList, InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg,
+    ListModelsMsg, ListPackagesMsg, ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg,
+    McpInfo, McpList, ModelInfo, ModelList, PackageInfo, PackageList, Ping, ProviderInfo,
+    ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind, SearchHubMsg, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
     SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList, StartServiceMsg,
     StopServiceMsg, StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message,
     hub_event, server_message, stream_event,
@@ -385,6 +386,60 @@ pub trait Client: Send {
                     msg:
                         Some(server_message::Msg::ConversationList(ConversationList { conversations })),
                 } => Ok(conversations),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Load conversation history from a session file.
+    fn get_conversation_history(
+        &mut self,
+        file_path: String,
+    ) -> impl std::future::Future<Output = Result<ConversationHistory>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::GetConversationHistory(
+                        GetConversationHistoryMsg { file_path },
+                    )),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::ConversationHistory(history)),
+                } => Ok(history),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Delete a conversation file from disk.
+    fn delete_conversation(
+        &mut self,
+        file_path: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::DeleteConversation(
+                        DeleteConversationMsg { file_path },
+                    )),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {
