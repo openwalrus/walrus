@@ -1,0 +1,5 @@
+FROM rust:1.94
+WORKDIR /src
+COPY . .
+RUN cargo build --release -p crabtalk-bench
+CMD ["cargo", "bench", "-p", "crabtalk-bench", "--bench", "framework"]

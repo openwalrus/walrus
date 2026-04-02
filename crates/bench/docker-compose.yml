@@ -1,0 +1,95 @@
+## Cross-framework benchmark environment.
+##
+## Usage:
+##   docker compose up -d mock-mcp ollama    # start infrastructure
+##   docker compose up -d crabtalk openclaw opencode hermes  # start frameworks
+##   docker compose run bench-runner         # run benchmarks
+##
+## All frameworks connect to the same mock MCP server and local LLM.
+
+services:
+  mock-mcp:
+    build:
+      context: ../..
+      dockerfile: crates/bench/Dockerfile.mock-mcp
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9090/mcp", "-d", '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}']
+      interval: 5s
+      retries: 3
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  crabtalk:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      mock-mcp:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "6688:6688"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  openclaw:
+    image: openclaw/openclaw
+    depends_on:
+      mock-mcp:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "18789:18789"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  opencode:
+    image: sst/opencode
+    depends_on:
+      mock-mcp:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "4096:4096"
+    command: opencode serve
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  hermes:
+    image: nousresearch/hermes-agent
+    depends_on:
+      mock-mcp:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  bench-runner:
+    build:
+      context: ../..
+      dockerfile: crates/bench/Dockerfile.bench
+    depends_on:
+      - crabtalk
+      - openclaw
+      - opencode
+      - hermes
+    command: cargo bench -p crabtalk-bench --bench framework
+    environment:
+      MOCK_MCP_PORT: "9090"
+      OPENCLAW_TOKEN: ""
+
+volumes:
+  ollama_data:
