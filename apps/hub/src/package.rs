@@ -354,12 +354,11 @@ pub async fn search_hub(query: &str) -> Result<Vec<HubPackageEntry>> {
                 .join(format!("{pkg_name}.toml"))
                 .exists();
 
-            let skill_count = count_skills(&manifest, &scope_path, pkg_name);
             let mcp_count = manifest.mcps.len() as u32;
             results.push(HubPackageEntry {
                 name: full_name,
                 description: manifest.package.description,
-                skill_count,
+                skill_count: 0,
                 mcp_count,
                 installed,
             });
@@ -368,20 +367,6 @@ pub async fn search_hub(query: &str) -> Result<Vec<HubPackageEntry>> {
 
     results.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(results)
-}
-
-/// Count skills in a package. Skills are discovered from the source repo,
-/// but at search time we don't clone the repo. Use a heuristic: if the
-/// manifest has a repository and isn't MCP-only, assume at least 1 skill.
-fn count_skills(manifest: &manifest::Manifest, _scope_path: &Path, _name: &str) -> u32 {
-    if !manifest.package.repository.is_empty()
-        && (manifest.package.setup.is_some() || manifest.agents.is_empty())
-        && manifest.mcps.is_empty()
-    {
-        1
-    } else {
-        0
-    }
 }
 
 /// Parse a `scope/name` package string into `(scope, name)`.
