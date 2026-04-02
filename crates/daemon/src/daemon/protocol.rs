@@ -12,14 +12,14 @@ use std::{
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationInfo,
-        CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, HubDone, HubEvent,
-        HubPackageInfo, HubSetupOutput, HubStep, HubWarning, InstallPackageMsg, McpInfo, McpStatus,
-        ModelInfo, PackageInfo, ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind,
-        SendMsg, SendResponse, SessionInfo, SkillInfo, SourceKind, StreamChunk, StreamEnd,
-        StreamEvent, StreamMsg, StreamStart, StreamThinking, TokenUsage, ToolCallInfo,
-        ToolResultEvent, ToolStartEvent, ToolsCompleteEvent, UpdateAgentMsg, hub_event,
-        stream_event,
+        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationHistory,
+        ConversationInfo, ConversationMessage, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
+        DaemonStats, HubDone, HubEvent, HubPackageInfo, HubSetupOutput, HubStep, HubWarning,
+        InstallPackageMsg, McpInfo, McpStatus, ModelInfo, PackageInfo, ProtoProviderKind,
+        ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse, SessionInfo,
+        SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
+        StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+        ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -526,6 +526,35 @@ impl<H: Host + 'static> Server for Daemon<H> {
         tokio::task::spawn_blocking(move || scan_conversations_all(&sessions_dir, &agent, &sender))
             .await
             .context("conversation scan task panicked")
+    }
+
+    async fn get_conversation_history(&self, file_path: String) -> Result<ConversationHistory> {
+        let path = std::path::PathBuf::from(&file_path);
+        anyhow::ensure!(path.exists(), "session file not found: {file_path}");
+        let (meta, messages) =
+            tokio::task::spawn_blocking(move || wcore::Session::load_context(&path))
+                .await
+                .context("load_context task panicked")??;
+        Ok(ConversationHistory {
+            title: meta.title,
+            agent: meta.agent,
+            messages: messages
+                .into_iter()
+                .filter(|m| {
+                    !matches!(
+                        m.role,
+                        wcore::model::Role::System | wcore::model::Role::Tool
+                    )
+                })
+                .map(|m| ConversationMessage {
+                    role: serde_json::to_value(&m.role)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_default(),
+                    content: m.content,
+                })
+                .collect(),
+        })
     }
 
     async fn list_mcps(&self) -> Result<Vec<McpInfo>> {

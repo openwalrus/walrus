@@ -1,13 +1,13 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConversationInfo,
-    ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg,
-    HubEvent, HubPackageInfo, HubPackageList, InstallPackageMsg, McpInfo, McpList, ModelInfo,
-    ModelList, PackageInfo, PackageList, Pong, ProviderInfo, ProviderList, ProviderPresetInfo,
-    ProviderPresetList, ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput,
-    SessionInfo, SessionList, SkillInfo, SkillList, StreamEvent, StreamMsg, UpdateAgentMsg,
-    client_message, server_message,
+    AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConversationHistory,
+    ConversationInfo, ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
+    DaemonStats, ErrorMsg, HubEvent, HubPackageInfo, HubPackageList, InstallPackageMsg, McpInfo,
+    McpList, ModelInfo, ModelList, PackageInfo, PackageList, Pong, ProviderInfo, ProviderList,
+    ProviderPresetInfo, ProviderPresetList, ResourceKind, SendMsg, SendResponse, ServerMessage,
+    ServiceLogOutput, SessionInfo, SessionList, SkillInfo, SkillList, StreamEvent, StreamMsg,
+    UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -160,6 +160,12 @@ pub trait Server: Sync {
         agent: String,
         sender: String,
     ) -> impl std::future::Future<Output = Result<Vec<ConversationInfo>>> + Send;
+
+    /// Handle `GetConversationHistory` — load messages from a session file.
+    fn get_conversation_history(
+        &self,
+        file_path: String,
+    ) -> impl std::future::Future<Output = Result<ConversationHistory>> + Send;
 
     /// Handle `ListMcps` — return all MCP server configs with source info.
     fn list_mcps(&self) -> impl std::future::Future<Output = Result<Vec<McpInfo>>> + Send;
@@ -457,6 +463,9 @@ pub trait Server: Sync {
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };
+                }
+                client_message::Msg::GetConversationHistory(req) => {
+                    yield result_to_msg(self.get_conversation_history(req.file_path).await);
                 }
                 client_message::Msg::ListMcps(_) => {
                     yield match self.list_mcps().await {

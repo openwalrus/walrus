@@ -44,6 +44,8 @@ message ClientMessage {
     ListModelsMsg list_models = 36;
     // Hub search
     SearchHubMsg search_hub = 37;
+    // Conversation history
+    GetConversationHistoryMsg get_conversation_history = 38;
     // Services
     StartServiceMsg start_service = 24;
     StopServiceMsg stop_service = 25;
@@ -155,6 +157,21 @@ message SearchHubMsg {
   string query = 1;
 }
 
+message GetConversationHistoryMsg {
+  string file_path = 1;
+}
+
+message ConversationMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message ConversationHistory {
+  repeated ConversationMessage messages = 1;
+  string title = 2;
+  string agent = 3;
+}
+
 message HubPackageInfo {
   string name = 1;
   string description = 2;
@@ -259,6 +276,8 @@ message ServerMessage {
     ModelList model_list = 22;
     // Hub search
     HubPackageList hub_package_list = 23;
+    // Conversation history
+    ConversationHistory conversation_history = 24;
     // Services
     ServiceLogOutput service_log_output = 16;
     // Cron
