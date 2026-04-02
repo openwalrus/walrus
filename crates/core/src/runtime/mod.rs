@@ -17,7 +17,7 @@ use async_stream::stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -43,7 +43,6 @@ pub struct Runtime<M: Model, H: Hook> {
     next_session_id: AtomicU64,
     pub tools: ToolRegistry,
     tool_tx: Option<ToolSender>,
-    active_sessions: RwLock<HashSet<u64>>,
 }
 
 impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> {
@@ -63,7 +62,6 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             next_session_id: AtomicU64::new(1),
             tools,
             tool_tx,
-            active_sessions: RwLock::new(HashSet::new()),
         }
     }
 
@@ -196,14 +194,9 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         self.sessions.read().await.values().cloned().collect()
     }
 
-    /// Check if a session is currently active (running send_to or stream_to).
-    pub async fn is_active(&self, id: u64) -> bool {
-        self.active_sessions.read().await.contains(&id)
-    }
-
-    /// Number of currently active sessions.
-    pub async fn active_session_count(&self) -> usize {
-        self.active_sessions.read().await.len()
+    /// Number of open sessions (created and not yet killed).
+    pub async fn session_count(&self) -> usize {
+        self.sessions.read().await.len()
     }
 
     /// Compact a session's history into a concise summary.
@@ -348,9 +341,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         let run_start = std::time::Instant::now();
-        self.active_sessions.write().await.insert(session_id);
         let response = agent_ref.run(&mut session.history, tx, None).await;
-        self.active_sessions.write().await.remove(&session_id);
         session.uptime_secs += run_start.elapsed().as_secs();
 
         // Drain events, stash compact summary if one occurred.
@@ -441,7 +432,6 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             let run_start = std::time::Instant::now();
-            self.active_sessions.write().await.insert(session_id);
             let mut compact_summary: Option<String> = None;
             let mut done_event: Option<AgentEvent> = None;
             {
@@ -460,7 +450,6 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                 }
             }
             // Borrow on session.history is released. Persist now.
-            self.active_sessions.write().await.remove(&session_id);
             session.uptime_secs += run_start.elapsed().as_secs();
             if let Some(summary) = compact_summary {
                 session.append_compact(&summary);

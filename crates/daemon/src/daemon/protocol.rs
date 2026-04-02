@@ -200,14 +200,13 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let mut infos = Vec::with_capacity(sessions.len());
         for s in sessions {
             let s = s.lock().await;
-            let active = rt.is_active(s.id).await;
             infos.push(SessionInfo {
                 id: s.id,
                 agent: s.agent.to_string(),
                 created_by: s.created_by.to_string(),
                 message_count: s.history.len() as u64,
                 alive_secs: s.uptime_secs,
-                active,
+                active: false,
                 title: s.title.clone(),
             });
         }
@@ -243,7 +242,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
     async fn get_stats(&self) -> Result<DaemonStats> {
         let rt = self.runtime.read().await.clone();
-        let active = rt.active_session_count().await;
+        let active = rt.session_count().await;
         let agents = rt.agents().len() as u32;
         let uptime = self.started_at.elapsed().as_secs();
         let active_model = rt.model.active_model_name().unwrap_or_default();
