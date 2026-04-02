@@ -18,13 +18,13 @@ mod service;
 #[command(name = "crabtalk", about = "Crabtalk — AI agent platform")]
 pub struct Cli {
     /// Run the daemon in the foreground.
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["stop", "events"])]
     pub foreground: bool,
     /// Stop the daemon service.
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["foreground", "events"])]
     pub stop: bool,
     /// Stream daemon events.
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["foreground", "stop"])]
     pub events: bool,
     /// Increase log verbosity (-v = info, -vv = debug, -vvv = trace).
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -80,7 +80,7 @@ impl Cli {
 
         match self.command {
             None => {
-                let runner = connect_or_start(self.tcp).await?;
+                let runner = connect_or_start(self.tcp, self.verbose.max(1)).await?;
                 let mut repl = crate::repl::ChatRepl::new(runner, self.agent)?;
                 repl.run().await
             }
@@ -94,7 +94,7 @@ impl Cli {
                     let selected = cmd.run(runner).await?;
                     if let Some(path) = selected {
                         let runner = connect_default_or_tcp(self.tcp).await?;
-                        let mut repl = crate::repl::ChatRepl::new(runner, "crab".into())?;
+                        let mut repl = crate::repl::ChatRepl::new(runner, self.agent)?;
                         repl.resume(path).await
                     } else {
                         Ok(())
@@ -245,18 +245,18 @@ pub enum Command {
 }
 
 /// Connect to daemon, auto-starting it if not reachable.
-async fn connect_or_start(use_tcp: bool) -> Result<Runner> {
+async fn connect_or_start(use_tcp: bool, verbose: u8) -> Result<Runner> {
     match connect_default_or_tcp(use_tcp).await {
         Ok(runner) => Ok(runner),
-        Err(_) => {
-            // Daemon not running — start it.
+        Err(e) => {
+            tracing::debug!("daemon not reachable, starting: {e}");
             daemon::config::scaffold_config_dir(&wcore::paths::CONFIG_DIR)?;
             let config_path = wcore::paths::CONFIG_DIR.join(wcore::paths::CONFIG_FILE);
             let config = daemon::DaemonConfig::load(&config_path)?;
             if config.provider.is_empty() {
                 attach::setup_provider(&config_path)?;
             }
-            service::install(1, false)?;
+            service::install(verbose, false)?;
             // Wait for daemon to be reachable.
             for _ in 0..20 {
                 tokio::time::sleep(std::time::Duration::from_millis(250)).await;
