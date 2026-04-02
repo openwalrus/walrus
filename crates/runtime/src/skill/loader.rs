@@ -1,9 +1,27 @@
 //! Skill markdown loading.
 
 use crate::skill::{Skill, SkillRegistry};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::{collections::BTreeMap, path::Path};
 use wcore::utils::split_yaml_frontmatter;
+
+/// Accept both `"a, b, c"` (string) and `["a", "b", "c"]` (sequence) for tool lists.
+fn string_or_vec<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        String(String),
+        Vec(Vec<String>),
+    }
+    match StringOrVec::deserialize(deserializer)? {
+        StringOrVec::Vec(v) => Ok(v),
+        StringOrVec::String(s) => Ok(s
+            .split([',', ' '])
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()),
+    }
+}
 
 /// YAML frontmatter deserialization target for SKILL.md files.
 #[derive(Debug, Deserialize)]
@@ -17,7 +35,7 @@ struct SkillFrontmatter {
     compatibility: Option<String>,
     #[serde(default)]
     metadata: BTreeMap<String, String>,
-    #[serde(default, rename = "allowed-tools")]
+    #[serde(default, rename = "allowed-tools", deserialize_with = "string_or_vec")]
     allowed_tools: Vec<String>,
 }
 

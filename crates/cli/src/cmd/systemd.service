@@ -6,7 +6,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory={config_dir}
 Environment=PATH={path}
-ExecStart={binary} daemon run -v
+ExecStart={binary} --foreground -v
 Restart=always
 RestartSec=3
 
