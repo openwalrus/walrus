@@ -120,10 +120,10 @@ attributed to the guest. No delegation, no tool results, no paraphrasing.
 Both guest and primary need context about multi-agent conversation:
 
 - **Guest framing** (injected when a guest runs): "You are joining a
-  conversation as a guest. Messages prefixed with [agent_name] are from other
+  conversation as a guest. Messages wrapped in `<from agent="...">` tags are from other
   agents."
 - **Primary framing** (injected when the primary runs and guest messages exist
-  in history): "Messages prefixed with [agent_name] are from guest agents.
+  in history): "Messages wrapped in `<from agent="...">` tags are from guest agents.
   Continue responding as yourself."
 
 Both are `auto_injected` — stripped before each run, re-injected fresh. Zero
@@ -140,9 +140,9 @@ pub agent: String,
 
 Empty = the conversation's primary agent. Non-empty = a guest. When building
 LLM requests, assistant messages with non-empty `agent` are prefixed with
-`[agent_name]:` so every agent can distinguish speakers.
+`<from agent="...">` XML tags so every agent can distinguish speakers.
 
-`Message::with_agent_prefix()` handles the prefixing — one function, used by
+`Message::with_agent_tag()` handles the prefixing — one function, used by
 both `build_request` and `guest_stream_to`.
 
 ### Compaction as memory
