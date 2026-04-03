@@ -584,7 +584,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             // Inject guest framing as auto_injected so it gets stripped next run.
             let mut framing = Message::system(format!(
                 "You are joining a conversation as a guest. The primary agent is '{}'. \
-                 Messages prefixed with [agent_name] are from other agents. \
+                 Messages wrapped in <from agent=\"...\"> tags are from other agents. \
                  Respond as yourself to the user's latest message.",
                 conversation.agent
             ));
@@ -606,7 +606,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             if !guest_agent.config.system_prompt.is_empty() {
                 messages.push(Message::system(&guest_agent.config.system_prompt));
             }
-            messages.extend(conversation.history.iter().map(|m| m.with_agent_prefix()));
+            messages.extend(conversation.history.iter().map(|m| m.with_agent_tag()));
 
             let request = crate::model::Request::new(model_name.clone())
                 .with_messages(messages)

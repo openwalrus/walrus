@@ -72,7 +72,7 @@ impl<M: Model> Agent<M> {
         if !self.config.system_prompt.is_empty() {
             messages.push(Message::system(&self.config.system_prompt));
         }
-        messages.extend(history.iter().map(|m| m.with_agent_prefix()));
+        messages.extend(history.iter().map(|m| m.with_agent_tag()));
 
         let mut request = Request::new(model_name)
             .with_messages(messages)

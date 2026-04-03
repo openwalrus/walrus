@@ -117,13 +117,16 @@ impl Message {
     /// Estimate the number of tokens in this message.
     ///
     /// Uses a simple heuristic: ~4 characters per token.
-    /// Return a clone with `[agent_name]` prefixed to content if this is
-    /// a guest assistant message. Used when building LLM requests so agents
-    /// can distinguish speakers in multi-agent conversations.
-    pub fn with_agent_prefix(&self) -> Self {
+    /// Return a clone with the content wrapped in `<from agent="...">` tags
+    /// if this is a guest assistant message. Used when building LLM requests
+    /// so agents can distinguish speakers in multi-agent conversations.
+    pub fn with_agent_tag(&self) -> Self {
         if self.role == Role::Assistant && !self.agent.is_empty() {
             let mut m = self.clone();
-            m.content = format!("[{}]: {}", self.agent, self.content);
+            m.content = format!(
+                "<from agent=\"{}\">\n{}\n</from>",
+                self.agent, self.content
+            );
             m
         } else {
             self.clone()
