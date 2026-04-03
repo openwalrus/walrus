@@ -1,3 +1,6 @@
+[files]
+extend-exclude = ["docs/theme/"]
+
 [default.extend-words]
 mmaped = "mmaped"
 ratatui = "ratatui"
