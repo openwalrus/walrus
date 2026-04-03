@@ -28,12 +28,33 @@ pub struct ConversationMeta {
     pub uptime_secs: u64,
 }
 
-/// A JSONL line that is either a message or a compact marker.
+/// A JSONL line: message or compact marker (archive boundary).
+///
+/// Variant order matters: `untagged` tries top-to-bottom. `Compact` is a
+/// single-key struct that fails fast on any other shape, so `Message`
+/// (the catch-all) must be last.
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum ConversationLine {
-    Compact { compact: String },
+    Compact {
+        compact: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        title: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        archived_at: String,
+    },
     Message(Message),
+}
+
+/// A compaction archive segment — a titled snapshot of past conversation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveSegment {
+    /// Short title derived from the compact summary.
+    pub title: String,
+    /// The compact summary text.
+    pub summary: String,
+    /// When this segment was archived.
+    pub archived_at: String,
 }
 
 /// A conversation tied to a specific agent.
@@ -190,6 +211,9 @@ impl Conversation {
     }
 
     /// Append a compact marker to the JSONL file.
+    ///
+    /// The marker doubles as an archive boundary: it stores the summary,
+    /// a title derived from the first sentence, and a timestamp.
     pub fn append_compact(&self, summary: &str) {
         let Some(ref path) = self.file_path else {
             return;
@@ -203,6 +227,8 @@ impl Conversation {
         };
         let line = ConversationLine::Compact {
             compact: summary.to_string(),
+            title: compact_title(summary),
+            archived_at: chrono::Utc::now().to_rfc3339(),
         };
         if let Ok(json) = serde_json::to_string(&line) {
             let _ = writeln!(file, "{json}");
@@ -245,7 +271,7 @@ impl Conversation {
         for (i, line) in all_lines[context_start..].iter().enumerate() {
             if i == 0
                 && last_compact_idx.is_some()
-                && let Ok(ConversationLine::Compact { compact }) = serde_json::from_str(line)
+                && let Ok(ConversationLine::Compact { compact, .. }) = serde_json::from_str(line)
             {
                 messages.push(Message::user(&compact));
                 continue;
@@ -256,6 +282,35 @@ impl Conversation {
         }
 
         Ok((meta, messages))
+    }
+
+    /// Load all archive segments from a JSONL conversation file.
+    ///
+    /// Each compact marker in the file becomes an `ArchiveSegment` with
+    /// title, summary, and timestamp. Returns segments in chronological order.
+    pub fn load_archives(path: &Path) -> anyhow::Result<Vec<ArchiveSegment>> {
+        let file = fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut archives = Vec::new();
+
+        for line in reader.lines().skip(1) {
+            let line = line?;
+            if line.contains("\"compact\"")
+                && let Ok(ConversationLine::Compact {
+                    compact,
+                    title,
+                    archived_at,
+                }) = serde_json::from_str(&line)
+            {
+                archives.push(ArchiveSegment {
+                    title,
+                    summary: compact,
+                    archived_at,
+                });
+            }
+        }
+
+        Ok(archives)
     }
 }
 
@@ -313,6 +368,21 @@ fn next_seq(dir: &Path, prefix: &str) -> u32 {
         .max()
         .unwrap_or(0);
     max + 1
+}
+
+/// Derive a short title from a compact summary.
+///
+/// Takes the first sentence (up to the first `.`, `!`, or `?`) and caps
+/// at 60 characters. Falls back to the first 60 chars if no sentence
+/// boundary is found.
+fn compact_title(summary: &str) -> String {
+    let end = summary
+        .find(|c: char| c == '.' || c == '!' || c == '?')
+        .map(|i| i + 1)
+        .unwrap_or(summary.len())
+        .min(60);
+    let title = summary[..summary.floor_char_boundary(end)].trim();
+    title.to_string()
 }
 
 /// Sanitize a string into a filesystem-safe slug.
