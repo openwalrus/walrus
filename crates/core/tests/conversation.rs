@@ -140,9 +140,8 @@ fn find_latest_conversation_picks_highest_seq() {
         let name = format!("crab_user_{seq}.jsonl");
         let path = dir.path().join(&name);
         let mut f = std::fs::File::create(&path).unwrap();
-        let meta = format!(
-            r#"{{"agent":"crab","created_by":"user","created_at":"2024-01-01T00:00:00Z"}}"#
-        );
+        let meta =
+            r#"{"agent":"crab","created_by":"user","created_at":"2024-01-01T00:00:00Z"}"#;
         writeln!(f, "{meta}").unwrap();
     }
 
@@ -178,7 +177,7 @@ fn load_context_skips_invalid_message_lines() {
     let path = conversation.file_path.as_ref().unwrap();
     let mut f = std::fs::OpenOptions::new().append(true).open(path).unwrap();
     writeln!(f, "{{this is not valid json}}").unwrap();
-    writeln!(f, "").unwrap(); // empty line
+    writeln!(f).unwrap(); // empty line
 
     let (_, messages) = Conversation::load_context(path).unwrap();
     assert_eq!(messages.len(), 1); // only the valid message

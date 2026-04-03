@@ -377,7 +377,7 @@ fn next_seq(dir: &Path, prefix: &str) -> u32 {
 /// boundary is found.
 fn compact_title(summary: &str) -> String {
     let end = summary
-        .find(|c: char| c == '.' || c == '!' || c == '?')
+        .find(['.', '!', '?'])
         .map(|i| i + 1)
         .unwrap_or(summary.len())
         .min(60);
