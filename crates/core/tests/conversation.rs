@@ -140,8 +140,7 @@ fn find_latest_conversation_picks_highest_seq() {
         let name = format!("crab_user_{seq}.jsonl");
         let path = dir.path().join(&name);
         let mut f = std::fs::File::create(&path).unwrap();
-        let meta =
-            r#"{"agent":"crab","created_by":"user","created_at":"2024-01-01T00:00:00Z"}"#;
+        let meta = r#"{"agent":"crab","created_by":"user","created_at":"2024-01-01T00:00:00Z"}"#;
         writeln!(f, "{meta}").unwrap();
     }
 
