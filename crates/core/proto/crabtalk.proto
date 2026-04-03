@@ -12,8 +12,8 @@ message ClientMessage {
     SendMsg send = 1;
     StreamMsg stream = 2;
     ReplyToAsk reply_to_ask = 3;
-    // Session management
-    Sessions sessions = 4;
+    // Conversation management
+    ListActiveConversationsMsg list_active_conversations = 4;
     KillMsg kill = 5;
     CompactMsg compact = 6;
     ListConversationsMsg list_conversations = 7;
@@ -68,31 +68,32 @@ message ClientMessage {
 message SendMsg {
   string agent = 1;
   string content = 2;
-  optional uint64 session = 3;
   optional string sender = 4;
   optional string cwd = 5;
-  bool new_chat = 6;
-  optional string resume_file = 7;
+  optional string guest = 6;
 }
 
 message StreamMsg {
   string agent = 1;
   string content = 2;
-  optional uint64 session = 3;
   optional string sender = 4;
   optional string cwd = 5;
-  bool new_chat = 6;
-  optional string resume_file = 7;
+  optional string guest = 6;
 }
 
 message Ping {}
-message Sessions {}
 message SubscribeEvents {}
+
+message ListActiveConversationsMsg {
+  string agent = 1;
+  string sender = 2;
+}
 message GetConfig {}
 message GetStats {}
 
 message KillMsg {
-  uint64 session = 1;
+  string agent = 1;
+  string sender = 2;
 }
 
 message ReloadMsg {}
@@ -100,10 +101,11 @@ message ReloadMsg {}
 message CreateCronMsg {
   string schedule = 1;
   string skill = 2;
-  uint64 session = 3;
+  string agent = 3;
   optional string quiet_start = 4;
   optional string quiet_end = 5;
   bool once = 6;
+  string sender = 7;
 }
 
 message DeleteCronMsg {
@@ -113,7 +115,8 @@ message DeleteCronMsg {
 message ListCronsMsg {}
 
 message CompactMsg {
-  uint64 session = 1;
+  string agent = 1;
+  string sender = 2;
 }
 
 message ListAgentsMsg {}
@@ -257,8 +260,8 @@ message ServerMessage {
     // Execution
     SendResponse response = 3;
     StreamEvent stream = 4;
-    // Session
-    SessionList sessions = 5;
+    // Active conversations
+    ActiveConversationList active_conversations = 5;
     CompactResponse compact = 6;
     ConversationList conversation_list = 7;
     // Provider
@@ -294,7 +297,7 @@ message ServerMessage {
 
 message DaemonStats {
   uint64 uptime_secs = 1;
-  uint32 active_sessions = 2;
+  uint32 active_conversations = 2;
   uint32 registered_agents = 3;
   string active_model = 4;
 }
@@ -317,7 +320,6 @@ message TokenUsage {
 message SendResponse {
   string agent = 1;
   string content = 2;
-  uint64 session = 3;
   string provider = 4;
   string model = 5;
   optional TokenUsage usage = 6;
@@ -343,7 +345,6 @@ message StreamEvent {
 
 message StreamStart {
   string agent = 1;
-  uint64 session = 2;
 }
 
 message StreamChunk {
@@ -391,8 +392,9 @@ message AskOption {
 }
 
 message ReplyToAsk {
-  uint64 session = 1;
-  string content = 2;
+  string agent = 1;
+  string sender = 2;
+  string content = 3;
 }
 
 message ErrorMsg {
@@ -400,14 +402,12 @@ message ErrorMsg {
   string message = 2;
 }
 
-message SessionInfo {
-  uint64 id = 1;
-  string agent = 2;
-  string created_by = 3;
-  uint64 message_count = 4;
-  uint64 alive_secs = 5;
-  bool active = 6;
-  string title = 7;
+message ActiveConversationInfo {
+  string agent = 1;
+  string sender = 2;
+  uint64 message_count = 3;
+  uint64 alive_secs = 4;
+  string title = 5;
 }
 
 enum AgentEventKind {
@@ -421,14 +421,14 @@ enum AgentEventKind {
 
 message AgentEventMsg {
   string agent = 1;
-  uint64 session = 2;
+  string sender = 2;
   AgentEventKind kind = 3;
   string content = 4;
   string timestamp = 5;
 }
 
-message SessionList {
-  repeated SessionInfo sessions = 1;
+message ActiveConversationList {
+  repeated ActiveConversationInfo conversations = 1;
 }
 
 message ConfigMsg {
@@ -439,10 +439,11 @@ message CronInfo {
   uint64 id = 1;
   string schedule = 2;
   string skill = 3;
-  uint64 session = 4;
+  string agent = 4;
   string quiet_start = 5;
   string quiet_end = 6;
   bool once = 7;
+  string sender = 8;
 }
 
 message CronList {

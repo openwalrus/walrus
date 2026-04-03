@@ -1,11 +1,11 @@
 pub mod ask_user;
 pub mod config;
+pub mod conversation;
 pub mod env;
 pub mod host;
 pub mod mcp;
 pub mod memory;
 pub mod os;
-pub mod session;
 pub mod skill;
 pub mod task;
 

@@ -84,7 +84,6 @@ async fn spawn_telegram(
 /// Per-chat stream state, tracked while a stream is in flight.
 struct ChatStream {
     handle: tokio::task::JoinHandle<StreamResult>,
-    session_id: Option<u64>,
     reply_tx: mpsc::UnboundedSender<String>,
 }
 
@@ -94,12 +93,9 @@ impl ChatStream {
     }
 }
 
-/// Reap a finished ChatStream, extracting the session_id on success.
-async fn reap_chat(chat: ChatStream) -> Option<u64> {
-    match chat.handle.await {
-        Ok(StreamResult::Ok { session_id }) => Some(session_id),
-        _ => chat.session_id,
-    }
+/// Reap a finished ChatStream, returning whether it succeeded.
+async fn reap_chat(chat: ChatStream) -> bool {
+    matches!(chat.handle.await, Ok(StreamResult::Ok))
 }
 
 async fn telegram_loop(
@@ -111,7 +107,6 @@ async fn telegram_loop(
     allowed_users: std::collections::HashSet<i64>,
 ) {
     let mut chats: HashMap<i64, ChatStream> = HashMap::new();
-    let mut sessions: HashMap<i64, u64> = HashMap::new();
 
     while let Some(msg) = rx.recv().await {
         let chat_id = msg.chat_id;
@@ -157,9 +152,7 @@ async fn telegram_loop(
         if let Some(chat_stream) = chats.get(&chat_id) {
             if chat_stream.is_finished() {
                 let chat_stream = chats.remove(&chat_id).unwrap();
-                if let Some(sid) = reap_chat(chat_stream).await {
-                    sessions.insert(chat_id, sid);
-                }
+                reap_chat(chat_stream).await;
                 // Fall through to spawn a new stream below.
             } else {
                 // Stream in flight — forward message. If ask_user is pending,
@@ -169,7 +162,6 @@ async fn telegram_loop(
             }
         }
 
-        let session = sessions.get(&chat_id).copied();
         let content = match attachment_summary(&msg.attachments) {
             Some(summary) => format!("{content}\n{summary}"),
             None => content,
@@ -182,7 +174,7 @@ async fn telegram_loop(
             let client = client.clone();
             let agent = agent.clone();
             tokio::spawn(async move {
-                let result = tg_stream(
+                tg_stream(
                     &bot,
                     &client,
                     &agent,
@@ -191,43 +183,13 @@ async fn telegram_loop(
                     msg.is_group,
                     &content,
                     &sender,
-                    session,
                     reply_rx,
                 )
-                .await;
-
-                // Handle session retry on error.
-                match result {
-                    StreamResult::SessionError if session.is_some() => {
-                        tracing::warn!(agent = %&agent, chat_id, "session error, retrying");
-                        let (_retry_tx, retry_rx) = mpsc::unbounded_channel();
-                        tg_stream(
-                            &bot,
-                            &client,
-                            &agent,
-                            chat_id,
-                            msg.message_id,
-                            msg.is_group,
-                            &content,
-                            &sender,
-                            None,
-                            retry_rx,
-                        )
-                        .await
-                    }
-                    other => other,
-                }
+                .await
             })
         };
 
-        chats.insert(
-            chat_id,
-            ChatStream {
-                handle,
-                session_id: session,
-                reply_tx,
-            },
-        );
+        chats.insert(chat_id, ChatStream { handle, reply_tx });
     }
 
     tracing::info!(platform = "telegram", "channel loop ended");
@@ -243,7 +205,6 @@ async fn tg_stream(
     is_group: bool,
     content: &str,
     sender: &str,
-    session: Option<u64>,
     mut reply_rx: mpsc::UnboundedReceiver<String>,
 ) -> StreamResult {
     use std::time::Duration;
@@ -251,11 +212,9 @@ async fn tg_stream(
     let client_msg = ClientMessage::from(StreamMsg {
         agent: agent.to_string(),
         content: content.to_string(),
-        session,
         sender: Some(sender.to_string()),
         cwd: None,
-        new_chat: false,
-        resume_file: None,
+        guest: None,
     });
     let mut server_rx = client.send(client_msg).await;
     let mut acc = StreamAccumulator::new();
@@ -356,13 +315,12 @@ async fn tg_stream(
                     };
 
                     if let Some(json_reply) = resolved {
-                        if let Some(session_id) = acc.session {
-                            let reply_msg = ClientMessage::from(ReplyToAsk {
-                                session: session_id,
-                                content: json_reply,
-                            });
-                            let _ = client.send(reply_msg).await;
-                        }
+                        let reply_msg = ClientMessage::from(ReplyToAsk {
+                            agent: agent.to_string(),
+                            sender: sender.to_string(),
+                            content: json_reply,
+                        });
+                        let _ = client.send(reply_msg).await;
                         pending_ask_questions = None;
                         multi_select_state.clear();
                     }
@@ -404,11 +362,7 @@ async fn tg_stream(
         if let Err(e) = bot.send_message(ChatId(chat_id), err_text).await {
             tracing::warn!(agent, "failed to send error to chat: {e}");
         }
-        return if session.is_some() {
-            StreamResult::SessionError
-        } else {
-            StreamResult::Failed
-        };
+        return StreamResult::Failed;
     }
 
     let final_text = acc.render();
@@ -434,9 +388,10 @@ async fn tg_stream(
         }
     }
 
-    match acc.session {
-        Some(session_id) => StreamResult::Ok { session_id },
-        None => StreamResult::Failed,
+    if acc.agent.is_some() {
+        StreamResult::Ok
+    } else {
+        StreamResult::Failed
     }
 }
 

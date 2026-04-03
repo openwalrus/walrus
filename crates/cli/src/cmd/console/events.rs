@@ -10,7 +10,7 @@ use ratatui::{
 };
 use wcore::protocol::message::{AgentEventKind, AgentEventMsg};
 
-const SESSION_COLORS: &[Color] = &[
+const CONVERSATION_COLORS: &[Color] = &[
     Color::LightMagenta,
     Color::LightCyan,
     Color::LightGreen,
@@ -19,8 +19,11 @@ const SESSION_COLORS: &[Color] = &[
     Color::LightRed,
 ];
 
-fn session_color(session_id: u64) -> Color {
-    SESSION_COLORS[session_id as usize % SESSION_COLORS.len()]
+fn sender_color(sender: &str) -> Color {
+    let hash: usize = sender
+        .bytes()
+        .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
+    CONVERSATION_COLORS[hash % CONVERSATION_COLORS.len()]
 }
 
 pub(super) struct EventEntry {
@@ -82,17 +85,15 @@ pub(super) fn render_events(
                 };
                 format!(": {display}")
             };
-            let session_color = session_color(entry.msg.session);
+            let color = sender_color(&entry.msg.sender);
             Line::from(vec![
                 Span::styled(
                     format!("  [{}] ", entry.timestamp),
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(
-                    format!("{}({}) ", entry.msg.agent, entry.msg.session),
-                    Style::default()
-                        .fg(session_color)
-                        .add_modifier(Modifier::BOLD),
+                    format!("{}({}) ", entry.msg.agent, entry.msg.sender),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     format!("{kind_str}{content_part}"),

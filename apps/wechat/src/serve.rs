@@ -67,7 +67,6 @@ async fn spawn_wechat(
 /// Per-chat stream state.
 struct ChatStream {
     handle: tokio::task::JoinHandle<StreamResult>,
-    session_id: Option<u64>,
     reply_tx: mpsc::UnboundedSender<String>,
 }
 
@@ -77,11 +76,8 @@ impl ChatStream {
     }
 }
 
-async fn reap_chat(chat: ChatStream) -> Option<u64> {
-    match chat.handle.await {
-        Ok(StreamResult::Ok { session_id }) => Some(session_id),
-        _ => chat.session_id,
-    }
+async fn reap_chat(chat: ChatStream) -> bool {
+    matches!(chat.handle.await, Ok(StreamResult::Ok))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -96,7 +92,6 @@ async fn wechat_loop(
     token: String,
 ) {
     let mut chats: HashMap<i64, ChatStream> = HashMap::new();
-    let mut sessions: HashMap<i64, u64> = HashMap::new();
     let http = reqwest::Client::new();
 
     while let Some(msg) = rx.recv().await {
@@ -120,16 +115,13 @@ async fn wechat_loop(
         if let Some(chat_stream) = chats.get(&chat_id) {
             if chat_stream.is_finished() {
                 let chat_stream = chats.remove(&chat_id).unwrap();
-                if let Some(sid) = reap_chat(chat_stream).await {
-                    sessions.insert(chat_id, sid);
-                }
+                reap_chat(chat_stream).await;
             } else {
                 let _ = chat_stream.reply_tx.send(content);
                 continue;
             }
         }
 
-        let session = sessions.get(&chat_id).copied();
         let sender = user_ids
             .lock()
             .unwrap()
@@ -148,55 +140,24 @@ async fn wechat_loop(
             let user_ids = user_ids.clone();
             let sender = sender.clone();
             tokio::spawn(async move {
-                let result = wx_stream(
+                wx_stream(
                     &http,
                     &client,
                     &agent,
                     chat_id,
                     &content,
                     &sender,
-                    session,
                     reply_rx,
                     &base_url,
                     &token,
                     &ctx_tokens,
                     &user_ids,
                 )
-                .await;
-
-                match result {
-                    StreamResult::SessionError if session.is_some() => {
-                        tracing::warn!(agent = %&agent, chat_id, "session error, retrying");
-                        let (_retry_tx, retry_rx) = mpsc::unbounded_channel();
-                        wx_stream(
-                            &http,
-                            &client,
-                            &agent,
-                            chat_id,
-                            &content,
-                            &sender,
-                            None,
-                            retry_rx,
-                            &base_url,
-                            &token,
-                            &ctx_tokens,
-                            &user_ids,
-                        )
-                        .await
-                    }
-                    other => other,
-                }
+                .await
             })
         };
 
-        chats.insert(
-            chat_id,
-            ChatStream {
-                handle,
-                session_id: session,
-                reply_tx,
-            },
-        );
+        chats.insert(chat_id, ChatStream { handle, reply_tx });
     }
 
     tracing::info!(platform = "wechat", "channel loop ended");
@@ -210,22 +171,19 @@ async fn wx_stream(
     chat_id: i64,
     content: &str,
     sender: &str,
-    session: Option<u64>,
     mut reply_rx: mpsc::UnboundedReceiver<String>,
     base_url: &str,
     token: &str,
     ctx_tokens: &ContextTokens,
     user_ids: &UserIdMap,
 ) -> StreamResult {
-    tracing::info!(agent, chat_id, %sender, ?session, "starting stream");
+    tracing::info!(agent, chat_id, %sender, "starting stream");
     let client_msg = ClientMessage::from(StreamMsg {
         agent: agent.to_string(),
         content: content.to_string(),
-        session,
         sender: Some(sender.to_string()),
         cwd: None,
-        new_chat: false,
-        resume_file: None,
+        guest: None,
     });
     let mut server_rx = client.send(client_msg).await;
     let mut acc = StreamAccumulator::new();
@@ -272,13 +230,12 @@ async fn wx_stream(
             reply = reply_rx.recv() => {
                 if let Some(reply_content) = reply {
                     // Free-text reply for ask_user.
-                    if let Some(session_id) = acc.session {
-                        let reply_msg = ClientMessage::from(ReplyToAsk {
-                            session: session_id,
-                            content: reply_content,
-                        });
-                        let _ = client.send(reply_msg).await;
-                    }
+                    let reply_msg = ClientMessage::from(ReplyToAsk {
+                        agent: agent.to_string(),
+                        sender: sender.to_string(),
+                        content: reply_content,
+                    });
+                    let _ = client.send(reply_msg).await;
                 }
             }
         }
@@ -298,11 +255,7 @@ async fn wx_stream(
                 crate::api::send_message(http, base_url, token, &to, &ct, &format!("Error: {err}"))
                     .await;
         }
-        return if session.is_some() {
-            StreamResult::SessionError
-        } else {
-            StreamResult::Failed
-        };
+        return StreamResult::Failed;
     }
 
     let final_text = acc.render();
@@ -329,14 +282,11 @@ async fn wx_stream(
         tracing::debug!(agent, chat_id, "stream ended with empty response");
     }
 
-    match acc.session {
-        Some(session_id) => {
-            tracing::info!(agent, chat_id, session_id, "stream completed");
-            StreamResult::Ok { session_id }
-        }
-        None => {
-            tracing::warn!(agent, chat_id, "stream completed without session");
-            StreamResult::Failed
-        }
+    if acc.agent.is_some() {
+        tracing::info!(agent, chat_id, "stream completed");
+        StreamResult::Ok
+    } else {
+        tracing::warn!(agent, chat_id, "stream completed without agent");
+        StreamResult::Failed
     }
 }

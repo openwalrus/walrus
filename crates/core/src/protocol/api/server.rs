@@ -1,13 +1,13 @@
 //! Server trait — one async method per protocol operation.
 
 use crate::protocol::message::{
-    AgentEventMsg, AgentInfo, AgentList, ClientMessage, CompactResponse, ConversationHistory,
-    ConversationInfo, ConversationList, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
-    DaemonStats, ErrorMsg, HubEvent, HubPackageInfo, HubPackageList, InstallPackageMsg, McpInfo,
-    McpList, ModelInfo, ModelList, PackageInfo, PackageList, Pong, ProviderInfo, ProviderList,
-    ProviderPresetInfo, ProviderPresetList, ResourceKind, SendMsg, SendResponse, ServerMessage,
-    ServiceLogOutput, SessionInfo, SessionList, SkillInfo, SkillList, StreamEvent, StreamMsg,
-    UpdateAgentMsg, client_message, server_message,
+    ActiveConversationInfo, ActiveConversationList, AgentEventMsg, AgentInfo, AgentList,
+    ClientMessage, CompactResponse, ConversationHistory, ConversationInfo, ConversationList,
+    CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, HubEvent,
+    HubPackageInfo, HubPackageList, InstallPackageMsg, McpInfo, McpList, ModelInfo, ModelList,
+    PackageInfo, PackageList, Pong, ProviderInfo, ProviderList, ProviderPresetInfo,
+    ProviderPresetList, ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput,
+    SkillInfo, SkillList, StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -54,11 +54,17 @@ pub trait Server: Sync {
     /// Handle `Ping` — keepalive.
     fn ping(&self) -> impl std::future::Future<Output = Result<()>> + Send;
 
-    /// Handle `Sessions` — list active sessions.
-    fn list_sessions(&self) -> impl std::future::Future<Output = Result<Vec<SessionInfo>>> + Send;
+    /// Handle `ListActiveConversations` — list active conversations.
+    fn list_conversations_active(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<ActiveConversationInfo>>> + Send;
 
-    /// Handle `Kill` — close a session by ID.
-    fn kill_session(&self, session: u64) -> impl std::future::Future<Output = Result<bool>> + Send;
+    /// Handle `Kill` — close a conversation by (agent, sender).
+    fn kill_conversation(
+        &self,
+        agent: String,
+        sender: String,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
 
     /// Handle `SubscribeEvents` — stream agent events.
     fn subscribe_events(&self) -> impl Stream<Item = Result<AgentEventMsg>> + Send;
@@ -81,16 +87,18 @@ pub trait Server: Sync {
     /// Handle `ListCrons` — return all cron entries.
     fn list_crons(&self) -> impl std::future::Future<Output = Result<CronList>> + Send;
 
-    /// Handle `Compact` — compact a session's history into a summary.
-    fn compact_session(
+    /// Handle `Compact` — compact a conversation's history into a summary.
+    fn compact_conversation(
         &self,
-        session: u64,
+        agent: String,
+        sender: String,
     ) -> impl std::future::Future<Output = Result<String>> + Send;
 
     /// Handle `ReplyToAsk` — deliver a user reply to a pending `ask_user` tool call.
     fn reply_to_ask(
         &self,
-        session: u64,
+        agent: String,
+        sender: String,
         content: String,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
 
@@ -249,20 +257,20 @@ pub trait Server: Sync {
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
-                client_message::Msg::Sessions(_) => {
-                    yield match self.list_sessions().await {
-                        Ok(sessions) => ServerMessage {
-                            msg: Some(server_message::Msg::Sessions(SessionList { sessions })),
+                client_message::Msg::ListActiveConversations(_req) => {
+                    yield match self.list_conversations_active().await {
+                        Ok(conversations) => ServerMessage {
+                            msg: Some(server_message::Msg::ActiveConversations(ActiveConversationList { conversations })),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
                 client_message::Msg::Kill(kill_msg) => {
-                    yield match self.kill_session(kill_msg.session).await {
+                    yield match self.kill_conversation(kill_msg.agent.clone(), kill_msg.sender.clone()).await {
                         Ok(true) => server_pong(),
                         Ok(false) => server_error(
                             404,
-                            format!("session {} not found", kill_msg.session),
+                            format!("conversation not found for agent='{}' sender='{}'", kill_msg.agent, kill_msg.sender),
                         ),
                         Err(e) => server_error(500, e.to_string()),
                     };
@@ -284,7 +292,7 @@ pub trait Server: Sync {
                     };
                 }
                 client_message::Msg::ReplyToAsk(msg) => {
-                    yield match self.reply_to_ask(msg.session, msg.content).await {
+                    yield match self.reply_to_ask(msg.agent, msg.sender, msg.content).await {
                         Ok(()) => server_pong(),
                         Err(e) => server_error(404, e.to_string()),
                     };
@@ -321,7 +329,7 @@ pub trait Server: Sync {
                     };
                 }
                 client_message::Msg::Compact(req) => {
-                    yield match self.compact_session(req.session).await {
+                    yield match self.compact_conversation(req.agent, req.sender).await {
                         Ok(summary) => ServerMessage {
                             msg: Some(server_message::Msg::Compact(CompactResponse { summary })),
                         },

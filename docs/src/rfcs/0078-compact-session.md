@@ -1,5 +1,9 @@
 # 0078 - Compact Session
 
+> **Superseded by [0135 - Agent-First Protocol](0135-agent-first.md).**
+> Client-side @mention with compact handoff is replaced by daemon-native
+> guest turns.
+
 - Feature Name: Compact Session Interface
 - Start Date: 2026-03-25
 - Discussion: [#78](https://github.com/crabtalk/crabtalk/issues/78)

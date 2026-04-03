@@ -13,9 +13,10 @@ use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        AgentEventMsg, AskQuestion, ClientMessage, HubEvent, InstallPackageMsg, KillMsg,
-        ReplyToAsk, ServerMessage, SessionInfo, StreamMsg, SubscribeEvents, UninstallPackageMsg,
-        client_message, hub_event, server_message, stream_event,
+        ActiveConversationInfo, AgentEventMsg, AskQuestion, ClientMessage, HubEvent,
+        InstallPackageMsg, KillMsg, ListActiveConversationsMsg, ReplyToAsk, ServerMessage,
+        StreamMsg, SubscribeEvents, UninstallPackageMsg, client_message, hub_event, server_message,
+        stream_event,
     },
 };
 
@@ -31,10 +32,11 @@ pub enum OutputChunk {
     ToolResult(String, String),
     /// Tool execution completed (true = success, false = failure).
     ToolDone(bool),
-    /// Agent is asking the user structured questions. Carries questions and session ID.
+    /// Agent is asking the user structured questions. Carries questions and agent identity.
     AskUser {
         questions: Vec<AskQuestion>,
-        session: u64,
+        agent: String,
+        sender: String,
     },
 }
 
@@ -145,15 +147,13 @@ impl Runner {
 
     /// Stream a response, yielding typed output chunks.
     ///
-    /// If `cwd` is `Some`, the agent session uses that directory for tool
+    /// If `cwd` is `Some`, the agent conversation uses that directory for tool
     /// execution instead of the process's current working directory.
     pub fn stream<'a>(
         &'a mut self,
         agent: &'a str,
         content: &'a str,
         cwd: Option<&'a Path>,
-        new_chat: bool,
-        resume_file: Option<String>,
         sender: Option<String>,
     ) -> impl Stream<Item = Result<OutputChunk>> + Send + 'a {
         let cwd = cwd.map(|p| p.to_string_lossy().into_owned()).or_else(|| {
@@ -161,15 +161,15 @@ impl Runner {
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned())
         });
+        let agent_name = agent.to_string();
+        let sender_name = sender.clone().unwrap_or_default();
         self.transport
             .request_stream(ClientMessage::from(StreamMsg {
                 agent: agent.to_string(),
                 content: content.to_string(),
-                session: None,
                 sender,
                 cwd,
-                new_chat,
-                resume_file,
+                guest: None,
             }))
             .take_while(|r| {
                 std::future::ready(!matches!(
@@ -179,13 +179,12 @@ impl Runner {
                     }) if matches!(&e.event, Some(stream_event::Event::End(end)) if end.error.is_empty())
                 ))
             })
-            .scan(0u64, |session_id, result| {
+            .scan((agent_name, sender_name), |state, result| {
                 let chunk = match result {
                     Ok(ServerMessage {
                         msg: Some(server_message::Msg::Stream(e)),
                     }) => match &e.event {
-                        Some(stream_event::Event::Start(s)) => {
-                            *session_id = s.session;
+                        Some(stream_event::Event::Start(_)) => {
                             None
                         }
                         Some(stream_event::Event::Chunk(c)) => {
@@ -210,7 +209,8 @@ impl Runner {
                         }
                         Some(stream_event::Event::AskUser(ask)) => Some(Ok(OutputChunk::AskUser {
                             questions: ask.questions.clone(),
-                            session: *session_id,
+                            agent: state.0.clone(),
+                            sender: state.1.clone(),
                         })),
                         Some(stream_event::Event::End(end)) if !end.error.is_empty() => {
                             Some(Err(anyhow::anyhow!("{}", end.error)))
@@ -233,15 +233,20 @@ impl Runner {
             .filter_map(std::future::ready)
     }
 
-    /// List active sessions on the daemon.
-    pub async fn list_sessions(&mut self) -> Result<Vec<SessionInfo>> {
+    /// List active conversations on the daemon.
+    pub async fn list_active_conversations(&mut self) -> Result<Vec<ActiveConversationInfo>> {
         let msg = ClientMessage {
-            msg: Some(client_message::Msg::Sessions(Default::default())),
+            msg: Some(client_message::Msg::ListActiveConversations(
+                ListActiveConversationsMsg {
+                    agent: String::new(),
+                    sender: String::new(),
+                },
+            )),
         };
         match self.transport.request(msg).await? {
             ServerMessage {
-                msg: Some(server_message::Msg::Sessions(sl)),
-            } => Ok(sl.sessions),
+                msg: Some(server_message::Msg::ActiveConversations(sl)),
+            } => Ok(sl.conversations),
             ServerMessage {
                 msg: Some(server_message::Msg::Error(e)),
             } => {
@@ -251,10 +256,13 @@ impl Runner {
         }
     }
 
-    /// Kill (close) a session by ID. Returns true if it existed.
-    pub async fn kill_session(&mut self, session: u64) -> Result<bool> {
+    /// Kill (close) a conversation by (agent, sender). Returns true if it existed.
+    pub async fn kill_conversation(&mut self, agent: &str, sender: &str) -> Result<bool> {
         let msg = ClientMessage {
-            msg: Some(client_message::Msg::Kill(KillMsg { session })),
+            msg: Some(client_message::Msg::Kill(KillMsg {
+                agent: agent.to_string(),
+                sender: sender.to_string(),
+            })),
         };
         match self.transport.request(msg).await? {
             ServerMessage {
@@ -400,8 +408,17 @@ impl Runner {
 }
 
 /// Send a `ReplyToAsk` to the daemon on a temporary connection.
-pub async fn send_reply(conn_info: &ConnectionInfo, session: u64, content: String) -> Result<()> {
-    let msg = ClientMessage::from(ReplyToAsk { session, content });
+pub async fn send_reply(
+    conn_info: &ConnectionInfo,
+    agent: String,
+    sender: String,
+    content: String,
+) -> Result<()> {
+    let msg = ClientMessage::from(ReplyToAsk {
+        agent,
+        sender,
+        content,
+    });
     match conn_info {
         #[cfg(unix)]
         ConnectionInfo::Uds(path) => {

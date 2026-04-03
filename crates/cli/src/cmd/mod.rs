@@ -98,8 +98,8 @@ impl Cli {
             tokio::pin!(stream);
             while let Some(Ok(event)) = stream.next().await {
                 println!(
-                    "[{}] {} (session {})",
-                    event.agent, event.content, event.session
+                    "[{}] {} (sender {})",
+                    event.agent, event.content, event.sender
                 );
             }
             return Ok(());
@@ -253,9 +253,9 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         tail_args: Vec<String>,
     },
-    /// Resume a previous chat session.
+    /// Resume a previous conversation.
     Resume {
-        /// Session file to resume. If omitted, shows a session picker.
+        /// Conversation file to resume. If omitted, shows a conversation picker.
         file: Option<String>,
     },
     /// Forward to an external `crabtalk-{name}` binary.

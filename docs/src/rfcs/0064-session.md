@@ -1,5 +1,9 @@
 # 0064 - Session
 
+> **Superseded by [0135 - Agent-First Protocol](0135-agent-first.md).**
+> Sessions are renamed to Conversations. Session IDs are removed from the
+> protocol. Conversations are addressed by (agent, sender) pair.
+
 - Feature Name: Session System
 - Start Date: 2026-02-25
 - Discussion: [#64](https://github.com/crabtalk/crabtalk/issues/64)

@@ -32,6 +32,12 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
 
+    /// Which agent produced this assistant message. Empty = the conversation's
+    /// primary agent. Non-empty = a guest agent that was pulled into the
+    /// conversation via an @ mention or guest turn.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent: String,
+
     /// The sender identity (runtime-only, never serialized to providers).
     ///
     /// Convention: empty = local/owner, `"tg:12345"` = Telegram user.
@@ -111,6 +117,19 @@ impl Message {
     /// Estimate the number of tokens in this message.
     ///
     /// Uses a simple heuristic: ~4 characters per token.
+    /// Return a clone with the content wrapped in `<from agent="...">` tags
+    /// if this is a guest assistant message. Used when building LLM requests
+    /// so agents can distinguish speakers in multi-agent conversations.
+    pub fn with_agent_tag(&self) -> Self {
+        if self.role == Role::Assistant && !self.agent.is_empty() {
+            let mut m = self.clone();
+            m.content = format!("<from agent=\"{}\">\n{}\n</from>", self.agent, self.content);
+            m
+        } else {
+            self.clone()
+        }
+    }
+
     pub fn estimate_tokens(&self) -> usize {
         let chars = self.content.len()
             + self.reasoning_content.len()
@@ -199,6 +218,7 @@ impl Default for Message {
             name: String::new(),
             tool_call_id: String::new(),
             tool_calls: Vec::new(),
+            agent: String::new(),
             sender: String::new(),
             auto_injected: false,
         }

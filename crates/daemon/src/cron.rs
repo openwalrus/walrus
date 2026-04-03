@@ -19,7 +19,8 @@ pub struct CronEntry {
     pub id: u64,
     pub schedule: String,
     pub skill: String,
-    pub session: u64,
+    pub agent: String,
+    pub sender: String,
     #[serde(default)]
     pub quiet_start: Option<String>,
     #[serde(default)]
@@ -191,11 +192,12 @@ async fn run_cron_timer(
     let schedule = cron::Schedule::from_str(&entry.schedule).expect("pre-validated schedule");
 
     tracing::info!(
-        "cron {}: started (schedule='{}', skill='{}', session={}, once={})",
+        "cron {}: started (schedule='{}', skill='{}', agent='{}', sender='{}', once={})",
         entry.id,
         entry.schedule,
         entry.skill,
-        entry.session,
+        entry.agent,
+        entry.sender,
         entry.once,
     );
 
@@ -225,24 +227,23 @@ async fn run_cron_timer(
         }
 
         tracing::info!(
-            "cron {}: firing skill '{}' into session {}",
+            "cron {}: firing skill '{}' into agent='{}' sender='{}'",
             entry.id,
             entry.skill,
-            entry.session
+            entry.agent,
+            entry.sender,
         );
 
         // Fire-and-forget: receiver is dropped, so the first send() in
         // handle_message returns Err and the loop exits. Output goes to
-        // session history only.
+        // conversation history only.
         let (reply_tx, _) = tokio::sync::mpsc::channel(1);
         let msg = ClientMessage::from(SendMsg {
-            agent: String::new(),
+            agent: entry.agent.clone(),
             content: format!("/{}", entry.skill),
-            session: Some(entry.session),
-            sender: Some("cron".to_string()),
+            sender: Some(entry.sender.clone()),
             cwd: None,
-            new_chat: false,
-            resume_file: None,
+            guest: None,
         });
         let _ = event_tx.send(DaemonEvent::Message {
             msg,

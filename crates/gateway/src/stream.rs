@@ -11,8 +11,8 @@ pub struct StreamAccumulator {
     text: String,
     /// Current tool call status line (e.g., "[calling bash, read...]").
     tool_line: Option<String>,
-    /// Session ID from StreamStart.
-    pub session: Option<u64>,
+    /// Agent name from StreamStart.
+    pub agent: Option<String>,
     /// Captured error, if any.
     error: Option<String>,
     /// Whether the stream has ended.
@@ -32,7 +32,7 @@ impl StreamAccumulator {
         Self {
             text: String::new(),
             tool_line: None,
-            session: None,
+            agent: None,
             error: None,
             done: false,
             pending_questions: None,
@@ -43,7 +43,7 @@ impl StreamAccumulator {
     pub fn push(&mut self, event: &StreamEvent) {
         match &event.event {
             Some(stream_event::Event::Start(s)) => {
-                self.session = Some(s.session);
+                self.agent = Some(s.agent.clone());
             }
             Some(stream_event::Event::Chunk(c)) => {
                 self.text.push_str(&c.content);

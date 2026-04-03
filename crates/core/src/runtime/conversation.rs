@@ -1,6 +1,6 @@
-//! Session — conversation container with append-only JSONL persistence.
+//! Conversation — container with append-only JSONL persistence.
 //!
-//! Files are organized as `sessions/{YYYY-MM-DD}/{agent}_{sender}_{seq}.jsonl`.
+//! Files are organized as `sessions/{agent}_{sender}_{seq}.jsonl`.
 //! After `set_title`, renamed to `{agent}_{sender}_{seq}_{title_slug}.jsonl`.
 //!
 //! Append-only. Compact markers (`{"compact":"..."}`) separate archived
@@ -16,9 +16,9 @@ use std::{
     time::Instant,
 };
 
-/// Session metadata — first line of a JSONL session file.
+/// Conversation metadata — first line of a JSONL conversation file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionMeta {
+pub struct ConversationMeta {
     pub agent: String,
     pub created_by: String,
     pub created_at: String,
@@ -28,37 +28,58 @@ pub struct SessionMeta {
     pub uptime_secs: u64,
 }
 
-/// A JSONL line that is either a message or a compact marker.
+/// A JSONL line: message or compact marker (archive boundary).
+///
+/// Variant order matters: `untagged` tries top-to-bottom. `Compact` is a
+/// single-key struct that fails fast on any other shape, so `Message`
+/// (the catch-all) must be last.
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
-enum SessionLine {
-    Compact { compact: String },
+enum ConversationLine {
+    Compact {
+        compact: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        title: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        archived_at: String,
+    },
     Message(Message),
 }
 
-/// A conversation session tied to a specific agent.
+/// A compaction archive segment — a titled snapshot of past conversation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveSegment {
+    /// Short title derived from the compact summary.
+    pub title: String,
+    /// The compact summary text.
+    pub summary: String,
+    /// When this segment was archived.
+    pub archived_at: String,
+}
+
+/// A conversation tied to a specific agent.
 #[derive(Debug, Clone)]
-pub struct Session {
-    /// Unique session identifier (monotonic counter, runtime-only).
+pub struct Conversation {
+    /// Unique conversation identifier (monotonic counter, runtime-only).
     pub id: u64,
-    /// Name of the agent this session is bound to.
+    /// Name of the agent this conversation is bound to.
     pub agent: String,
     /// Conversation history (the working context for the LLM).
     pub history: Vec<Message>,
-    /// Origin of this session (e.g. "user", "tg:12345").
+    /// Origin of this conversation (e.g. "user", "tg:12345").
     pub created_by: String,
     /// Conversation title (set by the `set_title` tool).
     pub title: String,
     /// Accumulated active time in seconds (persisted to meta).
     pub uptime_secs: u64,
-    /// When this session was loaded/created in this process.
+    /// When this conversation was loaded/created in this process.
     pub created_at: Instant,
     /// Path to the JSONL persistence file.
     pub file_path: Option<PathBuf>,
 }
 
-impl Session {
-    /// Create a new session with an empty history.
+impl Conversation {
+    /// Create a new conversation with an empty history.
     pub fn new(id: u64, agent: impl Into<String>, created_by: impl Into<String>) -> Self {
         Self {
             id,
@@ -72,20 +93,30 @@ impl Session {
         }
     }
 
-    /// Initialize a new JSONL file in the flat sessions directory.
+    /// Ensure the JSONL file exists, creating it on first call.
     ///
-    /// Creates `{sessions_dir}/{agent}_{sender}_{seq}.jsonl` with
+    /// No-op if the file was already created or loaded from disk.
+    pub fn ensure_file(&mut self) {
+        if self.file_path.is_some() {
+            return;
+        }
+        self.init_file(&crate::paths::CONVERSATIONS_DIR);
+    }
+
+    /// Initialize a new JSONL file in the flat conversations directory.
+    ///
+    /// Creates `{conversations_dir}/{agent}_{sender}_{seq}.jsonl` with
     /// seq auto-incremented globally per identity.
-    pub fn init_file(&mut self, sessions_dir: &Path) {
-        let _ = fs::create_dir_all(sessions_dir);
+    pub fn init_file(&mut self, conversations_dir: &Path) {
+        let _ = fs::create_dir_all(conversations_dir);
 
         let slug = sender_slug(&self.created_by);
         let prefix = format!("{}_{slug}_", self.agent);
-        let seq = next_seq(sessions_dir, &prefix);
+        let seq = next_seq(conversations_dir, &prefix);
         let filename = format!("{prefix}{seq}.jsonl");
-        let path = sessions_dir.join(filename);
+        let path = conversations_dir.join(filename);
 
-        let meta = SessionMeta {
+        let meta = ConversationMeta {
             agent: self.agent.clone(),
             created_by: self.created_by.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
@@ -105,7 +136,7 @@ impl Session {
                 }
                 self.file_path = Some(path);
             }
-            Err(e) => tracing::warn!("failed to create session file: {e}"),
+            Err(e) => tracing::warn!("failed to create conversation file: {e}"),
         }
     }
 
@@ -141,7 +172,7 @@ impl Session {
         let Ok(content) = fs::read_to_string(path) else {
             return;
         };
-        let meta = SessionMeta {
+        let meta = ConversationMeta {
             agent: self.agent.clone(),
             created_by: self.created_by.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
@@ -165,7 +196,7 @@ impl Session {
         let mut file = match OpenOptions::new().append(true).open(path) {
             Ok(f) => f,
             Err(e) => {
-                tracing::warn!("failed to open session file for append: {e}");
+                tracing::warn!("failed to open conversation file for append: {e}");
                 return;
             }
         };
@@ -180,6 +211,9 @@ impl Session {
     }
 
     /// Append a compact marker to the JSONL file.
+    ///
+    /// The marker doubles as an archive boundary: it stores the summary,
+    /// a title derived from the first sentence, and a timestamp.
     pub fn append_compact(&self, summary: &str) {
         let Some(ref path) = self.file_path else {
             return;
@@ -187,31 +221,33 @@ impl Session {
         let mut file = match OpenOptions::new().append(true).open(path) {
             Ok(f) => f,
             Err(e) => {
-                tracing::warn!("failed to open session file for compact: {e}");
+                tracing::warn!("failed to open conversation file for compact: {e}");
                 return;
             }
         };
-        let line = SessionLine::Compact {
+        let line = ConversationLine::Compact {
             compact: summary.to_string(),
+            title: compact_title(summary),
+            archived_at: chrono::Utc::now().to_rfc3339(),
         };
         if let Ok(json) = serde_json::to_string(&line) {
             let _ = writeln!(file, "{json}");
         }
     }
 
-    /// Load the working context from a JSONL session file.
+    /// Load the working context from a JSONL conversation file.
     ///
     /// Reads from the last `{"compact":"..."}` marker forward. If no compact
     /// marker exists, loads all messages.
-    pub fn load_context(path: &Path) -> anyhow::Result<(SessionMeta, Vec<Message>)> {
+    pub fn load_context(path: &Path) -> anyhow::Result<(ConversationMeta, Vec<Message>)> {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
 
         let meta_line = lines
             .next()
-            .ok_or_else(|| anyhow::anyhow!("empty session file"))??;
-        let meta: SessionMeta = serde_json::from_str(&meta_line)?;
+            .ok_or_else(|| anyhow::anyhow!("empty conversation file"))??;
+        let meta: ConversationMeta = serde_json::from_str(&meta_line)?;
 
         let mut all_lines: Vec<String> = Vec::new();
         let mut last_compact_idx: Option<usize> = None;
@@ -222,7 +258,7 @@ impl Session {
                 continue;
             }
             if line.contains("\"compact\"")
-                && let Ok(SessionLine::Compact { .. }) = serde_json::from_str(&line)
+                && let Ok(ConversationLine::Compact { .. }) = serde_json::from_str(&line)
             {
                 last_compact_idx = Some(all_lines.len());
             }
@@ -235,7 +271,7 @@ impl Session {
         for (i, line) in all_lines[context_start..].iter().enumerate() {
             if i == 0
                 && last_compact_idx.is_some()
-                && let Ok(SessionLine::Compact { compact }) = serde_json::from_str(line)
+                && let Ok(ConversationLine::Compact { compact, .. }) = serde_json::from_str(line)
             {
                 messages.push(Message::user(&compact));
                 continue;
@@ -247,19 +283,52 @@ impl Session {
 
         Ok((meta, messages))
     }
+
+    /// Load all archive segments from a JSONL conversation file.
+    ///
+    /// Each compact marker in the file becomes an `ArchiveSegment` with
+    /// title, summary, and timestamp. Returns segments in chronological order.
+    pub fn load_archives(path: &Path) -> anyhow::Result<Vec<ArchiveSegment>> {
+        let file = fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut archives = Vec::new();
+
+        for line in reader.lines().skip(1) {
+            let line = line?;
+            if line.contains("\"compact\"")
+                && let Ok(ConversationLine::Compact {
+                    compact,
+                    title,
+                    archived_at,
+                }) = serde_json::from_str(&line)
+            {
+                archives.push(ArchiveSegment {
+                    title,
+                    summary: compact,
+                    archived_at,
+                });
+            }
+        }
+
+        Ok(archives)
+    }
 }
 
-/// Find the latest session file for an (agent, created_by) identity.
+/// Find the latest conversation file for an (agent, created_by) identity.
 ///
-/// Scans the flat sessions directory for files matching the identity prefix
+/// Scans the flat conversations directory for files matching the identity prefix
 /// and returns the one with the highest seq number.
-pub fn find_latest_session(sessions_dir: &Path, agent: &str, created_by: &str) -> Option<PathBuf> {
+pub fn find_latest_conversation(
+    conversations_dir: &Path,
+    agent: &str,
+    created_by: &str,
+) -> Option<PathBuf> {
     let slug = sender_slug(created_by);
     let prefix = format!("{agent}_{slug}_");
 
     let mut best: Option<(u32, PathBuf)> = None;
 
-    for entry in fs::read_dir(sessions_dir).ok()?.flatten() {
+    for entry in fs::read_dir(conversations_dir).ok()?.flatten() {
         let path = entry.path();
         if path.is_dir() {
             continue;
@@ -299,6 +368,21 @@ fn next_seq(dir: &Path, prefix: &str) -> u32 {
         .max()
         .unwrap_or(0);
     max + 1
+}
+
+/// Derive a short title from a compact summary.
+///
+/// Takes the first sentence (up to the first `.`, `!`, or `?`) and caps
+/// at 60 characters. Falls back to the first 60 chars if no sentence
+/// boundary is found.
+fn compact_title(summary: &str) -> String {
+    let end = summary
+        .find(['.', '!', '?'])
+        .map(|i| i + 1)
+        .unwrap_or(summary.len())
+        .min(60);
+    let title = summary[..summary.floor_char_boundary(end)].trim();
+    title.to_string()
 }
 
 /// Sanitize a string into a filesystem-safe slug.
