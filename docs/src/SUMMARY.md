@@ -16,3 +16,4 @@
 - [0078 - Compact Session](rfcs/0078-compact-session.md)
 - [0080 - Cron](rfcs/0080-cron.md)
 - [0082 - Scoping](rfcs/0082-scoping.md)
+- [0135 - Agent-First Protocol](rfcs/0135-agent-first.md)
