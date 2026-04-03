@@ -98,8 +98,8 @@ impl Cli {
             tokio::pin!(stream);
             while let Some(Ok(event)) = stream.next().await {
                 println!(
-                    "[{}] {} (conversation {})",
-                    event.agent, event.content, event.session
+                    "[{}] {} (sender {})",
+                    event.agent, event.content, event.sender
                 );
             }
             return Ok(());

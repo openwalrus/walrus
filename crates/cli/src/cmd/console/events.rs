@@ -19,8 +19,9 @@ const CONVERSATION_COLORS: &[Color] = &[
     Color::LightRed,
 ];
 
-fn conversation_color(conversation_id: u64) -> Color {
-    CONVERSATION_COLORS[conversation_id as usize % CONVERSATION_COLORS.len()]
+fn sender_color(sender: &str) -> Color {
+    let hash: usize = sender.bytes().fold(0usize, |acc, b| acc.wrapping_add(b as usize));
+    CONVERSATION_COLORS[hash % CONVERSATION_COLORS.len()]
 }
 
 pub(super) struct EventEntry {
@@ -82,16 +83,16 @@ pub(super) fn render_events(
                 };
                 format!(": {display}")
             };
-            let conversation_color = conversation_color(entry.msg.session);
+            let color = sender_color(&entry.msg.sender);
             Line::from(vec![
                 Span::styled(
                     format!("  [{}] ", entry.timestamp),
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(
-                    format!("{}({}) ", entry.msg.agent, entry.msg.session),
+                    format!("{}({}) ", entry.msg.agent, entry.msg.sender),
                     Style::default()
-                        .fg(conversation_color)
+                        .fg(color)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(

@@ -9,7 +9,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 use std::collections::BTreeMap;
-use wcore::protocol::message::{ConversationInfo, SessionInfo};
+use wcore::protocol::message::{ActiveConversationInfo, ConversationInfo};
 
 /// Which view the Conversations tab is showing.
 #[derive(Clone)]
@@ -57,8 +57,8 @@ pub(super) struct ConversationEntry {
     pub message_count: Option<u64>,
     /// Uptime in seconds (from daemon).
     pub alive_secs: Option<u64>,
-    /// Daemon conversation ID (for correlating with live events).
-    pub conversation_id: Option<u64>,
+    /// Whether this conversation is currently active on the daemon.
+    pub is_active: bool,
 }
 
 impl ConversationView {
@@ -66,7 +66,7 @@ impl ConversationView {
     pub fn refresh_identities(
         &mut self,
         conversations: &[ConversationInfo],
-        daemon_conversations: &[SessionInfo],
+        daemon_conversations: &[ActiveConversationInfo],
     ) {
         let mut data: BTreeMap<(String, String), (usize, String, u64, u64)> = BTreeMap::new();
 
@@ -87,7 +87,7 @@ impl ConversationView {
 
         // Merge live daemon conversation data.
         for ds in daemon_conversations {
-            let key = (ds.agent.clone(), ds.created_by.clone());
+            let key = (ds.agent.clone(), ds.sender.clone());
             let entry = data.entry(key).or_insert((0, String::new(), 0, 0));
             entry.1 = "Today".to_string();
             entry.2 = entry.2.max(ds.alive_secs);
@@ -127,7 +127,7 @@ impl ConversationView {
     pub fn enter(
         &mut self,
         conversations: &[ConversationInfo],
-        daemon_conversations: &[SessionInfo],
+        daemon_conversations: &[ActiveConversationInfo],
     ) {
         if let Self::Identities { entries, selected } = self
             && let Some(entry) = entries.get(*selected)
@@ -140,13 +140,13 @@ impl ConversationView {
                     file_path: c.file_path.clone(),
                     message_count: Some(c.message_count),
                     alive_secs: Some(c.alive_secs),
-                    conversation_id: None,
+                    is_active: false,
                 })
                 .collect();
 
             // Merge live stats from daemon conversations.
             for ds in daemon_conversations {
-                if ds.agent == entry.agent && ds.created_by == entry.sender {
+                if ds.agent == entry.agent && ds.sender == entry.sender {
                     let title_slug = wcore::sender_slug(&ds.title);
                     if let Some(conv) = conv_entries.iter_mut().find(|c| {
                         if ds.title.is_empty() && c.title.is_empty() {
@@ -157,7 +157,7 @@ impl ConversationView {
                     }) {
                         conv.message_count = Some(ds.message_count);
                         conv.alive_secs = Some(ds.alive_secs);
-                        conv.conversation_id = Some(ds.id);
+                        conv.is_active = true;
                     }
                 }
             }
@@ -174,12 +174,12 @@ impl ConversationView {
     /// Update live stats from daemon data without resetting selection.
     /// Only overlays live conversation info — does not touch base counts from
     /// the last `refresh_identities` call.
-    pub fn merge_daemon_data(&mut self, daemon_conversations: &[SessionInfo]) {
+    pub fn merge_daemon_data(&mut self, daemon_conversations: &[ActiveConversationInfo]) {
         match self {
             Self::Identities { entries, .. } => {
                 for e in entries.iter_mut() {
                     for ds in daemon_conversations {
-                        if ds.agent == e.agent && ds.created_by == e.sender {
+                        if ds.agent == e.agent && ds.sender == e.sender {
                             e.message_count = e.message_count.max(ds.message_count);
                             e.alive_secs = e.alive_secs.max(ds.alive_secs);
                             e.last_active = "Today".to_string();
@@ -196,11 +196,11 @@ impl ConversationView {
                 for c in entries.iter_mut() {
                     c.message_count = None;
                     c.alive_secs = None;
-                    c.conversation_id = None;
+                    c.is_active = false;
                 }
                 for ds in daemon_conversations {
                     if ds.agent.as_str() == agent.as_str()
-                        && ds.created_by.as_str() == sender.as_str()
+                        && ds.sender.as_str() == sender.as_str()
                     {
                         let title_slug = wcore::sender_slug(&ds.title);
                         if let Some(conv) = entries.iter_mut().find(|c| {
@@ -212,7 +212,7 @@ impl ConversationView {
                         }) {
                             conv.message_count = Some(ds.message_count);
                             conv.alive_secs = Some(ds.alive_secs);
-                            conv.conversation_id = Some(ds.id);
+                            conv.is_active = true;
                         }
                     }
                 }
@@ -258,7 +258,7 @@ impl ConversationView {
     pub fn back(
         &mut self,
         conversations: &[ConversationInfo],
-        daemon_conversations: &[SessionInfo],
+        daemon_conversations: &[ActiveConversationInfo],
     ) {
         if matches!(self, Self::Conversations { .. }) {
             self.refresh_identities(conversations, daemon_conversations);
@@ -391,8 +391,8 @@ fn render_conversations(
     // Table header.
     let mut lines = vec![Line::from(vec![Span::styled(
         format!(
-            "  {:<14} {:<26} {:<8} {:<8} {:<10}",
-            "LAST ACTIVE", "TITLE", "MSGS", "CID", "UPTIME"
+            "  {:<14} {:<30} {:<8} {:<8} {:<10}",
+            "LAST ACTIVE", "TITLE", "MSGS", "STATUS", "UPTIME"
         ),
         Style::default()
             .fg(Color::White)
@@ -405,23 +405,20 @@ fn render_conversations(
         let title_display: String = if e.title.is_empty() {
             "(untitled)".to_string()
         } else {
-            e.title.chars().take(24).collect()
+            e.title.chars().take(28).collect()
         };
         let msgs = e
             .message_count
             .map(|n| n.to_string())
             .unwrap_or_else(|| "---".to_string());
-        let cid = e
-            .conversation_id
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "---".to_string());
+        let status = if e.is_active { "active" } else { "---" };
         let uptime = e
             .alive_secs
             .map(crate::tui::format_duration)
             .unwrap_or_else(|| "---".to_string());
         let text = format!(
-            "{marker}{:<14} {:<26} {:<8} {:<8} {:<10}",
-            e.date, title_display, msgs, cid, uptime
+            "{marker}{:<14} {:<30} {:<8} {:<8} {:<10}",
+            e.date, title_display, msgs, status, uptime
         );
         let style = if is_selected {
             Style::default()

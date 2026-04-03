@@ -12,11 +12,11 @@ use std::{
 use wcore::protocol::{
     api::Server,
     message::{
-        AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent, ConversationHistory,
-        ConversationInfo, ConversationMessage, CreateAgentMsg, CreateCronMsg, CronInfo, CronList,
-        DaemonStats, HubDone, HubEvent, HubPackageInfo, HubSetupOutput, HubStep, HubWarning,
-        InstallPackageMsg, McpInfo, McpStatus, ModelInfo, PackageInfo, ProtoProviderKind,
-        ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse, SessionInfo,
+        ActiveConversationInfo, AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent,
+        ConversationHistory, ConversationInfo, ConversationMessage, CreateAgentMsg, CreateCronMsg,
+        CronInfo, CronList, DaemonStats, HubDone, HubEvent, HubPackageInfo, HubSetupOutput,
+        HubStep, HubWarning, InstallPackageMsg, McpInfo, McpStatus, ModelInfo, PackageInfo,
+        ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse,
         SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
         StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
         ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
@@ -30,22 +30,10 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let sender = req.sender.as_deref().unwrap_or("");
         let created_by = if sender.is_empty() { "user" } else { sender };
         let cwd = req.cwd.map(std::path::PathBuf::from);
-        let conversation_id = match req.session {
-            Some(id) => id,
-            None => {
-                let id = if let Some(ref file) = req.resume_file {
-                    rt.load_specific_conversation(std::path::Path::new(file)).await?
-                } else if req.new_chat {
-                    rt.create_conversation(&req.agent, created_by).await?
-                } else {
-                    rt.get_or_create_conversation(&req.agent, created_by).await?
-                };
-                if let Some(ref cwd) = cwd {
-                    rt.hook.host.set_conversation_cwd(id, cwd.clone()).await;
-                }
-                id
-            }
-        };
+        let conversation_id = rt.get_or_create_conversation(&req.agent, created_by).await?;
+        if let Some(ref cwd) = cwd {
+            rt.hook.host.set_conversation_cwd(conversation_id, cwd.clone()).await;
+        }
         let response = rt.send_to(conversation_id, &req.content, sender).await?;
         let provider = rt
             .model
@@ -54,7 +42,6 @@ impl<H: Host + 'static> Server for Daemon<H> {
         Ok(SendResponse {
             agent: req.agent,
             content: response.final_response.unwrap_or_default(),
-            session: conversation_id,
             provider,
             model: response.model,
             usage: Some(sum_usage(&response.steps)),
@@ -68,32 +55,17 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let runtime = self.runtime.clone();
         let agent = req.agent;
         let content = req.content;
-        let req_session = req.session;
         let sender = req.sender.unwrap_or_default();
         let cwd = req.cwd.map(std::path::PathBuf::from);
-        let new_chat = req.new_chat;
-        let resume_file = req.resume_file;
         async_stream::try_stream! {
             let rt: Arc<_> = runtime.read().await.clone();
             let created_by = if sender.is_empty() { "user".into() } else { sender.clone() };
-            let conversation_id = match req_session {
-                Some(id) => id,
-                None => {
-                    let id = if let Some(ref file) = resume_file {
-                        rt.load_specific_conversation(std::path::Path::new(file)).await?
-                    } else if new_chat {
-                        rt.create_conversation(&agent, created_by.as_str()).await?
-                    } else {
-                        rt.get_or_create_conversation(&agent, created_by.as_str()).await?
-                    };
-                    if let Some(ref cwd) = cwd {
-                        rt.hook.host.set_conversation_cwd(id, cwd.clone()).await;
-                    }
-                    id
-                }
-            };
+            let conversation_id = rt.get_or_create_conversation(&agent, created_by.as_str()).await?;
+            if let Some(ref cwd) = cwd {
+                rt.hook.host.set_conversation_cwd(conversation_id, cwd.clone()).await;
+            }
 
-            yield StreamEvent { event: Some(stream_event::Event::Start(StreamStart { agent: agent.clone(), session: conversation_id })) };
+            yield StreamEvent { event: Some(stream_event::Event::Start(StreamStart { agent: agent.clone() })) };
 
             let stream = rt.stream_to(conversation_id, &content, &sender);
             pin_mut!(stream);
@@ -184,40 +156,45 @@ impl<H: Host + 'static> Server for Daemon<H> {
         }
     }
 
-    async fn compact_conversation(&self, session: u64) -> Result<String> {
+    async fn compact_conversation(&self, agent: String, sender: String) -> Result<String> {
         let rt = self.runtime.read().await.clone();
-        rt.compact_conversation(session)
+        let conversation_id = rt
+            .find_conversation_id(&agent, &sender)
             .await
-            .ok_or_else(|| anyhow::anyhow!("compact failed for conversation {session}"))
+            .ok_or_else(|| anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'"))?;
+        rt.compact_conversation(conversation_id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("compact failed for agent='{agent}' sender='{sender}'"))
     }
 
     async fn ping(&self) -> Result<()> {
         Ok(())
     }
 
-    async fn list_conversations_active(&self) -> Result<Vec<SessionInfo>> {
+    async fn list_conversations_active(&self) -> Result<Vec<ActiveConversationInfo>> {
         let rt = self.runtime.read().await.clone();
         let conversations = rt.conversations().await;
         let mut infos = Vec::with_capacity(conversations.len());
         for c in conversations {
             let c = c.lock().await;
-            infos.push(SessionInfo {
-                id: c.id,
+            infos.push(ActiveConversationInfo {
                 agent: c.agent.to_string(),
-                created_by: c.created_by.to_string(),
+                sender: c.created_by.to_string(),
                 message_count: c.history.len() as u64,
                 alive_secs: c.uptime_secs,
-                active: false,
                 title: c.title.clone(),
             });
         }
         Ok(infos)
     }
 
-    async fn kill_conversation(&self, session: u64) -> Result<bool> {
+    async fn kill_conversation(&self, agent: String, sender: String) -> Result<bool> {
         let rt = self.runtime.read().await.clone();
-        rt.hook.host.clear_conversation_state(session).await;
-        Ok(rt.close_conversation(session).await)
+        let Some(conversation_id) = rt.find_conversation_id(&agent, &sender).await else {
+            return Ok(false);
+        };
+        rt.hook.host.clear_conversation_state(conversation_id).await;
+        Ok(rt.close_conversation(conversation_id).await)
     }
 
     fn subscribe_events(&self) -> impl futures_core::Stream<Item = Result<AgentEventMsg>> + Send {
@@ -249,23 +226,24 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let active_model = rt.model.active_model_name().unwrap_or_default();
         Ok(DaemonStats {
             uptime_secs: uptime,
-            active_sessions: active as u32,
+            active_conversations: active as u32,
             registered_agents: agents,
             active_model,
         })
     }
 
     async fn create_cron(&self, req: CreateCronMsg) -> Result<CronInfo> {
-        // Validate the target session exists.
+        // Validate the target agent exists.
         let rt = self.runtime.read().await.clone();
-        if rt.conversation(req.session).await.is_none() {
-            anyhow::bail!("conversation {} not found", req.session);
+        if rt.agent(&req.agent).is_none() {
+            anyhow::bail!("agent '{}' not found", req.agent);
         }
         let entry = CronEntry {
             id: 0, // assigned by store
             schedule: req.schedule,
             skill: req.skill,
-            session: req.session,
+            agent: req.agent,
+            sender: req.sender,
             quiet_start: req.quiet_start,
             quiet_end: req.quiet_end,
             once: req.once,
@@ -291,12 +269,16 @@ impl<H: Host + 'static> Server for Daemon<H> {
         })
     }
 
-    async fn reply_to_ask(&self, session: u64, content: String) -> Result<()> {
+    async fn reply_to_ask(&self, agent: String, sender: String, content: String) -> Result<()> {
         let rt = self.runtime.read().await.clone();
-        if rt.hook.host.reply_to_ask(session, content).await? {
+        let conversation_id = rt
+            .find_conversation_id(&agent, &sender)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'"))?;
+        if rt.hook.host.reply_to_ask(conversation_id, content).await? {
             return Ok(());
         }
-        anyhow::bail!("no pending ask_user for conversation {session}")
+        anyhow::bail!("no pending ask_user for agent='{agent}' sender='{sender}'")
     }
 
     async fn list_agents(&self) -> Result<Vec<AgentInfo>> {
@@ -1424,10 +1406,11 @@ fn cron_entry_to_info(e: &CronEntry) -> CronInfo {
         id: e.id,
         schedule: e.schedule.clone(),
         skill: e.skill.clone(),
-        session: e.session,
+        agent: e.agent.clone(),
         quiet_start: e.quiet_start.clone().unwrap_or_default(),
         quiet_end: e.quiet_end.clone().unwrap_or_default(),
         once: e.once,
+        sender: e.sender.clone(),
     }
 }
 

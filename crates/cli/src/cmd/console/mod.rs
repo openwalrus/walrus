@@ -127,7 +127,7 @@ pub(crate) struct ConsoleState {
     pub(crate) runner: Runner,
     tab: Tab,
     conversation_view: ConversationView,
-    daemon_conversations: Vec<wcore::protocol::message::SessionInfo>,
+    daemon_conversations: Vec<wcore::protocol::message::ActiveConversationInfo>,
     events: VecDeque<EventEntry>,
     event_rx: mpsc::UnboundedReceiver<AgentEventMsg>,
     event_scroll: usize,

@@ -202,6 +202,18 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         self.conversations.read().await.len()
     }
 
+    /// Find the internal conversation ID for a given (agent, sender) identity.
+    pub async fn find_conversation_id(&self, agent: &str, sender: &str) -> Option<u64> {
+        let conversations = self.conversations.read().await;
+        for (id, conv_mutex) in conversations.iter() {
+            let conv = conv_mutex.lock().await;
+            if conv.agent == agent && conv.created_by == sender {
+                return Some(*id);
+            }
+        }
+        None
+    }
+
     /// Compact a conversation's history into a concise summary.
     ///
     /// Clones history to release the lock before the LLM call.

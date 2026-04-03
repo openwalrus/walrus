@@ -53,13 +53,10 @@ impl ChatRepl {
     }
 
     /// Resume a specific session file in the interactive REPL.
-    pub async fn resume(&mut self, path: PathBuf) -> Result<()> {
-        let title = wcore::Conversation::load_context(&path)
-            .ok()
-            .map(|(meta, _)| meta.title)
-            .unwrap_or_default();
-        let resume_file = Some(path.to_string_lossy().into_owned());
-        self.run_inner(title, resume_file).await
+    pub async fn resume(&mut self, _path: PathBuf) -> Result<()> {
+        // Resume is no longer supported in the new protocol — conversations
+        // are continuous per (agent, sender). Just start the normal REPL.
+        self.run().await
     }
 
     /// Run the full-screen interactive REPL loop.
@@ -70,10 +67,10 @@ impl ChatRepl {
                 .and_then(|path| wcore::Conversation::load_context(&path).ok())
                 .map(|(meta, _)| meta.title)
                 .unwrap_or_default();
-        self.run_inner(chat_title, None).await
+        self.run_inner(chat_title).await
     }
 
-    async fn run_inner(&mut self, chat_title: String, resume_file: Option<String>) -> Result<()> {
+    async fn run_inner(&mut self, chat_title: String) -> Result<()> {
         let model = self.fetch_model_name().await;
         let conn_info = self.runner.conn_info.clone();
         let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
@@ -95,8 +92,6 @@ impl ChatRepl {
             message_queue: VecDeque::new(),
             agent: self.agent.clone(),
             chat_title,
-            new_chat: false,
-            resume_file,
             dirty: true,
             frame_count: 0,
             skip_tool_result: 0,
@@ -105,7 +100,8 @@ impl ChatRepl {
             os_user,
             model_name: model,
             ask_state: None,
-            ask_session: None,
+            ask_agent: None,
+            ask_sender: None,
         };
 
         // Push welcome banner as first chat entry.
@@ -176,8 +172,6 @@ struct App {
     message_queue: VecDeque<String>,
     agent: String,
     chat_title: String,
-    new_chat: bool,
-    resume_file: Option<String>,
     dirty: bool,
     frame_count: u64,
     skip_tool_result: u32,
@@ -187,8 +181,10 @@ struct App {
     model_name: Option<String>,
     /// Active ask-user modal (if any).
     ask_state: Option<AskState>,
-    /// Conversation ID for the pending ask reply.
-    ask_session: Option<u64>,
+    /// Agent name for the pending ask reply.
+    ask_agent: Option<String>,
+    /// Sender for the pending ask reply.
+    ask_sender: Option<String>,
 }
 
 // ── Event loop ───────────────────────────────────────────────────
@@ -272,14 +268,15 @@ async fn run_event_loop(
                                 AskAction::Noop => {}
                                 AskAction::Cancelled => {
                                     app.ask_state = None;
-                                    app.ask_session = None;
+                                    app.ask_agent = None;
+                                    app.ask_sender = None;
                                 }
                                 AskAction::Submitted(answers) => {
                                     let reply = serde_json::to_string(&answers).unwrap_or_default();
-                                    if let Some(session) = app.ask_session.take() {
+                                    if let (Some(agent), Some(sender)) = (app.ask_agent.take(), app.ask_sender.take()) {
                                         let conn_info = app.conn_info.clone();
                                         tokio::spawn(async move {
-                                            let _ = send_reply(&conn_info, session, reply).await;
+                                            let _ = send_reply(&conn_info, agent, sender, reply).await;
                                         });
                                     }
                                     app.ask_state = None;
@@ -348,33 +345,32 @@ async fn run_event_loop(
                                             crate::tui::teardown(terminal)?;
                                             let console = crate::cmd::console::Console;
                                             if let Ok(runner) = crate::cmd::connect_default().await
-                                                && let Ok(Some(path)) = console.run(runner).await
+                                                && let Ok(Some(_path)) = console.run(runner).await
                                             {
-                                                // Load title from the resumed session.
-                                                if let Ok((meta, _)) = wcore::Conversation::load_context(&path) {
-                                                    if !meta.title.is_empty() {
-                                                        app.chat_title.clone_from(&meta.title);
-                                                    }
-                                                    app.renderer.buffer.push(ChatEntry::Text(vec![
-                                                        Line::from(Span::styled(
-                                                            format!("  Resumed: {}", if meta.title.is_empty() {
-                                                                path.file_name().unwrap_or_default().to_string_lossy().into_owned()
-                                                            } else {
-                                                                meta.title
-                                                            }),
-                                                            Style::new().add_modifier(Modifier::DIM),
-                                                        )),
-                                                    ]));
-                                                }
-                                                app.resume_file = Some(path.to_string_lossy().into_owned());
+                                                // Resume is informational only — conversations
+                                                // are continuous per (agent, sender).
+                                                app.renderer.buffer.push(ChatEntry::Text(vec![
+                                                    Line::from(Span::styled(
+                                                        "  Conversations are continuous — just keep chatting.",
+                                                        Style::new().add_modifier(Modifier::DIM),
+                                                    )),
+                                                ]));
                                             }
                                             *terminal = crate::tui::setup()?;
                                         }
                                         SlashResult::Clear => {
                                             app.renderer.buffer.clear();
                                             app.renderer = MarkdownRenderer::new();
-                                            app.new_chat = true;
                                             app.chat_title.clear();
+                                            // Kill the current conversation so a new one is created.
+                                            let conn_info = app.conn_info.clone();
+                                            let agent = app.agent.clone();
+                                            let sender = app.os_user.clone();
+                                            tokio::spawn(async move {
+                                                if let Ok(mut runner) = Runner::connect_from(&conn_info).await {
+                                                    let _ = runner.kill_conversation(&agent, &sender).await;
+                                                }
+                                            });
                                             app.renderer.buffer.push(ChatEntry::Text(vec![
                                                 welcome_line(&app.agent, app.model_name.as_deref()),
                                             ]));
@@ -446,12 +442,9 @@ fn start_stream(app: &mut App, content: &str) -> mpsc::UnboundedReceiver<Result<
     let agent = app.agent.clone();
     let content = content.to_string();
     let sender = Some(app.os_user.clone());
-    let new_chat = app.new_chat;
-    let resume_file = app.resume_file.take();
 
     app.streaming = true;
     app.renderer.start_waiting();
-    app.new_chat = false;
 
     tokio::spawn(async move {
         let runner = Runner::connect_from(&conn_info).await;
@@ -467,8 +460,6 @@ fn start_stream(app: &mut App, content: &str) -> mpsc::UnboundedReceiver<Result<
             &agent,
             &content,
             cwd.as_deref(),
-            new_chat,
-            resume_file,
             sender,
         );
         let mut stream = pin!(stream);
@@ -503,10 +494,11 @@ fn handle_chunk(chunk: OutputChunk, app: &mut App) {
         OutputChunk::ToolDone(success) => {
             app.renderer.push_tool_done(success);
         }
-        OutputChunk::AskUser { questions, session } => {
+        OutputChunk::AskUser { questions, agent, sender } => {
             app.renderer.finish();
             app.ask_state = Some(AskState::new(&questions));
-            app.ask_session = Some(session);
+            app.ask_agent = Some(agent);
+            app.ask_sender = Some(sender);
         }
     }
     // Auto-scroll to bottom on new content.

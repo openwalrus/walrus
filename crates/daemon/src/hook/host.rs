@@ -152,9 +152,13 @@ impl Host for DaemonHost {
                 (AgentEventKind::Done, content)
             }
         };
+        // The sender field is derived from the conversation's created_by.
+        // Since we don't have access to conversation state here, we use
+        // conversation_id as a string placeholder — subscribers correlate
+        // by agent name.
         let _ = self.events_tx.send(AgentEventMsg {
             agent: agent.to_string(),
-            session: conversation_id,
+            sender: conversation_id.to_string(),
             kind: kind.into(),
             content,
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -196,14 +200,18 @@ fn spawn_agent_task(
 ) -> tokio::task::JoinHandle<(Option<String>, Option<String>)> {
     tokio::spawn(async move {
         let (reply_tx, mut reply_rx) = mpsc::channel(transport::REPLY_CHANNEL_CAPACITY);
+        let delegate_sender = format!(
+            "delegate:{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
         let msg = ClientMessage::from(SendMsg {
-            agent,
+            agent: agent.clone(),
             content: message,
-            session: None,
-            sender: None,
+            sender: Some(delegate_sender.clone()),
             cwd: None,
-            new_chat: false,
-            resume_file: None,
         });
         if event_tx
             .send(DaemonEvent::Message {
@@ -217,12 +225,10 @@ fn spawn_agent_task(
 
         let mut result_content: Option<String> = None;
         let mut error_msg: Option<String> = None;
-        let mut conversation_id: Option<u64> = None;
 
         while let Some(msg) = reply_rx.recv().await {
             match msg.msg {
                 Some(server_message::Msg::Response(resp)) => {
-                    conversation_id = Some(resp.session);
                     result_content = Some(resp.content);
                 }
                 Some(server_message::Msg::Error(err)) => {
@@ -232,19 +238,19 @@ fn spawn_agent_task(
             }
         }
 
-        if let Some(sid) = conversation_id {
-            // Capacity 1: receiver is dropped immediately, so the first
-            // send() in handle_message returns Err and the loop exits.
-            let (reply_tx, _) = mpsc::channel(1);
-            let _ = event_tx.send(DaemonEvent::Message {
-                msg: ClientMessage {
-                    msg: Some(wcore::protocol::message::client_message::Msg::Kill(
-                        wcore::protocol::message::KillMsg { session: sid },
-                    )),
-                },
-                reply: reply_tx,
-            });
-        }
+        // Kill the delegate conversation after completion.
+        let (reply_tx, _) = mpsc::channel(1);
+        let _ = event_tx.send(DaemonEvent::Message {
+            msg: ClientMessage {
+                msg: Some(wcore::protocol::message::client_message::Msg::Kill(
+                    wcore::protocol::message::KillMsg {
+                        agent,
+                        sender: delegate_sender,
+                    },
+                )),
+            },
+            reply: reply_tx,
+        });
 
         (result_content, error_msg)
     })
