@@ -5,7 +5,7 @@
 [![Discord][discord-badge]][discord]
 
 **Agent daemon.** Runs agents, dispatches tools, connects to MCP servers.
-Start it, talk to it, extend it with components on PATH.
+Start it, talk to it, extend it with plugins.
 
 ```bash
 curl -fsSL https://crabtalk.ai/install.sh | sh
@@ -16,11 +16,8 @@ Or `cargo install crabtalk`. See the [installation guide][install] for details.
 ## Quick Start
 
 ```bash
-# Start the daemon
-crabtalk daemon start
-
-# Chat with your agent
-crabtalk attach
+# Start chatting (daemon starts automatically)
+crabtalk
 ```
 
 Full config reference: [`crates/daemon/config.toml`](crates/daemon/config.toml).
@@ -30,13 +27,14 @@ Full config reference: [`crates/daemon/config.toml`](crates/daemon/config.toml).
 The daemon ships with built-in tools (shell, task delegation, memory),
 MCP server integration, and skills (Markdown prompt files).
 
-Heavier capabilities live outside the daemon as [components](apps/) —
-independent binaries that connect via auto-discovery.
+Heavier capabilities live outside the daemon as [plugins](plugins/) —
+independent binaries that connect via auto-discovery. [Apps](apps/)
+are agent-powered experiences built on top of the daemon.
 
 ## Learn More
 
 - [The Crabtalk Book][book] — manifesto, architecture, and design RFCs
-- [Configuration](crates/daemon/config.toml) — crab.toml reference
+- [Configuration](crates/daemon/config.toml) — config.toml reference
 - [Contributing](CONTRIBUTING.md) — architecture, layering, and data flow
 
 ## License
