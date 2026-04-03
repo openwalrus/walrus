@@ -1,13 +1,8 @@
-# Components
+# Apps
 
-Independent binaries that extend the daemon. Each component runs as its
-own process and connects via auto-discovery (`crabtalk <name>` finds
-`crabtalk-<name>` on PATH).
+Apps built on the crabtalk agent daemon.
 
-| Component | Crate | What it does |
-| --------- | ----- | ------------ |
-| [Plugins](plugins) | `crabtalk-plugins` | Plugin management |
-| [Outlook](outlook) | `crabtalk-outlook` | Outlook MCP server (email + calendar) |
-| [Search](search) | `crabtalk-search` | Meta-search aggregator |
-| [Telegram](telegram) | `crabtalk-telegram` | Telegram gateway |
-| [WeChat](wechat) | `crabtalk-wechat` | WeChat gateway |
+| App | Crate | What it does |
+| --- | ----- | ------------ |
+| [Telegram](telegram) | `crabtalk-telegram` | Telegram agent app |
+| [WeChat](wechat) | `crabtalk-wechat` | WeChat agent app |

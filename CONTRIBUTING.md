@@ -23,7 +23,8 @@ Layer 3 ─ Server
 Layer 4 ─ Adapters
   ├─ gateway              DaemonClient, message types for platform adapters
   ├─ cli                  REPL, TUI, daemon control
-  └─ apps/                telegram, search, plugins, wechat, outlook
+  ├─ apps/                telegram, wechat (agent apps)
+  └─ plugins/             outlook, search (official plugins)
 ```
 
 ## Where does my feature go?

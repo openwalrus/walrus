@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/*", "crates/*"]
+members = ["apps/*", "crates/*", "plugins/*"]
 
 [workspace.package]
 version = "0.0.18"
@@ -11,7 +11,7 @@ repository = "https://github.com/crabtalk/crabtalk"
 keywords = ["llm", "agent", "ai"]
 
 [workspace.dependencies]
-crabtalk-plugins = { path = "apps/plugins", version = "0.0.18" }
+crabtalk-plugins = { path = "crates/plugins", version = "0.0.18" }
 crabtalk-telegram = { path = "apps/telegram", version = "0.0.18" }
 crabtalk-wechat = { path = "apps/wechat", version = "0.0.18" }
 gateway = { path = "crates/gateway", package = "crabtalk-gateway", version = "0.0.18" }
@@ -23,8 +23,8 @@ transport = { path = "crates/transport", package = "crabtalk-transport", version
 wcore = { path = "crates/core", package = "crabtalk-core", version = "0.0.18" }
 crabtalk-command = { path = "crates/command", version = "0.0.18" }
 crabtalk-command-codegen = { path = "crates/command-codegen", version = "0.0.18" }
-woutlook = { path = "apps/outlook", package = "crabtalk-outlook", version = "0.0.18", default-features = false }
-wsearch = { path = "apps/search", package = "crabtalk-search", version = "0.0.18", default-features = false }
+woutlook = { path = "plugins/outlook", package = "crabtalk-outlook", version = "0.0.18", default-features = false }
+wsearch = { path = "plugins/search", package = "crabtalk-search", version = "0.0.18", default-features = false }
 
 # crabllm
 crabllm-core = "0.0.12"
