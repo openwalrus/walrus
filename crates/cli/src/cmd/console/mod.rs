@@ -4,6 +4,7 @@ use crate::repl::runner::Runner;
 use crate::tui;
 use anyhow::Result;
 use clap::Args;
+use conversations::{ConversationView, render_conversation_view};
 use crossterm::event::{KeyCode, KeyModifiers};
 use events::EventEntry;
 use futures_util::StreamExt;
@@ -14,14 +15,13 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Paragraph, Tabs},
 };
-use conversations::{ConversationView, render_conversation_view};
 use std::collections::VecDeque;
 use tokio::sync::mpsc;
 use wcore::protocol::api::Client;
 use wcore::protocol::message::AgentEventMsg;
 
-mod events;
 mod conversations;
+mod events;
 
 use events::render_events;
 
@@ -100,10 +100,13 @@ impl Console {
                     idle_ticks = 0;
                     let timeout = std::time::Duration::from_millis(500);
                     if let Ok(Ok(conversations)) =
-                        tokio::time::timeout(timeout, state.runner.list_active_conversations()).await
+                        tokio::time::timeout(timeout, state.runner.list_active_conversations())
+                            .await
                     {
                         state.daemon_conversations = conversations;
-                        state.conversation_view.merge_daemon_data(&state.daemon_conversations);
+                        state
+                            .conversation_view
+                            .merge_daemon_data(&state.daemon_conversations);
                     }
                 }
             }
@@ -335,7 +338,10 @@ fn render_help_bar(frame: &mut Frame, state: &ConsoleState, area: Rect) {
     let mut spans = vec![Span::styled(" j/k ", key_style), Span::raw("Navigate  ")];
 
     if state.tab == Tab::Conversations {
-        let in_conversations = matches!(state.conversation_view, ConversationView::Conversations { .. });
+        let in_conversations = matches!(
+            state.conversation_view,
+            ConversationView::Conversations { .. }
+        );
         if in_conversations {
             spans.extend([Span::styled("Esc ", key_style), Span::raw("Back  ")]);
         } else {

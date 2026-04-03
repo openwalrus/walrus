@@ -14,8 +14,8 @@ use wcore::protocol::{
     api::Client,
     message::{
         ActiveConversationInfo, AgentEventMsg, AskQuestion, ClientMessage, HubEvent,
-        InstallPackageMsg, KillMsg, ListActiveConversationsMsg, ReplyToAsk, ServerMessage, StreamMsg,
-        SubscribeEvents, UninstallPackageMsg, client_message, hub_event, server_message,
+        InstallPackageMsg, KillMsg, ListActiveConversationsMsg, ReplyToAsk, ServerMessage,
+        StreamMsg, SubscribeEvents, UninstallPackageMsg, client_message, hub_event, server_message,
         stream_event,
     },
 };
@@ -408,8 +408,17 @@ impl Runner {
 }
 
 /// Send a `ReplyToAsk` to the daemon on a temporary connection.
-pub async fn send_reply(conn_info: &ConnectionInfo, agent: String, sender: String, content: String) -> Result<()> {
-    let msg = ClientMessage::from(ReplyToAsk { agent, sender, content });
+pub async fn send_reply(
+    conn_info: &ConnectionInfo,
+    agent: String,
+    sender: String,
+    content: String,
+) -> Result<()> {
+    let msg = ClientMessage::from(ReplyToAsk {
+        agent,
+        sender,
+        content,
+    });
     match conn_info {
         #[cfg(unix)]
         ConnectionInfo::Uds(path) => {

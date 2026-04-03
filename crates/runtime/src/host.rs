@@ -58,7 +58,10 @@ pub trait Host: Send + Sync + Clone {
     }
 
     /// Clear all per-conversation state (pending asks, CWD overrides).
-    fn clear_conversation_state(&self, _conversation: u64) -> impl std::future::Future<Output = ()> + Send {
+    fn clear_conversation_state(
+        &self,
+        _conversation: u64,
+    ) -> impl std::future::Future<Output = ()> + Send {
         async {}
     }
 

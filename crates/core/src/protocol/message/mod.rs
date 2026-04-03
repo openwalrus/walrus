@@ -3,10 +3,6 @@
 mod convert;
 
 pub use crate::protocol::proto::{
-    AgentEventKind, McpStatus, ProviderKind as ProtoProviderKind, SourceKind, client_message,
-    hub_event, server_message, stream_event,
-};
-pub use crate::protocol::proto::{
     ActiveConversationInfo, ActiveConversationList, AgentEventMsg, AgentInfo, AgentList, AskOption,
     AskQuestion, AskUserEvent, ClientMessage, CompactMsg, CompactResponse, ConfigMsg,
     ConversationHistory, ConversationInfo, ConversationList, ConversationMessage, CreateAgentMsg,
@@ -15,12 +11,16 @@ pub use crate::protocol::proto::{
     GetStats, HubDone, HubEvent, HubPackageInfo, HubPackageList, HubSetupOutput, HubStep,
     HubWarning, InstallPackageMsg, KillMsg, ListActiveConversationsMsg, ListAgentsMsg,
     ListConversationsMsg, ListCronsMsg, ListMcpsMsg, ListModelsMsg, ListPackagesMsg,
-    ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, ModelInfo, ModelList,
-    PackageInfo, PackageList, Ping, Pong, ProviderInfo, ProviderList, ProviderPresetInfo,
-    ProviderPresetList, ReplyToAsk, ResourceKind, SearchHubMsg, SendMsg, SendResponse,
-    ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetEnabledMsg,
-    SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList, StartServiceMsg, StopServiceMsg,
-    StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking, SubscribeEvents,
-    TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
+    ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, ModelInfo,
+    ModelList, PackageInfo, PackageList, Ping, Pong, ProviderInfo, ProviderList,
+    ProviderPresetInfo, ProviderPresetList, ReplyToAsk, ResourceKind, SearchHubMsg, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
+    SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList, StartServiceMsg,
+    StopServiceMsg, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart, StreamThinking,
+    SubscribeEvents, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent, ToolsCompleteEvent,
     UninstallPackageMsg, UpdateAgentMsg,
+};
+pub use crate::protocol::proto::{
+    AgentEventKind, McpStatus, ProviderKind as ProtoProviderKind, SourceKind, client_message,
+    hub_event, server_message, stream_event,
 };

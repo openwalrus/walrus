@@ -310,7 +310,12 @@ impl<H: Host + 'static> Hook for Env<H> {
         self.resolve_slash_skill(agent, content)
     }
 
-    fn on_before_run(&self, agent: &str, conversation_id: u64, history: &[Message]) -> Vec<Message> {
+    fn on_before_run(
+        &self,
+        agent: &str,
+        conversation_id: u64,
+        history: &[Message],
+    ) -> Vec<Message> {
         let mut messages = Vec::new();
         let has_members = self
             .scopes

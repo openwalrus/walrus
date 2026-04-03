@@ -20,7 +20,9 @@ const CONVERSATION_COLORS: &[Color] = &[
 ];
 
 fn sender_color(sender: &str) -> Color {
-    let hash: usize = sender.bytes().fold(0usize, |acc, b| acc.wrapping_add(b as usize));
+    let hash: usize = sender
+        .bytes()
+        .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
     CONVERSATION_COLORS[hash % CONVERSATION_COLORS.len()]
 }
 
@@ -91,9 +93,7 @@ pub(super) fn render_events(
                 ),
                 Span::styled(
                     format!("{}({}) ", entry.msg.agent, entry.msg.sender),
-                    Style::default()
-                        .fg(color)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     format!("{kind_str}{content_part}"),

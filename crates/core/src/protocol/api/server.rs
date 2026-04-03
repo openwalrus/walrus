@@ -55,10 +55,16 @@ pub trait Server: Sync {
     fn ping(&self) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Handle `ListActiveConversations` — list active conversations.
-    fn list_conversations_active(&self) -> impl std::future::Future<Output = Result<Vec<ActiveConversationInfo>>> + Send;
+    fn list_conversations_active(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<ActiveConversationInfo>>> + Send;
 
     /// Handle `Kill` — close a conversation by (agent, sender).
-    fn kill_conversation(&self, agent: String, sender: String) -> impl std::future::Future<Output = Result<bool>> + Send;
+    fn kill_conversation(
+        &self,
+        agent: String,
+        sender: String,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
 
     /// Handle `SubscribeEvents` — stream agent events.
     fn subscribe_events(&self) -> impl Stream<Item = Result<AgentEventMsg>> + Send;

@@ -179,7 +179,10 @@ impl Host for DaemonHost {
     }
 
     async fn set_conversation_cwd(&self, conversation: u64, cwd: std::path::PathBuf) {
-        self.conversation_cwds.lock().await.insert(conversation, cwd);
+        self.conversation_cwds
+            .lock()
+            .await
+            .insert(conversation, cwd);
     }
 
     async fn clear_conversation_state(&self, conversation: u64) {

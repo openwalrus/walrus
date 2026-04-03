@@ -25,8 +25,8 @@ use std::{
 };
 use tokio::sync::{Mutex, RwLock, mpsc};
 
-pub mod hook;
 pub mod conversation;
+pub mod hook;
 
 pub use conversation::{ArchiveSegment, Conversation};
 
@@ -124,9 +124,11 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         }
 
         // 2. Disk lookup — find latest conversation file for this identity.
-        if let Some(path) =
-            conversation::find_latest_conversation(&crate::paths::CONVERSATIONS_DIR, agent, created_by)
-            && let Ok((meta, messages)) = Conversation::load_context(&path)
+        if let Some(path) = conversation::find_latest_conversation(
+            &crate::paths::CONVERSATIONS_DIR,
+            agent,
+            created_by,
+        ) && let Ok((meta, messages)) = Conversation::load_context(&path)
         {
             let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
             let mut conversation = Conversation::new(id, agent, created_by);
@@ -220,7 +222,12 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
     /// Returns `None` if conversation/agent not found, history empty, or LLM fails.
     pub async fn compact_conversation(&self, conversation_id: u64) -> Option<String> {
         let (agent_name, history) = {
-            let conversation_mutex = self.conversations.read().await.get(&conversation_id)?.clone();
+            let conversation_mutex = self
+                .conversations
+                .read()
+                .await
+                .get(&conversation_id)?
+                .clone();
             let conversation = conversation_mutex.lock().await;
             if conversation.history.is_empty() {
                 return None;
@@ -246,7 +253,11 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Spawn a background task to generate a conversation title from the
     /// first user+assistant exchange. Non-blocking — the main flow continues.
-    fn spawn_title_generation(&self, _conversation_id: u64, conversation_mutex: Arc<Mutex<Conversation>>) {
+    fn spawn_title_generation(
+        &self,
+        _conversation_id: u64,
+        conversation_mutex: Arc<Mutex<Conversation>>,
+    ) {
         let model = self.model.clone();
         tokio::spawn(async move {
             let (user_msg, assistant_msg) = {
@@ -305,7 +316,12 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Push the user message, strip old auto-injected messages, and inject
     /// fresh ones via `on_before_run`. Returns the agent name.
-    fn prepare_history(&self, conversation: &mut Conversation, content: &str, sender: &str) -> String {
+    fn prepare_history(
+        &self,
+        conversation: &mut Conversation,
+        content: &str,
+        sender: &str,
+    ) -> String {
         let content = self.hook.preprocess(&conversation.agent, content);
         if sender.is_empty() {
             conversation.history.push(Message::user(&content));
@@ -319,9 +335,9 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         conversation.history.retain(|m| !m.auto_injected);
 
         let agent_name = conversation.agent.clone();
-        let recall_msgs = self
-            .hook
-            .on_before_run(&agent_name, conversation.id, &conversation.history);
+        let recall_msgs =
+            self.hook
+                .on_before_run(&agent_name, conversation.id, &conversation.history);
         if !recall_msgs.is_empty() {
             let insert_pos = conversation.history.len().saturating_sub(1);
             for (i, msg) in recall_msgs.into_iter().enumerate() {

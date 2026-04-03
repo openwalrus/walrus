@@ -58,7 +58,12 @@ pub trait Hook: Send + Sync {
     /// per-session environment).
     ///
     /// Default: no injection.
-    fn on_before_run(&self, _agent: &str, _conversation_id: u64, _history: &[Message]) -> Vec<Message> {
+    fn on_before_run(
+        &self,
+        _agent: &str,
+        _conversation_id: u64,
+        _history: &[Message],
+    ) -> Vec<Message> {
         Vec::new()
     }
 }

@@ -189,13 +189,7 @@ async fn telegram_loop(
             })
         };
 
-        chats.insert(
-            chat_id,
-            ChatStream {
-                handle,
-                reply_tx,
-            },
-        );
+        chats.insert(chat_id, ChatStream { handle, reply_tx });
     }
 
     tracing::info!(platform = "telegram", "channel loop ended");

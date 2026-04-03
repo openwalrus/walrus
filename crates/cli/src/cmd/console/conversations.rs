@@ -199,8 +199,7 @@ impl ConversationView {
                     c.is_active = false;
                 }
                 for ds in daemon_conversations {
-                    if ds.agent.as_str() == agent.as_str()
-                        && ds.sender.as_str() == sender.as_str()
+                    if ds.agent.as_str() == agent.as_str() && ds.sender.as_str() == sender.as_str()
                     {
                         let title_slug = wcore::sender_slug(&ds.title);
                         if let Some(conv) = entries.iter_mut().find(|c| {

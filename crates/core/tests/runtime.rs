@@ -99,14 +99,8 @@ async fn conversations_lists_all() {
     let mut runtime = Runtime::new(model, (), None).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
-    runtime
-        .create_conversation("crab", "test-a")
-        .await
-        .unwrap();
-    runtime
-        .create_conversation("crab", "test-b")
-        .await
-        .unwrap();
+    runtime.create_conversation("crab", "test-a").await.unwrap();
+    runtime.create_conversation("crab", "test-b").await.unwrap();
 
     let conversations = runtime.conversations().await;
     assert_eq!(conversations.len(), 2);
@@ -198,14 +192,8 @@ async fn send_to_appends_to_history() {
         .create_conversation("crab", "test-history")
         .await
         .unwrap();
-    runtime
-        .send_to(conversation_id, "hello", "")
-        .await
-        .unwrap();
-    runtime
-        .send_to(conversation_id, "again", "")
-        .await
-        .unwrap();
+    runtime.send_to(conversation_id, "hello", "").await.unwrap();
+    runtime.send_to(conversation_id, "again", "").await.unwrap();
 
     let conversation_mutex = runtime.conversation(conversation_id).await.unwrap();
     let conversation = conversation_mutex.lock().await;

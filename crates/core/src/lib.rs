@@ -22,8 +22,8 @@ pub use config::{
     scan_skill_names,
 };
 pub use runtime::{
-    Conversation, Runtime, conversation::find_latest_conversation,
-    conversation::sender_slug, hook::Hook,
+    Conversation, Runtime, conversation::find_latest_conversation, conversation::sender_slug,
+    hook::Hook,
 };
 
 pub mod agent;

@@ -30,9 +30,14 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let sender = req.sender.as_deref().unwrap_or("");
         let created_by = if sender.is_empty() { "user" } else { sender };
         let cwd = req.cwd.map(std::path::PathBuf::from);
-        let conversation_id = rt.get_or_create_conversation(&req.agent, created_by).await?;
+        let conversation_id = rt
+            .get_or_create_conversation(&req.agent, created_by)
+            .await?;
         if let Some(ref cwd) = cwd {
-            rt.hook.host.set_conversation_cwd(conversation_id, cwd.clone()).await;
+            rt.hook
+                .host
+                .set_conversation_cwd(conversation_id, cwd.clone())
+                .await;
         }
         let response = rt.send_to(conversation_id, &req.content, sender).await?;
         let provider = rt
@@ -167,7 +172,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let conversation_id = rt
             .find_conversation_id(&agent, &sender)
             .await
-            .ok_or_else(|| anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'")
+            })?;
         rt.compact_conversation(conversation_id)
             .await
             .ok_or_else(|| anyhow::anyhow!("compact failed for agent='{agent}' sender='{sender}'"))
@@ -280,7 +287,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let conversation_id = rt
             .find_conversation_id(&agent, &sender)
             .await
-            .ok_or_else(|| anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'")
+            })?;
         if rt.hook.host.reply_to_ask(conversation_id, content).await? {
             return Ok(());
         }

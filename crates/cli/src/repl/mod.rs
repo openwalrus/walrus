@@ -62,11 +62,14 @@ impl ChatRepl {
     /// Run the full-screen interactive REPL loop.
     pub async fn run(&mut self) -> Result<()> {
         let os_user = std::env::var("USER").unwrap_or_else(|_| "user".into());
-        let chat_title =
-            wcore::find_latest_conversation(&wcore::paths::CONVERSATIONS_DIR, &self.agent, &os_user)
-                .and_then(|path| wcore::Conversation::load_context(&path).ok())
-                .map(|(meta, _)| meta.title)
-                .unwrap_or_default();
+        let chat_title = wcore::find_latest_conversation(
+            &wcore::paths::CONVERSATIONS_DIR,
+            &self.agent,
+            &os_user,
+        )
+        .and_then(|path| wcore::Conversation::load_context(&path).ok())
+        .map(|(meta, _)| meta.title)
+        .unwrap_or_default();
         self.run_inner(chat_title).await
     }
 
@@ -456,12 +459,7 @@ fn start_stream(app: &mut App, content: &str) -> mpsc::UnboundedReceiver<Result<
             }
         };
         let cwd = std::env::current_dir().ok();
-        let stream = runner.stream(
-            &agent,
-            &content,
-            cwd.as_deref(),
-            sender,
-        );
+        let stream = runner.stream(&agent, &content, cwd.as_deref(), sender);
         let mut stream = pin!(stream);
         while let Some(chunk) = stream.next().await {
             if tx.send(chunk).is_err() {
@@ -494,7 +492,11 @@ fn handle_chunk(chunk: OutputChunk, app: &mut App) {
         OutputChunk::ToolDone(success) => {
             app.renderer.push_tool_done(success);
         }
-        OutputChunk::AskUser { questions, agent, sender } => {
+        OutputChunk::AskUser {
+            questions,
+            agent,
+            sender,
+        } => {
             app.renderer.finish();
             app.ask_state = Some(AskState::new(&questions));
             app.ask_agent = Some(agent);
