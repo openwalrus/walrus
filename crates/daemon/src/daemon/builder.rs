@@ -16,15 +16,12 @@ use std::{
 use tokio::sync::{Mutex, RwLock, broadcast};
 use wcore::{AgentConfig, Runtime, ToolRequest};
 
-/// Resolve qualified package references in an agent's skill list.
-fn resolve_package_skills(
-    skills: &mut Vec<String>,
-    package_skill_dirs: &BTreeMap<String, PathBuf>,
-) {
+/// Resolve qualified plugin references in an agent's skill list.
+fn resolve_plugin_skills(skills: &mut Vec<String>, plugin_skill_dirs: &BTreeMap<String, PathBuf>) {
     let mut resolved = Vec::new();
     for entry in skills.drain(..) {
         if entry.contains('/') {
-            if let Some(dir) = package_skill_dirs.get(&entry) {
+            if let Some(dir) = plugin_skill_dirs.get(&entry) {
                 match runtime::skill::loader::load_skills_dir(dir) {
                     Ok(registry) => {
                         for skill in &registry.skills {
@@ -32,11 +29,11 @@ fn resolve_package_skills(
                         }
                     }
                     Err(e) => {
-                        tracing::warn!("failed to resolve package skills for '{entry}': {e}");
+                        tracing::warn!("failed to resolve plugin skills for '{entry}': {e}");
                     }
                 }
             } else {
-                tracing::warn!("unknown package skill reference: '{entry}'");
+                tracing::warn!("unknown plugin skill reference: '{entry}'");
             }
         } else {
             resolved.push(entry);
@@ -226,7 +223,7 @@ fn load_agents<H: Host + 'static>(
         let mut agent = agent_config.clone();
         agent.name = name.clone();
         agent.system_prompt = prompt.clone();
-        resolve_package_skills(&mut agent.skills, &manifest.package_skill_dirs);
+        resolve_plugin_skills(&mut agent.skills, &manifest.plugin_skill_dirs);
         tracing::info!("registered agent '{name}' (thinking={})", agent.thinking);
         runtime.add_agent(agent);
     }

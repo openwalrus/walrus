@@ -13,9 +13,9 @@ use transport::uds::{ClientConfig, Connection, CrabtalkClient};
 use wcore::protocol::{
     api::Client,
     message::{
-        ActiveConversationInfo, AgentEventMsg, AskQuestion, ClientMessage, HubEvent,
-        InstallPackageMsg, KillMsg, ListActiveConversationsMsg, ReplyToAsk, ServerMessage,
-        StreamMsg, SubscribeEvents, UninstallPackageMsg, client_message, hub_event, server_message,
+        ActiveConversationInfo, AgentEventMsg, AskQuestion, ClientMessage, InstallPluginMsg,
+        KillMsg, ListActiveConversationsMsg, PluginEvent, ReplyToAsk, ServerMessage, StreamMsg,
+        SubscribeEvents, UninstallPluginMsg, client_message, plugin_event, server_message,
         stream_event,
     },
 };
@@ -322,18 +322,18 @@ impl Runner {
             })
     }
 
-    /// Install a hub package, streaming progress events.
-    pub fn install_package<'a>(
+    /// Install a plugin, streaming progress events.
+    pub fn install_plugin<'a>(
         &'a mut self,
-        package: &str,
+        plugin: &str,
         branch: &str,
         path: &str,
         force: bool,
-    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + 'a {
+    ) -> impl Stream<Item = Result<plugin_event::Event>> + Send + 'a {
         self.transport
             .request_stream(ClientMessage {
-                msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
-                    package: package.to_string(),
+                msg: Some(client_message::Msg::InstallPlugin(InstallPluginMsg {
+                    plugin: plugin.to_string(),
                     branch: branch.to_string(),
                     path: path.to_string(),
                     force,
@@ -343,8 +343,8 @@ impl Runner {
                 std::future::ready(!matches!(
                     r,
                     Ok(ServerMessage {
-                        msg: Some(server_message::Msg::HubEvent(HubEvent {
-                            event: Some(hub_event::Event::Done(d))
+                        msg: Some(server_message::Msg::PluginEvent(PluginEvent {
+                            event: Some(plugin_event::Event::Done(d))
                         }))
                     }) if d.error.is_empty()
                 ))
@@ -352,7 +352,7 @@ impl Runner {
             .filter_map(|r| {
                 std::future::ready(match r {
                     Ok(ServerMessage {
-                        msg: Some(server_message::Msg::HubEvent(e)),
+                        msg: Some(server_message::Msg::PluginEvent(e)),
                     }) => e.event.map(Ok),
                     Ok(ServerMessage {
                         msg: Some(server_message::Msg::Error(e)),
@@ -367,23 +367,23 @@ impl Runner {
             })
     }
 
-    /// Uninstall a hub package, streaming progress events.
-    pub fn uninstall_package<'a>(
+    /// Uninstall a plugin, streaming progress events.
+    pub fn uninstall_plugin<'a>(
         &'a mut self,
-        package: &str,
-    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + 'a {
+        plugin: &str,
+    ) -> impl Stream<Item = Result<plugin_event::Event>> + Send + 'a {
         self.transport
             .request_stream(ClientMessage {
-                msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
-                    package: package.to_string(),
+                msg: Some(client_message::Msg::UninstallPlugin(UninstallPluginMsg {
+                    plugin: plugin.to_string(),
                 })),
             })
             .take_while(|r| {
                 std::future::ready(!matches!(
                     r,
                     Ok(ServerMessage {
-                        msg: Some(server_message::Msg::HubEvent(HubEvent {
-                            event: Some(hub_event::Event::Done(d))
+                        msg: Some(server_message::Msg::PluginEvent(PluginEvent {
+                            event: Some(plugin_event::Event::Done(d))
                         }))
                     }) if d.error.is_empty()
                 ))
@@ -391,7 +391,7 @@ impl Runner {
             .filter_map(|r| {
                 std::future::ready(match r {
                     Ok(ServerMessage {
-                        msg: Some(server_message::Msg::HubEvent(e)),
+                        msg: Some(server_message::Msg::PluginEvent(e)),
                     }) => e.event.map(Ok),
                     Ok(ServerMessage {
                         msg: Some(server_message::Msg::Error(e)),

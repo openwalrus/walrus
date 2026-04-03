@@ -188,7 +188,7 @@ impl McpData {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum McpSource {
     Local,
-    Hub(String),
+    Plugin(String),
 }
 
 // ── Focus states ─────────────────────────────────────────────────────
@@ -266,7 +266,7 @@ impl AuthState {
                 source: if m.source.is_empty() || m.source == "local" {
                     McpSource::Local
                 } else {
-                    McpSource::Hub(m.source)
+                    McpSource::Plugin(m.source)
                 },
                 status: m.status,
                 tool_count: m.tool_count,

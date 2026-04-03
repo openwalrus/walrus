@@ -3,11 +3,11 @@
 use crate::protocol::message::{
     ActiveConversationInfo, ActiveConversationList, AgentEventMsg, AgentInfo, AgentList,
     ClientMessage, CompactResponse, ConversationHistory, ConversationInfo, ConversationList,
-    CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, HubEvent,
-    HubPackageInfo, HubPackageList, InstallPackageMsg, McpInfo, McpList, ModelInfo, ModelList,
-    PackageInfo, PackageList, Pong, ProviderInfo, ProviderList, ProviderPresetInfo,
-    ProviderPresetList, ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput,
-    SkillInfo, SkillList, StreamEvent, StreamMsg, UpdateAgentMsg, client_message, server_message,
+    CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPluginMsg,
+    McpInfo, McpList, ModelInfo, ModelList, PluginEvent, PluginInfo, PluginList, PluginSearchList,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind,
+    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList, StreamEvent,
+    StreamMsg, UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -130,23 +130,23 @@ pub trait Server: Sync {
     fn list_providers(&self)
     -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send;
 
-    /// Handle `InstallPackage` — install a hub package, stream progress.
-    fn install_package(
+    /// Handle `InstallPlugin` — install a plugin, stream progress.
+    fn install_plugin(
         &self,
-        req: InstallPackageMsg,
-    ) -> impl Stream<Item = Result<HubEvent>> + Send;
+        req: InstallPluginMsg,
+    ) -> impl Stream<Item = Result<PluginEvent>> + Send;
 
-    /// Handle `UninstallPackage` — uninstall a hub package, stream progress.
-    fn uninstall_package(&self, package: String) -> impl Stream<Item = Result<HubEvent>> + Send;
+    /// Handle `UninstallPlugin` — uninstall a plugin, stream progress.
+    fn uninstall_plugin(&self, plugin: String) -> impl Stream<Item = Result<PluginEvent>> + Send;
 
-    /// Handle `ListPackages` — return all installed hub packages.
-    fn list_packages(&self) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send;
+    /// Handle `ListPlugins` — return all installed plugins.
+    fn list_plugins(&self) -> impl std::future::Future<Output = Result<Vec<PluginInfo>>> + Send;
 
-    /// Handle `SearchHub` — search hub for available packages.
-    fn search_hub(
+    /// Handle `SearchPlugins` — search registry for available plugins.
+    fn search_plugins(
         &self,
         query: String,
-    ) -> impl std::future::Future<Output = Result<Vec<HubPackageInfo>>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<PluginInfo>>> + Send;
 
     /// Handle `ListSkills` — return all available skills with enabled state.
     fn list_skills(&self) -> impl std::future::Future<Output = Result<Vec<SkillInfo>>> + Send;
@@ -388,35 +388,35 @@ pub trait Server: Sync {
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
-                client_message::Msg::InstallPackage(req) => {
-                    let s = self.install_package(req);
+                client_message::Msg::InstallPlugin(req) => {
+                    let s = self.install_plugin(req);
                     tokio::pin!(s);
                     while let Some(result) = s.next().await {
                         yield result_to_msg(result);
                     }
                 }
-                client_message::Msg::UninstallPackage(req) => {
-                    let s = self.uninstall_package(req.package);
+                client_message::Msg::UninstallPlugin(req) => {
+                    let s = self.uninstall_plugin(req.plugin);
                     tokio::pin!(s);
                     while let Some(result) = s.next().await {
                         yield result_to_msg(result);
                     }
                 }
-                client_message::Msg::ListPackages(_) => {
-                    yield match self.list_packages().await {
-                        Ok(packages) => ServerMessage {
-                            msg: Some(server_message::Msg::PackageList(PackageList {
-                                packages,
+                client_message::Msg::ListPlugins(_) => {
+                    yield match self.list_plugins().await {
+                        Ok(plugins) => ServerMessage {
+                            msg: Some(server_message::Msg::PluginList(PluginList {
+                                plugins,
                             })),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
-                client_message::Msg::SearchHub(req) => {
-                    yield match self.search_hub(req.query).await {
-                        Ok(packages) => ServerMessage {
-                            msg: Some(server_message::Msg::HubPackageList(HubPackageList {
-                                packages,
+                client_message::Msg::SearchPlugins(req) => {
+                    yield match self.search_plugins(req.query).await {
+                        Ok(plugins) => ServerMessage {
+                            msg: Some(server_message::Msg::PluginSearchList(PluginSearchList {
+                                plugins,
                             })),
                         },
                         Err(e) => server_error(500, e.to_string()),

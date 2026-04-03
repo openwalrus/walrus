@@ -15,11 +15,11 @@ use wcore::protocol::message::McpStatus;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-fn selected_is_hub(state: &AuthState) -> bool {
+fn selected_is_plugin(state: &AuthState) -> bool {
     state
         .mcps
         .get(state.mcp_selected)
-        .is_some_and(|m| matches!(m.source, McpSource::Hub(_)))
+        .is_some_and(|m| matches!(m.source, McpSource::Plugin(_)))
 }
 
 fn has_token(name: &str) -> bool {
@@ -49,8 +49,8 @@ pub(crate) fn handle_mcps_key(
                     }
                 }
                 KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-                    if selected_is_hub(state) {
-                        state.status = String::from("Hub packages are read-only");
+                    if selected_is_plugin(state) {
+                        state.status = String::from("Plugin MCPs are read-only");
                     } else if let Some(mcp) = state.mcps.get(state.mcp_selected)
                         && !mcp.env.is_empty()
                     {
@@ -69,8 +69,8 @@ pub(crate) fn handle_mcps_key(
                     state.focus = Focus::AddMcp;
                 }
                 KeyCode::Char('d') | KeyCode::Delete => {
-                    if selected_is_hub(state) {
-                        state.status = String::from("Use `hub uninstall` to remove");
+                    if selected_is_plugin(state) {
+                        state.status = String::from("Use `crabtalk rm` to remove");
                     } else if !state.mcps.is_empty() {
                         state.mcps.remove(state.mcp_selected);
                         if state.mcp_selected >= state.mcps.len() && !state.mcps.is_empty() {
@@ -375,13 +375,13 @@ fn render_mcp_list(frame: &mut Frame, state: &AuthState, area: Rect) {
                 _ => String::new(),
             };
 
-            let hub_tag = if matches!(mcp.source, McpSource::Hub(_)) {
-                " [hub]"
+            let plugin_tag = if matches!(mcp.source, McpSource::Plugin(_)) {
+                " [plugin]"
             } else {
                 ""
             };
 
-            let text = format!("{marker}{}{status_indicator}{hub_tag}", mcp.name);
+            let text = format!("{marker}{}{status_indicator}{plugin_tag}", mcp.name);
             let style = if i == state.mcp_selected {
                 Style::default()
                     .fg(Color::Yellow)
@@ -438,7 +438,7 @@ fn render_mcp_detail(frame: &mut Frame, state: &AuthState, area: Rect) {
     // Source.
     let source_text = match &mcp.source {
         McpSource::Local => "local",
-        McpSource::Hub(pkg) => pkg.as_str(),
+        McpSource::Plugin(pkg) => pkg.as_str(),
     };
     lines.push(Line::from(vec![
         Span::styled("  source: ", label_style),

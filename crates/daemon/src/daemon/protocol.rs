@@ -14,12 +14,12 @@ use wcore::protocol::{
     message::{
         ActiveConversationInfo, AgentEventMsg, AgentInfo, AskOption, AskQuestion, AskUserEvent,
         ConversationHistory, ConversationInfo, ConversationMessage, CreateAgentMsg, CreateCronMsg,
-        CronInfo, CronList, DaemonStats, HubDone, HubEvent, HubPackageInfo, HubSetupOutput,
-        HubStep, HubWarning, InstallPackageMsg, McpInfo, McpStatus, ModelInfo, PackageInfo,
+        CronInfo, CronList, DaemonStats, InstallPluginMsg, McpInfo, McpStatus, ModelInfo,
+        PluginDone, PluginEvent, PluginInfo, PluginSetupOutput, PluginStep, PluginWarning,
         ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse,
         SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
         StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
-        ToolsCompleteEvent, UpdateAgentMsg, hub_event, stream_event,
+        ToolsCompleteEvent, UpdateAgentMsg, plugin_event, stream_event,
     },
 };
 use wcore::{AgentEvent, AgentStep};
@@ -376,13 +376,13 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .collect())
     }
 
-    fn install_package(
+    fn install_plugin(
         &self,
-        req: InstallPackageMsg,
-    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+        req: InstallPluginMsg,
+    ) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send {
         let daemon = self.clone();
         async_stream::try_stream! {
-            let package = req.package;
+            let plugin = req.plugin;
             let branch = req.branch;
             let path = req.path;
             let force = req.force;
@@ -393,13 +393,13 @@ impl<H: Host + 'static> Server for Daemon<H> {
             let handle = tokio::spawn({
                 let branch = branch.clone();
                 let path = path.clone();
-                let package = package.clone();
+                let plugin = plugin.clone();
                 let tx2 = tx.clone();
                 async move {
                     let branch = if branch.is_empty() { None } else { Some(branch.as_str()) };
                     let path = if path.is_empty() { None } else { Some(std::path::Path::new(&path)) };
-                    crabhub::package::install(
-                        &package, branch, path, force,
+                    crabtalk_plugins::plugin::install(
+                        &plugin, branch, path, force,
                         |msg| { let _ = tx.send((false, msg.to_string())); },
                         |msg| { let _ = tx2.send((true, msg.to_string())); },
                     )
@@ -416,9 +416,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
                         match msg {
                             Some((is_output, m)) => {
                                 if is_output {
-                                    yield hub_output(&m);
+                                    yield plugin_output(&m);
                                 } else {
-                                    yield hub_step(&m);
+                                    yield plugin_step(&m);
                                 }
                             }
                             None => {
@@ -432,9 +432,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
                         rx.close();
                         while let Some((is_output, m)) = rx.recv().await {
                             if is_output {
-                                yield hub_output(&m);
+                                yield plugin_output(&m);
                             } else {
-                                yield hub_step(&m);
+                                yield plugin_step(&m);
                             }
                         }
                         task_result = result;
@@ -445,39 +445,39 @@ impl<H: Host + 'static> Server for Daemon<H> {
             task_result.context("install task panicked")??;
 
             // Reload daemon to pick up new components.
-            yield hub_step("reloading daemon…");
+            yield plugin_step("reloading daemon…");
             daemon.reload().await?;
 
             // Conflict and auth warnings.
             let (manifest, mut warnings) = daemon.resolve_manifests()?;
             warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
             for w in &warnings {
-                yield hub_warning(w);
+                yield plugin_warning(w);
             }
             for (name, mcp) in &manifest.mcps {
                 if mcp.auth
                     && !wcore::paths::TOKENS_DIR.join(format!("{name}.json")).exists()
                 {
-                    yield hub_warning(&format!("MCP '{name}' requires authentication"));
+                    yield plugin_warning(&format!("MCP '{name}' requires authentication"));
                 }
             }
 
-            yield hub_step("configure env vars in config.toml [env] section if needed");
-            yield hub_done("");
+            yield plugin_step("configure env vars in config.toml [env] section if needed");
+            yield plugin_done("");
         }
     }
 
-    fn uninstall_package(
+    fn uninstall_plugin(
         &self,
-        package: String,
-    ) -> impl futures_core::Stream<Item = Result<HubEvent>> + Send {
+        plugin: String,
+    ) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send {
         let daemon = self.clone();
         async_stream::try_stream! {
             // Channel bridge for on_step callback.
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-            let pkg = package.clone();
+            let name = plugin.clone();
             let handle = tokio::spawn(async move {
-                crabhub::package::uninstall(&pkg, |msg| {
+                crabtalk_plugins::plugin::uninstall(&name, |msg| {
                     let _ = tx.send(msg.to_string());
                 })
                 .await
@@ -489,7 +489,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                 tokio::select! {
                     msg = rx.recv() => {
                         match msg {
-                            Some(m) => yield hub_step(&m),
+                            Some(m) => yield plugin_step(&m),
                             None => {
                                 task_result = handle.await;
                                 break;
@@ -499,7 +499,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                     result = &mut handle => {
                         rx.close();
                         while let Some(m) = rx.recv().await {
-                            yield hub_step(&m);
+                            yield plugin_step(&m);
                         }
                         task_result = result;
                         break;
@@ -508,9 +508,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
             }
             task_result.context("uninstall task panicked")??;
 
-            yield hub_step("reloading daemon…");
+            yield plugin_step("reloading daemon…");
             daemon.reload().await?;
-            yield hub_done("");
+            yield plugin_done("");
         }
     }
 
@@ -594,9 +594,9 @@ impl<H: Host + 'static> Server for Daemon<H> {
             }
         }
 
-        // Hub-installed MCPs from packages.
-        for (pkg_id, pkg_manifest) in scan_package_manifests(&self.config_dir) {
-            for (name, mcp_res) in &pkg_manifest.mcps {
+        // Plugin-installed MCPs.
+        for (plugin_name, plugin_manifest) in scan_plugin_manifests(&self.config_dir) {
+            for (name, mcp_res) in &plugin_manifest.mcps {
                 if mcps.iter().any(|m| m.name == *name) {
                     continue; // local wins
                 }
@@ -606,8 +606,8 @@ impl<H: Host + 'static> Server for Daemon<H> {
                 mcps.push(mcp_to_info(
                     name,
                     &cfg,
-                    &pkg_id,
-                    SourceKind::Package,
+                    &plugin_name,
+                    SourceKind::Plugin,
                     enabled,
                     status,
                     tool_count,
@@ -821,7 +821,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
         // Reverse-lookup: dir path → package id.
         let dir_to_pkg: std::collections::BTreeMap<_, _> = manifest
-            .package_skill_dirs
+            .plugin_skill_dirs
             .iter()
             .map(|(id, dir)| (dir.clone(), id.clone()))
             .collect();
@@ -833,7 +833,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
             let (source, source_kind) = if *dir == local_skills_dir {
                 ("local".to_string(), SourceKind::Local)
             } else if let Some(pkg_id) = dir_to_pkg.get(dir) {
-                (pkg_id.clone(), SourceKind::Package)
+                (pkg_id.clone(), SourceKind::Plugin)
             } else {
                 let name = dir
                     .components()
@@ -942,23 +942,25 @@ impl<H: Host + 'static> Server for Daemon<H> {
         self.reload().await
     }
 
-    async fn list_packages(&self) -> Result<Vec<PackageInfo>> {
-        let mut result: Vec<PackageInfo> = scan_package_manifests(&self.config_dir)
+    async fn list_plugins(&self) -> Result<Vec<PluginInfo>> {
+        let mut result: Vec<PluginInfo> = scan_plugin_manifests(&self.config_dir)
             .into_iter()
-            .map(|(name, manifest)| PackageInfo {
+            .map(|(name, manifest)| PluginInfo {
                 name,
                 description: manifest.package.description,
+                installed: true,
+                ..Default::default()
             })
             .collect();
         result.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(result)
     }
 
-    async fn search_hub(&self, query: String) -> Result<Vec<HubPackageInfo>> {
-        let entries = crabhub::package::search_hub(&query).await?;
+    async fn search_plugins(&self, query: String) -> Result<Vec<PluginInfo>> {
+        let entries = crabtalk_plugins::plugin::search(&query).await?;
         Ok(entries
             .into_iter()
-            .map(|e| HubPackageInfo {
+            .map(|e| PluginInfo {
                 name: e.name,
                 description: e.description,
                 skill_count: e.skill_count,
@@ -1033,44 +1035,33 @@ impl crabtalk_command::service::Service for CommandService {
     }
 }
 
-/// Scan `packages/` for installed hub manifests, returning `(scope/name, Manifest)` pairs.
-fn scan_package_manifests(
+/// Scan `plugins/` for installed plugin manifests, returning `(name, Manifest)` pairs.
+fn scan_plugin_manifests(
     config_dir: &std::path::Path,
-) -> Vec<(String, crabhub::manifest::Manifest)> {
-    let packages_dir = config_dir.join(wcore::paths::PACKAGES_DIR);
+) -> Vec<(String, crabtalk_plugins::manifest::Manifest)> {
+    let plugins_dir = config_dir.join(wcore::paths::PLUGINS_DIR);
     let mut result = Vec::new();
-    let scopes = match std::fs::read_dir(&packages_dir) {
+    let entries = match std::fs::read_dir(&plugins_dir) {
         Ok(entries) => entries,
         Err(_) => return result,
     };
-    for scope_entry in scopes.flatten() {
-        let scope_path = scope_entry.path();
-        if !scope_path.is_dir() {
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
             continue;
         }
-        let scope = scope_entry.file_name().to_string_lossy().to_string();
-        let manifests = match std::fs::read_dir(&scope_path) {
-            Ok(entries) => entries,
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
             Err(_) => continue,
         };
-        for manifest_entry in manifests.flatten() {
-            let path = manifest_entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
-                continue;
-            }
-            let name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default();
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            match toml::from_str::<crabhub::manifest::Manifest>(&content) {
-                Ok(manifest) => result.push((format!("{scope}/{name}"), manifest)),
-                Err(e) => {
-                    tracing::warn!("failed to parse manifest {}: {e}", path.display());
-                }
+        match toml::from_str::<crabtalk_plugins::manifest::Manifest>(&content) {
+            Ok(manifest) => result.push((name.to_string(), manifest)),
+            Err(e) => {
+                tracing::warn!("failed to parse manifest {}: {e}", path.display());
             }
         }
     }
@@ -1112,14 +1103,17 @@ impl<H: Host + 'static> Daemon<H> {
         Ok((manifest, warnings))
     }
 
-    /// Look up a command service by name from installed package manifests.
-    fn find_command_service(&self, name: &str) -> Result<crabhub::manifest::CommandConfig> {
-        for (_, manifest) in scan_package_manifests(&self.config_dir) {
+    /// Look up a command service by name from installed plugin manifests.
+    fn find_command_service(
+        &self,
+        name: &str,
+    ) -> Result<crabtalk_plugins::manifest::CommandConfig> {
+        for (_, manifest) in scan_plugin_manifests(&self.config_dir) {
             if let Some(cmd) = manifest.commands.get(name) {
                 return Ok(cmd.clone());
             }
         }
-        anyhow::bail!("command service '{name}' not found in installed packages")
+        anyhow::bail!("command service '{name}' not found in installed plugins")
     }
 
     /// Write an agent config into the local manifest `[agents.<name>]`.
@@ -1185,33 +1179,33 @@ impl<H: Host + 'static> Daemon<H> {
     }
 }
 
-fn hub_step(message: &str) -> HubEvent {
-    HubEvent {
-        event: Some(hub_event::Event::Step(HubStep {
+fn plugin_step(message: &str) -> PluginEvent {
+    PluginEvent {
+        event: Some(plugin_event::Event::Step(PluginStep {
             message: message.to_string(),
         })),
     }
 }
 
-fn hub_warning(message: &str) -> HubEvent {
-    HubEvent {
-        event: Some(hub_event::Event::Warning(HubWarning {
+fn plugin_warning(message: &str) -> PluginEvent {
+    PluginEvent {
+        event: Some(plugin_event::Event::Warning(PluginWarning {
             message: message.to_string(),
         })),
     }
 }
 
-fn hub_done(error: &str) -> HubEvent {
-    HubEvent {
-        event: Some(hub_event::Event::Done(HubDone {
+fn plugin_done(error: &str) -> PluginEvent {
+    PluginEvent {
+        event: Some(plugin_event::Event::Done(PluginDone {
             error: error.to_string(),
         })),
     }
 }
 
-fn hub_output(content: &str) -> HubEvent {
-    HubEvent {
-        event: Some(hub_event::Event::SetupOutput(HubSetupOutput {
+fn plugin_output(content: &str) -> PluginEvent {
+    PluginEvent {
+        event: Some(plugin_event::Event::SetupOutput(PluginSetupOutput {
             content: content.to_string(),
         })),
     }

@@ -3,15 +3,14 @@
 use crate::protocol::message::{
     AgentInfo, AgentList, ClientMessage, ConversationHistory, ConversationInfo, ConversationList,
     CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteProviderMsg,
-    ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats, HubEvent, HubPackageInfo,
-    HubPackageList, InstallPackageMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg,
-    ListModelsMsg, ListPackagesMsg, ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg,
-    McpInfo, McpList, ModelInfo, ModelList, PackageInfo, PackageList, Ping, ProviderInfo,
-    ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind, SearchHubMsg, SendMsg,
-    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
-    SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList, StartServiceMsg,
-    StopServiceMsg, StreamEvent, StreamMsg, UninstallPackageMsg, UpdateAgentMsg, client_message,
-    hub_event, server_message, stream_event,
+    ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats, InstallPluginMsg, ListAgentsMsg,
+    ListConversationsMsg, ListMcpsMsg, ListModelsMsg, ListPluginsMsg, ListProviderPresetsMsg,
+    ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, ModelInfo, ModelList, Ping, PluginEvent,
+    PluginInfo, PluginList, PluginSearchList, ProviderInfo, ProviderList, ProviderPresetInfo,
+    ProviderPresetList, ResourceKind, SearchPluginsMsg, SendMsg, SendResponse, ServerMessage,
+    ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetEnabledMsg, SetLocalMcpsMsg,
+    SetProviderMsg, SkillInfo, SkillList, StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg,
+    UninstallPluginMsg, UpdateAgentMsg, client_message, plugin_event, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -266,17 +265,17 @@ pub trait Client: Send {
         }
     }
 
-    /// Install a hub package, streaming progress events.
-    fn install_package(
+    /// Install a plugin, streaming progress events.
+    fn install_plugin(
         &mut self,
-        package: String,
+        plugin: String,
         branch: String,
         path: String,
         force: bool,
-    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + '_ {
+    ) -> impl Stream<Item = Result<plugin_event::Event>> + Send + '_ {
         self.request_stream(ClientMessage {
-            msg: Some(client_message::Msg::InstallPackage(InstallPackageMsg {
-                package,
+            msg: Some(client_message::Msg::InstallPlugin(InstallPluginMsg {
+                plugin,
                 branch,
                 path,
                 force,
@@ -286,52 +285,52 @@ pub trait Client: Send {
             std::future::ready(!matches!(
                 r,
                 Ok(ServerMessage {
-                    msg: Some(server_message::Msg::HubEvent(HubEvent {
-                        event: Some(hub_event::Event::Done(d))
+                    msg: Some(server_message::Msg::PluginEvent(PluginEvent {
+                        event: Some(plugin_event::Event::Done(d))
                     }))
                 }) if d.error.is_empty()
             ))
         })
-        .map(|r| r.and_then(hub_event::Event::try_from))
+        .map(|r| r.and_then(plugin_event::Event::try_from))
     }
 
-    /// Uninstall a hub package, streaming progress events.
-    fn uninstall_package(
+    /// Uninstall a plugin, streaming progress events.
+    fn uninstall_plugin(
         &mut self,
-        package: String,
-    ) -> impl Stream<Item = Result<hub_event::Event>> + Send + '_ {
+        plugin: String,
+    ) -> impl Stream<Item = Result<plugin_event::Event>> + Send + '_ {
         self.request_stream(ClientMessage {
-            msg: Some(client_message::Msg::UninstallPackage(UninstallPackageMsg {
-                package,
+            msg: Some(client_message::Msg::UninstallPlugin(UninstallPluginMsg {
+                plugin,
             })),
         })
         .take_while(|r| {
             std::future::ready(!matches!(
                 r,
                 Ok(ServerMessage {
-                    msg: Some(server_message::Msg::HubEvent(HubEvent {
-                        event: Some(hub_event::Event::Done(d))
+                    msg: Some(server_message::Msg::PluginEvent(PluginEvent {
+                        event: Some(plugin_event::Event::Done(d))
                     }))
                 }) if d.error.is_empty()
             ))
         })
-        .map(|r| r.and_then(hub_event::Event::try_from))
+        .map(|r| r.and_then(plugin_event::Event::try_from))
     }
 
-    /// List installed hub packages.
-    fn list_packages(
+    /// List installed plugins.
+    fn list_plugins(
         &mut self,
-    ) -> impl std::future::Future<Output = Result<Vec<PackageInfo>>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<PluginInfo>>> + Send {
         async move {
             match self
                 .request(ClientMessage {
-                    msg: Some(client_message::Msg::ListPackages(ListPackagesMsg {})),
+                    msg: Some(client_message::Msg::ListPlugins(ListPluginsMsg {})),
                 })
                 .await?
             {
                 ServerMessage {
-                    msg: Some(server_message::Msg::PackageList(PackageList { packages })),
-                } => Ok(packages),
+                    msg: Some(server_message::Msg::PluginList(PluginList { plugins })),
+                } => Ok(plugins),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {
@@ -342,21 +341,23 @@ pub trait Client: Send {
         }
     }
 
-    /// Search hub for available packages.
-    fn search_hub(
+    /// Search plugin registry for available plugins.
+    fn search_plugins(
         &mut self,
         query: String,
-    ) -> impl std::future::Future<Output = Result<Vec<HubPackageInfo>>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<PluginInfo>>> + Send {
         async move {
             match self
                 .request(ClientMessage {
-                    msg: Some(client_message::Msg::SearchHub(SearchHubMsg { query })),
+                    msg: Some(client_message::Msg::SearchPlugins(SearchPluginsMsg {
+                        query,
+                    })),
                 })
                 .await?
             {
                 ServerMessage {
-                    msg: Some(server_message::Msg::HubPackageList(HubPackageList { packages })),
-                } => Ok(packages),
+                    msg: Some(server_message::Msg::PluginSearchList(PluginSearchList { plugins })),
+                } => Ok(plugins),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {

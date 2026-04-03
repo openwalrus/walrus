@@ -128,34 +128,34 @@ impl Cli {
                     }
                 }
             }
-            Some(Command::Pull { package, force }) => {
+            Some(Command::Pull { plugin, force }) => {
                 use std::io::Write;
-                use wcore::protocol::message::hub_event;
+                use wcore::protocol::message::plugin_event;
                 let mut runner = connect_default_or_tcp(self.tcp).await?;
-                let mut stream = std::pin::pin!(runner.install_package(&package, "", "", force));
+                let mut stream = std::pin::pin!(runner.install_plugin(&plugin, "", "", force));
                 let mut last_was_output = false;
                 while let Some(event) = stream.next().await {
                     match event? {
-                        hub_event::Event::Step(s) => {
+                        plugin_event::Event::Step(s) => {
                             if last_was_output {
                                 println!();
                                 last_was_output = false;
                             }
                             println!("  {}", s.message);
                         }
-                        hub_event::Event::SetupOutput(o) => {
+                        plugin_event::Event::SetupOutput(o) => {
                             print!("\r  {}", o.content);
                             let _ = std::io::stdout().flush();
                             last_was_output = true;
                         }
-                        hub_event::Event::Warning(w) => {
+                        plugin_event::Event::Warning(w) => {
                             if last_was_output {
                                 println!();
                                 last_was_output = false;
                             }
                             eprintln!("  warning: {}", w.message);
                         }
-                        hub_event::Event::Done(d) => {
+                        plugin_event::Event::Done(d) => {
                             if last_was_output {
                                 println!();
                             }
@@ -165,21 +165,21 @@ impl Cli {
                         }
                     }
                 }
-                println!("Done: {package}");
+                println!("Done: {plugin}");
                 Ok(())
             }
-            Some(Command::Rm { package }) => {
+            Some(Command::Rm { plugin }) => {
                 let mut runner = connect_default_or_tcp(self.tcp).await?;
-                let mut stream = std::pin::pin!(runner.uninstall_package(&package));
+                let mut stream = std::pin::pin!(runner.uninstall_plugin(&plugin));
                 while let Some(event) = stream.next().await {
                     match event? {
-                        wcore::protocol::message::hub_event::Event::Step(s) => {
+                        wcore::protocol::message::plugin_event::Event::Step(s) => {
                             println!("  {}", s.message);
                         }
-                        wcore::protocol::message::hub_event::Event::Warning(w) => {
+                        wcore::protocol::message::plugin_event::Event::Warning(w) => {
                             eprintln!("  warning: {}", w.message);
                         }
-                        wcore::protocol::message::hub_event::Event::Done(d) => {
+                        wcore::protocol::message::plugin_event::Event::Done(d) => {
                             if !d.error.is_empty() {
                                 anyhow::bail!("{}", d.error);
                             }
@@ -187,7 +187,7 @@ impl Cli {
                         _ => {}
                     }
                 }
-                println!("Done: {package}");
+                println!("Done: {plugin}");
                 Ok(())
             }
             Some(Command::Config(cmd)) => cmd.run().await,
@@ -230,18 +230,18 @@ impl Cli {
 /// Top-level subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Install a hub package.
+    /// Install a plugin.
     Pull {
-        /// Package identifier in `scope/name` format.
-        package: String,
+        /// Plugin name.
+        plugin: String,
         /// Overwrite if already installed.
         #[arg(long)]
         force: bool,
     },
-    /// Uninstall a hub package.
+    /// Uninstall a plugin.
     Rm {
-        /// Package identifier in `scope/name` format.
-        package: String,
+        /// Plugin name.
+        plugin: String,
     },
     /// Configure providers, models, and MCP servers.
     Config(config::Config),
