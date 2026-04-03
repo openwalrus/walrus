@@ -6,7 +6,7 @@ own process and connects via auto-discovery (`crabtalk <name>` finds
 
 | Component | Crate | What it does |
 | --------- | ----- | ------------ |
-| [Hub](hub) | `crabhub` | Package management |
+| [Plugins](plugins) | `crabtalk-plugins` | Plugin management |
 | [Outlook](outlook) | `crabtalk-outlook` | Outlook MCP server (email + calendar) |
 | [Search](search) | `crabtalk-search` | Meta-search aggregator |
 | [Telegram](telegram) | `crabtalk-telegram` | Telegram gateway |
