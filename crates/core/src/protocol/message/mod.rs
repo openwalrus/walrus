@@ -16,10 +16,10 @@ pub use crate::protocol::proto::{
     ProviderList, ProviderPresetInfo, ProviderPresetList, PublishEventMsg, ReplyToAsk,
     ResourceKind, SearchPluginsMsg, SendMsg, SendResponse, ServerMessage, ServiceLogOutput,
     ServiceLogsMsg, SetActiveModelMsg, SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo,
-    SkillList, StartServiceMsg, StopServiceMsg, StreamChunk, StreamEnd, StreamEvent, StreamMsg,
-    StreamStart, StreamThinking, SubscribeEventMsg, SubscribeEvents, SubscriptionInfo,
-    SubscriptionList, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
-    ToolsCompleteEvent, UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg,
+    SkillList, StartServiceMsg, SteerSessionMsg, StopServiceMsg, StreamChunk, StreamEnd,
+    StreamEvent, StreamMsg, StreamStart, StreamThinking, SubscribeEventMsg, SubscribeEvents,
+    SubscriptionInfo, SubscriptionList, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+    ToolsCompleteEvent, UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg, UserSteeredEvent,
 };
 pub use crate::protocol::proto::{
     AgentEventKind, McpStatus, ProviderKind as ProtoProviderKind, SourceKind, client_message,

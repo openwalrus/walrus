@@ -67,6 +67,8 @@ message ClientMessage {
     UnsubscribeEventMsg unsubscribe_event = 41;
     ListSubscriptionsMsg list_subscriptions = 42;
     PublishEventMsg publish_event = 43;
+    // Steering
+    SteerSessionMsg steer_session = 44;
   }
 }
 
@@ -378,6 +380,7 @@ message StreamEvent {
     ToolsCompleteEvent tools_complete = 6;
     StreamEnd end = 7;
     AskUserEvent ask_user = 8;
+    UserSteeredEvent user_steered = 9;
   }
 }
 
@@ -433,6 +436,16 @@ message ReplyToAsk {
   string agent = 1;
   string sender = 2;
   string content = 3;
+}
+
+message SteerSessionMsg {
+  string agent = 1;
+  string sender = 2;
+  string content = 3;
+}
+
+message UserSteeredEvent {
+  string content = 1;
 }
 
 message ErrorMsg {

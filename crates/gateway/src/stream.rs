@@ -70,6 +70,7 @@ impl StreamAccumulator {
                 self.tool_line = Some(format!("[question: {}]", headers.join(", ")));
                 self.pending_questions = Some(ask.questions.clone());
             }
+            Some(stream_event::Event::UserSteered(_)) => {}
             None => {}
         }
     }

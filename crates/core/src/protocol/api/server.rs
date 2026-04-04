@@ -7,8 +7,8 @@ use crate::protocol::message::{
     McpInfo, McpList, ModelInfo, ModelList, PluginEvent, PluginInfo, PluginList, PluginSearchList,
     Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, PublishEventMsg,
     ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList,
-    StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList, UpdateAgentMsg,
-    client_message, server_message,
+    SteerSessionMsg, StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList,
+    UpdateAgentMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -121,6 +121,12 @@ pub trait Server: Sync {
         agent: String,
         sender: String,
         content: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// Handle `SteerSession` — inject a user message into an active stream.
+    fn steer_session(
+        &self,
+        req: SteerSessionMsg,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Handle `ListAgents` — return all registered agents.
@@ -316,6 +322,12 @@ pub trait Server: Sync {
                     yield match self.reply_to_ask(msg.agent, msg.sender, msg.content).await {
                         Ok(()) => server_pong(),
                         Err(e) => server_error(404, e.to_string()),
+                    };
+                }
+                client_message::Msg::SteerSession(req) => {
+                    yield match self.steer_session(req).await {
+                        Ok(()) => server_pong(),
+                        Err(e) => server_error(500, e.to_string()),
                     };
                 }
                 client_message::Msg::GetStats(_) => {

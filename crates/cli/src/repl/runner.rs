@@ -212,6 +212,7 @@ impl Runner {
                             agent: state.0.clone(),
                             sender: state.1.clone(),
                         })),
+                        Some(stream_event::Event::UserSteered(_)) => None,
                         Some(stream_event::Event::End(end)) if !end.error.is_empty() => {
                             Some(Err(anyhow::anyhow!("{}", end.error)))
                         }
