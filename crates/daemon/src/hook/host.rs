@@ -5,7 +5,15 @@
 
 use crate::daemon::event::{DaemonEvent, DaemonEventSender};
 use runtime::host::Host;
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use wcore::{
     AgentEvent,
@@ -68,14 +76,31 @@ impl Host for DaemonHost {
             Err(e) => return format!("invalid arguments: {e}"),
         };
 
-        let mut handles = Vec::with_capacity(input.tasks.len());
+        let mut tasks = Vec::with_capacity(input.tasks.len());
         for task in input.tasks {
-            let handle = spawn_agent_task(task.agent.clone(), task.message, self.event_tx.clone());
-            handles.push((task.agent, handle));
+            let sender = delegate_sender();
+            let handle = spawn_agent_task(
+                task.agent.clone(),
+                task.message,
+                sender.clone(),
+                self.event_tx.clone(),
+            );
+            tasks.push((task.agent, sender, handle));
         }
 
-        let mut results = Vec::with_capacity(handles.len());
-        for (agent_name, handle) in handles {
+        if input.background {
+            let results: Vec<_> = tasks
+                .into_iter()
+                .map(|(agent, sender, _handle)| {
+                    serde_json::json!({ "agent": agent, "task_id": sender })
+                })
+                .collect();
+            return serde_json::to_string(&results)
+                .unwrap_or_else(|e| format!("serialization error: {e}"));
+        }
+
+        let mut results = Vec::with_capacity(tasks.len());
+        for (agent_name, _sender, handle) in tasks {
             let (result, error) = match handle.await {
                 Ok((r, e)) => (r, e),
                 Err(e) => (None, Some(format!("task panicked: {e}"))),
@@ -204,21 +229,22 @@ impl Host for DaemonHost {
     }
 }
 
+/// Generate a unique delegate sender identity.
+fn delegate_sender() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("delegate:{id}")
+}
+
 /// Spawn an agent task via the event channel and collect its response.
 fn spawn_agent_task(
     agent: String,
     message: String,
+    delegate_sender: String,
     event_tx: DaemonEventSender,
 ) -> tokio::task::JoinHandle<(Option<String>, Option<String>)> {
     tokio::spawn(async move {
         let (reply_tx, mut reply_rx) = mpsc::channel(transport::REPLY_CHANNEL_CAPACITY);
-        let delegate_sender = format!(
-            "delegate:{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
         let msg = ClientMessage::from(SendMsg {
             agent: agent.clone(),
             content: message,
