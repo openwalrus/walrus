@@ -256,6 +256,17 @@ pub trait Server: Sync {
         lines: u32,
     ) -> impl std::future::Future<Output = Result<String>> + Send;
 
+    /// Handle `Extension` — opaque bytes for downstream product protocols.
+    ///
+    /// Default: returns "not supported". Downstream products override this
+    /// to handle their own message formats (local proto, JSON, bincode, etc.).
+    fn dispatch_extension(
+        &self,
+        _payload: Vec<u8>,
+    ) -> impl std::future::Future<Output = Result<Vec<u8>>> + Send {
+        async { anyhow::bail!("extension not supported") }
+    }
+
     /// Dispatch a `ClientMessage` to the appropriate handler method.
     ///
     /// Returns a stream of `ServerMessage`s. Request-response operations
@@ -591,6 +602,14 @@ pub trait Server: Sync {
                             msg: Some(server_message::Msg::ProviderPresetList(
                                 ProviderPresetList { presets },
                             )),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::Extension(payload) => {
+                    yield match self.dispatch_extension(payload).await {
+                        Ok(response) => ServerMessage {
+                            msg: Some(server_message::Msg::Extension(response)),
                         },
                         Err(e) => server_error(500, e.to_string()),
                     };

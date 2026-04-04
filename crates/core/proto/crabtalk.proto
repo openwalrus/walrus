@@ -69,6 +69,8 @@ message ClientMessage {
     PublishEventMsg publish_event = 43;
     // Steering
     SteerSessionMsg steer_session = 44;
+    // Extension point for downstream products.
+    bytes extension = 100;
   }
 }
 
@@ -334,6 +336,8 @@ message ServerMessage {
     // Event bus
     SubscriptionInfo subscription_info = 25;
     SubscriptionList subscription_list = 26;
+    // Extension point for downstream products.
+    bytes extension = 100;
   }
 }
 
