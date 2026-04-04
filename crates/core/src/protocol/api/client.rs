@@ -796,9 +796,9 @@ pub trait Client: Send {
         async move {
             match self
                 .request(ClientMessage {
-                    msg: Some(client_message::Msg::UnsubscribeEvent(
-                        UnsubscribeEventMsg { id },
-                    )),
+                    msg: Some(client_message::Msg::UnsubscribeEvent(UnsubscribeEventMsg {
+                        id,
+                    })),
                 })
                 .await?
             {
@@ -829,9 +829,8 @@ pub trait Client: Send {
                 .await?
             {
                 ServerMessage {
-                    msg: Some(server_message::Msg::SubscriptionList(SubscriptionList {
-                        subscriptions,
-                    })),
+                    msg:
+                        Some(server_message::Msg::SubscriptionList(SubscriptionList { subscriptions })),
                 } => Ok(subscriptions),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),

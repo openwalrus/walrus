@@ -5,7 +5,7 @@ use crate::protocol::message::{
     ClientMessage, CompactResponse, ConversationHistory, ConversationInfo, ConversationList,
     CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPluginMsg,
     McpInfo, McpList, ModelInfo, ModelList, PluginEvent, PluginInfo, PluginList, PluginSearchList,
-    Pong, PublishEventMsg, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, PublishEventMsg,
     ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList,
     StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList, UpdateAgentMsg,
     client_message, server_message,
@@ -95,10 +95,7 @@ pub trait Server: Sync {
     ) -> impl std::future::Future<Output = Result<SubscriptionInfo>> + Send;
 
     /// Handle `UnsubscribeEvent` — remove an event bus subscription.
-    fn unsubscribe_event(
-        &self,
-        id: u64,
-    ) -> impl std::future::Future<Output = Result<bool>> + Send;
+    fn unsubscribe_event(&self, id: u64) -> impl std::future::Future<Output = Result<bool>> + Send;
 
     /// Handle `ListSubscriptions` — return all event bus subscriptions.
     fn list_subscriptions(
