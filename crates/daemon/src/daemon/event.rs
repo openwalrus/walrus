@@ -58,10 +58,7 @@ impl<H: Host + 'static> Daemon<H> {
                 DaemonEvent::Message { msg, reply } => self.handle_message(msg, reply),
                 DaemonEvent::ToolCall(req) => self.handle_tool_call(req),
                 DaemonEvent::PublishEvent { source, payload } => {
-                    let events = self.events.clone();
-                    tokio::spawn(async move {
-                        events.lock().await.publish(&source, &payload);
-                    });
+                    self.events.lock().await.publish(&source, &payload);
                 }
                 DaemonEvent::Shutdown => {
                     tracing::info!("event loop shutting down");
