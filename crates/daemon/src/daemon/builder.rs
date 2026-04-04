@@ -62,12 +62,16 @@ impl<H: Host + 'static> Daemon<H> {
         );
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
+        let event_bus =
+            crate::event_bus::EventBus::load(config_dir.join("events.toml"), event_tx.clone());
+        let events = Arc::new(Mutex::new(event_bus));
         Ok(Self {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),
             config_dir: config_dir.to_path_buf(),
             event_tx,
             started_at: std::time::Instant::now(),
             crons,
+            events,
         })
     }
 
@@ -205,7 +209,16 @@ fn load_agents<H: Host + 'static>(
     let mut crab_config = config.system.crab.clone();
     crab_config.name = wcore::paths::DEFAULT_AGENT.to_owned();
     crab_config.system_prompt = SYSTEM_AGENT.to_owned();
-    runtime.add_agent(crab_config);
+    runtime.add_agent(crab_config.clone());
+
+    // Built-in worker agent — ephemeral delegate target, no pre-configuration needed.
+    let mut worker_config = AgentConfig::new("worker");
+    worker_config.system_prompt =
+        "You are a worker agent. Complete the task described in the user message. \
+         Be concise and focused."
+            .to_owned();
+    worker_config.thinking = crab_config.thinking;
+    runtime.add_agent(worker_config);
 
     // Sub-agents from manifests.
     for (name, agent_config) in &manifest.agents {

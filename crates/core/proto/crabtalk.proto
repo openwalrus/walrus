@@ -62,6 +62,11 @@ message ClientMessage {
     ReloadMsg reload = 32;
     GetStats get_stats = 33;
     SubscribeEvents subscribe_events = 34;
+    // Event bus
+    SubscribeEventMsg subscribe_event = 40;
+    UnsubscribeEventMsg unsubscribe_event = 41;
+    ListSubscriptionsMsg list_subscriptions = 42;
+    PublishEventMsg publish_event = 43;
   }
 }
 
@@ -113,6 +118,36 @@ message DeleteCronMsg {
 }
 
 message ListCronsMsg {}
+
+// ── Event Bus ───────────────────────────────────────────────────
+
+message SubscribeEventMsg {
+  string source = 1;
+  string target_agent = 2;
+  bool once = 3;
+}
+
+message UnsubscribeEventMsg {
+  uint64 id = 1;
+}
+
+message ListSubscriptionsMsg {}
+
+message PublishEventMsg {
+  string source = 1;
+  string payload = 2;
+}
+
+message SubscriptionInfo {
+  uint64 id = 1;
+  string source = 2;
+  string target_agent = 3;
+  bool once = 4;
+}
+
+message SubscriptionList {
+  repeated SubscriptionInfo subscriptions = 1;
+}
 
 message CompactMsg {
   string agent = 1;
@@ -292,6 +327,9 @@ message ServerMessage {
     ConfigMsg config = 19;
     DaemonStats stats = 20;
     AgentEventMsg agent_event = 21;
+    // Event bus
+    SubscriptionInfo subscription_info = 25;
+    SubscriptionList subscription_list = 26;
   }
 }
 

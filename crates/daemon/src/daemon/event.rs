@@ -31,6 +31,13 @@ pub enum DaemonEvent {
     },
     /// A tool call from an agent, routed through `DaemonEnv::dispatch_tool`.
     ToolCall(ToolRequest),
+    /// Publish an event to the event bus — fires matching subscriptions.
+    PublishEvent {
+        /// Namespaced source, e.g. `"agent:scout:done"`.
+        source: String,
+        /// JSON payload delivered as message content to target agents.
+        payload: String,
+    },
     /// Graceful shutdown request.
     Shutdown,
 }
@@ -50,6 +57,9 @@ impl<H: Host + 'static> Daemon<H> {
             match event {
                 DaemonEvent::Message { msg, reply } => self.handle_message(msg, reply),
                 DaemonEvent::ToolCall(req) => self.handle_tool_call(req),
+                DaemonEvent::PublishEvent { source, payload } => {
+                    self.events.lock().await.publish(&source, &payload);
+                }
                 DaemonEvent::Shutdown => {
                     tracing::info!("event loop shutting down");
                     break;

@@ -5,9 +5,10 @@ use crate::protocol::message::{
     ClientMessage, CompactResponse, ConversationHistory, ConversationInfo, ConversationList,
     CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPluginMsg,
     McpInfo, McpList, ModelInfo, ModelList, PluginEvent, PluginInfo, PluginList, PluginSearchList,
-    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, ResourceKind,
-    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList, StreamEvent,
-    StreamMsg, UpdateAgentMsg, client_message, server_message,
+    Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, PublishEventMsg,
+    ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList,
+    StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList, UpdateAgentMsg,
+    client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -86,6 +87,26 @@ pub trait Server: Sync {
 
     /// Handle `ListCrons` — return all cron entries.
     fn list_crons(&self) -> impl std::future::Future<Output = Result<CronList>> + Send;
+
+    /// Handle `SubscribeEvent` — create an event bus subscription.
+    fn subscribe_event(
+        &self,
+        req: SubscribeEventMsg,
+    ) -> impl std::future::Future<Output = Result<SubscriptionInfo>> + Send;
+
+    /// Handle `UnsubscribeEvent` — remove an event bus subscription.
+    fn unsubscribe_event(&self, id: u64) -> impl std::future::Future<Output = Result<bool>> + Send;
+
+    /// Handle `ListSubscriptions` — return all event bus subscriptions.
+    fn list_subscriptions(
+        &self,
+    ) -> impl std::future::Future<Output = Result<SubscriptionList>> + Send;
+
+    /// Handle `PublishEvent` — publish an event to the bus.
+    fn publish_event(
+        &self,
+        req: PublishEventMsg,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Handle `Compact` — compact a conversation's history into a summary.
     fn compact_conversation(
@@ -325,6 +346,35 @@ pub trait Server: Sync {
                         Ok(list) => ServerMessage {
                             msg: Some(server_message::Msg::CronList(list)),
                         },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::SubscribeEvent(req) => {
+                    yield match self.subscribe_event(req).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::SubscriptionInfo(info)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::UnsubscribeEvent(req) => {
+                    yield match self.unsubscribe_event(req.id).await {
+                        Ok(true) => server_pong(),
+                        Ok(false) => server_error(404, format!("subscription {} not found", req.id)),
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::ListSubscriptions(_) => {
+                    yield match self.list_subscriptions().await {
+                        Ok(list) => ServerMessage {
+                            msg: Some(server_message::Msg::SubscriptionList(list)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::PublishEvent(req) => {
+                    yield match self.publish_event(req).await {
+                        Ok(()) => server_pong(),
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }

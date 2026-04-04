@@ -13,6 +13,10 @@ use wcore::{
 pub struct Delegate {
     /// List of tasks to run in parallel. Each task has an agent name and a message.
     pub tasks: Vec<DelegateTask>,
+    /// If true, return immediately with task IDs instead of waiting for completion.
+    /// Results arrive via agent completion events (`agent:{name}:done`).
+    #[serde(default)]
+    pub background: bool,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -24,7 +28,7 @@ pub struct DelegateTask {
 }
 
 impl ToolDescription for Delegate {
-    const DESCRIPTION: &'static str = "Delegate tasks to other agents. Runs all tasks in parallel, blocks until all complete, and returns their results.";
+    const DESCRIPTION: &'static str = "Delegate tasks to other agents. Runs all tasks in parallel. Set background=true to return immediately with task IDs — results arrive via agent completion events.";
 }
 
 pub fn tools() -> Vec<Tool> {
