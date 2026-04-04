@@ -426,7 +426,7 @@ fn send_or_queue(
 ) {
     if app.streaming {
         // Show queued indicator.
-        let display = format!("  ⏳ queued: {}", &content);
+        let display = format!("  [queued] {}", &content);
         app.message_queue.push_back(content);
         app.renderer
             .buffer
