@@ -163,6 +163,15 @@ impl Host for DaemonHost {
             content,
             timestamp: chrono::Utc::now().to_rfc3339(),
         });
+
+        // Publish agent completion to the event bus.
+        if let AgentEvent::Done(response) = event {
+            let payload = response.final_response.clone().unwrap_or_default();
+            let _ = self.event_tx.send(DaemonEvent::PublishEvent {
+                source: format!("agent:{}:done", agent),
+                payload,
+            });
+        }
     }
 
     async fn reply_to_ask(&self, session: u64, content: String) -> anyhow::Result<bool> {
