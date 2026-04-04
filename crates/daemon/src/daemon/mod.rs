@@ -8,6 +8,7 @@ use crate::{
     DaemonConfig,
     cron::CronStore,
     daemon::event::{DaemonEvent, DaemonEventSender},
+    event_bus::EventBus,
     hook::host::DaemonHost,
 };
 use anyhow::Result;
@@ -47,6 +48,8 @@ pub struct Daemon<B: Host + 'static = DaemonHost> {
     pub(crate) started_at: std::time::Instant,
     /// Daemon-level cron scheduler. Survives runtime reloads.
     pub(crate) crons: Arc<Mutex<CronStore>>,
+    /// Event bus — subscription-based routing. Survives runtime reloads.
+    pub(crate) events: Arc<Mutex<EventBus>>,
 }
 
 impl<B: Host + 'static> Clone for Daemon<B> {
@@ -57,6 +60,7 @@ impl<B: Host + 'static> Clone for Daemon<B> {
             event_tx: self.event_tx.clone(),
             started_at: self.started_at,
             crons: self.crons.clone(),
+            events: self.events.clone(),
         }
     }
 }

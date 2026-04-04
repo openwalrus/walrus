@@ -62,12 +62,18 @@ impl<H: Host + 'static> Daemon<H> {
         );
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
+        let event_bus = crate::event_bus::EventBus::load(
+            config_dir.join("events.toml"),
+            event_tx.clone(),
+        );
+        let events = Arc::new(Mutex::new(event_bus));
         Ok(Self {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),
             config_dir: config_dir.to_path_buf(),
             event_tx,
             started_at: std::time::Instant::now(),
             crons,
+            events,
         })
     }
 

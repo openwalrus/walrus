@@ -1,6 +1,6 @@
 //! Server trait implementation for the Daemon.
 
-use crate::{cron::CronEntry, daemon::Daemon};
+use crate::{cron::CronEntry, daemon::Daemon, event_bus::EventSubscription};
 use anyhow::{Context, Result};
 use futures_util::{StreamExt, pin_mut};
 use runtime::host::Host;
@@ -19,6 +19,7 @@ use wcore::protocol::{
         ProtoProviderKind, ProviderInfo, ProviderPresetInfo, ResourceKind, SendMsg, SendResponse,
         SkillInfo, SourceKind, StreamChunk, StreamEnd, StreamEvent, StreamMsg, StreamStart,
         StreamThinking, TokenUsage, ToolCallInfo, ToolResultEvent, ToolStartEvent,
+        PublishEventMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList,
         ToolsCompleteEvent, UpdateAgentMsg, plugin_event, stream_event,
     },
 };
@@ -280,6 +281,40 @@ impl<H: Host + 'static> Server for Daemon<H> {
         Ok(CronList {
             crons: entries.iter().map(cron_entry_to_info).collect(),
         })
+    }
+
+    async fn subscribe_event(&self, req: SubscribeEventMsg) -> Result<SubscriptionInfo> {
+        let rt = self.runtime.read().await.clone();
+        if rt.agent(&req.target_agent).is_none() {
+            anyhow::bail!("agent '{}' not found", req.target_agent);
+        }
+        let sub = EventSubscription {
+            id: 0,
+            source: req.source,
+            target_agent: req.target_agent,
+            once: req.once,
+        };
+        let created = self.events.lock().await.subscribe(sub);
+        Ok(subscription_to_info(&created))
+    }
+
+    async fn unsubscribe_event(&self, id: u64) -> Result<bool> {
+        Ok(self.events.lock().await.unsubscribe(id))
+    }
+
+    async fn list_subscriptions(&self) -> Result<SubscriptionList> {
+        let subs = self.events.lock().await.list();
+        Ok(SubscriptionList {
+            subscriptions: subs.iter().map(subscription_to_info).collect(),
+        })
+    }
+
+    async fn publish_event(&self, req: PublishEventMsg) -> Result<()> {
+        let _ = self.event_tx.send(crate::DaemonEvent::PublishEvent {
+            source: req.source,
+            payload: req.payload,
+        });
+        Ok(())
     }
 
     async fn reply_to_ask(&self, agent: String, sender: String, content: String) -> Result<()> {
@@ -1407,6 +1442,15 @@ fn agent_config_to_info(config: &wcore::AgentConfig) -> AgentInfo {
         mcps: config.mcps.clone(),
         compact_threshold: config.compact_threshold.map(|t| t as u32),
         compact_tool_max_len: config.compact_tool_max_len as u32,
+    }
+}
+
+fn subscription_to_info(sub: &EventSubscription) -> SubscriptionInfo {
+    SubscriptionInfo {
+        id: sub.id,
+        source: sub.source.clone(),
+        target_agent: sub.target_agent.clone(),
+        once: sub.once,
     }
 }
 

@@ -5,12 +5,14 @@ use crate::protocol::message::{
     CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteProviderMsg,
     ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats, InstallPluginMsg, ListAgentsMsg,
     ListConversationsMsg, ListMcpsMsg, ListModelsMsg, ListPluginsMsg, ListProviderPresetsMsg,
-    ListProvidersMsg, ListSkillsMsg, McpInfo, McpList, ModelInfo, ModelList, Ping, PluginEvent,
-    PluginInfo, PluginList, PluginSearchList, ProviderInfo, ProviderList, ProviderPresetInfo,
-    ProviderPresetList, ResourceKind, SearchPluginsMsg, SendMsg, SendResponse, ServerMessage,
-    ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetEnabledMsg, SetLocalMcpsMsg,
-    SetProviderMsg, SkillInfo, SkillList, StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg,
-    UninstallPluginMsg, UpdateAgentMsg, client_message, plugin_event, server_message, stream_event,
+    ListProvidersMsg, ListSkillsMsg, ListSubscriptionsMsg, McpInfo, McpList, ModelInfo, ModelList,
+    Ping, PluginEvent, PluginInfo, PluginList, PluginSearchList, ProviderInfo, ProviderList,
+    ProviderPresetInfo, ProviderPresetList, PublishEventMsg, ResourceKind, SearchPluginsMsg,
+    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
+    SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList, StartServiceMsg,
+    StopServiceMsg, StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList,
+    UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg, client_message, plugin_event,
+    server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -745,6 +747,121 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::ServiceLogOutput(ServiceLogOutput { content })),
                 } => Ok(content),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Create an event bus subscription.
+    fn subscribe_event(
+        &mut self,
+        source: String,
+        target_agent: String,
+        once: bool,
+    ) -> impl std::future::Future<Output = Result<SubscriptionInfo>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::SubscribeEvent(SubscribeEventMsg {
+                        source,
+                        target_agent,
+                        once,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::SubscriptionInfo(info)),
+                } => Ok(info),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Remove an event bus subscription.
+    fn unsubscribe_event(
+        &mut self,
+        id: u64,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::UnsubscribeEvent(
+                        UnsubscribeEventMsg { id },
+                    )),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// List all event bus subscriptions.
+    fn list_subscriptions(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<Vec<SubscriptionInfo>>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::ListSubscriptions(
+                        ListSubscriptionsMsg {},
+                    )),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::SubscriptionList(SubscriptionList {
+                        subscriptions,
+                    })),
+                } => Ok(subscriptions),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Publish an event to the bus.
+    fn publish_event(
+        &mut self,
+        source: String,
+        payload: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::PublishEvent(PublishEventMsg {
+                        source,
+                        payload,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::Pong(_)),
+                } => Ok(()),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {
