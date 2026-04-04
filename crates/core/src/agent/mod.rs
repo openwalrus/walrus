@@ -18,7 +18,7 @@ pub use config::AgentConfig;
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
 use futures_util::StreamExt;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 pub use tool::{AsTool, ToolDescription, ToolRequest, ToolSender};
 
 mod builder;
@@ -178,7 +178,7 @@ impl<M: Model> Agent<M> {
         events: mpsc::UnboundedSender<AgentEvent>,
         conversation_id: Option<u64>,
     ) -> AgentResponse {
-        let mut stream = std::pin::pin!(self.run_stream(history, conversation_id));
+        let mut stream = std::pin::pin!(self.run_stream(history, conversation_id, None));
         let mut response = None;
         while let Some(event) = stream.next().await {
             if let AgentEvent::Done(ref resp) = event {
@@ -205,6 +205,7 @@ impl<M: Model> Agent<M> {
         &'a self,
         history: &'a mut Vec<Message>,
         conversation_id: Option<u64>,
+        mut steer_rx: Option<watch::Receiver<Option<String>>>,
     ) -> impl Stream<Item = AgentEvent> + 'a {
         stream! {
             let mut steps = Vec::new();
@@ -212,6 +213,16 @@ impl<M: Model> Agent<M> {
             let model_name = self.model_name();
 
             for _ in 0..max {
+                // Check for pending steering message before the next model call.
+                // Scope the borrow so the !Send guard is dropped before yield.
+                let steer_content = steer_rx.as_mut().and_then(|rx| {
+                    rx.has_changed().ok()?.then(|| rx.borrow_and_update().clone())?
+                });
+                if let Some(content) = steer_content {
+                    history.push(Message::user(&content));
+                    yield AgentEvent::UserSteered { content };
+                }
+
                 let request = self.build_request(history);
 
                 // Stream from the model, yielding text deltas as they arrive.

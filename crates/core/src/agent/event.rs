@@ -33,6 +33,8 @@ pub enum AgentEvent {
     },
     /// All tools completed, continuing to next iteration.
     ToolCallsComplete,
+    /// User steering message injected at turn boundary.
+    UserSteered { content: String },
     /// Context was compacted — carries the compaction summary.
     Compact { summary: String },
     /// Agent finished with final response.

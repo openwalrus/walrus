@@ -135,8 +135,8 @@ impl<H: Host + 'static> Server for Daemon<H> {
                     AgentEvent::ToolCallsComplete => {
                         yield StreamEvent { event: Some(stream_event::Event::ToolsComplete(ToolsCompleteEvent {})) };
                     }
-                    AgentEvent::Compact { .. } => {
-                    }
+                    AgentEvent::Compact { .. } => {}
+                    AgentEvent::UserSteered { .. } => {}
                     AgentEvent::Done(resp) => {
                         let error = if let wcore::AgentStopReason::Error(ref e) = resp.stop_reason {
                             e.clone()

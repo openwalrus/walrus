@@ -166,6 +166,10 @@ impl Host for DaemonHost {
                 tracing::info!(%agent, summary_len = summary.len(), "context compacted");
                 return;
             }
+            AgentEvent::UserSteered { content } => {
+                tracing::info!(%agent, content_len = content.len(), "user steered session");
+                return;
+            }
             AgentEvent::Done(response) => {
                 tracing::info!(
                     %agent,

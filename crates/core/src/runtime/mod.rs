@@ -469,7 +469,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             let mut compact_summary: Option<String> = None;
             let mut done_event: Option<AgentEvent> = None;
             {
-                let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut conversation.history, Some(conversation_id)));
+                let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut conversation.history, Some(conversation_id), None));
                 while let Some(event) = event_stream.next().await {
                     if let AgentEvent::Compact { ref summary } = event {
                         compact_summary = Some(summary.clone());
