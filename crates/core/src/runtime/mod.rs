@@ -23,7 +23,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
-use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::sync::{Mutex, RwLock, mpsc, watch};
 
 pub mod conversation;
 pub mod hook;
@@ -43,6 +43,8 @@ pub struct Runtime<M: Model, H: Hook> {
     next_conversation_id: AtomicU64,
     pub tools: ToolRegistry,
     tool_tx: Option<ToolSender>,
+    /// Per-conversation steering senders, active only while a stream is running.
+    steering: RwLock<BTreeMap<u64, watch::Sender<Option<String>>>>,
 }
 
 impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> {
@@ -62,6 +64,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             next_conversation_id: AtomicU64::new(1),
             tools,
             tool_tx,
+            steering: RwLock::new(BTreeMap::new()),
         }
     }
 
@@ -186,7 +189,23 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Close (remove) a conversation by ID. Returns true if it existed.
     pub async fn close_conversation(&self, id: u64) -> bool {
+        self.steering.write().await.remove(&id);
         self.conversations.write().await.remove(&id).is_some()
+    }
+
+    /// Send a steering message to an active stream.
+    ///
+    /// The message will be injected into the agent's history at the next turn
+    /// boundary (after the current tool dispatch completes, before the next
+    /// model call). Returns an error if no stream is active for the conversation.
+    pub async fn steer(&self, conversation_id: u64, content: String) -> Result<()> {
+        let senders = self.steering.read().await;
+        let tx = senders
+            .get(&conversation_id)
+            .ok_or_else(|| anyhow::anyhow!("no active stream for conversation {conversation_id}"))?;
+        tx.send(Some(content))
+            .map_err(|_| anyhow::anyhow!("steering channel closed"))?;
+        Ok(())
     }
 
     /// Get a conversation mutex by ID.
@@ -466,10 +485,12 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             };
 
             let run_start = std::time::Instant::now();
+            let (steer_tx, steer_rx) = watch::channel(None::<String>);
+            self.steering.write().await.insert(conversation_id, steer_tx);
             let mut compact_summary: Option<String> = None;
             let mut done_event: Option<AgentEvent> = None;
             {
-                let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut conversation.history, Some(conversation_id), None));
+                let mut event_stream = std::pin::pin!(agent_ref.run_stream(&mut conversation.history, Some(conversation_id), Some(steer_rx)));
                 while let Some(event) = event_stream.next().await {
                     if let AgentEvent::Compact { ref summary } = event {
                         compact_summary = Some(summary.clone());
@@ -483,7 +504,8 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                     }
                 }
             }
-            // Borrow on conversation.history is released. Persist now.
+            // Borrow on conversation.history is released. Clean up steering and persist.
+            self.steering.write().await.remove(&conversation_id);
             conversation.uptime_secs += run_start.elapsed().as_secs();
             // Create the JSONL file on first persist (deferred from create_conversation).
             conversation.ensure_file();
