@@ -25,6 +25,9 @@ pub struct DelegateTask {
     pub agent: String,
     /// Message/instruction for the target agent.
     pub message: String,
+    /// Working directory for this task. Defaults to the parent's CWD.
+    #[serde(default)]
+    pub cwd: Option<String>,
 }
 
 impl ToolDescription for Delegate {

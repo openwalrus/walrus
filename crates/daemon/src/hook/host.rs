@@ -82,6 +82,7 @@ impl Host for DaemonHost {
             let handle = spawn_agent_task(
                 task.agent.clone(),
                 task.message,
+                task.cwd,
                 sender.clone(),
                 self.event_tx.clone(),
             );
@@ -244,6 +245,7 @@ fn delegate_sender() -> String {
 fn spawn_agent_task(
     agent: String,
     message: String,
+    cwd: Option<String>,
     delegate_sender: String,
     event_tx: DaemonEventSender,
 ) -> tokio::task::JoinHandle<(Option<String>, Option<String>)> {
@@ -253,7 +255,7 @@ fn spawn_agent_task(
             agent: agent.clone(),
             content: message,
             sender: Some(delegate_sender.clone()),
-            cwd: None,
+            cwd,
             guest: None,
             tool_choice: None,
         });
