@@ -41,11 +41,11 @@ pub fn scaffold_config_dir(config_dir: &Path) -> Result<()> {
 /// Phase 1: Renames `crab.toml` → `config.toml`, moves `skills/` and
 /// `agents/` under `local/`.
 ///
-/// Phase 2: Extracts `[mcps.*]` and `[agents.*]` from `config.toml` into
+/// Phase 2: Extracts `[mcps.*]` from `config.toml` into
 /// `local/CrabTalk.toml`.
 ///
 /// Phase 4: Renames `packages/` → `plugins/` (flattening scope dirs),
-/// renames `hub/` → `plugins-registry/`.
+/// renames `hub/` → `registry/`.
 ///
 /// Each step is a no-op if already migrated. Errors are logged, not fatal.
 fn migrate_layout(config_dir: &Path) {
@@ -85,10 +85,10 @@ fn migrate_layout(config_dir: &Path) {
         }
     }
 
-    // Phase 2: extract [mcps] and [agents] from config.toml → local/CrabTalk.toml
+    // Phase 2: extract [mcps] from config.toml → local/CrabTalk.toml
     let config_path = config_dir.join(CONFIG_FILE);
     if config_path.exists() {
-        migrate_mcps_agents(&config_path, &local_dir.join("CrabTalk.toml"));
+        migrate_mcps(&config_path, &local_dir.join("CrabTalk.toml"));
     }
 
     // Phase 3: move [disabled] from local/CrabTalk.toml → config.toml
@@ -127,21 +127,21 @@ fn migrate_layout(config_dir: &Path) {
         tracing::info!("migrated packages/ → plugins/");
     }
 
-    // Phase 4: rename hub/ → plugins-registry/
+    // Phase 4: rename hub/ → registry/
     let old_hub = config_dir.join("hub");
-    let new_registry = config_dir.join("plugins-registry");
+    let new_registry = config_dir.join("registry");
     if old_hub.exists() && old_hub.is_dir() && !new_registry.exists() {
         if let Err(e) = std::fs::rename(&old_hub, &new_registry) {
-            tracing::warn!("failed to rename hub/ → plugins-registry/: {e}");
+            tracing::warn!("failed to rename hub/ → registry/: {e}");
         } else {
-            tracing::info!("migrated hub/ → plugins-registry/");
+            tracing::info!("migrated hub/ → registry/");
         }
     }
 }
 
-/// Extract `[mcps.*]` and `[agents.*]` sections from config.toml into
-/// `local/CrabTalk.toml`, removing them from config.toml.
-fn migrate_mcps_agents(config_path: &Path, manifest_path: &Path) {
+/// Extract `[mcps.*]` from config.toml into `local/CrabTalk.toml`,
+/// removing it from config.toml.
+fn migrate_mcps(config_path: &Path, manifest_path: &Path) {
     use toml_edit::DocumentMut;
 
     let Ok(content) = std::fs::read_to_string(config_path) else {
@@ -155,12 +155,7 @@ fn migrate_mcps_agents(config_path: &Path, manifest_path: &Path) {
         .get("mcps")
         .and_then(|v| v.as_table())
         .is_some_and(|t| !t.is_empty());
-    let has_agents = doc
-        .get("agents")
-        .and_then(|v| v.as_table())
-        .is_some_and(|t| !t.is_empty());
-
-    if !has_mcps && !has_agents {
+    if !has_mcps {
         return;
     }
 
@@ -174,27 +169,15 @@ fn migrate_mcps_agents(config_path: &Path, manifest_path: &Path) {
         DocumentMut::default()
     };
 
-    // Only migrate if manifest doesn't already have these sections.
-    if has_mcps
-        && manifest_doc
-            .get("mcps")
-            .and_then(|v| v.as_table())
-            .is_none_or(|t| t.is_empty())
+    // Only migrate if manifest doesn't already have [mcps].
+    if manifest_doc
+        .get("mcps")
+        .and_then(|v| v.as_table())
+        .is_none_or(|t| t.is_empty())
         && let Some(mcps) = doc.remove("mcps")
     {
         manifest_doc.insert("mcps", mcps);
         tracing::info!("migrated [mcps] from config.toml → local/CrabTalk.toml");
-    }
-
-    if has_agents
-        && manifest_doc
-            .get("agents")
-            .and_then(|v| v.as_table())
-            .is_none_or(|t| t.is_empty())
-        && let Some(agents) = doc.remove("agents")
-    {
-        manifest_doc.insert("agents", agents);
-        tracing::info!("migrated [agents] from config.toml → local/CrabTalk.toml");
     }
 
     // Write both files back.
