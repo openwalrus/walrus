@@ -13,7 +13,7 @@ use wcore::{
 const DEFAULT_LIMIT: usize = 2000;
 
 /// Maximum file size in bytes before refusing to read (50 MB).
-const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
+pub const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 #[derive(Deserialize, JsonSchema)]
 pub struct ReadFile {

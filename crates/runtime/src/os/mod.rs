@@ -2,6 +2,7 @@
 
 use std::fmt::Write;
 
+pub mod edit;
 pub mod read_file;
 pub mod tool;
 

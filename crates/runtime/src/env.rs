@@ -22,7 +22,7 @@ pub struct AgentScope {
 }
 
 /// Base tools always included in every agent's whitelist.
-const BASE_TOOLS: &[&str] = &["bash", "ask_user", "read_file"];
+const BASE_TOOLS: &[&str] = &["bash", "ask_user", "read_file", "edit"];
 
 /// Skill discovery/loading tools.
 const SKILL_TOOLS: &[&str] = &["skill"];
@@ -232,6 +232,7 @@ impl<H: Host> Env<H> {
             }
             "bash" => self.dispatch_bash(args, conversation_id).await,
             "read_file" => self.dispatch_read_file(args, conversation_id).await,
+            "edit" => self.dispatch_edit(args, conversation_id).await,
             "recall" => self.dispatch_recall(args).await,
             "remember" => self.dispatch_remember(args).await,
             "memory" => self.dispatch_memory(args).await,
@@ -368,6 +369,7 @@ impl<H: Host + 'static> Hook for Env<H> {
         self.mcp.register_tools(tools);
         tools.insert_all(os::tool::tools());
         tools.insert_all(os::read_file::tools());
+        tools.insert_all(os::edit::tools());
         tools.insert_all(skill::tool::tools());
         tools.insert_all(crate::task::tools());
         tools.insert_all(crate::ask_user::tools());
