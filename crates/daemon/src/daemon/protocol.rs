@@ -421,6 +421,14 @@ impl<H: Host + 'static> Server for Daemon<H> {
         if removed {
             std::fs::write(&manifest_path, doc.to_string())
                 .context("failed to write local manifest")?;
+            let prompt_file = self
+                .config_dir
+                .join(wcore::paths::AGENTS_DIR)
+                .join(format!("{name}.md"));
+            if prompt_file.exists() {
+                std::fs::remove_file(&prompt_file)
+                    .context("failed to remove agent prompt file")?;
+            }
             self.reload().await?;
         }
         Ok(removed)
