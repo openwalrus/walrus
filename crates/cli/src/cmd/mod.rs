@@ -4,7 +4,7 @@ use crate::repl::runner::Runner;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use futures_util::StreamExt;
-use std::ffi::OsString;
+use std::{collections::HashMap, ffi::OsString};
 
 pub mod attach;
 pub mod config;
@@ -93,10 +93,36 @@ impl Cli {
             return Ok(());
         }
         if self.events {
+            use wcore::protocol::message::AgentEventKind;
+
             let mut runner = connect_default_or_tcp(self.tcp).await?;
             let stream = runner.subscribe_events();
             tokio::pin!(stream);
+            let mut deltas: HashMap<String, String> = HashMap::new();
             while let Some(Ok(event)) = stream.next().await {
+                let is_delta = matches!(
+                    AgentEventKind::try_from(event.kind),
+                    Ok(AgentEventKind::TextDelta | AgentEventKind::ThinkingDelta)
+                );
+                if is_delta {
+                    deltas
+                        .entry(event.agent)
+                        .or_default()
+                        .push_str(&event.content);
+                    continue;
+                }
+                if let Some(text) = deltas.remove(&event.agent) {
+                    let trimmed = if text.len() > 80 {
+                        let mut end = 77;
+                        while !text.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        format!("{}...", &text[..end])
+                    } else {
+                        text
+                    };
+                    println!("[{}] {trimmed}", event.agent);
+                }
                 println!(
                     "[{}] {} (sender {})",
                     event.agent, event.content, event.sender

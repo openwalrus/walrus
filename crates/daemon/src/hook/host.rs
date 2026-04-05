@@ -165,11 +165,11 @@ impl Host for DaemonHost {
         let (kind, content) = match event {
             AgentEvent::TextDelta(text) => {
                 tracing::trace!(%agent, text_len = text.len(), "agent text delta");
-                (AgentEventKind::TextDelta, String::new())
+                (AgentEventKind::TextDelta, text.clone())
             }
             AgentEvent::ThinkingDelta(text) => {
                 tracing::trace!(%agent, text_len = text.len(), "agent thinking delta");
-                (AgentEventKind::ThinkingDelta, String::new())
+                (AgentEventKind::ThinkingDelta, text.clone())
             }
             AgentEvent::ToolCallsBegin(_) => return,
             AgentEvent::ToolCallsStart(calls) => {
