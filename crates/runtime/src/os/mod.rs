@@ -2,6 +2,7 @@
 
 use std::fmt::Write;
 
+pub mod read_file;
 pub mod tool;
 
 /// Build an `<environment>` XML block with OS info.
