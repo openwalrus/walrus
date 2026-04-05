@@ -1290,8 +1290,7 @@ impl<H: Host + 'static> Daemon<H> {
         }
         system.insert("crab", toml_edit::Item::Table(crab_table));
 
-        std::fs::write(&config_path, doc.to_string())
-            .context("failed to write config.toml")?;
+        std::fs::write(&config_path, doc.to_string()).context("failed to write config.toml")?;
         Ok(())
     }
 }

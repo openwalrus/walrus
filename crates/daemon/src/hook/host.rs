@@ -89,10 +89,9 @@ impl Host for DaemonHost {
                 let mut config = wcore::AgentConfig::new(&name);
                 config.system_prompt = prompt;
                 let (tx, rx) = oneshot::channel();
-                let _ = self.event_tx.send(DaemonEvent::AddEphemeral {
-                    config,
-                    reply: tx,
-                });
+                let _ = self
+                    .event_tx
+                    .send(DaemonEvent::AddEphemeral { config, reply: tx });
                 let _ = rx.await;
                 ephemeral_names.push(name.clone());
                 name
@@ -149,9 +148,7 @@ impl Host for DaemonHost {
 
         // Clean up ephemeral agents after foreground tasks complete.
         for name in ephemeral_names {
-            let _ = self
-                .event_tx
-                .send(DaemonEvent::RemoveEphemeral { name });
+            let _ = self.event_tx.send(DaemonEvent::RemoveEphemeral { name });
         }
 
         serde_json::to_string(&results).unwrap_or_else(|e| format!("serialization error: {e}"))

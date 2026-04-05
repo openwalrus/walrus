@@ -135,8 +135,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Check if an agent exists in either the persistent or ephemeral store.
     async fn has_agent(&self, name: &str) -> bool {
-        self.agents.contains_key(name)
-            || self.ephemeral_agents.read().await.contains_key(name)
+        self.agents.contains_key(name) || self.ephemeral_agents.read().await.contains_key(name)
     }
 
     // --- Conversation management ---
@@ -292,7 +291,12 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         if let Some(a) = self.agents.get(&agent_name) {
             return a.compact(&history).await;
         }
-        let a = self.ephemeral_agents.read().await.get(&agent_name).cloned()?;
+        let a = self
+            .ephemeral_agents
+            .read()
+            .await
+            .get(&agent_name)
+            .cloned()?;
         a.compact(&history).await
     }
 
@@ -428,9 +432,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
         let agent = self
             .resolve_agent(&conversation.agent)
             .await
-            .ok_or_else(|| {
-                anyhow::anyhow!("agent '{}' not registered", conversation.agent)
-            })?;
+            .ok_or_else(|| anyhow::anyhow!("agent '{}' not registered", conversation.agent))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         let run_start = std::time::Instant::now();
