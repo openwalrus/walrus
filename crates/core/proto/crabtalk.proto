@@ -504,8 +504,17 @@ message AgentEventMsg {
   string agent = 1;
   string sender = 2;
   AgentEventKind kind = 3;
+  // Human-readable label (e.g. "bash, read_file" for TOOL_START,
+  // "342ms" for TOOL_RESULT, full text for TEXT_DELTA). Existing
+  // consumers like the CLI use this for display.
   string content = 4;
   string timestamp = 5;
+  // Structured payload — populated for kinds that benefit from it.
+  // Rich UI clients should prefer these over parsing `content`.
+  // - TOOL_START: tool calls with names and arguments
+  repeated ToolCallInfo tool_calls = 6;
+  // - TOOL_RESULT: tool output (may be truncated for size)
+  string tool_output = 7;
 }
 
 message ActiveConversationList {
