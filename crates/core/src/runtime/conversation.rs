@@ -415,7 +415,7 @@ impl Conversation {
             match serde_json::from_str::<ConversationLine>(line) {
                 Ok(ConversationLine::Message(msg)) => messages.push(msg),
                 Ok(ConversationLine::Event(_) | ConversationLine::Compact { .. }) => {}
-                Err(e) => tracing::warn!("skipping unparseable conversation line: {e}"),
+                Err(e) => tracing::warn!("skipping unparsable conversation line: {e}"),
             }
         }
 

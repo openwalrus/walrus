@@ -17,12 +17,12 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Install Toolchain
-        run: rustup update stable && rustup default stable
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-      - uses: taiki-e/install-action@sccache
-      - uses: taiki-e/install-action@nextest
+      # - name: Install Toolchain
+      #   run: rustup update stable && rustup default stable
+      # - name: Install protoc
+      #   uses: arduino/setup-protoc@v3
+      # - uses: taiki-e/install-action@sccache
+      # - uses: taiki-e/install-action@nextest
 
       - name: Run Tests
         run: cargo nextest run --workspace --no-fail-fast
@@ -32,13 +32,13 @@ jobs:
     runs-on: Linux
     steps:
       - uses: actions/checkout@v4
-      - name: Install Toolchain
-        run: |
-          rustup update stable && rustup default stable
-          rustup component add clippy rustfmt
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-      - uses: taiki-e/install-action@sccache
+      # - name: Install Toolchain
+      #   run: |
+      #     rustup update stable && rustup default stable
+      #     rustup component add clippy rustfmt
+      # - name: Install protoc
+      #   uses: arduino/setup-protoc@v3
+      # - uses: taiki-e/install-action@sccache
       - name: Format
         run: cargo fmt --check
       - name: Clippy
