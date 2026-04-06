@@ -169,10 +169,9 @@ impl Host for DaemonHost {
     }
 
     fn on_agent_event(&self, agent: &str, conversation_id: u64, event: &AgentEvent) {
-        /// Kind-specific payload built per match arm. Each arm constructs
-        /// only the fields it cares about; the rest take `Default`. Adding
-        /// a new field doesn't ripple across every arm.
-        #[derive(Default)]
+        /// Kind-specific payload built per match arm. `kind` is required —
+        /// no `Default` impl, so the compiler forces every arm to set it.
+        /// The other fields default to empty via struct update syntax.
         struct Payload {
             kind: AgentEventKind,
             content: String,
@@ -180,66 +179,54 @@ impl Host for DaemonHost {
             tool_output: String,
         }
 
+        impl Payload {
+            fn of(kind: AgentEventKind) -> Self {
+                Self {
+                    kind,
+                    content: String::new(),
+                    tool_calls: Vec::new(),
+                    tool_output: String::new(),
+                }
+            }
+        }
+
         let p = match event {
-            AgentEvent::TextStart => Payload {
-                kind: AgentEventKind::TextStart,
-                ..Default::default()
-            },
+            AgentEvent::TextStart => Payload::of(AgentEventKind::TextStart),
             AgentEvent::TextDelta(text) => {
                 tracing::trace!(%agent, text_len = text.len(), "agent text delta");
                 Payload {
-                    kind: AgentEventKind::TextDelta,
                     content: text.clone(),
-                    ..Default::default()
+                    ..Payload::of(AgentEventKind::TextDelta)
                 }
             }
-            AgentEvent::TextEnd => Payload {
-                kind: AgentEventKind::TextEnd,
-                ..Default::default()
-            },
-            AgentEvent::ThinkingStart => Payload {
-                kind: AgentEventKind::ThinkingStart,
-                ..Default::default()
-            },
+            AgentEvent::TextEnd => Payload::of(AgentEventKind::TextEnd),
+            AgentEvent::ThinkingStart => Payload::of(AgentEventKind::ThinkingStart),
             AgentEvent::ThinkingDelta(text) => {
                 tracing::trace!(%agent, text_len = text.len(), "agent thinking delta");
                 Payload {
-                    kind: AgentEventKind::ThinkingDelta,
                     content: text.clone(),
-                    ..Default::default()
+                    ..Payload::of(AgentEventKind::ThinkingDelta)
                 }
             }
-            AgentEvent::ThinkingEnd => Payload {
-                kind: AgentEventKind::ThinkingEnd,
-                ..Default::default()
-            },
+            AgentEvent::ThinkingEnd => Payload::of(AgentEventKind::ThinkingEnd),
             AgentEvent::ToolCallsBegin(_) => return,
             AgentEvent::ToolCallsStart(calls) => {
                 tracing::debug!(%agent, count = calls.len(), "agent tool calls");
-                let labels: Vec<String> = calls
-                    .iter()
-                    .map(|c| {
-                        if c.function.name == "bash"
-                            && let Ok(v) =
-                                serde_json::from_str::<serde_json::Value>(&c.function.arguments)
-                            && let Some(cmd) = v.get("command").and_then(|c| c.as_str())
-                        {
-                            return format!("bash({})", cmd.lines().next().unwrap_or(""));
-                        }
-                        c.function.name.clone()
-                    })
-                    .collect();
+                // Single pass over `calls` builds both the human label and
+                // the structured copy.
+                let mut labels = Vec::with_capacity(calls.len());
+                let mut structured = Vec::with_capacity(calls.len());
+                for c in calls {
+                    labels.push(tool_call_label(c));
+                    structured.push(ToolCallInfo {
+                        name: c.function.name.to_string(),
+                        arguments: c.function.arguments.clone(),
+                    });
+                }
                 Payload {
-                    kind: AgentEventKind::ToolStart,
                     content: labels.join(", "),
-                    tool_calls: calls
-                        .iter()
-                        .map(|c| ToolCallInfo {
-                            name: c.function.name.to_string(),
-                            arguments: c.function.arguments.clone(),
-                        })
-                        .collect(),
-                    ..Default::default()
+                    tool_calls: structured,
+                    ..Payload::of(AgentEventKind::ToolStart)
                 }
             }
             AgentEvent::ToolResult {
@@ -249,18 +236,14 @@ impl Host for DaemonHost {
             } => {
                 tracing::debug!(%agent, %call_id, %duration_ms, "agent tool result");
                 Payload {
-                    kind: AgentEventKind::ToolResult,
                     content: format!("{duration_ms}ms"),
                     tool_output: truncate_for_broadcast(output, MAX_TOOL_OUTPUT_BROADCAST),
-                    ..Default::default()
+                    ..Payload::of(AgentEventKind::ToolResult)
                 }
             }
             AgentEvent::ToolCallsComplete => {
                 tracing::debug!(%agent, "agent tool calls complete");
-                Payload {
-                    kind: AgentEventKind::ToolsComplete,
-                    ..Default::default()
-                }
+                Payload::of(AgentEventKind::ToolsComplete)
             }
             AgentEvent::Compact { summary } => {
                 tracing::info!(%agent, summary_len = summary.len(), "context compacted");
@@ -278,9 +261,8 @@ impl Host for DaemonHost {
                     "agent run complete"
                 );
                 Payload {
-                    kind: AgentEventKind::Done,
                     content: format_usage(response),
-                    ..Default::default()
+                    ..Payload::of(AgentEventKind::Done)
                 }
             }
         };
@@ -453,6 +435,20 @@ fn human_tokens(n: u32) -> String {
     } else {
         n.to_string()
     }
+}
+
+/// Build the human-readable label for a single tool call. Bash gets a
+/// special preview of its first line; everything else falls back to the
+/// function name. Used by the legacy `content` field for display-only
+/// consumers — rich UIs should read `tool_calls` directly.
+fn tool_call_label(c: &wcore::model::ToolCall) -> String {
+    if c.function.name == "bash"
+        && let Ok(v) = serde_json::from_str::<serde_json::Value>(&c.function.arguments)
+        && let Some(cmd) = v.get("command").and_then(|c| c.as_str())
+    {
+        return format!("bash({})", cmd.lines().next().unwrap_or(""));
+    }
+    c.function.name.clone()
 }
 
 /// Truncate a tool output to at most `max` bytes for the event broadcast,
