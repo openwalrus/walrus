@@ -479,6 +479,11 @@ fn handle_chunk(chunk: OutputChunk, app: &mut App) {
         OutputChunk::Thinking(text) => {
             app.renderer.push_thinking(&text);
         }
+        OutputChunk::ThinkingEnd => {
+            // Flush the thinking buffer immediately so it appears as a
+            // discrete block instead of waiting for the next text delta.
+            app.renderer.flush_thinking();
+        }
         OutputChunk::ToolStart(calls) => {
             app.renderer.push_tool_start(&calls);
         }
@@ -502,6 +507,10 @@ fn handle_chunk(chunk: OutputChunk, app: &mut App) {
             app.ask_agent = Some(agent);
             app.ask_sender = Some(sender);
         }
+        // Boundary markers — the renderer infers transitions from delta
+        // arrival, so Start markers are inert. ThinkingEnd above is the
+        // exception because it lets us flush thinking eagerly.
+        OutputChunk::TextStart | OutputChunk::TextEnd | OutputChunk::ThinkingStart => {}
     }
     // Auto-scroll to bottom on new content.
     app.scroll = 0;

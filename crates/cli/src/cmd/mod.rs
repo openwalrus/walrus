@@ -98,35 +98,42 @@ impl Cli {
             let mut runner = connect_default_or_tcp(self.tcp).await?;
             let stream = runner.subscribe_events();
             tokio::pin!(stream);
-            let mut deltas: HashMap<String, String> = HashMap::new();
+            // Buffer text/thinking deltas per (agent, sender) until the
+            // matching end event arrives, then flush as one truncated line.
+            // Boundary events from the daemon make this trivial — no more
+            // inference from "next non-delta event." Note: a dropped End
+            // (e.g. agent crash) leaves an entry in the map for the
+            // process lifetime; acceptable for a debug CLI.
+            let mut buffers: HashMap<(String, String), String> = HashMap::new();
             while let Some(Ok(event)) = stream.next().await {
-                let is_delta = matches!(
-                    AgentEventKind::try_from(event.kind),
-                    Ok(AgentEventKind::TextDelta | AgentEventKind::ThinkingDelta)
-                );
-                if is_delta {
-                    deltas
-                        .entry(event.agent)
-                        .or_default()
-                        .push_str(&event.content);
-                    continue;
-                }
-                if let Some(text) = deltas.remove(&event.agent) {
-                    let trimmed = if text.len() > 80 {
-                        let mut end = 77;
-                        while !text.is_char_boundary(end) {
-                            end -= 1;
+                let key = (event.agent.clone(), event.sender.clone());
+                match AgentEventKind::try_from(event.kind) {
+                    Ok(AgentEventKind::TextStart | AgentEventKind::ThinkingStart) => {
+                        buffers.insert(key, String::new());
+                    }
+                    Ok(AgentEventKind::TextDelta | AgentEventKind::ThinkingDelta) => {
+                        if let Some(buf) = buffers.get_mut(&key) {
+                            buf.push_str(&event.content);
                         }
-                        format!("{}...", &text[..end])
-                    } else {
-                        text
-                    };
-                    println!("[{}] {trimmed}", event.agent);
+                    }
+                    Ok(end @ (AgentEventKind::TextEnd | AgentEventKind::ThinkingEnd)) => {
+                        if let Some(text) = buffers.remove(&key) {
+                            let label = if end == AgentEventKind::ThinkingEnd {
+                                "thinking"
+                            } else {
+                                "text"
+                            };
+                            let trimmed = truncate_for_display(&text, 80);
+                            println!("[{}] {label}: {trimmed}", event.agent);
+                        }
+                    }
+                    _ => {
+                        println!(
+                            "[{}] {} (sender {})",
+                            event.agent, event.content, event.sender
+                        );
+                    }
                 }
-                println!(
-                    "[{}] {} (sender {})",
-                    event.agent, event.content, event.sender
-                );
             }
             return Ok(());
         }
@@ -357,4 +364,17 @@ pub(crate) async fn connect_tcp() -> Result<Runner> {
     Runner::connect_tcp(port)
         .await
         .with_context(|| format!("failed to connect to crabtalk daemon via TCP on port {port}"))
+}
+
+/// Truncate a string to at most `max` bytes, snapping back to a UTF-8
+/// char boundary, and append `...` if anything was dropped.
+fn truncate_for_display(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_owned();
+    }
+    let mut end = max.saturating_sub(3);
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &s[..end])
 }

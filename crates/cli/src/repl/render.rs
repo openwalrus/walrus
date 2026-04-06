@@ -457,7 +457,7 @@ impl MarkdownRenderer {
         self.state = RenderState::Normal;
     }
 
-    fn flush_thinking(&mut self) {
+    pub fn flush_thinking(&mut self) {
         if !self.thinking_buf.is_empty() {
             let text = std::mem::take(&mut self.thinking_buf);
             let thinking_style = Style::new().add_modifier(Modifier::DIM | Modifier::ITALIC);
