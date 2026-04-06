@@ -7,7 +7,10 @@
 //! history from the working context. Loading reads from the last compact
 //! marker forward.
 
-use crate::model::Message;
+use crate::{
+    AgentEvent, AgentStep,
+    model::{Message, Usage},
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -28,11 +31,11 @@ pub struct ConversationMeta {
     pub uptime_secs: u64,
 }
 
-/// A JSONL line: message or compact marker (archive boundary).
+/// A JSONL line: message, compact marker (archive boundary), or trace event.
 ///
-/// Variant order matters: `untagged` tries top-to-bottom. `Compact` is a
-/// single-key struct that fails fast on any other shape, so `Message`
-/// (the catch-all) must be last.
+/// Variant order matters: `untagged` tries top-to-bottom. `Compact` and
+/// `Event` are discriminated by required fields (`compact` / `event`) and
+/// fail fast on other shapes, so `Message` (the catch-all) must be last.
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum ConversationLine {
@@ -43,7 +46,108 @@ enum ConversationLine {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         archived_at: String,
     },
+    Event(EventLine),
     Message(Message),
+}
+
+/// A trace entry persisted to the conversation JSONL alongside messages.
+///
+/// Captures the *how* of agent execution (which tools ran, how long they
+/// took, why the agent stopped, what it cost) — information that doesn't
+/// fit in the message stream itself but is invaluable for debugging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum EventLine {
+    /// One round of tool calls dispatched by the model.
+    ToolStart {
+        calls: Vec<ToolCallTrace>,
+        ts: String,
+    },
+    /// A single tool call completed. Correlated to `ToolStart` via `call_id`.
+    ToolResult {
+        call_id: String,
+        duration_ms: u64,
+        ts: String,
+    },
+    /// Agent run finished — final metadata and token usage.
+    Done {
+        model: String,
+        iterations: usize,
+        stop_reason: String,
+        usage: Usage,
+        ts: String,
+    },
+    /// User steered the agent mid-stream.
+    UserSteered { content: String, ts: String },
+}
+
+/// Compact tool call info for [`EventLine::ToolStart`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallTrace {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub arguments: String,
+}
+
+impl EventLine {
+    /// Build a trace entry from an [`AgentEvent`]. Returns `None` for events
+    /// that don't carry useful trace information (deltas, internal markers,
+    /// duplicates of what messages already capture).
+    pub fn from_agent_event(event: &AgentEvent) -> Option<Self> {
+        let ts = chrono::Utc::now().to_rfc3339();
+        match event {
+            AgentEvent::ToolCallsStart(calls) => Some(Self::ToolStart {
+                calls: calls
+                    .iter()
+                    .map(|c| ToolCallTrace {
+                        id: c.id.clone(),
+                        name: c.function.name.to_string(),
+                        arguments: c.function.arguments.clone(),
+                    })
+                    .collect(),
+                ts,
+            }),
+            AgentEvent::ToolResult {
+                call_id,
+                duration_ms,
+                ..
+            } => Some(Self::ToolResult {
+                call_id: call_id.clone(),
+                duration_ms: *duration_ms,
+                ts,
+            }),
+            AgentEvent::Done(resp) => Some(Self::Done {
+                model: resp.model.clone(),
+                iterations: resp.iterations,
+                stop_reason: resp.stop_reason.to_string(),
+                usage: sum_step_usage(&resp.steps),
+                ts,
+            }),
+            AgentEvent::UserSteered { content } => Some(Self::UserSteered {
+                content: content.clone(),
+                ts,
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Sum token usage across all steps of an agent run.
+fn sum_step_usage(steps: &[AgentStep]) -> Usage {
+    steps.iter().fold(Usage::default(), |mut acc, step| {
+        let u = &step.response.usage;
+        acc.prompt_tokens += u.prompt_tokens;
+        acc.completion_tokens += u.completion_tokens;
+        acc.total_tokens += u.total_tokens;
+        if let Some(v) = u.prompt_cache_hit_tokens {
+            *acc.prompt_cache_hit_tokens.get_or_insert(0) += v;
+        }
+        if let Some(v) = u.prompt_cache_miss_tokens {
+            *acc.prompt_cache_miss_tokens.get_or_insert(0) += v;
+        }
+        acc
+    })
 }
 
 /// A compaction archive segment — a titled snapshot of past conversation.
@@ -210,6 +314,37 @@ impl Conversation {
         }
     }
 
+    /// Append trace event entries to the JSONL file.
+    ///
+    /// Events sit alongside messages and compact markers but are skipped
+    /// when reconstructing the LLM working context (see [`Self::load_context`]).
+    ///
+    /// Trace persistence is best-effort: events are buffered for the whole
+    /// run and flushed alongside messages so file order matches chronological
+    /// order. A daemon crash mid-run will lose the trace for that run; the
+    /// messages themselves are likewise only persisted at run end.
+    pub fn append_events(&self, events: &[EventLine]) {
+        if events.is_empty() {
+            return;
+        }
+        let Some(ref path) = self.file_path else {
+            return;
+        };
+        let mut file = match OpenOptions::new().append(true).open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!("failed to open conversation file for events: {e}");
+                return;
+            }
+        };
+        for event in events {
+            let line = ConversationLine::Event(event.clone());
+            if let Ok(json) = serde_json::to_string(&line) {
+                let _ = writeln!(file, "{json}");
+            }
+        }
+    }
+
     /// Append a compact marker to the JSONL file.
     ///
     /// The marker doubles as an archive boundary: it stores the summary,
@@ -276,8 +411,11 @@ impl Conversation {
                 messages.push(Message::user(&compact));
                 continue;
             }
-            if let Ok(msg) = serde_json::from_str::<Message>(line) {
-                messages.push(msg);
+            // Skip event traces — they're not part of the LLM working context.
+            match serde_json::from_str::<ConversationLine>(line) {
+                Ok(ConversationLine::Message(msg)) => messages.push(msg),
+                Ok(ConversationLine::Event(_) | ConversationLine::Compact { .. }) => {}
+                Err(e) => tracing::warn!("skipping unparseable conversation line: {e}"),
             }
         }
 

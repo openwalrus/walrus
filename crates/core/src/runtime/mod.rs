@@ -515,6 +515,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             self.steering.write().await.insert(conversation_id, steer_tx);
             let mut compact_summary: Option<String> = None;
             let mut done_event: Option<AgentEvent> = None;
+            let mut event_trace: Vec<crate::runtime::conversation::EventLine> = Vec::new();
             {
                 let mut event_stream = std::pin::pin!(agent.run_stream(&mut conversation.history, Some(conversation_id), Some(steer_rx), tool_choice));
                 while let Some(event) = event_stream.next().await {
@@ -522,6 +523,9 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                         compact_summary = Some(summary.clone());
                     }
                     self.hook.on_event(&agent_name, conversation_id, &event);
+                    if let Some(line) = crate::runtime::conversation::EventLine::from_agent_event(&event) {
+                        event_trace.push(line);
+                    }
                     // Hold back Done — yield it after persistence.
                     if matches!(event, AgentEvent::Done(_)) {
                         done_event = Some(event);
@@ -543,6 +547,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             } else {
                 conversation.append_messages(&conversation.history[pre_run_len..]);
             }
+            conversation.append_events(&event_trace);
             // Persist updated uptime to meta line.
             conversation.rewrite_meta();
 
