@@ -122,23 +122,19 @@ fn build_providers(
     config: &DaemonConfig,
     disabled: &wcore::config::DisabledItems,
 ) -> Result<ProviderRegistry> {
-    let active_model = config
-        .system
-        .crab
-        .model
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("system.crab.model is required in config.toml"))?;
     let providers: BTreeMap<_, _> = config
         .provider
         .iter()
         .filter(|(name, _)| !disabled.providers.contains(name))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let registry = ProviderRegistry::from_providers(active_model, &providers)?;
+    let model_count: usize = providers.values().map(|def| def.models.len()).sum();
+    let registry = ProviderRegistry::from_providers(&providers)?;
 
     tracing::info!(
-        "provider registry initialized — active model: {}",
-        registry.active_model_name().unwrap_or_default()
+        "provider registry initialized — {} models across {} providers",
+        model_count,
+        providers.len()
     );
     Ok(registry)
 }
@@ -206,6 +202,16 @@ fn load_agents<H: Host + 'static>(
     let prompts = crate::config::load_agents_dirs(&manifest.agent_dirs)?;
     let prompt_map: BTreeMap<String, String> = prompts.into_iter().collect();
 
+    // The daemon-wide default model. Required because every agent must
+    // resolve to a concrete model name at registration time — there is no
+    // longer a runtime fallback in the registry.
+    let default_model = config
+        .system
+        .crab
+        .model
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("system.crab.model is required in config.toml"))?;
+
     // Built-in crab agent.
     let mut crab_config = config.system.crab.clone();
     crab_config.name = wcore::paths::DEFAULT_AGENT.to_owned();
@@ -228,6 +234,9 @@ fn load_agents<H: Host + 'static>(
         let mut agent = agent_config.clone();
         agent.name = name.clone();
         agent.system_prompt = prompt.clone();
+        if agent.model.is_none() {
+            agent.model = Some(default_model.clone());
+        }
         resolve_plugin_skills(&mut agent.skills, &manifest.plugin_skill_dirs);
         tracing::info!("registered agent '{name}' (thinking={})", agent.thinking);
         runtime.add_agent(agent);
@@ -248,6 +257,7 @@ fn load_agents<H: Host + 'static>(
         let mut agent = AgentConfig::new(stem.as_str());
         agent.system_prompt = prompt.clone();
         agent.thinking = default_think;
+        agent.model = Some(default_model.clone());
         tracing::info!("registered agent '{stem}' (defaults, thinking={default_think})");
         runtime.add_agent(agent);
     }

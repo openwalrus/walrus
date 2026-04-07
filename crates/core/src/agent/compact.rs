@@ -11,11 +11,7 @@ impl<M: Model> super::Agent<M> {
     /// it, then sends the history with the enriched prompt as system message.
     /// Returns the summary text, or `None` if the model produces no content.
     pub async fn compact(&self, history: &[Message]) -> Option<String> {
-        let model_name = self
-            .config
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.active_model());
+        let model_name = self.config.model.clone().unwrap_or_default();
 
         let prompt = COMPACT_PROMPT.to_owned();
 

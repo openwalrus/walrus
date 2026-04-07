@@ -99,10 +99,6 @@ impl Model for Provider {
     fn context_limit(&self, model: &str) -> usize {
         wcore::model::default_context_limit(model)
     }
-
-    fn active_model(&self) -> String {
-        self.model.clone()
-    }
 }
 
 /// Send a non-streaming request with exponential backoff retry on transient errors.

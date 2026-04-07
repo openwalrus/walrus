@@ -316,12 +316,26 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Spawn a background task to generate a conversation title from the
     /// first user+assistant exchange. Non-blocking — the main flow continues.
+    ///
+    /// `agent_name` is the conversation's agent — its `config.model` is used
+    /// for the title-generation request. Title gen runs on the same model
+    /// the agent uses, since the agent's model is the only entity in the
+    /// runtime with an opinion about which model fits this conversation.
     fn spawn_title_generation(
         &self,
         _conversation_id: u64,
+        agent_name: &str,
         conversation_mutex: Arc<Mutex<Conversation>>,
     ) {
         let model = self.model.clone();
+        let model_name = self
+            .agents
+            .get(agent_name)
+            .and_then(|a| a.config.model.clone())
+            .unwrap_or_default();
+        if model_name.is_empty() {
+            return;
+        }
         tokio::spawn(async move {
             let (user_msg, assistant_msg) = {
                 let conversation = conversation_mutex.lock().await;
@@ -353,7 +367,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
                  User: {user_snippet}\nAssistant: {assistant_snippet}"
             );
 
-            let request = crate::model::Request::new(model.active_model())
+            let request = crate::model::Request::new(model_name)
                 .with_messages(vec![Message::user(&prompt)]);
 
             match model.send(&request).await {
@@ -471,7 +485,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
         // Generate title in background if this is the first exchange.
         if conversation.title.is_empty() && conversation.history.len() >= 2 {
-            self.spawn_title_generation(conversation_id, conversation_mutex.clone());
+            self.spawn_title_generation(conversation_id, &conversation.agent, conversation_mutex.clone());
         }
         Ok(response)
     }
@@ -553,7 +567,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
             // Generate title in background if this is the first exchange.
             if conversation.title.is_empty() && conversation.history.len() >= 2 {
-                self.spawn_title_generation(conversation_id, conversation_mutex.clone());
+                self.spawn_title_generation(conversation_id, &conversation.agent, conversation_mutex.clone());
             }
             // Now yield Done.
             if let Some(event) = done_event {
@@ -631,11 +645,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             // advisor: it reads the conversation and responds, but cannot
             // execute tools, call APIs, or mutate files.
             let run_start = std::time::Instant::now();
-            let model_name = guest_agent
-                .config
-                .model
-                .clone()
-                .unwrap_or_else(|| self.model.active_model());
+            let model_name = guest_agent.config.model.clone().unwrap_or_default();
 
             let mut messages = Vec::with_capacity(1 + conversation.history.len());
             if !guest_agent.config.system_prompt.is_empty() {
@@ -695,7 +705,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
             conversation.rewrite_meta();
 
             if conversation.title.is_empty() && conversation.history.len() >= 2 {
-                self.spawn_title_generation(conversation_id, conversation_mutex.clone());
+                self.spawn_title_generation(conversation_id, &conversation.agent, conversation_mutex.clone());
             }
 
             yield AgentEvent::Done(AgentResponse {

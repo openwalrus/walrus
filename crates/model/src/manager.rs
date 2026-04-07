@@ -10,9 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 use wcore::model::{Model, Response, StreamChunk, default_context_limit};
 
-/// Manages a set of named providers with an active selection.
-///
-/// All methods that read or mutate the inner state acquire the `RwLock`.
+/// Manages a set of named providers, dispatching by request model name.
 pub struct ProviderRegistry {
     inner: Arc<RwLock<Inner>>,
 }
@@ -20,46 +18,30 @@ pub struct ProviderRegistry {
 struct Inner {
     /// Provider instances keyed by model name.
     providers: BTreeMap<String, Provider>,
-    /// Model name → provider config key (e.g. "openai", "anthropic").
-    provider_names: BTreeMap<String, String>,
-    /// Model name of the currently active provider.
-    active: String,
     /// Shared HTTP client for constructing new providers.
     client: reqwest::Client,
 }
 
 impl ProviderRegistry {
-    /// Create an empty manager with the given active model name.
-    ///
-    /// Use `add_def()` or `from_providers()` to populate.
-    pub fn new(active: impl Into<String>) -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(Inner {
-                providers: BTreeMap::new(),
-                provider_names: BTreeMap::new(),
-                active: active.into(),
-                client: reqwest::Client::new(),
-            })),
-        }
-    }
-
-    /// Build a registry from a map of provider definitions and an active model.
+    /// Build a registry from a map of provider definitions.
     ///
     /// Iterates each provider def, building a `Provider` instance per model
     /// in its `models` list.
-    pub fn from_providers(
-        active: String,
-        providers: &BTreeMap<String, ProviderDef>,
-    ) -> Result<Self> {
-        let registry = Self::new(active);
-        for (name, def) in providers {
-            registry.add_def(name, def)?;
+    pub fn from_providers(providers: &BTreeMap<String, ProviderDef>) -> Result<Self> {
+        let registry = Self {
+            inner: Arc::new(RwLock::new(Inner {
+                providers: BTreeMap::new(),
+                client: reqwest::Client::new(),
+            })),
+        };
+        for def in providers.values() {
+            registry.add_def(def)?;
         }
         Ok(registry)
     }
 
     /// Add all models from a provider definition. Builds a `Provider` per model.
-    pub fn add_def(&self, provider_name: &str, def: &ProviderDef) -> Result<()> {
+    fn add_def(&self, def: &ProviderDef) -> Result<()> {
         let client = {
             let inner = self
                 .inner
@@ -74,28 +56,8 @@ impl ProviderRegistry {
                 .write()
                 .map_err(|_| anyhow!("provider lock poisoned"))?;
             inner.providers.insert(model_name.to_string(), provider);
-            inner
-                .provider_names
-                .insert(model_name.to_string(), provider_name.to_string());
         }
         Ok(())
-    }
-
-    /// Look up the provider config key for a model name.
-    pub fn provider_name_for(&self, model: &str) -> Option<String> {
-        self.inner
-            .read()
-            .ok()
-            .and_then(|inner| inner.provider_names.get(model).cloned())
-    }
-
-    /// Get the model name of the active provider (also its key).
-    pub fn active_model_name(&self) -> Result<String> {
-        let inner = self
-            .inner
-            .read()
-            .map_err(|_| anyhow!("provider lock poisoned"))?;
-        Ok(inner.active.clone())
     }
 
     /// Look up a provider by model name. Returns a clone so callers don't
@@ -143,11 +105,6 @@ impl Model for ProviderRegistry {
     fn context_limit(&self, model: &str) -> usize {
         ProviderRegistry::context_limit(self, model)
     }
-
-    fn active_model(&self) -> String {
-        self.active_model_name()
-            .unwrap_or_else(|_| "unknown".to_owned())
-    }
 }
 
 impl std::fmt::Debug for ProviderRegistry {
@@ -155,7 +112,6 @@ impl std::fmt::Debug for ProviderRegistry {
         match self.inner.read() {
             Ok(inner) => f
                 .debug_struct("ProviderRegistry")
-                .field("active", &inner.active)
                 .field("count", &inner.providers.len())
                 .finish(),
             Err(_) => f

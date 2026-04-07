@@ -45,9 +45,6 @@ pub trait Model: Sized + Clone {
     fn context_limit(&self, model: &str) -> usize {
         default_context_limit(model)
     }
-
-    /// Get the active/default model name.
-    fn active_model(&self) -> String;
 }
 
 /// `()` as a no-op Model for testing (panics on send/stream).
@@ -66,9 +63,5 @@ impl Model for () {
 
     fn context_limit(&self, _model: &str) -> usize {
         0
-    }
-
-    fn active_model(&self) -> String {
-        String::new()
     }
 }

@@ -21,7 +21,6 @@ use std::{
 pub struct TestModel {
     responses: Arc<Mutex<VecDeque<Response>>>,
     chunks: Arc<Mutex<VecDeque<Vec<StreamChunk>>>>,
-    model_name: String,
 }
 
 impl TestModel {
@@ -30,7 +29,6 @@ impl TestModel {
         Self {
             responses: Arc::new(Mutex::new(responses.into())),
             chunks: Arc::new(Mutex::new(VecDeque::new())),
-            model_name: "test-model".into(),
         }
     }
 
@@ -39,7 +37,6 @@ impl TestModel {
         Self {
             responses: Arc::new(Mutex::new(VecDeque::new())),
             chunks: Arc::new(Mutex::new(chunks.into())),
-            model_name: "test-model".into(),
         }
     }
 
@@ -48,7 +45,6 @@ impl TestModel {
         Self {
             responses: Arc::new(Mutex::new(responses.into())),
             chunks: Arc::new(Mutex::new(chunks.into())),
-            model_name: "test-model".into(),
         }
     }
 }
@@ -78,9 +74,5 @@ impl super::Model for TestModel {
                 }
             }
         }
-    }
-
-    fn active_model(&self) -> String {
-        self.model_name.clone()
     }
 }
