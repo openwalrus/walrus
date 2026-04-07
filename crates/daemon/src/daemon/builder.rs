@@ -6,15 +6,22 @@ use crate::{
     daemon::event::{DaemonEvent, DaemonEventSender},
 };
 use anyhow::Result;
-use model::ProviderRegistry;
+use crabllm_provider::{ProviderRegistry, RemoteProvider};
 use runtime::{Env, SkillHandler, host::Host, mcp::McpHandler, memory::Memory};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
-use wcore::{AgentConfig, Runtime, ToolRequest};
+use wcore::{AgentConfig, Runtime, ToolRequest, model::Model};
+
+/// The concrete provider type the default daemon uses: a `crabllm`
+/// `ProviderRegistry<RemoteProvider>` wrapped in a `Retrying` layer. The
+/// registry implements `crabllm_core::Provider` via model-name routing;
+/// `Retrying` adds the exponential-backoff loop and per-call timeout that
+/// the daemon expects from a production deployment.
+pub(crate) type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
 
 /// Resolve qualified plugin references in an agent's skill list.
 fn resolve_plugin_skills(skills: &mut Vec<String>, plugin_skill_dirs: &BTreeMap<String, PathBuf>) {
@@ -104,39 +111,45 @@ impl<H: Host + 'static> Daemon<H> {
         config_dir: &Path,
         event_tx: &DaemonEventSender,
         host: H,
-    ) -> Result<Runtime<ProviderRegistry, Env<H>>> {
+    ) -> Result<Runtime<DefaultProvider, Env<H>>> {
         let (mut manifest, _warnings) = resolve_manifests(config_dir);
         manifest.disabled = config.disabled.clone();
         wcore::filter_disabled_external(&mut manifest.skill_dirs, &manifest.disabled.external);
-        let manager = build_providers(config, &manifest.disabled)?;
+        let model = build_providers(config, &manifest.disabled)?;
         let hook = build_env(config, config_dir, &manifest, host).await?;
         let tool_tx = build_tool_sender(event_tx);
-        let mut runtime = Runtime::new(manager, hook, Some(tool_tx)).await;
+        let mut runtime = Runtime::new(model, hook, Some(tool_tx)).await;
         load_agents(&mut runtime, config, &manifest)?;
         Ok(runtime)
     }
 }
 
-/// Construct the provider registry from config, filtering out disabled providers.
+/// Construct the provider registry from config, filtering out disabled
+/// providers. Returns the registry wrapped in `Retrying` (for retry +
+/// timeout) and then in `Model<P>` so the caller can hand it directly to
+/// `Runtime::new`.
 fn build_providers(
     config: &DaemonConfig,
     disabled: &wcore::config::DisabledItems,
-) -> Result<ProviderRegistry> {
-    let providers: BTreeMap<_, _> = config
+) -> Result<Model<DefaultProvider>> {
+    // Filter out disabled providers and convert from BTreeMap to HashMap
+    // (crabllm's `from_provider_configs` takes a HashMap).
+    let providers: HashMap<String, _> = config
         .provider
         .iter()
         .filter(|(name, _)| !disabled.providers.contains(name))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    let provider_count = providers.len();
     let model_count: usize = providers.values().map(|def| def.models.len()).sum();
-    let registry = ProviderRegistry::from_providers(&providers)?;
+
+    let registry = ProviderRegistry::from_provider_configs(&providers, &HashMap::new(), |r| r)?;
+    let retrying = crate::provider::Retrying::new(registry);
 
     tracing::info!(
-        "provider registry initialized — {} models across {} providers",
-        model_count,
-        providers.len()
+        "provider registry initialized — {model_count} models across {provider_count} providers"
     );
-    Ok(registry)
+    Ok(Model::new(retrying))
 }
 
 /// Build the engine environment with all backends (skills, MCP, memory).
@@ -195,7 +208,7 @@ fn build_tool_sender(event_tx: &DaemonEventSender) -> wcore::ToolSender {
 
 /// Load agents and add them to the runtime.
 fn load_agents<H: Host + 'static>(
-    runtime: &mut Runtime<ProviderRegistry, Env<H>>,
+    runtime: &mut Runtime<DefaultProvider, Env<H>>,
     config: &DaemonConfig,
     manifest: &ResolvedManifest,
 ) -> Result<()> {

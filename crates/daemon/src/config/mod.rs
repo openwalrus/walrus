@@ -1,18 +1,31 @@
 //! Daemon configuration loaded from TOML.
 
-pub use ::model::{ProviderDef, ProviderRegistry, validate_providers};
-use anyhow::Result;
+use anyhow::{Result, bail};
 pub use loader::{DEFAULT_CONFIG, scaffold_config_dir};
 pub use runtime::{McpHandler, SystemConfig, mcp::McpServerConfig};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 #[cfg(unix)]
 pub use wcore::paths::SOCKET_PATH;
 pub use wcore::{
-    AgentConfig, ManifestConfig, ResolvedManifest, load_agents_dir, load_agents_dirs,
+    AgentConfig, ManifestConfig, ProviderDef, ResolvedManifest, load_agents_dir, load_agents_dirs,
     paths::{AGENTS_DIR, CONFIG_DIR, CONFIG_FILE, SKILLS_DIR},
     resolve_manifests,
 };
+
+/// Validate provider definitions and reject duplicate model names across providers.
+pub fn validate_providers(providers: &BTreeMap<String, ProviderDef>) -> Result<()> {
+    let mut seen = HashSet::new();
+    for (name, def) in providers {
+        def.validate(name).map_err(|e| anyhow::anyhow!(e))?;
+        for model in &def.models {
+            if !seen.insert(model.clone()) {
+                bail!("duplicate model name '{model}' across providers");
+            }
+        }
+    }
+    Ok(())
+}
 
 mod loader;
 

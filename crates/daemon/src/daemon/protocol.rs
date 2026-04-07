@@ -780,7 +780,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let daemon_config = self.load_config()?;
         let mut all_providers = daemon_config.provider;
         all_providers.insert(name.clone(), def.clone());
-        model::validate_providers(&all_providers)?;
+        crate::config::validate_providers(&all_providers)?;
 
         let toml_value = toml::to_string(&def).context("failed to serialize provider to TOML")?;
         let provider_doc: DocumentMut = toml_value

@@ -19,7 +19,6 @@ CRATES = [
     "crabtalk-core",
     "crabtalk-command-codegen",
     "crabtalk-transport",
-    "crabtalk-model",
     "crabtalk-plugins",
     "crabtalk-command",
     "crabtalk-gateway",

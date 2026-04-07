@@ -14,6 +14,7 @@ use crate::{
 };
 use anyhow::{Result, bail};
 use async_stream::stream;
+use crabllm_core::Provider;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{
@@ -32,15 +33,17 @@ pub use conversation::Conversation;
 
 /// The crabtalk runtime — agent registry, conversation store, and hook orchestration.
 ///
-/// Agents are stored as plain immutable values. Conversations own conversation
-/// history behind per-conversation `Arc<Mutex<Conversation>>`. The conversations map uses
-/// `RwLock` for concurrent access without requiring `&mut self`.
-pub struct Runtime<M: Model, H: Hook> {
-    pub model: M,
+/// Generic over `P: crabllm_core::Provider` for the LLM backend, and
+/// `H: Hook` for the runtime environment. Agents are stored as plain
+/// immutable values. Conversations own conversation history behind
+/// per-conversation `Arc<Mutex<Conversation>>`. The conversations map
+/// uses `RwLock` for concurrent access without requiring `&mut self`.
+pub struct Runtime<P: Provider + 'static, H: Hook> {
+    pub model: Model<P>,
     pub hook: H,
-    agents: BTreeMap<String, Agent<M>>,
+    agents: BTreeMap<String, Agent<P>>,
     /// Ephemeral agents created by delegate, invisible to client APIs.
-    ephemeral_agents: RwLock<BTreeMap<String, Agent<M>>>,
+    ephemeral_agents: RwLock<BTreeMap<String, Agent<P>>>,
     conversations: RwLock<BTreeMap<u64, Arc<Mutex<Conversation>>>>,
     next_conversation_id: AtomicU64,
     pub tools: ToolRegistry,
@@ -49,13 +52,13 @@ pub struct Runtime<M: Model, H: Hook> {
     steering: RwLock<BTreeMap<u64, watch::Sender<Option<String>>>>,
 }
 
-impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> {
+impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
     /// Create a new runtime with the given model and hook backend.
     ///
     /// Calls `hook.on_register_tools()` to populate the schema registry.
     /// Pass `tool_tx` to enable tool dispatch from agents; `None` means agents
     /// have no tool dispatch (e.g. CLI without a daemon).
-    pub async fn new(model: M, hook: H, tool_tx: Option<ToolSender>) -> Self {
+    pub async fn new(model: Model<P>, hook: H, tool_tx: Option<ToolSender>) -> Self {
         let mut tools = ToolRegistry::new();
         hook.on_register_tools(&mut tools).await;
         Self {
@@ -83,7 +86,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
     }
 
     /// Build an agent from config. Returns (name, agent).
-    fn build_agent(&self, config: AgentConfig) -> (String, Agent<M>) {
+    fn build_agent(&self, config: AgentConfig) -> (String, Agent<P>) {
         let config = self.hook.on_build_agent(config);
         let name = config.name.clone();
         let tools = self.tools.filtered_snapshot(&config.tools);
@@ -107,7 +110,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
     }
 
     /// Get a reference to an agent by name.
-    pub fn get_agent(&self, name: &str) -> Option<&Agent<M>> {
+    pub fn get_agent(&self, name: &str) -> Option<&Agent<P>> {
         self.agents.get(name)
     }
 
@@ -126,7 +129,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
 
     /// Resolve an agent by name: persistent first, then ephemeral. Returns a
     /// clone so no lock is held during the (potentially long) agent run.
-    async fn resolve_agent(&self, name: &str) -> Option<Agent<M>> {
+    async fn resolve_agent(&self, name: &str) -> Option<Agent<P>> {
         if let Some(a) = self.agents.get(name) {
             return Some(a.clone());
         }
@@ -304,7 +307,7 @@ impl<M: Model + Send + Sync + Clone + 'static, H: Hook + 'static> Runtime<M, H> 
     ///
     /// Used during daemon reload to preserve gateway conversations. The `dest`
     /// runtime must not yet be shared (call before wrapping in `Arc`).
-    pub async fn transfer_conversations<M2: Model, H2: Hook>(&self, dest: &mut Runtime<M2, H2>) {
+    pub async fn transfer_conversations<P2: Provider + 'static, H2: Hook>(&self, dest: &mut Runtime<P2, H2>) {
         let conversations = self.conversations.read().await;
         let dest_conversations = dest.conversations.get_mut();
         for (id, conversation) in conversations.iter() {

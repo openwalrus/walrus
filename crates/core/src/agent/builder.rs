@@ -4,21 +4,22 @@ use crate::{
     agent::{Agent, config::AgentConfig, tool::ToolSender},
     model::{Model, Tool},
 };
+use crabllm_core::Provider;
 
-/// Fluent builder for [`Agent<M>`].
+/// Fluent builder for [`Agent<P>`].
 ///
 /// Requires a model at construction. Use [`AgentConfig`] builder methods
 /// for field configuration, then pass it via [`AgentBuilder::config`].
-pub struct AgentBuilder<M: Model> {
+pub struct AgentBuilder<P: Provider + 'static> {
     config: AgentConfig,
-    model: M,
+    model: Model<P>,
     tools: Vec<Tool>,
     tool_tx: Option<ToolSender>,
 }
 
-impl<M: Model> AgentBuilder<M> {
+impl<P: Provider + 'static> AgentBuilder<P> {
     /// Create a new builder with the given model.
-    pub fn new(model: M) -> Self {
+    pub fn new(model: Model<P>) -> Self {
         Self {
             config: AgentConfig::default(),
             model,
@@ -46,7 +47,7 @@ impl<M: Model> AgentBuilder<M> {
     }
 
     /// Build the [`Agent`].
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent<P> {
         Agent {
             config: self.config,
             model: self.model,

@@ -9,13 +9,14 @@ use crabllm_core::{
     Delta as CtDelta, FunctionCall as CtFunctionCall, FunctionDef, Message as CtMessage,
     Tool as CtTool, ToolCall as CtToolCall, ToolType,
 };
-use wcore::model::{
+
+use crate::model::{
     Choice, CompletionMeta, Delta, FunctionCall, Message, Request, Response, StreamChunk, Tool,
     ToolCall,
 };
 
 /// Convert a wcore Request into a crabtalk ChatCompletionRequest.
-pub fn to_ct_request(req: &Request) -> ChatCompletionRequest {
+pub(crate) fn to_ct_request(req: &Request) -> ChatCompletionRequest {
     ChatCompletionRequest {
         model: req.model.to_string(),
         messages: req.messages.iter().map(to_ct_message).collect(),
@@ -116,7 +117,7 @@ fn to_ct_tool_call(tc: &ToolCall) -> CtToolCall {
 }
 
 /// Convert a crabtalk ChatCompletionResponse into a wcore Response.
-pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
+pub(crate) fn from_ct_response(resp: ChatCompletionResponse) -> Response {
     let meta = CompletionMeta {
         id: resp.id,
         object: resp.object,
@@ -141,7 +142,7 @@ pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
 }
 
 /// Convert a crabtalk ChatCompletionChunk into a wcore StreamChunk.
-pub fn from_ct_chunk(chunk: ChatCompletionChunk) -> StreamChunk {
+pub(crate) fn from_ct_chunk(chunk: ChatCompletionChunk) -> StreamChunk {
     let meta = CompletionMeta {
         id: chunk.id,
         object: chunk.object,

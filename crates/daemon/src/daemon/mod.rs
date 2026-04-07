@@ -7,12 +7,14 @@
 use crate::{
     DaemonConfig,
     cron::CronStore,
-    daemon::event::{DaemonEvent, DaemonEventSender},
+    daemon::{
+        builder::DefaultProvider,
+        event::{DaemonEvent, DaemonEventSender},
+    },
     event_bus::EventBus,
     hook::host::DaemonHost,
 };
 use anyhow::Result;
-use model::ProviderRegistry;
 use runtime::{Env, host::Host};
 use std::{
     path::{Path, PathBuf},
@@ -37,7 +39,7 @@ mod protocol;
 pub struct Daemon<B: Host + 'static = DaemonHost> {
     /// The crabtalk runtime, swappable via [`Daemon::reload`].
     #[allow(clippy::type_complexity)]
-    pub runtime: Arc<RwLock<Arc<Runtime<ProviderRegistry, Env<B>>>>>,
+    pub runtime: Arc<RwLock<Arc<Runtime<DefaultProvider, Env<B>>>>>,
     /// Config directory — stored so [`Daemon::reload`] can re-read config from disk.
     pub(crate) config_dir: PathBuf,
     /// Sender for the daemon event loop — cloned into `Runtime` as `ToolSender`
