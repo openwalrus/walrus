@@ -307,7 +307,10 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
     ///
     /// Used during daemon reload to preserve gateway conversations. The `dest`
     /// runtime must not yet be shared (call before wrapping in `Arc`).
-    pub async fn transfer_conversations<P2: Provider + 'static, H2: Hook>(&self, dest: &mut Runtime<P2, H2>) {
+    pub async fn transfer_conversations<P2: Provider + 'static, H2: Hook>(
+        &self,
+        dest: &mut Runtime<P2, H2>,
+    ) {
         let conversations = self.conversations.read().await;
         let dest_conversations = dest.conversations.get_mut();
         for (id, conversation) in conversations.iter() {
@@ -370,8 +373,8 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                  User: {user_snippet}\nAssistant: {assistant_snippet}"
             );
 
-            let request = crate::model::Request::new(model_name)
-                .with_messages(vec![Message::user(&prompt)]);
+            let request =
+                crate::model::Request::new(model_name).with_messages(vec![Message::user(&prompt)]);
 
             match model.send(&request).await {
                 Ok(response) => {
@@ -488,7 +491,11 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
 
         // Generate title in background if this is the first exchange.
         if conversation.title.is_empty() && conversation.history.len() >= 2 {
-            self.spawn_title_generation(conversation_id, &conversation.agent, conversation_mutex.clone());
+            self.spawn_title_generation(
+                conversation_id,
+                &conversation.agent,
+                conversation_mutex.clone(),
+            );
         }
         Ok(response)
     }

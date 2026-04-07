@@ -12,9 +12,8 @@ pub use config::DaemonConfig;
 #[cfg(unix)]
 pub use daemon::setup_socket;
 pub use daemon::{
-    Daemon, DaemonHandle,
+    Daemon, DaemonHandle, bridge_shutdown,
     builder::{BuildProvider, DefaultProvider, build_default_provider},
-    bridge_shutdown,
     event::{DaemonEvent, DaemonEventSender},
     setup_tcp,
 };

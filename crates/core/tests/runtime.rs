@@ -6,55 +6,11 @@
 //! CONVERSATIONS_DIR path. This is a known limitation — the LazyLock global
 //! cannot be overridden per-test. The files are tiny JSONL and harmless.
 
-use crabllm_core::{ChatCompletionChunk, ChunkChoice, Delta as CtDelta, FinishReason};
 use crabtalk_core::{
     AgentConfig, AgentEvent, AgentStopReason, Runtime,
-    model::{Model, test_provider::TestProvider},
+    model::{Model, test_provider::{TestProvider, text_chunks}},
 };
 use futures_util::StreamExt;
-
-fn text_chunks(text: &str) -> Vec<ChatCompletionChunk> {
-    vec![
-        ChatCompletionChunk {
-            id: String::new(),
-            object: "chat.completion.chunk".into(),
-            created: 0,
-            model: String::new(),
-            choices: vec![ChunkChoice {
-                index: 0,
-                delta: CtDelta {
-                    role: None,
-                    content: Some(text.into()),
-                    tool_calls: None,
-                    reasoning_content: None,
-                },
-                finish_reason: None,
-                logprobs: None,
-            }],
-            usage: None,
-            system_fingerprint: None,
-        },
-        ChatCompletionChunk {
-            id: String::new(),
-            object: "chat.completion.chunk".into(),
-            created: 0,
-            model: String::new(),
-            choices: vec![ChunkChoice {
-                index: 0,
-                delta: CtDelta {
-                    role: None,
-                    content: None,
-                    tool_calls: None,
-                    reasoning_content: None,
-                },
-                finish_reason: Some(FinishReason::Stop),
-                logprobs: None,
-            }],
-            usage: None,
-            system_fingerprint: None,
-        },
-    ]
-}
 
 /// Build a `Runtime` from a `TestProvider`, wrapping the provider in `Model<P>`.
 fn runtime(provider: TestProvider) -> impl std::future::Future<Output = Runtime<TestProvider, ()>> {

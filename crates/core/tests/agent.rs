@@ -1,222 +1,31 @@
 //! Tests for Agent execution — step(), run(), run_stream().
 
-use crabllm_core::{
-    ChatCompletionChunk, ChatCompletionResponse, Choice as CtChoice, ChunkChoice, Delta as CtDelta,
-    FinishReason, FunctionCall, FunctionCallDelta, Message as CtMessage, Role, ToolCall,
-    ToolCallDelta, ToolType,
-};
+use crabllm_core::{FinishReason, FunctionCall, Role, ToolCall, ToolType};
 use crabtalk_core::{
     AgentBuilder, AgentConfig, AgentEvent, AgentStopReason,
-    model::{Message, Model, test_provider::TestProvider},
+    model::{
+        Message, Model,
+        test_provider::{
+            TestProvider, finish_chunk, mixed_chunk, text_chunk, text_chunks, text_response,
+            thinking_chunk, tool_chunks, tool_response,
+        },
+    },
 };
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 
-// ── crabllm wire-type fixture helpers ──
-//
-// Tests script crabllm-core types directly so every scenario exercises the
-// real wcore↔crabllm-core conversion path in `Model<P>::send` / `::stream`.
-
-fn text_response(content: &str) -> ChatCompletionResponse {
-    ChatCompletionResponse {
-        id: String::new(),
-        object: "chat.completion".into(),
-        created: 0,
-        model: String::new(),
-        choices: vec![CtChoice {
-            index: 0,
-            message: CtMessage {
-                role: Role::Assistant,
-                content: Some(serde_json::Value::String(content.into())),
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-                reasoning_content: None,
-                extra: Default::default(),
-            },
-            finish_reason: Some(FinishReason::Stop),
-            logprobs: None,
-        }],
-        usage: None,
-        system_fingerprint: None,
-    }
-}
-
-fn tool_response(calls: Vec<ToolCall>) -> ChatCompletionResponse {
-    ChatCompletionResponse {
-        id: String::new(),
-        object: "chat.completion".into(),
-        created: 0,
-        model: String::new(),
-        choices: vec![CtChoice {
-            index: 0,
-            message: CtMessage {
-                role: Role::Assistant,
-                content: Some(serde_json::Value::Null),
-                tool_calls: Some(calls),
-                tool_call_id: None,
-                name: None,
-                reasoning_content: None,
-                extra: Default::default(),
-            },
-            finish_reason: Some(FinishReason::ToolCalls),
-            logprobs: None,
-        }],
-        usage: None,
-        system_fingerprint: None,
-    }
-}
+// ── test-file-local fixture helpers ──
 
 fn make_tool_call(name: &str, args: &str) -> ToolCall {
     ToolCall {
         index: Some(0),
         id: format!("call_{name}"),
-        kind: ToolType::Function,
         function: FunctionCall {
             name: name.into(),
             arguments: args.into(),
         },
+        ..Default::default()
     }
-}
-
-/// Build an empty chunk with a given finish reason. Used to close a stream.
-fn finish_chunk(reason: FinishReason) -> ChatCompletionChunk {
-    ChatCompletionChunk {
-        id: String::new(),
-        object: "chat.completion.chunk".into(),
-        created: 0,
-        model: String::new(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: CtDelta {
-                role: None,
-                content: None,
-                tool_calls: None,
-                reasoning_content: None,
-            },
-            finish_reason: Some(reason),
-            logprobs: None,
-        }],
-        usage: None,
-        system_fingerprint: None,
-    }
-}
-
-/// Build a chunk carrying a content delta only.
-fn text_chunk(content: &str) -> ChatCompletionChunk {
-    ChatCompletionChunk {
-        id: String::new(),
-        object: "chat.completion.chunk".into(),
-        created: 0,
-        model: String::new(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: CtDelta {
-                role: None,
-                content: Some(content.into()),
-                tool_calls: None,
-                reasoning_content: None,
-            },
-            finish_reason: None,
-            logprobs: None,
-        }],
-        usage: None,
-        system_fingerprint: None,
-    }
-}
-
-/// Build a chunk carrying a reasoning-content delta only.
-fn thinking_chunk(content: &str) -> ChatCompletionChunk {
-    ChatCompletionChunk {
-        id: String::new(),
-        object: "chat.completion.chunk".into(),
-        created: 0,
-        model: String::new(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: CtDelta {
-                role: None,
-                content: None,
-                tool_calls: None,
-                reasoning_content: Some(content.into()),
-            },
-            finish_reason: None,
-            logprobs: None,
-        }],
-        usage: None,
-        system_fingerprint: None,
-    }
-}
-
-/// Build a chunk carrying both content and reasoning in the same delta.
-fn mixed_chunk(content: &str, reasoning: &str) -> ChatCompletionChunk {
-    ChatCompletionChunk {
-        id: String::new(),
-        object: "chat.completion.chunk".into(),
-        created: 0,
-        model: String::new(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: CtDelta {
-                role: None,
-                content: Some(content.into()),
-                tool_calls: None,
-                reasoning_content: Some(reasoning.into()),
-            },
-            finish_reason: None,
-            logprobs: None,
-        }],
-        usage: None,
-        system_fingerprint: None,
-    }
-}
-
-fn text_chunks(text: &str) -> Vec<ChatCompletionChunk> {
-    let mut chunks: Vec<ChatCompletionChunk> =
-        text.chars().map(|c| text_chunk(&c.to_string())).collect();
-    chunks.push(finish_chunk(FinishReason::Stop));
-    chunks
-}
-
-/// Convert a non-streaming `ToolCall` into a streaming `ToolCallDelta`
-/// carrying the full name + args in one chunk. The Agent's MessageBuilder
-/// merges deltas back into a complete ToolCall.
-fn tool_call_delta(tc: &ToolCall) -> ToolCallDelta {
-    ToolCallDelta {
-        index: tc.index.unwrap_or(0),
-        id: Some(tc.id.clone()),
-        kind: Some(ToolType::Function),
-        function: Some(FunctionCallDelta {
-            name: Some(tc.function.name.clone()),
-            arguments: Some(tc.function.arguments.clone()),
-        }),
-    }
-}
-
-fn tool_chunks(calls: Vec<ToolCall>) -> Vec<ChatCompletionChunk> {
-    let deltas: Vec<ToolCallDelta> = calls.iter().map(tool_call_delta).collect();
-    vec![
-        ChatCompletionChunk {
-            id: String::new(),
-            object: "chat.completion.chunk".into(),
-            created: 0,
-            model: String::new(),
-            choices: vec![ChunkChoice {
-                index: 0,
-                delta: CtDelta {
-                    role: None,
-                    content: None,
-                    tool_calls: Some(deltas),
-                    reasoning_content: None,
-                },
-                finish_reason: None,
-                logprobs: None,
-            }],
-            usage: None,
-            system_fingerprint: None,
-        },
-        finish_chunk(FinishReason::ToolCalls),
-    ]
 }
 
 fn build_agent_no_tools(model: TestProvider) -> crabtalk_core::Agent<TestProvider> {
@@ -401,20 +210,20 @@ async fn run_stream_multiple_tool_calls_in_one_step() {
         ToolCall {
             index: Some(0),
             id: "call_1".into(),
-            kind: ToolType::Function,
             function: FunctionCall {
                 name: "bash".into(),
                 arguments: r#"{"cmd":"ls"}"#.into(),
             },
+            ..Default::default()
         },
         ToolCall {
             index: Some(1),
             id: "call_2".into(),
-            kind: ToolType::Function,
             function: FunctionCall {
                 name: "recall".into(),
                 arguments: r#"{"query":"x"}"#.into(),
             },
+            ..Default::default()
         },
     ];
 
@@ -496,8 +305,7 @@ async fn run_stream_max_iterations() {
 
 #[tokio::test]
 async fn run_stream_no_content_no_tools_stops_with_no_action() {
-    let chunks = vec![finish_chunk(FinishReason::Stop)];
-    let model = TestProvider::with_chunks(vec![chunks]);
+    let model = TestProvider::with_chunks(vec![vec![finish_chunk(FinishReason::Stop)]]);
     let agent = build_agent_no_tools(model);
     let mut history = vec![Message::user("hi")];
 

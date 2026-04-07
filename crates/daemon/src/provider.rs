@@ -102,11 +102,8 @@ impl<P: Provider> Provider for Retrying<P> {
         if self.timeout.is_zero() {
             self.inner.chat_completion_stream(request).await
         } else {
-            match tokio::time::timeout(
-                self.timeout,
-                self.inner.chat_completion_stream(request),
-            )
-            .await
+            match tokio::time::timeout(self.timeout, self.inner.chat_completion_stream(request))
+                .await
             {
                 Ok(r) => r,
                 Err(_) => Err(Error::Timeout),
@@ -114,10 +111,7 @@ impl<P: Provider> Provider for Retrying<P> {
         }
     }
 
-    async fn embedding(
-        &self,
-        request: &EmbeddingRequest,
-    ) -> Result<EmbeddingResponse, Error> {
+    async fn embedding(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Error> {
         self.inner.embedding(request).await
     }
 
