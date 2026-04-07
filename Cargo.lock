@@ -537,6 +537,7 @@ dependencies = [
 name = "crabtalk-bench"
 version = "0.0.19"
 dependencies = [
+ "crabllm-core",
  "crabtalk-core",
  "crabtalk-runtime",
  "criterion",

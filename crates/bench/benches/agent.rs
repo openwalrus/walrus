@@ -1,49 +1,111 @@
 //! Agent loop benchmarks: pure overhead with and without tool dispatch.
 
+use crabllm_core::{
+    ChatCompletionChunk, ChunkChoice, Delta as CtDelta, FinishReason, FunctionCall,
+    FunctionCallDelta, ToolCall, ToolCallDelta, ToolType,
+};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use futures_util::StreamExt;
 use std::pin::pin;
 use tokio::sync::mpsc;
 use wcore::{
     AgentBuilder, AgentConfig,
-    model::{
-        Choice, FinishReason, FunctionCall, Message, StreamChunk, ToolCall, test_model::TestModel,
-    },
+    model::{Message, Model, test_provider::TestProvider},
 };
 
-fn text_chunks(text: &str) -> Vec<StreamChunk> {
-    let mut chunks: Vec<StreamChunk> = text
-        .chars()
-        .map(|c| StreamChunk::text(c.to_string()))
-        .collect();
-    chunks.push(StreamChunk {
-        choices: vec![Choice {
-            finish_reason: Some(FinishReason::Stop),
-            ..Default::default()
+fn empty_delta(finish: Option<FinishReason>) -> ChatCompletionChunk {
+    ChatCompletionChunk {
+        id: String::new(),
+        object: "chat.completion.chunk".into(),
+        created: 0,
+        model: String::new(),
+        choices: vec![ChunkChoice {
+            index: 0,
+            delta: CtDelta {
+                role: None,
+                content: None,
+                tool_calls: None,
+                reasoning_content: None,
+            },
+            finish_reason: finish,
+            logprobs: None,
         }],
-        ..Default::default()
-    });
+        usage: None,
+        system_fingerprint: None,
+    }
+}
+
+fn text_chunk(content: &str) -> ChatCompletionChunk {
+    ChatCompletionChunk {
+        id: String::new(),
+        object: "chat.completion.chunk".into(),
+        created: 0,
+        model: String::new(),
+        choices: vec![ChunkChoice {
+            index: 0,
+            delta: CtDelta {
+                role: None,
+                content: Some(content.into()),
+                tool_calls: None,
+                reasoning_content: None,
+            },
+            finish_reason: None,
+            logprobs: None,
+        }],
+        usage: None,
+        system_fingerprint: None,
+    }
+}
+
+fn text_chunks(text: &str) -> Vec<ChatCompletionChunk> {
+    let mut chunks: Vec<ChatCompletionChunk> =
+        text.chars().map(|c| text_chunk(&c.to_string())).collect();
+    chunks.push(empty_delta(Some(FinishReason::Stop)));
     chunks
 }
 
-fn tool_chunks(calls: Vec<ToolCall>) -> Vec<StreamChunk> {
+fn tool_chunks(calls: Vec<ToolCall>) -> Vec<ChatCompletionChunk> {
+    let deltas: Vec<ToolCallDelta> = calls
+        .iter()
+        .map(|tc| ToolCallDelta {
+            index: tc.index.unwrap_or(0),
+            id: Some(tc.id.clone()),
+            kind: Some(ToolType::Function),
+            function: Some(FunctionCallDelta {
+                name: Some(tc.function.name.clone()),
+                arguments: Some(tc.function.arguments.clone()),
+            }),
+        })
+        .collect();
     vec![
-        StreamChunk::tool(&calls),
-        StreamChunk {
-            choices: vec![Choice {
-                finish_reason: Some(FinishReason::ToolCalls),
-                ..Default::default()
+        ChatCompletionChunk {
+            id: String::new(),
+            object: "chat.completion.chunk".into(),
+            created: 0,
+            model: String::new(),
+            choices: vec![ChunkChoice {
+                index: 0,
+                delta: CtDelta {
+                    role: None,
+                    content: None,
+                    tool_calls: Some(deltas),
+                    reasoning_content: None,
+                },
+                finish_reason: None,
+                logprobs: None,
             }],
-            ..Default::default()
+            usage: None,
+            system_fingerprint: None,
         },
+        empty_delta(Some(FinishReason::ToolCalls)),
     ]
 }
 
 fn make_tool_call(name: &str, args: &str) -> ToolCall {
     ToolCall {
+        index: Some(0),
         id: format!("call_{name}"),
-        index: 0,
-        call_type: "function".into(),
+        kind: ToolType::Function,
         function: FunctionCall {
             name: name.into(),
             arguments: args.into(),
@@ -60,8 +122,8 @@ fn bench_agent_no_tools(c: &mut Criterion) {
     c.bench_function("agent_no_tools", |b| {
         b.iter_batched(
             || {
-                let model = TestModel::with_chunks(vec![text_chunks("done")]);
-                let agent = AgentBuilder::new(model)
+                let provider = TestProvider::with_chunks(vec![text_chunks("done")]);
+                let agent = AgentBuilder::new(Model::new(provider))
                     .config(AgentConfig::new("bench"))
                     .build();
                 let history = vec![Message::user("hi")];
@@ -88,10 +150,10 @@ fn bench_agent_with_tools(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let call = make_tool_call("bash", r#"{"command":"ls"}"#);
-                let model =
-                    TestModel::with_chunks(vec![tool_chunks(vec![call]), text_chunks("done")]);
+                let provider =
+                    TestProvider::with_chunks(vec![tool_chunks(vec![call]), text_chunks("done")]);
                 let (tool_tx, tool_rx) = mpsc::unbounded_channel();
-                let agent = AgentBuilder::new(model)
+                let agent = AgentBuilder::new(Model::new(provider))
                     .config(AgentConfig::new("bench"))
                     .tool_tx(tool_tx)
                     .build();

@@ -23,3 +23,6 @@ mod request;
 mod response;
 mod stream;
 mod tool;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_provider;
