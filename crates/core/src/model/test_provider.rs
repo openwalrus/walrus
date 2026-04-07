@@ -20,6 +20,7 @@ use crabllm_core::{
     Choice, Delta, Error, FinishReason, FunctionCallDelta, Message, Provider, Role, ToolCall,
     ToolCallDelta, ToolType,
 };
+use serde_json::{Map, Value};
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -112,30 +113,33 @@ impl Provider for TestProvider {
 pub fn text_response(content: &str) -> ChatCompletionResponse {
     ChatCompletionResponse {
         choices: vec![Choice {
-            message: Message {
-                role: Role::Assistant,
-                content: Some(serde_json::Value::String(content.into())),
-                ..Default::default()
-            },
+            index: 0,
+            message: Message::assistant(content),
             finish_reason: Some(FinishReason::Stop),
-            ..Default::default()
+            logprobs: None,
         }],
         ..Default::default()
     }
 }
 
-/// A non-streaming chat response carrying one or more tool calls.
+/// A non-streaming chat response carrying one or more tool calls. Uses
+/// `content: Null` to match the OpenAI wire convention for tool-call-only
+/// assistant messages (where text content is absent rather than empty).
 pub fn tool_response(calls: Vec<ToolCall>) -> ChatCompletionResponse {
     ChatCompletionResponse {
         choices: vec![Choice {
+            index: 0,
             message: Message {
                 role: Role::Assistant,
-                content: Some(serde_json::Value::Null),
+                content: Some(Value::Null),
                 tool_calls: Some(calls),
-                ..Default::default()
+                tool_call_id: None,
+                name: None,
+                reasoning_content: None,
+                extra: Map::new(),
             },
             finish_reason: Some(FinishReason::ToolCalls),
-            ..Default::default()
+            logprobs: None,
         }],
         ..Default::default()
     }
