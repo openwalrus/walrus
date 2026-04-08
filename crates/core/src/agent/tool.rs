@@ -5,6 +5,7 @@
 //! the agent sends a `ToolRequest` per tool call and awaits a `String` reply.
 
 use crate::model::Tool;
+use crabllm_core::{FunctionDef, Tool as CtTool, ToolType};
 use heck::ToSnakeCase;
 use schemars::JsonSchema;
 use std::collections::BTreeMap;
@@ -115,8 +116,13 @@ pub trait ToolDescription {
 
 /// Trait to convert a type into a tool.
 pub trait AsTool: ToolDescription {
-    /// Convert the type into a tool.
+    /// Convert the type into a wcore `Tool`.
     fn as_tool() -> Tool;
+
+    /// Convert the type into a `crabllm_core::Tool` (the enveloped
+    /// `{kind, function}` shape sent on the wire). Leaves `strict: None` to
+    /// match the current wire output; see the impl for rationale.
+    fn as_crabllm_tool() -> CtTool;
 }
 
 impl<T> AsTool for T
@@ -129,6 +135,27 @@ where
             description: Self::DESCRIPTION.into(),
             parameters: schemars::schema_for!(T),
             strict: true,
+        }
+    }
+
+    fn as_crabllm_tool() -> CtTool {
+        // `strict: None` matches the current wire output of the old
+        // `convert::to_ct_tool` path: the wcore `Tool.strict: bool` field
+        // was set to `true` by every `AsTool` impl but silently dropped by
+        // the converter (it hard-codes `strict: None` at convert.rs:114).
+        // Turning on strict-mode validation here would be a behavior change
+        // masquerading as a refactor; keep it off and leave any opt-in to
+        // a separate commit that validates every tool schema.
+        CtTool {
+            kind: ToolType::Function,
+            function: FunctionDef {
+                name: T::schema_name().to_snake_case(),
+                description: Some(Self::DESCRIPTION.into()),
+                parameters: Some(
+                    serde_json::to_value(schemars::schema_for!(T)).unwrap_or_default(),
+                ),
+            },
+            strict: None,
         }
     }
 }

@@ -12,7 +12,9 @@
 use crate::model::{Request, Response, StreamChunk, convert};
 use anyhow::Result;
 use async_stream::try_stream;
-use crabllm_core::{ApiError, Provider};
+use crabllm_core::{
+    ApiError, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Provider,
+};
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::sync::Arc;
@@ -58,6 +60,55 @@ impl<P: Provider + 'static> Model<P> {
             .await
             .map_err(|e| format_provider_error(&request.model, "send", e))?;
         Ok(convert::from_ct_response(ct_resp))
+    }
+
+    /// Send a chat completion request using crabllm-core types directly.
+    ///
+    /// Sets `stream: Some(false)` on the request and formats provider errors
+    /// through `format_provider_error` so the root cause surfaces in the
+    /// anyhow Display chain.
+    pub async fn send_ct(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> Result<ChatCompletionResponse> {
+        let mut req = request;
+        req.stream = Some(false);
+        let model_label = req.model.clone();
+        self.inner
+            .chat_completion(&req)
+            .await
+            .map_err(|e| format_provider_error(&model_label, "send", e))
+    }
+
+    /// Stream a chat completion response using crabllm-core types directly.
+    ///
+    /// The returned stream owns a clone of the provided request and the
+    /// inner Arc, so it is `'static` and can be spawned freely.
+    ///
+    /// Sets `stream: Some(true)` — **load-bearing**: without it, OpenAI-shaped
+    /// endpoints return a single non-SSE JSON response, the SSE parser in
+    /// crabllm-provider sees no `data:` prefixes, the byte stream completes
+    /// with zero chunks, and the agent loop yields a Done event with empty
+    /// content. Symptom is "send a message, no reply, no error" — silently
+    /// dropped responses.
+    pub fn stream_ct(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> impl Stream<Item = Result<ChatCompletionChunk>> + Send + 'static {
+        let inner = Arc::clone(&self.inner);
+        let mut req = request;
+        req.stream = Some(true);
+        let model_label = req.model.clone();
+        try_stream! {
+            let mut stream = inner
+                .chat_completion_stream(&req)
+                .await
+                .map_err(|e| format_provider_error(&model_label, "stream open", e))?;
+            while let Some(chunk) = stream.next().await {
+                yield chunk
+                    .map_err(|e| format_provider_error(&model_label, "stream chunk", e))?;
+            }
+        }
     }
 
     /// Stream a chat completion response. The returned stream owns its
