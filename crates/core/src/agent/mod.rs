@@ -8,14 +8,15 @@
 //! `run()` collects its events and returns the final response.
 
 use crate::model::{
-    Choice, CompletionMeta, Delta, Message, MessageBuilder, Model, Request, Response, Role, Tool,
-    ToolChoice, Usage,
+    HistoryEntry, Model, chunk_content, chunk_finish_reason, chunk_reasoning, response_message,
+    response_tool_calls,
 };
+use crate::model::builder::MessageBuilder;
 use anyhow::Result;
 use async_stream::stream;
 pub use builder::AgentBuilder;
 pub use config::AgentConfig;
-use crabllm_core::Provider;
+use crabllm_core::{ChatCompletionRequest, Provider, Role, Tool, ToolCall, ToolChoice, Usage};
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -28,20 +29,35 @@ pub mod config;
 pub mod event;
 pub mod tool;
 
-/// Extract sender from the last user message in history.
-fn last_sender(history: &[Message]) -> String {
+/// A neutral placeholder assistant message returned by `step()` when the
+/// provider yields zero choices. Used only as a step record so callers see
+/// an empty AgentStep instead of a panic; nothing is appended to history.
+fn empty_assistant_message() -> crabllm_core::Message {
+    crabllm_core::Message {
+        role: Role::Assistant,
+        content: Some(serde_json::Value::String(String::new())),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+        reasoning_content: None,
+        extra: Default::default(),
+    }
+}
+
+/// Extract sender from the last user entry in history.
+fn last_sender(history: &[HistoryEntry]) -> String {
     history
         .iter()
         .rev()
-        .find(|m| m.role == Role::User)
-        .map(|m| m.sender.clone())
+        .find(|e| *e.role() == Role::User)
+        .map(|e| e.sender.clone())
         .unwrap_or_default()
 }
 
 /// An immutable agent definition.
 ///
-/// Generic over `P: crabllm_core::Provider` — holds a wcore-typed `Model<P>`
-/// wrapper alongside config, tool schemas, and an optional sender for tool
+/// Generic over `P: crabllm_core::Provider` — holds a `Model<P>` wrapper
+/// alongside config, tool schemas, and an optional sender for tool
 /// dispatch. Conversation history is owned externally and passed into
 /// execution methods. Callers drive execution via `step()` (single LLM
 /// round), `run()` (loop to completion), or `run_stream()` (yields events
@@ -80,53 +96,87 @@ impl<P: Provider + 'static> Agent<P> {
         self.config.model.clone().unwrap_or_default()
     }
 
-    /// Build a request from config state (system prompt + history + tool schemas).
+    /// Build a `ChatCompletionRequest` from config state (system prompt +
+    /// history + tool schemas).
     ///
     /// If `tool_choice_override` is provided, it takes precedence over the
-    /// agent config's `tool_choice`.
+    /// agent config's `tool_choice`. Projects each `HistoryEntry` through
+    /// `to_wire_message()` so guest assistant messages get wrapped in
+    /// `<from agent="...">` tags.
     fn build_request(
         &self,
-        history: &[Message],
+        history: &[HistoryEntry],
         tool_choice_override: Option<&ToolChoice>,
-    ) -> Request {
+    ) -> ChatCompletionRequest {
         let model_name = self.model_name();
 
         let mut messages = Vec::with_capacity(1 + history.len());
         if !self.config.system_prompt.is_empty() {
-            messages.push(Message::system(&self.config.system_prompt));
+            messages.push(crabllm_core::Message::system(&self.config.system_prompt));
         }
-        messages.extend(history.iter().map(|m| m.with_agent_tag()));
+        messages.extend(history.iter().map(|e| e.to_wire_message()));
 
         let tool_choice = tool_choice_override
             .cloned()
             .unwrap_or_else(|| self.config.tool_choice.clone());
-        let mut request = Request::new(model_name)
-            .with_messages(messages)
-            .with_tool_choice(tool_choice)
-            .with_think(self.config.thinking);
-        if !self.tools.is_empty() {
-            request = request.with_tools(self.tools.clone());
+
+        ChatCompletionRequest {
+            model: model_name,
+            messages,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stream: None,
+            stop: None,
+            tools: if self.tools.is_empty() {
+                None
+            } else {
+                Some(self.tools.clone())
+            },
+            tool_choice: Some(tool_choice),
+            frequency_penalty: None,
+            presence_penalty: None,
+            seed: None,
+            user: None,
+            reasoning_effort: self.config.thinking.then(|| "high".to_string()),
+            extra: Default::default(),
         }
-        request
     }
 
     /// Perform a single LLM round: send request, dispatch tools, return step.
     ///
-    /// Composes a [`Request`] from config state (system prompt + history +
-    /// tool schemas), calls the stored model, dispatches any tool calls via
-    /// the [`ToolSender`] channel, and appends results to history.
+    /// Composes a [`ChatCompletionRequest`] from config state (system prompt +
+    /// history + tool schemas), calls the stored model, dispatches any tool
+    /// calls via the [`ToolSender`] channel, and appends results to history.
     pub async fn step(
         &self,
-        history: &mut Vec<Message>,
+        history: &mut Vec<HistoryEntry>,
         conversation_id: Option<u64>,
     ) -> Result<AgentStep> {
         let request = self.build_request(history, None);
-        let response = self.model.send(&request).await?;
-        let tool_calls = response.tool_calls().unwrap_or_default().to_vec();
+        let response = self.model.send_ct(request).await?;
+        let tool_calls: Vec<ToolCall> = response_tool_calls(&response).to_vec();
+        let finish_reason = response
+            .choices
+            .first()
+            .and_then(|c| c.finish_reason.clone());
+        let usage = response.usage.clone().unwrap_or_default();
 
-        if let Some(msg) = response.message() {
-            history.push(msg);
-        }
+        // If the provider returned zero choices, there is no message to record
+        // — match the old `step()` behavior of not appending anything in that
+        // case, instead of bloating history with a synthetic empty assistant
+        // entry on flaky providers.
+        let Some(message) = response_message(&response).cloned() else {
+            return Ok(AgentStep {
+                message: empty_assistant_message(),
+                usage,
+                finish_reason,
+                tool_calls,
+                tool_results: Vec::new(),
+            });
+        };
+
+        history.push(HistoryEntry::from_message(message.clone()));
 
         let mut tool_results = Vec::new();
         if !tool_calls.is_empty() {
@@ -140,14 +190,16 @@ impl<P: Provider + 'static> Agent<P> {
                         conversation_id,
                     )
                     .await;
-                let msg = Message::tool(&result, tc.id.clone(), &tc.function.name);
-                history.push(msg.clone());
-                tool_results.push(msg);
+                let entry = HistoryEntry::tool(&result, tc.id.clone(), &tc.function.name);
+                history.push(entry.clone());
+                tool_results.push(entry);
             }
         }
 
         Ok(AgentStep {
-            response,
+            message,
+            usage,
+            finish_reason,
             tool_calls,
             tool_results,
         })
@@ -187,7 +239,13 @@ impl<P: Provider + 'static> Agent<P> {
 
     /// Determine the stop reason for a step with no tool calls.
     fn stop_reason(step: &AgentStep) -> AgentStopReason {
-        if step.response.content().is_some() {
+        let has_text = step
+            .message
+            .content
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+        if has_text {
             AgentStopReason::TextResponse
         } else {
             AgentStopReason::NoAction
@@ -200,7 +258,7 @@ impl<P: Provider + 'static> Agent<P> {
     /// `events`, and extracts the `Done` response.
     pub async fn run(
         &self,
-        history: &mut Vec<Message>,
+        history: &mut Vec<HistoryEntry>,
         events: mpsc::UnboundedSender<AgentEvent>,
         conversation_id: Option<u64>,
         tool_choice: Option<ToolChoice>,
@@ -231,7 +289,7 @@ impl<P: Provider + 'static> Agent<P> {
     /// arrive incrementally and must be fully accumulated first).
     pub fn run_stream<'a>(
         &'a self,
-        history: &'a mut Vec<Message>,
+        history: &'a mut Vec<HistoryEntry>,
         conversation_id: Option<u64>,
         mut steer_rx: Option<watch::Receiver<Option<String>>>,
         tool_choice: Option<ToolChoice>,
@@ -249,7 +307,7 @@ impl<P: Provider + 'static> Agent<P> {
                 });
                 if let Some(content) = steer_content {
                     let sender = last_sender(history);
-                    history.push(Message::user_with_sender(&content, &sender));
+                    history.push(HistoryEntry::user_with_sender(&content, &sender));
                     yield AgentEvent::UserSteered { content };
                 }
 
@@ -258,8 +316,7 @@ impl<P: Provider + 'static> Agent<P> {
                 // Stream from the model, yielding text deltas as they arrive.
                 let mut builder = MessageBuilder::new(Role::Assistant);
                 let mut finish_reason = None;
-                let mut last_meta = CompletionMeta::default();
-                let mut last_usage = None;
+                let mut last_usage: Option<Usage> = None;
                 let mut stream_error = None;
                 let mut tool_begin_emitted = false;
 
@@ -272,13 +329,13 @@ impl<P: Provider + 'static> Agent<P> {
                 let mut open = OpenSegment::None;
 
                 {
-                    let mut chunk_stream = std::pin::pin!(self.model.stream(request));
+                    let mut chunk_stream = std::pin::pin!(self.model.stream_ct(request));
                     while let Some(result) = chunk_stream.next().await {
                         match result {
                             Ok(chunk) => {
                                 // Process text portion. Match existing behavior:
                                 // emit TextDelta even when the slice is empty.
-                                if let Some(text) = chunk.content() {
+                                if let Some(text) = chunk_content(&chunk) {
                                     if open != OpenSegment::Text {
                                         if open == OpenSegment::Thinking {
                                             yield AgentEvent::ThinkingEnd;
@@ -289,7 +346,7 @@ impl<P: Provider + 'static> Agent<P> {
                                     yield AgentEvent::TextDelta(text.to_owned());
                                 }
                                 // Process reasoning portion. Same atomic-flip logic.
-                                if let Some(reason) = chunk.reasoning_content() {
+                                if let Some(reason) = chunk_reasoning(&chunk) {
                                     if open != OpenSegment::Thinking {
                                         if open == OpenSegment::Text {
                                             yield AgentEvent::TextEnd;
@@ -299,10 +356,9 @@ impl<P: Provider + 'static> Agent<P> {
                                     }
                                     yield AgentEvent::ThinkingDelta(reason.to_owned());
                                 }
-                                if let Some(r) = chunk.reason() {
+                                if let Some(r) = chunk_finish_reason(&chunk) {
                                     finish_reason = Some(r.clone());
                                 }
-                                last_meta = chunk.meta.clone();
                                 if chunk.usage.is_some() {
                                     last_usage = chunk.usage.clone();
                                 }
@@ -343,47 +399,19 @@ impl<P: Provider + 'static> Agent<P> {
                     return;
                 }
 
-                // Build the accumulated message and response.
-                let msg = builder.build();
-                let tool_calls = msg.tool_calls.to_vec();
-                let content = if msg.content.is_empty() {
-                    None
-                } else {
-                    Some(msg.content.clone())
-                };
+                // Build the accumulated message.
+                let message = builder.build();
+                let tool_calls: Vec<ToolCall> =
+                    message.tool_calls.clone().unwrap_or_default();
+                let content = message
+                    .content
+                    .as_ref()
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_owned());
+                let usage = last_usage.unwrap_or_default();
 
-                let response = Response {
-                    meta: last_meta,
-                    choices: vec![Choice {
-                        index: 0,
-                        delta: Delta {
-                            role: Some(Role::Assistant),
-                            content: content.clone(),
-                            reasoning_content: if msg.reasoning_content.is_empty() {
-                                None
-                            } else {
-                                Some(msg.reasoning_content.clone())
-                            },
-                            tool_calls: if tool_calls.is_empty() {
-                                None
-                            } else {
-                                Some(tool_calls.clone())
-                            },
-                        },
-                        finish_reason,
-                        logprobs: None,
-                    }],
-                    usage: last_usage.unwrap_or(Usage {
-                        prompt_tokens: 0,
-                        completion_tokens: 0,
-                        total_tokens: 0,
-                        prompt_cache_hit_tokens: None,
-                        prompt_cache_miss_tokens: None,
-                        completion_tokens_details: None,
-                    }),
-                };
-
-                history.push(msg);
+                history.push(HistoryEntry::from_message(message.clone()));
                 let has_tool_calls = !tool_calls.is_empty();
 
                 // Dispatch tool calls if any.
@@ -399,9 +427,9 @@ impl<P: Provider + 'static> Agent<P> {
                             .dispatch_tool(&tc.function.name, &tc.function.arguments, &sender, conversation_id)
                             .await;
                         let duration_ms = tool_start.elapsed().as_millis() as u64;
-                        let msg = Message::tool(&result, tc.id.clone(), &tc.function.name);
-                        history.push(msg.clone());
-                        tool_results.push(msg);
+                        let entry = HistoryEntry::tool(&result, tc.id.clone(), &tc.function.name);
+                        history.push(entry.clone());
+                        tool_results.push(entry);
                         yield AgentEvent::ToolResult {
                             call_id: tc.id.clone(),
                             output: result,
@@ -417,7 +445,7 @@ impl<P: Provider + 'static> Agent<P> {
                 {
                     if let Some(summary) = self.compact(history).await {
                         yield AgentEvent::Compact { summary: summary.clone() };
-                        *history = vec![Message::user(&summary)];
+                        *history = vec![HistoryEntry::user(&summary)];
                         yield AgentEvent::TextStart;
                         yield AgentEvent::TextDelta(
                             "\n[context compacted]\n".to_owned(),
@@ -428,12 +456,16 @@ impl<P: Provider + 'static> Agent<P> {
                 }
 
                 let step = AgentStep {
-                    response,
+                    message,
+                    usage,
+                    finish_reason,
                     tool_calls,
                     tool_results,
                 };
 
-                if !has_tool_calls {
+                if !step.tool_calls.is_empty() {
+                    steps.push(step);
+                } else {
                     let stop_reason = Self::stop_reason(&step);
                     steps.push(step);
                     yield AgentEvent::Done(AgentResponse {
@@ -445,11 +477,14 @@ impl<P: Provider + 'static> Agent<P> {
                     });
                     return;
                 }
-
-                steps.push(step);
             }
 
-            let final_response = steps.last().and_then(|s| s.response.content().cloned());
+            let final_response = steps
+                .last()
+                .and_then(|s| s.message.content.as_ref())
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_owned());
             yield AgentEvent::Done(AgentResponse {
                 final_response,
                 iterations: steps.len(),

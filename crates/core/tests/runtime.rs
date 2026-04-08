@@ -48,10 +48,13 @@ async fn agents_returns_all() {
 async fn register_and_unregister_tool() {
     let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     let tool = crabtalk_core::model::Tool {
-        name: "bash".into(),
-        description: "run commands".into(),
-        parameters: schemars::Schema::default(),
-        strict: true,
+        kind: crabtalk_core::model::ToolType::Function,
+        function: crabtalk_core::model::FunctionDef {
+            name: "bash".into(),
+            description: Some("run commands".into()),
+            parameters: None,
+        },
+        strict: None,
     };
     runtime.tools.insert(tool);
     assert!(runtime.tools.remove("bash"));

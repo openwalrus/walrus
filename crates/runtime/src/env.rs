@@ -10,7 +10,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::Message};
+use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::HistoryEntry};
 
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
@@ -316,9 +316,9 @@ impl<H: Host + 'static> Hook for Env<H> {
         &self,
         agent: &str,
         conversation_id: u64,
-        history: &[Message],
-    ) -> Vec<Message> {
-        let mut messages = Vec::new();
+        history: &[HistoryEntry],
+    ) -> Vec<HistoryEntry> {
+        let mut entries = Vec::new();
         let has_members = self
             .scopes
             .get(agent)
@@ -329,40 +329,41 @@ impl<H: Host + 'static> Hook for Env<H> {
                 block.push_str(&format!("- {name}: {desc}\n"));
             }
             block.push_str("</agents>");
-            let mut msg = Message::user(block);
-            msg.auto_injected = true;
-            messages.push(msg);
+            entries.push(HistoryEntry::user(block).auto_injected());
         }
         if let Some(ref mem) = self.memory {
-            messages.extend(mem.before_run(history));
+            entries.extend(mem.before_run(history));
         }
         let cwd = self
             .host
             .conversation_cwd(conversation_id)
             .unwrap_or_else(|| self.cwd.clone());
-        let mut cwd_msg = Message::user(format!(
-            "<environment>\nworking_directory: {}\n</environment>",
-            cwd.display()
-        ));
-        cwd_msg.auto_injected = true;
-        messages.push(cwd_msg);
+        entries.push(
+            HistoryEntry::user(format!(
+                "<environment>\nworking_directory: {}\n</environment>",
+                cwd.display()
+            ))
+            .auto_injected(),
+        );
         if let Some(instructions) = discover_instructions(&cwd) {
-            let mut msg = Message::user(format!("<instructions>\n{instructions}\n</instructions>"));
-            msg.auto_injected = true;
-            messages.push(msg);
+            entries.push(
+                HistoryEntry::user(format!("<instructions>\n{instructions}\n</instructions>"))
+                    .auto_injected(),
+            );
         }
         // If guest agents have spoken in this conversation, inject framing
         // so the primary agent doesn't drift toward the guests' personality.
-        if history.iter().any(|m| !m.agent.is_empty()) {
-            let mut msg = Message::user(
-                "Messages wrapped in <from agent=\"...\"> tags are from guest agents \
-                 who were consulted in this conversation. Continue responding as yourself."
-                    .to_string(),
+        if history.iter().any(|e| !e.agent.is_empty()) {
+            entries.push(
+                HistoryEntry::user(
+                    "Messages wrapped in <from agent=\"...\"> tags are from guest agents \
+                     who were consulted in this conversation. Continue responding as yourself."
+                        .to_string(),
+                )
+                .auto_injected(),
             );
-            msg.auto_injected = true;
-            messages.push(msg);
         }
-        messages
+        entries
     }
 
     async fn on_register_tools(&self, tools: &mut ToolRegistry) {

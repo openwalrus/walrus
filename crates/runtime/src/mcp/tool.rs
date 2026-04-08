@@ -55,7 +55,7 @@ impl<H: Host> Env<H> {
             }
 
             let tools = bridge.tools().await;
-            if tools.iter().any(|t| t.name == input.name) {
+            if tools.iter().any(|t| t.function.name == input.name) {
                 let tool_args = input.args.unwrap_or_default();
                 return bridge.call(&input.name, &tool_args).await;
             }
@@ -68,15 +68,24 @@ impl<H: Host> Env<H> {
             .iter()
             .filter(|t| {
                 if let Some(ref allowed) = allowed_tools
-                    && !allowed.iter().any(|a| a.as_str() == t.name.as_str())
+                    && !allowed.iter().any(|a| a.as_str() == t.function.name.as_str())
                 {
                     return false;
                 }
                 query.is_empty()
-                    || t.name.to_lowercase().contains(&query)
-                    || t.description.to_lowercase().contains(&query)
+                    || t.function.name.to_lowercase().contains(&query)
+                    || t.function
+                        .description
+                        .as_deref()
+                        .is_some_and(|d| d.to_lowercase().contains(&query))
             })
-            .map(|t| format!("{}: {}", t.name, t.description))
+            .map(|t| {
+                format!(
+                    "{}: {}",
+                    t.function.name,
+                    t.function.description.as_deref().unwrap_or(""),
+                )
+            })
             .collect();
 
         if matches.is_empty() {

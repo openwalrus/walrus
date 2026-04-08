@@ -13,6 +13,7 @@
 //!    - `delta.id: Some(..)` → overwrite
 //!    - `delta.function.name: Some(..)` → overwrite
 //!    - `delta.function.arguments: Some(..)` → always append (even empty)
+//!
 //!    Breaking any of these silently corrupts tool calls mid-stream.
 
 use crabllm_core::{
@@ -106,23 +107,14 @@ fn assistant_with_content_and_tool_calls_keeps_content() {
 
 fn delta_chunk(deltas: Vec<ToolCallDelta>) -> ChatCompletionChunk {
     ChatCompletionChunk {
-        id: String::new(),
-        object: String::new(),
-        created: 0,
-        model: String::new(),
         choices: vec![ChunkChoice {
-            index: 0,
             delta: Delta {
-                role: None,
-                content: None,
                 tool_calls: Some(deltas),
-                reasoning_content: None,
+                ..Default::default()
             },
-            finish_reason: None,
-            logprobs: None,
+            ..Default::default()
         }],
-        usage: None,
-        system_fingerprint: None,
+        ..Default::default()
     }
 }
 
@@ -325,4 +317,64 @@ fn builder_empty_content_without_tool_calls_builds_empty_string() {
         Some(serde_json::Value::String(String::new())),
     );
     assert!(msg.tool_calls.is_none());
+}
+
+#[test]
+fn builder_peek_tool_calls_skips_empty_names() {
+    // Tool call with no function name yet — peek should not surface it.
+    let mut b = MessageBuilder::new(Role::Assistant);
+    b.accept(&delta_chunk(vec![ToolCallDelta {
+        index: 0,
+        id: Some("c1".into()),
+        kind: None,
+        function: Some(FunctionCallDelta {
+            name: None,
+            arguments: None,
+        }),
+    }]));
+    assert!(b.peek_tool_calls().is_empty());
+
+    // Same call but now with a non-empty name — peek surfaces it.
+    b.accept(&delta_chunk(vec![ToolCallDelta {
+        index: 0,
+        id: None,
+        kind: None,
+        function: Some(FunctionCallDelta {
+            name: Some("bash".into()),
+            arguments: None,
+        }),
+    }]));
+    let peeked = b.peek_tool_calls();
+    assert_eq!(peeked.len(), 1);
+    assert_eq!(peeked[0].function.name, "bash");
+}
+
+#[test]
+fn builder_accept_returns_true_only_for_visible_text() {
+    // A chunk carrying only a tool-call delta should not count as content.
+    let mut b = MessageBuilder::new(Role::Assistant);
+    let no_text = b.accept(&delta_chunk(vec![ToolCallDelta {
+        index: 0,
+        id: Some("c1".into()),
+        kind: None,
+        function: Some(FunctionCallDelta {
+            name: Some("bash".into()),
+            arguments: None,
+        }),
+    }]));
+    assert!(!no_text);
+
+    // A chunk with content text should return true.
+    let text_chunk = ChatCompletionChunk {
+        choices: vec![ChunkChoice {
+            delta: Delta {
+                content: Some("hi".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let has_text = b.accept(&text_chunk);
+    assert!(has_text);
 }

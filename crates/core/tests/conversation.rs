@@ -1,6 +1,6 @@
 //! Tests for Conversation JSONL persistence and sender_slug.
 
-use crabtalk_core::{Conversation, find_latest_conversation, model::Message, sender_slug};
+use crabtalk_core::{Conversation, find_latest_conversation, model::HistoryEntry, sender_slug};
 use std::io::Write;
 use tempfile::TempDir;
 
@@ -57,7 +57,10 @@ fn append_messages_persists() {
     let dir = TempDir::new().unwrap();
     let mut conversation = Conversation::new(1, "crab", "user");
     conversation.init_file(dir.path());
-    conversation.append_messages(&[Message::user("hello"), Message::assistant("hi", None, None)]);
+    conversation.append_messages(&[
+        HistoryEntry::user("hello"),
+        HistoryEntry::assistant("hi", None, None),
+    ]);
     let content = std::fs::read_to_string(conversation.file_path.as_ref().unwrap()).unwrap();
     let lines: Vec<&str> = content.lines().collect();
     assert_eq!(lines.len(), 3); // meta + 2 messages
@@ -68,9 +71,8 @@ fn append_skips_auto_injected() {
     let dir = TempDir::new().unwrap();
     let mut conversation = Conversation::new(1, "crab", "user");
     conversation.init_file(dir.path());
-    let mut msg = Message::user("injected");
-    msg.auto_injected = true;
-    conversation.append_messages(&[msg, Message::user("real")]);
+    let injected = HistoryEntry::user("injected").auto_injected();
+    conversation.append_messages(&[injected, HistoryEntry::user("real")]);
     let content = std::fs::read_to_string(conversation.file_path.as_ref().unwrap()).unwrap();
     let lines: Vec<&str> = content.lines().collect();
     assert_eq!(lines.len(), 2); // meta + 1 real message
@@ -82,15 +84,15 @@ fn load_context_roundtrip() {
     let mut conversation = Conversation::new(1, "crab", "tester");
     conversation.init_file(dir.path());
     conversation.append_messages(&[
-        Message::user("hello"),
-        Message::assistant("world", None, None),
+        HistoryEntry::user("hello"),
+        HistoryEntry::assistant("world", None, None),
     ]);
 
-    let (meta, messages) =
+    let (meta, entries) =
         Conversation::load_context(conversation.file_path.as_ref().unwrap()).unwrap();
     assert_eq!(meta.agent, "crab");
     assert_eq!(meta.created_by, "tester");
-    assert_eq!(messages.len(), 2);
+    assert_eq!(entries.len(), 2);
 }
 
 #[test]
@@ -99,17 +101,17 @@ fn load_context_after_compact() {
     let mut conversation = Conversation::new(1, "crab", "user");
     conversation.init_file(dir.path());
     conversation.append_messages(&[
-        Message::user("old"),
-        Message::assistant("old reply", None, None),
+        HistoryEntry::user("old"),
+        HistoryEntry::assistant("old reply", None, None),
     ]);
     conversation.append_compact("summary of conversation");
-    conversation.append_messages(&[Message::user("new")]);
+    conversation.append_messages(&[HistoryEntry::user("new")]);
 
-    let (_, messages) =
+    let (_, entries) =
         Conversation::load_context(conversation.file_path.as_ref().unwrap()).unwrap();
     // After compact: summary-as-user-message + new message
-    assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0].content, "summary of conversation");
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].text(), "summary of conversation");
 }
 
 #[test]
@@ -171,15 +173,15 @@ fn load_context_skips_invalid_message_lines() {
     let dir = TempDir::new().unwrap();
     let mut conversation = Conversation::new(1, "crab", "user");
     conversation.init_file(dir.path());
-    conversation.append_messages(&[Message::user("valid")]);
+    conversation.append_messages(&[HistoryEntry::user("valid")]);
     // Manually append a corrupt line
     let path = conversation.file_path.as_ref().unwrap();
     let mut f = std::fs::OpenOptions::new().append(true).open(path).unwrap();
     writeln!(f, "{{this is not valid json}}").unwrap();
     writeln!(f).unwrap(); // empty line
 
-    let (_, messages) = Conversation::load_context(path).unwrap();
-    assert_eq!(messages.len(), 1); // only the valid message
+    let (_, entries) = Conversation::load_context(path).unwrap();
+    assert_eq!(entries.len(), 1); // only the valid entry
 }
 
 #[test]

@@ -7,10 +7,8 @@
 //! history from the working context. Loading reads from the last compact
 //! marker forward.
 
-use crate::{
-    AgentEvent, AgentStep,
-    model::{Message, Usage},
-};
+use crate::{AgentEvent, AgentStep, model::HistoryEntry};
+use crabllm_core::Usage;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -47,7 +45,7 @@ enum ConversationLine {
         archived_at: String,
     },
     Event(EventLine),
-    Message(Message),
+    Entry(HistoryEntry),
 }
 
 /// A trace entry persisted to the conversation JSONL alongside messages.
@@ -136,7 +134,7 @@ impl EventLine {
 /// Sum token usage across all steps of an agent run.
 fn sum_step_usage(steps: &[AgentStep]) -> Usage {
     steps.iter().fold(Usage::default(), |mut acc, step| {
-        let u = &step.response.usage;
+        let u = &step.usage;
         acc.prompt_tokens += u.prompt_tokens;
         acc.completion_tokens += u.completion_tokens;
         acc.total_tokens += u.total_tokens;
@@ -169,7 +167,7 @@ pub struct Conversation {
     /// Name of the agent this conversation is bound to.
     pub agent: String,
     /// Conversation history (the working context for the LLM).
-    pub history: Vec<Message>,
+    pub history: Vec<HistoryEntry>,
     /// Origin of this conversation (e.g. "user", "tg:12345").
     pub created_by: String,
     /// Conversation title (set by the `set_title` tool).
@@ -292,8 +290,8 @@ impl Conversation {
         let _ = fs::write(path, new_content);
     }
 
-    /// Append messages to the JSONL file. Skips auto-injected messages.
-    pub fn append_messages(&self, messages: &[Message]) {
+    /// Append entries to the JSONL file. Skips auto-injected entries.
+    pub fn append_messages(&self, entries: &[HistoryEntry]) {
         let Some(ref path) = self.file_path else {
             return;
         };
@@ -304,11 +302,11 @@ impl Conversation {
                 return;
             }
         };
-        for msg in messages {
-            if msg.auto_injected {
+        for entry in entries {
+            if entry.auto_injected {
                 continue;
             }
-            if let Ok(json) = serde_json::to_string(msg) {
+            if let Ok(json) = serde_json::to_string(entry) {
                 let _ = writeln!(file, "{json}");
             }
         }
@@ -373,8 +371,8 @@ impl Conversation {
     /// Load the working context from a JSONL conversation file.
     ///
     /// Reads from the last `{"compact":"..."}` marker forward. If no compact
-    /// marker exists, loads all messages.
-    pub fn load_context(path: &Path) -> anyhow::Result<(ConversationMeta, Vec<Message>)> {
+    /// marker exists, loads all entries.
+    pub fn load_context(path: &Path) -> anyhow::Result<(ConversationMeta, Vec<HistoryEntry>)> {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
@@ -402,24 +400,24 @@ impl Conversation {
 
         let context_start = last_compact_idx.unwrap_or_default();
 
-        let mut messages = Vec::new();
+        let mut entries = Vec::new();
         for (i, line) in all_lines[context_start..].iter().enumerate() {
             if i == 0
                 && last_compact_idx.is_some()
                 && let Ok(ConversationLine::Compact { compact, .. }) = serde_json::from_str(line)
             {
-                messages.push(Message::user(&compact));
+                entries.push(HistoryEntry::user(&compact));
                 continue;
             }
             // Skip event traces — they're not part of the LLM working context.
             match serde_json::from_str::<ConversationLine>(line) {
-                Ok(ConversationLine::Message(msg)) => messages.push(msg),
+                Ok(ConversationLine::Entry(entry)) => entries.push(entry),
                 Ok(ConversationLine::Event(_) | ConversationLine::Compact { .. }) => {}
                 Err(e) => tracing::warn!("skipping unparsable conversation line: {e}"),
             }
         }
 
-        Ok((meta, messages))
+        Ok((meta, entries))
     }
 
     /// Load all archive segments from a JSONL conversation file.

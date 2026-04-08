@@ -1,14 +1,19 @@
 //! Tests for ToolRegistry — schema-only tool store.
 
-use crabtalk_core::{ToolRegistry, model::Tool};
-use schemars::Schema;
+use crabtalk_core::{
+    ToolRegistry,
+    model::{FunctionDef, Tool, ToolType},
+};
 
 fn tool(name: &str) -> Tool {
     Tool {
-        name: name.into(),
-        description: format!("{name} tool"),
-        parameters: Schema::default(),
-        strict: true,
+        kind: ToolType::Function,
+        function: FunctionDef {
+            name: name.into(),
+            description: Some(format!("{name} tool")),
+            parameters: None,
+        },
+        strict: None,
     }
 }
 
@@ -69,7 +74,7 @@ fn filtered_snapshot_filters_by_name() {
     let names = vec!["a".to_owned(), "c".to_owned()];
     let snapshot = reg.filtered_snapshot(&names);
     assert_eq!(snapshot.len(), 2);
-    let names: Vec<&str> = snapshot.iter().map(|t| t.name.as_str()).collect();
+    let names: Vec<&str> = snapshot.iter().map(|t| t.function.name.as_str()).collect();
     assert!(names.contains(&"a"));
     assert!(names.contains(&"c"));
     assert!(!names.contains(&"b"));
@@ -89,9 +94,9 @@ fn insert_overwrites_same_name() {
     let mut reg = ToolRegistry::new();
     reg.insert(tool("bash"));
     let mut updated = tool("bash");
-    updated.description = "updated".into();
+    updated.function.description = Some("updated".into());
     reg.insert(updated);
     assert_eq!(reg.len(), 1);
     let tools = reg.tools();
-    assert_eq!(tools[0].description, "updated");
+    assert_eq!(tools[0].function.description.as_deref(), Some("updated"));
 }

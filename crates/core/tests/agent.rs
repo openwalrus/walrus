@@ -1,10 +1,10 @@
 //! Tests for Agent execution — step(), run(), run_stream().
 
-use crabllm_core::{FinishReason, FunctionCall, Role, ToolCall, ToolType};
+use crabllm_core::{FinishReason, FunctionCall, Role, ToolCall};
 use crabtalk_core::{
     AgentBuilder, AgentConfig, AgentEvent, AgentStopReason,
     model::{
-        Message, Model,
+        HistoryEntry, Model,
         test_provider::{
             TestProvider, finish_chunk, mixed_chunk, text_chunk, text_chunks, text_response,
             thinking_chunk, tool_chunks, tool_response,
@@ -40,12 +40,12 @@ fn build_agent_no_tools(model: TestProvider) -> crabtalk_core::Agent<TestProvide
 async fn step_text_response_appends_to_history() {
     let model = TestProvider::new(vec![text_response("hello world")]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
     let step = agent.step(&mut history, None).await.unwrap();
 
     assert_eq!(history.len(), 2); // user + assistant
-    assert_eq!(history[1].role, Role::Assistant);
-    assert_eq!(history[1].content, "hello world");
+    assert_eq!(*history[1].role(), Role::Assistant);
+    assert_eq!(history[1].text(), "hello world");
     assert!(step.tool_calls.is_empty());
     assert!(step.tool_results.is_empty());
 }
@@ -67,13 +67,13 @@ async fn step_tool_calls_dispatched_and_appended() {
         }
     });
 
-    let mut history = vec![Message::user("run ls")];
+    let mut history = vec![HistoryEntry::user("run ls")];
     let step = agent.step(&mut history, None).await.unwrap();
 
     assert_eq!(step.tool_calls.len(), 1);
     assert_eq!(step.tool_calls[0].function.name, "bash");
     assert_eq!(step.tool_results.len(), 1);
-    assert_eq!(step.tool_results[0].content, "result for bash");
+    assert_eq!(step.tool_results[0].text(), "result for bash");
     // history: user + assistant(tool_calls) + tool(result)
     assert_eq!(history.len(), 3);
 }
@@ -83,13 +83,13 @@ async fn step_no_tool_sender_returns_error_message() {
     let calls = vec![make_tool_call("bash", "{}")];
     let model = TestProvider::new(vec![tool_response(calls)]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
     let step = agent.step(&mut history, None).await.unwrap();
 
     assert_eq!(step.tool_results.len(), 1);
     assert!(
         step.tool_results[0]
-            .content
+            .text()
             .contains("no tool sender configured")
     );
 }
@@ -99,7 +99,7 @@ async fn step_send_error_propagates() {
     // Empty script — send() will error.
     let model = TestProvider::new(vec![]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
     let result = agent.step(&mut history, None).await;
     assert!(result.is_err());
 }
@@ -110,7 +110,7 @@ async fn step_send_error_propagates() {
 async fn run_stream_text_response() {
     let model = TestProvider::with_chunks(vec![text_chunks("hello")]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -155,7 +155,7 @@ async fn run_stream_tool_call_then_text() {
         }
     });
 
-    let mut history = vec![Message::user("question")];
+    let mut history = vec![HistoryEntry::user("question")];
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
     while let Some(event) = stream.next().await {
@@ -241,7 +241,7 @@ async fn run_stream_multiple_tool_calls_in_one_step() {
         }
     });
 
-    let mut history = vec![Message::user("multi")];
+    let mut history = vec![HistoryEntry::user("multi")];
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
     while let Some(event) = stream.next().await {
@@ -288,7 +288,7 @@ async fn run_stream_max_iterations() {
         }
     });
 
-    let mut history = vec![Message::user("loop")];
+    let mut history = vec![HistoryEntry::user("loop")];
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
     while let Some(event) = stream.next().await {
@@ -307,7 +307,7 @@ async fn run_stream_max_iterations() {
 async fn run_stream_no_content_no_tools_stops_with_no_action() {
     let model = TestProvider::with_chunks(vec![vec![finish_chunk(FinishReason::Stop)]]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -326,7 +326,7 @@ async fn run_stream_no_content_no_tools_stops_with_no_action() {
 async fn run_stream_error_in_stream() {
     let model = TestProvider::with_chunks(vec![]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -350,7 +350,7 @@ async fn run_stream_thinking_delta() {
     ];
     let model = TestProvider::with_chunks(vec![chunks]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("think")];
+    let mut history = vec![HistoryEntry::user("think")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -394,7 +394,7 @@ fn boundary_shape(events: &[AgentEvent]) -> Vec<&'static str> {
 async fn run_stream_text_segment_is_bracketed() {
     let model = TestProvider::with_chunks(vec![text_chunks("hi")]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("ping")];
+    let mut history = vec![HistoryEntry::user("ping")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -426,7 +426,7 @@ async fn run_stream_thinking_then_text_brackets_atomically() {
     ];
     let model = TestProvider::with_chunks(vec![chunks]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("think")];
+    let mut history = vec![HistoryEntry::user("think")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -458,7 +458,7 @@ async fn run_stream_chunk_with_both_text_and_reasoning_does_not_overlap() {
     let chunks = vec![mixed_chunk("a", "b"), finish_chunk(FinishReason::Stop)];
     let model = TestProvider::with_chunks(vec![chunks]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
 
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
@@ -513,7 +513,7 @@ async fn run_stream_text_then_tools_closes_text_before_tools() {
         }
     });
 
-    let mut history = vec![Message::user("q")];
+    let mut history = vec![HistoryEntry::user("q")];
     let mut events: Vec<AgentEvent> = Vec::new();
     let mut stream = std::pin::pin!(agent.run_stream(&mut history, None, None, None));
     while let Some(event) = stream.next().await {
@@ -552,7 +552,7 @@ async fn run_stream_text_then_tools_closes_text_before_tools() {
 async fn run_forwards_events_through_channel() {
     let model = TestProvider::with_chunks(vec![text_chunks("done")]);
     let agent = build_agent_no_tools(model);
-    let mut history = vec![Message::user("hi")];
+    let mut history = vec![HistoryEntry::user("hi")];
     let (tx, mut rx) = mpsc::unbounded_channel();
 
     let response = agent.run(&mut history, tx, None, None).await;

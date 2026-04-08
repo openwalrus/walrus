@@ -70,15 +70,18 @@ impl McpBridge {
             let mut cache = self.tool_cache.lock().await;
             for mcp_tool in &mcp_tools {
                 let ct_tool = convert_tool(mcp_tool);
-                if cache.contains_key(&ct_tool.name) {
-                    tracing::warn!(
+                let tool_name = ct_tool.function.name.clone();
+                use std::collections::btree_map::Entry;
+                match cache.entry(tool_name.clone()) {
+                    Entry::Occupied(_) => tracing::warn!(
                         "MCP tool '{}' from server '{}' conflicts with already-registered tool, skipping",
-                        ct_tool.name,
+                        tool_name,
                         name
-                    );
-                } else {
-                    tool_names.push(ct_tool.name.to_string());
-                    cache.insert(ct_tool.name.to_string(), ct_tool);
+                    ),
+                    Entry::Vacant(e) => {
+                        tool_names.push(tool_name);
+                        e.insert(ct_tool);
+                    }
                 }
             }
         }
@@ -176,20 +179,17 @@ impl McpBridge {
     }
 }
 
-/// Convert an MCP tool to a crabtalk-core Tool.
+/// Convert an MCP tool to a `crabllm_core::Tool` envelope.
 fn convert_tool(mcp_tool: &client::McpTool) -> Tool {
-    let schema_value = mcp_tool
-        .input_schema
-        .clone()
-        .unwrap_or(serde_json::json!({}));
-    let parameters: schemars::Schema =
-        serde_json::from_value(schema_value).unwrap_or_else(|_| schemars::schema_for!(String));
-
+    use wcore::model::{FunctionDef, ToolType};
     Tool {
-        name: mcp_tool.name.clone(),
-        description: mcp_tool.description.clone().unwrap_or_default(),
-        parameters,
-        strict: false,
+        kind: ToolType::Function,
+        function: FunctionDef {
+            name: mcp_tool.name.clone(),
+            description: mcp_tool.description.clone(),
+            parameters: mcp_tool.input_schema.clone(),
+        },
+        strict: None,
     }
 }
 

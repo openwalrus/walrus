@@ -627,18 +627,15 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
             agent: meta.agent,
             messages: messages
                 .into_iter()
-                .filter(|m| {
+                .filter(|e| {
                     !matches!(
-                        m.role,
+                        e.role(),
                         wcore::model::Role::System | wcore::model::Role::Tool
                     )
                 })
-                .map(|m| ConversationMessage {
-                    role: serde_json::to_value(&m.role)
-                        .ok()
-                        .and_then(|v| v.as_str().map(String::from))
-                        .unwrap_or_default(),
-                    content: m.content,
+                .map(|e| ConversationMessage {
+                    role: e.role().as_str().to_owned(),
+                    content: e.text().to_owned(),
                 })
                 .collect(),
         })
@@ -1601,7 +1598,7 @@ fn sum_usage(steps: &[AgentStep]) -> TokenUsage {
     let mut has_reasoning = false;
 
     for step in steps {
-        let u = &step.response.usage;
+        let u = &step.usage;
         prompt += u.prompt_tokens;
         completion += u.completion_tokens;
         total += u.total_tokens;

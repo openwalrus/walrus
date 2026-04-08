@@ -1,6 +1,5 @@
 pub mod ask_user;
 pub mod config;
-pub mod conversation;
 pub mod env;
 pub mod host;
 pub mod mcp;

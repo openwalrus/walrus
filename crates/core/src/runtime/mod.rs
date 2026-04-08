@@ -9,12 +9,12 @@
 use crate::{
     Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason,
     agent::tool::{ToolRegistry, ToolSender},
-    model::{Message, Model, ToolChoice},
+    model::{HistoryEntry, Model, chunk_content, chunk_reasoning, response_content},
     runtime::hook::Hook,
 };
 use anyhow::{Result, bail};
 use async_stream::stream;
-use crabllm_core::Provider;
+use crabllm_core::{ChatCompletionRequest, Message, Provider, Role, ToolChoice};
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{
@@ -348,13 +348,13 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                 let user = conversation
                     .history
                     .iter()
-                    .find(|m| m.role == crate::model::Role::User && !m.auto_injected)
-                    .map(|m| m.content.clone());
+                    .find(|e| *e.role() == Role::User && !e.auto_injected)
+                    .map(|e| e.text().to_owned());
                 let assistant = conversation
                     .history
                     .iter()
-                    .find(|m| m.role == crate::model::Role::Assistant)
-                    .map(|m| m.content.clone());
+                    .find(|e| *e.role() == Role::Assistant)
+                    .map(|e| e.text().to_owned());
                 (user, assistant)
             };
 
@@ -373,12 +373,27 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                  User: {user_snippet}\nAssistant: {assistant_snippet}"
             );
 
-            let request =
-                crate::model::Request::new(model_name).with_messages(vec![Message::user(&prompt)]);
+            let request = ChatCompletionRequest {
+                model: model_name,
+                messages: vec![Message::user(&prompt)],
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stream: None,
+                stop: None,
+                tools: None,
+                tool_choice: None,
+                frequency_penalty: None,
+                presence_penalty: None,
+                seed: None,
+                user: None,
+                reasoning_effort: None,
+                extra: Default::default(),
+            };
 
-            match model.send(&request).await {
+            match model.send_ct(request).await {
                 Ok(response) => {
-                    if let Some(title) = response.content() {
+                    if let Some(title) = response_content(&response) {
                         let title = title.trim().trim_matches('"').to_string();
                         if !title.is_empty() {
                             let mut conversation = conversation_mutex.lock().await;
@@ -407,15 +422,15 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
     ) -> String {
         let content = self.hook.preprocess(&conversation.agent, content);
         if sender.is_empty() {
-            conversation.history.push(Message::user(&content));
+            conversation.history.push(HistoryEntry::user(&content));
         } else {
             conversation
                 .history
-                .push(Message::user_with_sender(&content, sender));
+                .push(HistoryEntry::user_with_sender(&content, sender));
         }
 
-        // Strip previous auto-injected messages to avoid accumulation.
-        conversation.history.retain(|m| !m.auto_injected);
+        // Strip previous auto-injected entries to avoid accumulation.
+        conversation.history.retain(|e| !e.auto_injected);
 
         let agent_name = conversation.agent.clone();
         let recall_msgs =
@@ -423,8 +438,8 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                 .on_before_run(&agent_name, conversation.id, &conversation.history);
         if !recall_msgs.is_empty() {
             let insert_pos = conversation.history.len().saturating_sub(1);
-            for (i, msg) in recall_msgs.into_iter().enumerate() {
-                conversation.history.insert(insert_pos + i, msg);
+            for (i, entry) in recall_msgs.into_iter().enumerate() {
+                conversation.history.insert(insert_pos + i, entry);
             }
         }
         agent_name
@@ -630,24 +645,24 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
             // Add user message to the primary's history.
             let content = self.hook.preprocess(&conversation.agent, &content);
             if sender.is_empty() {
-                conversation.history.push(Message::user(&content));
+                conversation.history.push(HistoryEntry::user(&content));
             } else {
                 conversation
                     .history
-                    .push(Message::user_with_sender(&content, &sender));
+                    .push(HistoryEntry::user_with_sender(&content, &sender));
             }
 
-            // Strip old auto-injected messages.
-            conversation.history.retain(|m| !m.auto_injected);
+            // Strip old auto-injected entries.
+            conversation.history.retain(|e| !e.auto_injected);
 
             // Inject guest framing as auto_injected so it gets stripped next run.
-            let mut framing = Message::system(format!(
+            let framing = HistoryEntry::system(format!(
                 "You are joining a conversation as a guest. The primary agent is '{}'. \
                  Messages wrapped in <from agent=\"...\"> tags are from other agents. \
                  Respond as yourself to the user's latest message.",
                 conversation.agent
-            ));
-            framing.auto_injected = true;
+            ))
+            .auto_injected();
             let insert_pos = conversation.history.len().saturating_sub(1);
             conversation.history.insert(insert_pos, framing);
 
@@ -661,25 +676,43 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
             if !guest_agent.config.system_prompt.is_empty() {
                 messages.push(Message::system(&guest_agent.config.system_prompt));
             }
-            messages.extend(conversation.history.iter().map(|m| m.with_agent_tag()));
+            messages.extend(conversation.history.iter().map(|e| e.to_wire_message()));
 
-            let request = crate::model::Request::new(model_name.clone())
-                .with_messages(messages)
-                .with_think(guest_agent.config.thinking);
+            let request = ChatCompletionRequest {
+                model: model_name.clone(),
+                messages,
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                stream: None,
+                stop: None,
+                tools: None,
+                tool_choice: None,
+                frequency_penalty: None,
+                presence_penalty: None,
+                seed: None,
+                user: None,
+                reasoning_effort: if guest_agent.config.thinking {
+                    Some("high".to_string())
+                } else {
+                    None
+                },
+                extra: Default::default(),
+            };
 
             // Stream the response token-by-token — text only, no tool dispatch.
-            let mut response_content = String::new();
+            let mut response_text = String::new();
             let mut reasoning = String::new();
             {
-                let mut stream = std::pin::pin!(self.model.stream(request));
+                let mut stream = std::pin::pin!(self.model.stream_ct(request));
                 while let Some(result) = stream.next().await {
                     match result {
                         Ok(chunk) => {
-                            if let Some(text) = chunk.content() {
-                                response_content.push_str(text);
+                            if let Some(text) = chunk_content(&chunk) {
+                                response_text.push_str(text);
                                 yield AgentEvent::TextDelta(text.to_string());
                             }
-                            if let Some(text) = chunk.reasoning_content() {
+                            if let Some(text) = chunk_reasoning(&chunk) {
                                 reasoning.push_str(text);
                                 yield AgentEvent::ThinkingDelta(text.to_string());
                             }
@@ -704,9 +737,9 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
             } else {
                 Some(reasoning)
             };
-            let mut response_msg = Message::assistant(&response_content, reasoning, None);
-            response_msg.agent = guest.clone();
-            conversation.history.push(response_msg);
+            let mut response_entry = HistoryEntry::assistant(&response_text, reasoning, None);
+            response_entry.agent = guest.clone();
+            conversation.history.push(response_entry);
 
             // Persist.
             conversation.uptime_secs += run_start.elapsed().as_secs();
@@ -719,7 +752,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
             }
 
             yield AgentEvent::Done(AgentResponse {
-                final_response: Some(response_content),
+                final_response: Some(response_text),
                 iterations: 1,
                 stop_reason: AgentStopReason::TextResponse,
                 steps: vec![],

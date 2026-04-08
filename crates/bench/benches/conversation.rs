@@ -2,15 +2,15 @@
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::{io::Write, path::Path};
-use wcore::{Conversation, model::Message};
+use wcore::{Conversation, model::HistoryEntry};
 
-fn generate_messages(n: usize) -> Vec<Message> {
+fn generate_messages(n: usize) -> Vec<HistoryEntry> {
     (0..n)
         .map(|i| {
             if i % 2 == 0 {
-                Message::user(format!("message {i}"))
+                HistoryEntry::user(format!("message {i}"))
             } else {
-                Message::assistant(format!("response {i}"), None, None)
+                HistoryEntry::assistant(format!("response {i}"), None, None)
             }
         })
         .collect()

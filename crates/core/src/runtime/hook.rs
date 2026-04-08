@@ -5,7 +5,7 @@
 //! methods at the appropriate lifecycle points. `DaemonEnv` composes
 //! multiple Hook implementations by delegating to each.
 
-use crate::{AgentConfig, AgentEvent, agent::tool::ToolRegistry, model::Message};
+use crate::{AgentConfig, AgentEvent, agent::tool::ToolRegistry, model::HistoryEntry};
 use std::future::Future;
 
 /// Lifecycle backend for agent building, event observation, and tool registration.
@@ -62,8 +62,8 @@ pub trait Hook: Send + Sync {
         &self,
         _agent: &str,
         _conversation_id: u64,
-        _history: &[Message],
-    ) -> Vec<Message> {
+        _history: &[HistoryEntry],
+    ) -> Vec<HistoryEntry> {
         Vec::new()
     }
 }

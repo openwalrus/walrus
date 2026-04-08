@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use wcore::{
     AgentBuilder, AgentConfig,
     model::{
-        Message, Model,
+        HistoryEntry, Model,
         test_provider::{TestProvider, text_chunks, tool_chunks},
     },
 };
@@ -38,7 +38,7 @@ fn bench_agent_no_tools(c: &mut Criterion) {
                 let agent = AgentBuilder::new(Model::new(provider))
                     .config(AgentConfig::new("bench"))
                     .build();
-                let history = vec![Message::user("hi")];
+                let history = vec![HistoryEntry::user("hi")];
                 (agent, history)
             },
             |(agent, mut history)| {
@@ -69,7 +69,7 @@ fn bench_agent_with_tools(c: &mut Criterion) {
                     .config(AgentConfig::new("bench"))
                     .tool_tx(tool_tx)
                     .build();
-                let history = vec![Message::user("hi")];
+                let history = vec![HistoryEntry::user("hi")];
                 (agent, history, tool_rx)
             },
             |(agent, mut history, mut tool_rx)| {

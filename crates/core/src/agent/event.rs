@@ -6,7 +6,8 @@
 //! - [`AgentResponse`]: final result after a full agent run.
 //! - [`AgentStopReason`]: why the agent stopped.
 
-use crate::model::{Message, Response, ToolCall};
+use crate::model::HistoryEntry;
+use crabllm_core::{FinishReason, Message, ToolCall, Usage};
 
 /// A fine-grained event emitted during agent execution.
 ///
@@ -57,14 +58,24 @@ pub enum AgentEvent {
 }
 
 /// Data record of one LLM round (one model call + tool dispatch).
+///
+/// Carries only what downstream consumers actually read: the assistant
+/// message, token usage, the finish reason, and the tool calls / results.
+/// No synthesized wire response — the old `AgentStep.response: Response`
+/// field was a parallel type that only served to hold `usage` and the
+/// final text content. Those two fields are now on the step directly.
 #[derive(Debug, Clone)]
 pub struct AgentStep {
-    /// The model's response for this step.
-    pub response: Response,
+    /// The assistant message produced by this step.
+    pub message: Message,
+    /// Token usage reported by the provider (zero if not reported).
+    pub usage: Usage,
+    /// Why the model stopped generating (if reported).
+    pub finish_reason: Option<FinishReason>,
     /// Tool calls made in this step (if any).
     pub tool_calls: Vec<ToolCall>,
-    /// Results from tool executions as messages.
-    pub tool_results: Vec<Message>,
+    /// Results from tool executions as history entries.
+    pub tool_results: Vec<HistoryEntry>,
 }
 
 /// Final response from a complete agent run.

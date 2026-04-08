@@ -403,7 +403,7 @@ fn format_usage(response: &wcore::AgentResponse) -> String {
     let mut completion = 0u32;
     let mut cache_hit = 0u32;
     for step in &response.steps {
-        let u = &step.response.usage;
+        let u = &step.usage;
         prompt += u.prompt_tokens;
         completion += u.completion_tokens;
         if let Some(v) = u.prompt_cache_hit_tokens {

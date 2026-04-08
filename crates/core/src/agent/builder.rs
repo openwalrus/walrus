@@ -2,9 +2,9 @@
 
 use crate::{
     agent::{Agent, config::AgentConfig, tool::ToolSender},
-    model::{Model, Tool},
+    model::Model,
 };
-use crabllm_core::Provider;
+use crabllm_core::{Provider, Tool};
 
 /// Fluent builder for [`Agent<P>`].
 ///

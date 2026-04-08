@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
     sync::RwLock,
 };
-use wcore::model::{Message, Role};
+use wcore::model::{HistoryEntry, Role};
 
 pub mod bm25;
 pub mod entry;
@@ -157,18 +157,18 @@ impl Memory {
     }
 
     /// Auto-recall from last user message, injected before each turn.
-    pub fn before_run(&self, history: &[Message]) -> Vec<Message> {
+    pub fn before_run(&self, history: &[HistoryEntry]) -> Vec<HistoryEntry> {
         let last_user = history
             .iter()
             .rev()
-            .find(|m| m.role == Role::User && !m.content.is_empty());
+            .find(|e| *e.role() == Role::User && !e.text().is_empty());
 
-        let Some(msg) = last_user else {
+        let Some(entry) = last_user else {
             return Vec::new();
         };
 
-        let query: String = msg
-            .content
+        let query: String = entry
+            .text()
             .split_whitespace()
             .take(8)
             .collect::<Vec<_>>()
@@ -184,12 +184,7 @@ impl Memory {
             return Vec::new();
         }
 
-        vec![Message {
-            role: Role::User,
-            content: format!("<recall>\n{result}\n</recall>"),
-            auto_injected: true,
-            ..Default::default()
-        }]
+        vec![HistoryEntry::user(format!("<recall>\n{result}\n</recall>")).auto_injected()]
     }
 
     fn migrate_legacy(&self, dir: &Path) {
