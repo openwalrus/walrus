@@ -1,5 +1,6 @@
 //! Agent loop benchmarks: pure overhead with and without tool dispatch.
 
+use crabllm_core::{FunctionCall, ToolCall};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use futures_util::StreamExt;
 use std::pin::pin;
@@ -7,47 +8,20 @@ use tokio::sync::mpsc;
 use wcore::{
     AgentBuilder, AgentConfig,
     model::{
-        Choice, FinishReason, FunctionCall, Message, StreamChunk, ToolCall, test_model::TestModel,
+        Message, Model,
+        test_provider::{TestProvider, text_chunks, tool_chunks},
     },
 };
 
-fn text_chunks(text: &str) -> Vec<StreamChunk> {
-    let mut chunks: Vec<StreamChunk> = text
-        .chars()
-        .map(|c| StreamChunk::text(c.to_string()))
-        .collect();
-    chunks.push(StreamChunk {
-        choices: vec![Choice {
-            finish_reason: Some(FinishReason::Stop),
-            ..Default::default()
-        }],
-        ..Default::default()
-    });
-    chunks
-}
-
-fn tool_chunks(calls: Vec<ToolCall>) -> Vec<StreamChunk> {
-    vec![
-        StreamChunk::tool(&calls),
-        StreamChunk {
-            choices: vec![Choice {
-                finish_reason: Some(FinishReason::ToolCalls),
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
-    ]
-}
-
 fn make_tool_call(name: &str, args: &str) -> ToolCall {
     ToolCall {
+        index: Some(0),
         id: format!("call_{name}"),
-        index: 0,
-        call_type: "function".into(),
         function: FunctionCall {
             name: name.into(),
             arguments: args.into(),
         },
+        ..Default::default()
     }
 }
 
@@ -60,8 +34,8 @@ fn bench_agent_no_tools(c: &mut Criterion) {
     c.bench_function("agent_no_tools", |b| {
         b.iter_batched(
             || {
-                let model = TestModel::with_chunks(vec![text_chunks("done")]);
-                let agent = AgentBuilder::new(model)
+                let provider = TestProvider::with_chunks(vec![text_chunks("done")]);
+                let agent = AgentBuilder::new(Model::new(provider))
                     .config(AgentConfig::new("bench"))
                     .build();
                 let history = vec![Message::user("hi")];
@@ -88,10 +62,10 @@ fn bench_agent_with_tools(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let call = make_tool_call("bash", r#"{"command":"ls"}"#);
-                let model =
-                    TestModel::with_chunks(vec![tool_chunks(vec![call]), text_chunks("done")]);
+                let provider =
+                    TestProvider::with_chunks(vec![tool_chunks(vec![call]), text_chunks("done")]);
                 let (tool_tx, tool_rx) = mpsc::unbounded_channel();
-                let agent = AgentBuilder::new(model)
+                let agent = AgentBuilder::new(Model::new(provider))
                     .config(AgentConfig::new("bench"))
                     .tool_tx(tool_tx)
                     .build();

@@ -62,9 +62,9 @@ Client (CLI/Telegram/etc) → UDS/TCP → Daemon event loop
 
 ## Key Types
 
-- `Agent<M: Model>` — immutable definition + execution (step/run/run_stream)
+- `Agent<P: Provider>` — immutable definition + execution (step/run/run_stream)
 - `Session` — conversation history container
-- `Runtime<M, H>` — agents + sessions + tool dispatch
+- `Runtime<P, H>` — agents + sessions + tool dispatch
 - `Env<B>` — engine environment: skills, MCP, memory, tool routing
 - `Host` — trait for server-specific tools (ask_user, delegate, session CWD)
 - `DaemonEnv` — type alias: `Env<DaemonHost>`, adds event broadcasting

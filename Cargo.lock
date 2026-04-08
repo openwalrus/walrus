@@ -479,19 +479,21 @@ dependencies = [
 
 [[package]]
 name = "crabllm-core"
-version = "0.0.12"
+version = "0.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "620270d9c0241a55b29fddbcdc8279c2f9c86f3800298e75bdb5df4c59dc380c"
+checksum = "15dfbcde036a7281b4c1ec4b7e6f4a33d7b77bd9c02154c5a8b5aaa9f719ebb6"
 dependencies = [
+ "bytes",
+ "futures-core",
  "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "crabllm-provider"
-version = "0.0.12"
+version = "0.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "663cb4383ca791ec38a3c57dcf44ecd690aef0e2f3c19dd3b322cc53f33b3406"
+checksum = "e1c3ef67599433913f574f8026c35451a6c94bd816061a1037a53b240a285157"
 dependencies = [
  "bytes",
  "crabllm-core",
@@ -539,6 +541,7 @@ dependencies = [
 name = "crabtalk-bench"
 version = "0.0.19"
 dependencies = [
+ "crabllm-core",
  "crabtalk-core",
  "crabtalk-runtime",
  "criterion",
@@ -606,16 +609,19 @@ version = "0.0.19"
 dependencies = [
  "anyhow",
  "async-stream",
+ "bytes",
  "chrono",
+ "crabllm-core",
+ "crabllm-provider",
  "crabtalk-command",
  "crabtalk-core",
- "crabtalk-model",
  "crabtalk-plugins",
  "crabtalk-runtime",
  "crabtalk-transport",
  "cron",
  "futures-core",
  "futures-util",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "tokio",
@@ -637,25 +643,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml",
- "tracing",
-]
-
-[[package]]
-name = "crabtalk-model"
-version = "0.0.19"
-dependencies = [
- "anyhow",
- "async-stream",
- "crabllm-core",
- "crabllm-provider",
- "crabtalk-core",
- "futures-core",
- "futures-util",
- "rand 0.9.2",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
- "tokio",
  "tracing",
 ]
 
@@ -701,7 +688,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "crabtalk-core",
- "crabtalk-model",
  "reqwest 0.13.2",
  "schemars 1.2.1",
  "serde",

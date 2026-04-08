@@ -38,7 +38,6 @@ pub trait Model: Clone + Send + Sync {
     async fn send(&self, request: &Request) -> Result<Response>;
     fn stream(&self, request: Request) -> impl Stream<Item = Result<StreamChunk>>;
     fn context_limit(&self, model: &str) -> usize;
-    fn active_model(&self) -> String;
 }
 ```
 

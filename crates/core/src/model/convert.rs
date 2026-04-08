@@ -9,13 +9,14 @@ use crabllm_core::{
     Delta as CtDelta, FunctionCall as CtFunctionCall, FunctionDef, Message as CtMessage,
     Tool as CtTool, ToolCall as CtToolCall, ToolType,
 };
-use wcore::model::{
+
+use crate::model::{
     Choice, CompletionMeta, Delta, FunctionCall, Message, Request, Response, StreamChunk, Tool,
     ToolCall,
 };
 
 /// Convert a wcore Request into a crabtalk ChatCompletionRequest.
-pub fn to_ct_request(req: &Request) -> ChatCompletionRequest {
+pub(crate) fn to_ct_request(req: &Request) -> ChatCompletionRequest {
     ChatCompletionRequest {
         model: req.model.to_string(),
         messages: req.messages.iter().map(to_ct_message).collect(),
@@ -43,11 +44,22 @@ pub fn to_ct_request(req: &Request) -> ChatCompletionRequest {
 }
 
 fn to_ct_message(msg: &Message) -> CtMessage {
-    // Always include `content` — the OpenAI API requires the field on
-    // every message. Assistant messages accept `null`; all other roles
-    // require a string.
+    let has_tool_calls = !msg.tool_calls.is_empty();
+
+    // OpenAI spec: every message must carry `content` as a field, and an
+    // assistant message must have at least one of `content` or `tool_calls`
+    // set to a non-null value. `content: null` is only valid on an
+    // assistant message that also has `tool_calls`. OpenAI itself silently
+    // accepts the degenerate `{"role":"assistant","content":null}` shape,
+    // but stricter OpenAI-compatible providers (deepseek and others)
+    // reject it with HTTP 400 "content or tool_calls must be set".
+    //
+    // So: use `Null` only for the assistant-with-tool-calls-no-text case.
+    // Everything else (non-assistant empty, assistant empty with no tool
+    // calls) gets an empty string — strictly spec-compliant and accepted
+    // by every provider we've tested.
     let content = Some(if msg.content.is_empty() {
-        if msg.role == crabllm_core::Role::Assistant {
+        if msg.role == crabllm_core::Role::Assistant && has_tool_calls {
             serde_json::Value::Null
         } else {
             serde_json::Value::String(String::new())
@@ -56,10 +68,10 @@ fn to_ct_message(msg: &Message) -> CtMessage {
         serde_json::Value::String(msg.content.clone())
     });
 
-    let tool_calls = if msg.tool_calls.is_empty() {
-        None
-    } else {
+    let tool_calls = if has_tool_calls {
         Some(msg.tool_calls.iter().map(to_ct_tool_call).collect())
+    } else {
+        None
     };
 
     let tool_call_id = if msg.tool_call_id.is_empty() {
@@ -116,7 +128,7 @@ fn to_ct_tool_call(tc: &ToolCall) -> CtToolCall {
 }
 
 /// Convert a crabtalk ChatCompletionResponse into a wcore Response.
-pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
+pub(crate) fn from_ct_response(resp: ChatCompletionResponse) -> Response {
     let meta = CompletionMeta {
         id: resp.id,
         object: resp.object,
@@ -141,7 +153,7 @@ pub fn from_ct_response(resp: ChatCompletionResponse) -> Response {
 }
 
 /// Convert a crabtalk ChatCompletionChunk into a wcore StreamChunk.
-pub fn from_ct_chunk(chunk: ChatCompletionChunk) -> StreamChunk {
+pub(crate) fn from_ct_chunk(chunk: ChatCompletionChunk) -> StreamChunk {
     let meta = CompletionMeta {
         id: chunk.id,
         object: chunk.object,

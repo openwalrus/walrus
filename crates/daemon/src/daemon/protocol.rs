@@ -2,6 +2,7 @@
 
 use crate::{cron::CronEntry, daemon::Daemon, event_bus::EventSubscription};
 use anyhow::{Context, Result};
+use crabllm_core::Provider;
 use futures_util::{StreamExt, pin_mut};
 use runtime::host::Host;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use wcore::protocol::{
 };
 use wcore::{AgentEvent, AgentStep};
 
-impl<H: Host + 'static> Server for Daemon<H> {
+impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
     async fn send(&self, req: SendMsg) -> Result<SendResponse> {
         let rt: Arc<_> = self.runtime.read().await.clone();
         let sender = req.sender.as_deref().unwrap_or("");
@@ -47,10 +48,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let response = rt
             .send_to(conversation_id, &req.content, sender, tool_choice)
             .await?;
-        let provider = rt
-            .model
-            .provider_name_for(&response.model)
-            .unwrap_or_default();
+        let provider = self.provider_name_for_model(&response.model);
         Ok(SendResponse {
             agent: req.agent,
             content: response.final_response.unwrap_or_default(),
@@ -166,10 +164,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
                         } else {
                             String::new()
                         };
-                        let provider = rt
-                            .model
-                            .provider_name_for(&resp.model)
-                            .unwrap_or_default();
+                        let provider = self.provider_name_for_model(&resp.model);
                         yield StreamEvent { event: Some(stream_event::Event::End(StreamEnd {
                             agent: responding_agent.clone(),
                             error,
@@ -260,7 +255,11 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let active = rt.conversation_count().await;
         let agents = rt.agents().len() as u32;
         let uptime = self.started_at.elapsed().as_secs();
-        let active_model = rt.model.active_model_name().unwrap_or_default();
+        let active_model = self
+            .load_config()
+            .ok()
+            .and_then(|c| c.system.crab.model)
+            .unwrap_or_default();
         Ok(DaemonStats {
             uptime_secs: uptime,
             active_conversations: active as u32,
@@ -447,18 +446,15 @@ impl<H: Host + 'static> Server for Daemon<H> {
     }
 
     async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
-        let rt = self.runtime.read().await.clone();
         let config = self.load_config()?;
         let (manifest, _) = self.resolve_manifests()?;
+        let active_model = config.system.crab.model.clone().unwrap_or_default();
         Ok(config
             .provider
             .iter()
             .map(|(name, def)| {
                 let cfg_json = serde_json::to_string(def).unwrap_or_default();
-                let active = rt
-                    .model
-                    .active_model_name()
-                    .is_ok_and(|m| rt.model.provider_name_for(&m).is_some_and(|p| p == *name));
+                let active = !active_model.is_empty() && def.models.contains(&active_model);
                 let enabled = !manifest.disabled.providers.contains(name);
                 ProviderInfo {
                     name: name.clone(),
@@ -785,7 +781,7 @@ impl<H: Host + 'static> Server for Daemon<H> {
         let daemon_config = self.load_config()?;
         let mut all_providers = daemon_config.provider;
         all_providers.insert(name.clone(), def.clone());
-        model::validate_providers(&all_providers)?;
+        crate::config::validate_providers(&all_providers)?;
 
         let toml_value = toml::to_string(&def).context("failed to serialize provider to TOML")?;
         let provider_doc: DocumentMut = toml_value
@@ -823,10 +819,12 @@ impl<H: Host + 'static> Server for Daemon<H> {
             .get(&name)
             .and_then(|def| serde_json::to_string(def).ok())
             .unwrap_or_default();
-        let rt = self.runtime.read().await.clone();
-        let active = rt.model.provider_name_for(&name).is_some_and(|n| n == name);
-        let config = self.load_config()?;
-        let enabled = !config.disabled.providers.contains(&name);
+        let active_model = loaded_config.system.crab.model.clone().unwrap_or_default();
+        let active = loaded_config
+            .provider
+            .get(&name)
+            .is_some_and(|def| !active_model.is_empty() && def.models.contains(&active_model));
+        let enabled = !loaded_config.disabled.providers.contains(&name);
         Ok(ProviderInfo {
             name,
             active,
@@ -952,9 +950,8 @@ impl<H: Host + 'static> Server for Daemon<H> {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        let rt = self.runtime.read().await.clone();
         let config = self.load_config()?;
-        let active_model = rt.model.active_model_name().unwrap_or_default();
+        let active_model = config.system.crab.model.clone().unwrap_or_default();
 
         let mut models = Vec::new();
         for (provider_name, def) in &config.provider {
@@ -978,15 +975,16 @@ impl<H: Host + 'static> Server for Daemon<H> {
 
         // Refuse to disable the active model's provider.
         if !enabled && kind == ResourceKind::Provider {
-            let rt = self.runtime.read().await.clone();
-            if let Ok(active) = rt.model.active_model_name()
-                && rt
-                    .model
-                    .provider_name_for(&active)
-                    .is_some_and(|p| p == name)
+            let config = self.load_config()?;
+            let active_model = config.system.crab.model.clone().unwrap_or_default();
+            if !active_model.is_empty()
+                && config
+                    .provider
+                    .get(&name)
+                    .is_some_and(|def| def.models.contains(&active_model))
             {
                 anyhow::bail!(
-                    "cannot disable provider '{name}' — it serves the active model '{active}'"
+                    "cannot disable provider '{name}' — it serves the active model '{active_model}'"
                 );
             }
         }
@@ -1180,10 +1178,25 @@ fn find_binary(name: &str) -> Result<std::path::PathBuf> {
     anyhow::bail!("binary '{name}' not found in PATH or ~/.cargo/bin")
 }
 
-impl<H: Host + 'static> Daemon<H> {
+impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
     /// Load the current `DaemonConfig` from disk.
     fn load_config(&self) -> Result<crate::DaemonConfig> {
         crate::DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))
+    }
+
+    /// Look up which provider name serves the given model name, by reading
+    /// the on-disk config. Returns an empty string if not found or on error.
+    /// Used by `send` / `stream_to` to attribute responses to a provider.
+    fn provider_name_for_model(&self, model: &str) -> String {
+        self.load_config()
+            .ok()
+            .and_then(|c| {
+                c.provider
+                    .iter()
+                    .find(|(_, def)| def.models.iter().any(|m| m == model))
+                    .map(|(name, _)| name.clone())
+            })
+            .unwrap_or_default()
     }
 
     /// Resolve manifests and apply disabled items from config.toml.

@@ -15,6 +15,7 @@ use anyhow::Result;
 use async_stream::stream;
 pub use builder::AgentBuilder;
 pub use config::AgentConfig;
+use crabllm_core::Provider;
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -39,23 +40,24 @@ fn last_sender(history: &[Message]) -> String {
 
 /// An immutable agent definition.
 ///
-/// Generic over `M: Model` — stores the model provider alongside config,
-/// tool schemas, and an optional sender for tool dispatch. Conversation
-/// history is owned externally and passed into execution methods.
-/// Callers drive execution via `step()` (single LLM round), `run()` (loop to
-/// completion), or `run_stream()` (yields events as a stream).
-pub struct Agent<M: Model> {
+/// Generic over `P: crabllm_core::Provider` — holds a wcore-typed `Model<P>`
+/// wrapper alongside config, tool schemas, and an optional sender for tool
+/// dispatch. Conversation history is owned externally and passed into
+/// execution methods. Callers drive execution via `step()` (single LLM
+/// round), `run()` (loop to completion), or `run_stream()` (yields events
+/// as a stream).
+pub struct Agent<P: Provider + 'static> {
     /// Agent configuration (name, prompt, model, limits, tool_choice).
     pub config: AgentConfig,
-    /// The model provider for LLM calls.
-    model: M,
+    /// The model wrapper for LLM calls.
+    model: Model<P>,
     /// Tool schemas advertised to the LLM. Set once at build time.
     tools: Vec<Tool>,
     /// Sender for dispatching tool calls to the runtime. None = no tools.
     tool_tx: Option<ToolSender>,
 }
 
-impl<M: Model + Clone> Clone for Agent<M> {
+impl<P: Provider + 'static> Clone for Agent<P> {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
@@ -66,13 +68,16 @@ impl<M: Model + Clone> Clone for Agent<M> {
     }
 }
 
-impl<M: Model> Agent<M> {
-    /// Resolve the model name: explicit config override, or the active model.
+impl<P: Provider + 'static> Agent<P> {
+    /// Resolve the model name from agent config.
+    ///
+    /// `config.model` is filled at config load time (defaulting from
+    /// `system.crab.model` when an agent doesn't set its own), so this is
+    /// always `Some` at runtime. The `unwrap_or_default` here is purely
+    /// defensive — a missing model would surface as an empty model name in
+    /// the request, which the registry will reject with a clear error.
     fn model_name(&self) -> String {
-        self.config
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.active_model())
+        self.config.model.clone().unwrap_or_default()
     }
 
     /// Build a request from config state (system prompt + history + tool schemas).

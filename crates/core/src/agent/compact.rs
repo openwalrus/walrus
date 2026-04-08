@@ -1,21 +1,18 @@
 //! Context compaction — summarize conversation history and replace it.
 
-use crate::model::{Message, Model, Request, Role};
+use crate::model::{Message, Request, Role};
+use crabllm_core::Provider;
 
 pub(crate) const COMPACT_PROMPT: &str = include_str!("../../prompts/compact.md");
 
-impl<M: Model> super::Agent<M> {
+impl<P: Provider + 'static> super::Agent<P> {
     /// Summarize the conversation history using the LLM.
     ///
     /// Builds the base compact prompt, lets the `compact_hook` (if any) enrich
     /// it, then sends the history with the enriched prompt as system message.
     /// Returns the summary text, or `None` if the model produces no content.
     pub async fn compact(&self, history: &[Message]) -> Option<String> {
-        let model_name = self
-            .config
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.active_model());
+        let model_name = self.config.model.clone().unwrap_or_default();
 
         let prompt = COMPACT_PROMPT.to_owned();
 

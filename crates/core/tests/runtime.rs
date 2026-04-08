@@ -1,6 +1,6 @@
 //! Tests for Runtime — agent registry, conversation management, and execution.
 //!
-//! Uses the `()` Hook (no-op) and TestModel.
+//! Uses the `()` Hook (no-op) and TestProvider.
 //!
 //! Note: conversation operations write to ~/.crabtalk/sessions/ via the global
 //! CONVERSATIONS_DIR path. This is a known limitation — the LazyLock global
@@ -8,29 +8,23 @@
 
 use crabtalk_core::{
     AgentConfig, AgentEvent, AgentStopReason, Runtime,
-    model::{Choice, FinishReason, StreamChunk, test_model::TestModel},
+    model::{
+        Model,
+        test_provider::{TestProvider, text_chunks},
+    },
 };
 use futures_util::StreamExt;
 
-fn text_chunks(text: &str) -> Vec<StreamChunk> {
-    vec![
-        StreamChunk::text(text.into()),
-        StreamChunk {
-            choices: vec![Choice {
-                finish_reason: Some(FinishReason::Stop),
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
-    ]
+/// Build a `Runtime` from a `TestProvider`, wrapping the provider in `Model<P>`.
+fn runtime(provider: TestProvider) -> impl std::future::Future<Output = Runtime<TestProvider, ()>> {
+    Runtime::new(Model::new(provider), (), None)
 }
 
 // --- Agent registry ---
 
 #[tokio::test]
 async fn add_agent_and_retrieve() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     assert!(runtime.agent("crab").is_some());
@@ -40,8 +34,7 @@ async fn add_agent_and_retrieve() {
 
 #[tokio::test]
 async fn agents_returns_all() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     runtime.add_agent(AgentConfig::new("a"));
     runtime.add_agent(AgentConfig::new("b"));
 
@@ -53,8 +46,7 @@ async fn agents_returns_all() {
 
 #[tokio::test]
 async fn register_and_unregister_tool() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     let tool = crabtalk_core::model::Tool {
         name: "bash".into(),
         description: "run commands".into(),
@@ -70,8 +62,7 @@ async fn register_and_unregister_tool() {
 
 #[tokio::test]
 async fn create_conversation_requires_registered_agent() {
-    let model = TestModel::with_chunks(vec![]);
-    let runtime = Runtime::new(model, (), None).await;
+    let runtime = runtime(TestProvider::with_chunks(vec![])).await;
     let err = runtime
         .create_conversation("nonexistent", "user")
         .await
@@ -81,8 +72,7 @@ async fn create_conversation_requires_registered_agent() {
 
 #[tokio::test]
 async fn create_and_close_conversation() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     let id = runtime.create_conversation("crab", "user").await.unwrap();
@@ -95,8 +85,7 @@ async fn create_and_close_conversation() {
 
 #[tokio::test]
 async fn conversations_lists_all() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     runtime.create_conversation("crab", "test-a").await.unwrap();
@@ -108,8 +97,7 @@ async fn conversations_lists_all() {
 
 #[tokio::test]
 async fn get_or_create_conversation_returns_existing() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     let id1 = runtime
@@ -126,8 +114,7 @@ async fn get_or_create_conversation_returns_existing() {
 
 #[tokio::test]
 async fn get_or_create_conversation_rejects_unknown_agent() {
-    let model = TestModel::with_chunks(vec![]);
-    let runtime = Runtime::new(model, (), None).await;
+    let runtime = runtime(TestProvider::with_chunks(vec![])).await;
     let err = runtime
         .get_or_create_conversation("ghost", "user")
         .await
@@ -137,15 +124,14 @@ async fn get_or_create_conversation_rejects_unknown_agent() {
 
 #[tokio::test]
 async fn transfer_conversations_moves_all() {
-    let model = TestModel::with_chunks(vec![]);
-    let mut runtime1 = Runtime::new(model.clone(), (), None).await;
+    let mut runtime1 = runtime(TestProvider::with_chunks(vec![])).await;
     runtime1.add_agent(AgentConfig::new("crab"));
     let id = runtime1
         .create_conversation("crab", "test-xfer")
         .await
         .unwrap();
 
-    let mut runtime2 = Runtime::new(model, (), None).await;
+    let mut runtime2 = runtime(TestProvider::with_chunks(vec![])).await;
     runtime2.add_agent(AgentConfig::new("crab"));
     runtime1.transfer_conversations(&mut runtime2).await;
 
@@ -157,8 +143,8 @@ async fn transfer_conversations_moves_all() {
 
 #[tokio::test]
 async fn send_to_returns_response() {
-    let model = TestModel::with_chunks(vec![text_chunks("hello back")]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let provider = TestProvider::with_chunks(vec![text_chunks("hello back")]);
+    let mut runtime = runtime(provider).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     let conversation_id = runtime
@@ -176,19 +162,18 @@ async fn send_to_returns_response() {
 
 #[tokio::test]
 async fn send_to_nonexistent_conversation_errors() {
-    let model = TestModel::with_chunks(vec![]);
-    let runtime = Runtime::new(model, (), None).await;
+    let runtime = runtime(TestProvider::with_chunks(vec![])).await;
     let err = runtime.send_to(999, "hi", "", None).await.unwrap_err();
     assert!(err.to_string().contains("not found"));
 }
 
 #[tokio::test]
 async fn send_to_appends_to_history() {
-    let model = TestModel::with_chunks(vec![
+    let provider = TestProvider::with_chunks(vec![
         text_chunks("first reply"),
         text_chunks("second reply"),
     ]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let mut runtime = runtime(provider).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     let conversation_id = runtime
@@ -212,8 +197,8 @@ async fn send_to_appends_to_history() {
 
 #[tokio::test]
 async fn stream_to_yields_correct_content() {
-    let model = TestModel::with_chunks(vec![text_chunks("streamed")]);
-    let mut runtime = Runtime::new(model, (), None).await;
+    let provider = TestProvider::with_chunks(vec![text_chunks("streamed")]);
+    let mut runtime = runtime(provider).await;
     runtime.add_agent(AgentConfig::new("crab"));
 
     let conversation_id = runtime
@@ -253,8 +238,7 @@ async fn stream_to_yields_correct_content() {
 
 #[tokio::test]
 async fn stream_to_nonexistent_conversation_yields_error() {
-    let model = TestModel::with_chunks(vec![]);
-    let runtime = Runtime::new(model, (), None).await;
+    let runtime = runtime(TestProvider::with_chunks(vec![])).await;
 
     let mut events = Vec::new();
     let mut stream = std::pin::pin!(runtime.stream_to(999, "hi", "", None));
