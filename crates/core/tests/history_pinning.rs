@@ -317,6 +317,64 @@ fn builder_empty_content_without_tool_calls_builds_empty_string() {
 }
 
 #[test]
+fn builder_drops_degenerate_tool_calls_with_no_id() {
+    // A streaming round where only argument deltas arrived (no first
+    // chunk with id+name) — the accumulated call has empty id and empty
+    // name. Persisting this would poison the next request: deepseek
+    // rejects assistant messages whose tool_calls contain entries with
+    // empty id/name as "Invalid assistant message: content or tool_calls
+    // must be set". `build()` must drop them.
+    let mut b = MessageBuilder::new(Role::Assistant);
+    b.accept(&delta_chunk(vec![ToolCallDelta {
+        index: 0,
+        id: None,
+        kind: None,
+        function: Some(FunctionCallDelta {
+            name: None,
+            arguments: Some(r#"{"cmd":"ls"}"#.into()),
+        }),
+    }]));
+    let msg = b.build();
+    // Degenerate call dropped → no tool_calls → content collapses to
+    // empty string (the no-tool-calls branch), not Null.
+    assert!(msg.tool_calls.is_none(), "expected tool_calls dropped");
+    assert_eq!(msg.content, Some(serde_json::Value::String(String::new())));
+}
+
+#[test]
+fn builder_drops_degenerate_calls_keeps_well_formed_ones() {
+    // Mixed streaming round: one well-formed call (id+name+args) at
+    // index 0, one fragment (no id, no name) at index 1. Only the
+    // well-formed call should survive `build()`.
+    let mut b = MessageBuilder::new(Role::Assistant);
+    b.accept(&delta_chunk(vec![
+        ToolCallDelta {
+            index: 0,
+            id: Some("call_1".into()),
+            kind: None,
+            function: Some(FunctionCallDelta {
+                name: Some("bash".into()),
+                arguments: Some("{}".into()),
+            }),
+        },
+        ToolCallDelta {
+            index: 1,
+            id: None,
+            kind: None,
+            function: Some(FunctionCallDelta {
+                name: None,
+                arguments: Some("partial".into()),
+            }),
+        },
+    ]));
+    let msg = b.build();
+    let calls = msg.tool_calls.as_ref().expect("well-formed call survives");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].id, "call_1");
+    assert_eq!(calls[0].function.name, "bash");
+}
+
+#[test]
 fn builder_peek_tool_calls_skips_empty_names() {
     // Tool call with no function name yet — peek should not surface it.
     let mut b = MessageBuilder::new(Role::Assistant);

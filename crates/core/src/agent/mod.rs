@@ -392,7 +392,9 @@ impl<P: Provider + 'static> Agent<P> {
                     return;
                 }
 
-                // Build the accumulated message.
+                // Build the accumulated message. `MessageBuilder::build`
+                // already drops degenerate (id-less or name-less) tool call
+                // fragments, so any tool_calls present here are well-formed.
                 let message = builder.build();
                 let tool_calls: Vec<ToolCall> =
                     message.tool_calls.clone().unwrap_or_default();
@@ -403,9 +405,28 @@ impl<P: Provider + 'static> Agent<P> {
                     .filter(|s| !s.is_empty())
                     .map(|s| s.to_owned());
                 let usage = last_usage.unwrap_or_default();
+                let has_tool_calls = !tool_calls.is_empty();
+
+                // If the stream produced neither text nor any usable tool
+                // call, treat the round as a no-op: do not push the empty
+                // assistant message into history (which would persist via
+                // `append_messages` and contaminate the next request),
+                // yield Done with NoAction, and return. This is the
+                // mid-stream-disconnect path — reqwest can end an SSE
+                // stream cleanly with `Ok(None)` on a TCP RST, so we
+                // can't rely on `stream_error` alone to catch it.
+                if content.is_none() && !has_tool_calls {
+                    yield AgentEvent::Done(AgentResponse {
+                        final_response: None,
+                        iterations: steps.len(),
+                        stop_reason: AgentStopReason::NoAction,
+                        steps,
+                        model: model_name.clone(),
+                    });
+                    return;
+                }
 
                 history.push(HistoryEntry::from_message(message.clone()));
-                let has_tool_calls = !tool_calls.is_empty();
 
                 // Dispatch tool calls if any.
                 //

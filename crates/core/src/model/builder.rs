@@ -122,12 +122,23 @@ impl MessageBuilder {
 
     /// Finalize the builder into a `crabllm_core::Message`.
     ///
+    /// Drops tool calls that never accumulated past the partial-fragment
+    /// stage — a streaming call whose function name or id never arrived is
+    /// degenerate, and providers (notably deepseek) reject any assistant
+    /// message that carries one as "Invalid assistant message: content or
+    /// tool_calls must be set". Filtering here means a transient mid-stream
+    /// disconnect can't poison the next request via persisted history.
+    ///
     /// Preserves the `content: null` discrimination from `HistoryEntry::
     /// assistant`: assistant + non-empty tool calls + empty content →
     /// `Some(Value::Null)` (serializes as `"content": null`). All other
     /// cases get `Some(Value::String(acc))`, even when empty.
     pub fn build(self) -> Message {
-        let tool_calls: Vec<ToolCall> = self.calls.into_values().collect();
+        let tool_calls: Vec<ToolCall> = self
+            .calls
+            .into_values()
+            .filter(|c| !c.id.is_empty() && !c.function.name.is_empty())
+            .collect();
         let has_tool_calls = !tool_calls.is_empty();
         let content = if self.content.is_empty() && has_tool_calls && self.role == Role::Assistant {
             Some(serde_json::Value::Null)
