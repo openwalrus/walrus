@@ -16,8 +16,8 @@
 //! .. }` struct literals across three files.
 
 use crabllm_core::{
-    BoxStream, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChunkChoice,
-    Choice, Delta, Error, FinishReason, FunctionCallDelta, Message, Provider, Role, ToolCall,
+    BoxStream, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Choice,
+    ChunkChoice, Delta, Error, FinishReason, FunctionCallDelta, Message, Provider, Role, ToolCall,
     ToolCallDelta, ToolType,
 };
 use serde_json::{Map, Value};

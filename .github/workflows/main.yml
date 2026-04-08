@@ -49,4 +49,5 @@ jobs:
     runs-on: Linux
     steps:
       - uses: actions/checkout@v4
-      - uses: crate-ci/typos@v1.24.5
+      - name: Check Typos
+        run: typos

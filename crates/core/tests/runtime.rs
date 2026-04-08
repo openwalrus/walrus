@@ -8,7 +8,10 @@
 
 use crabtalk_core::{
     AgentConfig, AgentEvent, AgentStopReason, Runtime,
-    model::{Model, test_provider::{TestProvider, text_chunks}},
+    model::{
+        Model,
+        test_provider::{TestProvider, text_chunks},
+    },
 };
 use futures_util::StreamExt;
 
