@@ -5,10 +5,6 @@
 //! `HistoryEntry` wrapper and streaming `MessageBuilder`. `Model<P>` is the
 //! single seam between crabtalk and any `crabllm_core::Provider`.
 
-pub use accessors::{
-    chunk_content, chunk_finish_reason, chunk_reasoning, chunk_tool_calls, response_content,
-    response_message, response_tool_calls,
-};
 pub use builder::MessageBuilder;
 pub use client::Model;
 pub use crabllm_core::{
@@ -19,7 +15,6 @@ pub use crabllm_core::{
 pub use history::{HistoryEntry, estimate_tokens as estimate_history_tokens};
 pub use limits::default_context_limit;
 
-mod accessors;
 pub mod builder;
 mod client;
 mod history;

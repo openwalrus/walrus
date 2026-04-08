@@ -117,7 +117,6 @@ impl From<ApiStandard> for ProviderKind {
             ApiStandard::Bedrock => Self::Bedrock,
             ApiStandard::Ollama => Self::Ollama,
             ApiStandard::Azure => Self::Azure,
-            ApiStandard::LlamaCpp => Self::LlamaCpp,
         }
     }
 }
@@ -131,7 +130,6 @@ impl From<ProviderKind> for ApiStandard {
             ProviderKind::Bedrock => Self::Bedrock,
             ProviderKind::Ollama => Self::Ollama,
             ProviderKind::Azure => Self::Azure,
-            ProviderKind::LlamaCpp => Self::LlamaCpp,
         }
     }
 }

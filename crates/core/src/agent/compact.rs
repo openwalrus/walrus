@@ -1,6 +1,6 @@
 //! Context compaction — summarize conversation history and replace it.
 
-use crate::model::{HistoryEntry, response_content};
+use crate::model::HistoryEntry;
 use crabllm_core::{ChatCompletionRequest, Message, Provider, Role};
 
 pub(crate) const COMPACT_PROMPT: &str = include_str!("../../prompts/compact.md");
@@ -56,7 +56,7 @@ impl<P: Provider + 'static> super::Agent<P> {
             extra: Default::default(),
         };
         match self.model.send_ct(request).await {
-            Ok(response) => response_content(&response).map(|s| s.to_owned()),
+            Ok(response) => response.content().map(|s| s.to_owned()),
             Err(e) => {
                 tracing::warn!("compaction LLM call failed: {e}");
                 None

@@ -102,15 +102,7 @@ impl HistoryEntry {
         call_id: impl Into<String>,
         name: impl Into<String>,
     ) -> Self {
-        Self::from_message(Message {
-            role: Role::Tool,
-            content: Some(serde_json::Value::String(content.into())),
-            tool_calls: None,
-            tool_call_id: Some(call_id.into()),
-            name: Some(name.into()),
-            reasoning_content: None,
-            extra: Default::default(),
-        })
+        Self::from_message(Message::tool(call_id, name, content))
     }
 
     /// Wrap an existing `crabllm_core::Message` without any runtime-only
@@ -142,21 +134,13 @@ impl HistoryEntry {
         &self.message.role
     }
 
-    /// The text content of the message, or `""` if absent or non-string.
+    /// The text content of the message, or `""` if absent / empty / non-string.
     ///
-    /// Unwraps `Option<Value>` to `&str`: `None` → `""`, `Some(String(s))` → `s`,
-    /// anything else → `""`.
-    ///
-    /// TODO(multimodal): when multimodal content lands (OpenAI uses arrays
-    /// like `[{"type":"text","text":"..."}, {"type":"image_url",...}]`),
-    /// this accessor silently drops non-string shapes. Revisit when the
-    /// first multimodal call site shows up.
+    /// Delegates to `Message::content_str`, which collapses absent, null,
+    /// empty-string, and multimodal-array content to `None` — this accessor
+    /// turns that into `""` for ergonomic call sites that just want the text.
     pub fn text(&self) -> &str {
-        self.message
-            .content
-            .as_ref()
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
+        self.message.content_str().unwrap_or("")
     }
 
     /// The reasoning content, or empty if absent.

@@ -654,7 +654,6 @@ enum ProviderKind {
   BEDROCK = 4;
   OLLAMA = 5;
   AZURE = 6;
-  LLAMA_CPP = 7;
 }
 
 message ProviderPresetInfo {

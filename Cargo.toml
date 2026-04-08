@@ -26,8 +26,8 @@ woutlook = { path = "plugins/outlook", package = "crabtalk-outlook", version = "
 wsearch = { path = "plugins/search", package = "crabtalk-search", version = "0.0.19", default-features = false }
 
 # crabllm
-crabllm-core = "0.0.14"
-crabllm-provider = "0.0.14"
+crabllm-core = "0.0.15"
+crabllm-provider = "0.0.15"
 
 # bench
 criterion = { version = "0.5", features = ["html_reports"] }

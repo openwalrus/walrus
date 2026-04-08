@@ -9,7 +9,7 @@
 use crate::{
     Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason,
     agent::tool::{ToolRegistry, ToolSender},
-    model::{HistoryEntry, Model, chunk_content, chunk_reasoning, response_content},
+    model::{HistoryEntry, Model},
     runtime::hook::Hook,
 };
 use anyhow::{Result, bail};
@@ -393,7 +393,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
 
             match model.send_ct(request).await {
                 Ok(response) => {
-                    if let Some(title) = response_content(&response) {
+                    if let Some(title) = response.content() {
                         let title = title.trim().trim_matches('"').to_string();
                         if !title.is_empty() {
                             let mut conversation = conversation_mutex.lock().await;
@@ -708,11 +708,11 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                 while let Some(result) = stream.next().await {
                     match result {
                         Ok(chunk) => {
-                            if let Some(text) = chunk_content(&chunk) {
+                            if let Some(text) = chunk.content() {
                                 response_text.push_str(text);
                                 yield AgentEvent::TextDelta(text.to_string());
                             }
-                            if let Some(text) = chunk_reasoning(&chunk) {
+                            if let Some(text) = chunk.reasoning_content() {
                                 reasoning.push_str(text);
                                 yield AgentEvent::ThinkingDelta(text.to_string());
                             }

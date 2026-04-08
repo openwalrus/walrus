@@ -7,11 +7,7 @@
 //! [`Agent::run_stream`]. `run_stream()` is the canonical step loop —
 //! `run()` collects its events and returns the final response.
 
-use crate::model::{
-    HistoryEntry, Model, chunk_content, chunk_finish_reason, chunk_reasoning, response_message,
-    response_tool_calls,
-};
-use crate::model::builder::MessageBuilder;
+use crate::model::{HistoryEntry, Model, builder::MessageBuilder};
 use anyhow::Result;
 use async_stream::stream;
 pub use builder::AgentBuilder;
@@ -155,18 +151,15 @@ impl<P: Provider + 'static> Agent<P> {
     ) -> Result<AgentStep> {
         let request = self.build_request(history, None);
         let response = self.model.send_ct(request).await?;
-        let tool_calls: Vec<ToolCall> = response_tool_calls(&response).to_vec();
-        let finish_reason = response
-            .choices
-            .first()
-            .and_then(|c| c.finish_reason.clone());
+        let tool_calls: Vec<ToolCall> = response.tool_calls().to_vec();
+        let finish_reason = response.finish_reason().cloned();
         let usage = response.usage.clone().unwrap_or_default();
 
         // If the provider returned zero choices, there is no message to record
         // — match the old `step()` behavior of not appending anything in that
         // case, instead of bloating history with a synthetic empty assistant
         // entry on flaky providers.
-        let Some(message) = response_message(&response).cloned() else {
+        let Some(message) = response.message().cloned() else {
             return Ok(AgentStep {
                 message: empty_assistant_message(),
                 usage,
@@ -335,7 +328,7 @@ impl<P: Provider + 'static> Agent<P> {
                             Ok(chunk) => {
                                 // Process text portion. Match existing behavior:
                                 // emit TextDelta even when the slice is empty.
-                                if let Some(text) = chunk_content(&chunk) {
+                                if let Some(text) = chunk.content() {
                                     if open != OpenSegment::Text {
                                         if open == OpenSegment::Thinking {
                                             yield AgentEvent::ThinkingEnd;
@@ -346,7 +339,7 @@ impl<P: Provider + 'static> Agent<P> {
                                     yield AgentEvent::TextDelta(text.to_owned());
                                 }
                                 // Process reasoning portion. Same atomic-flip logic.
-                                if let Some(reason) = chunk_reasoning(&chunk) {
+                                if let Some(reason) = chunk.reasoning_content() {
                                     if open != OpenSegment::Thinking {
                                         if open == OpenSegment::Text {
                                             yield AgentEvent::TextEnd;
@@ -356,7 +349,7 @@ impl<P: Provider + 'static> Agent<P> {
                                     }
                                     yield AgentEvent::ThinkingDelta(reason.to_owned());
                                 }
-                                if let Some(r) = chunk_finish_reason(&chunk) {
+                                if let Some(r) = chunk.finish_reason() {
                                     finish_reason = Some(r.clone());
                                 }
                                 if chunk.usage.is_some() {
