@@ -10,9 +10,9 @@
 //! and clone it into every Agent at build time without any `P: Clone` bound.
 
 use crate::model::{Request, Response, StreamChunk, convert};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_stream::try_stream;
-use crabllm_core::Provider;
+use crabllm_core::{ApiError, Provider};
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::sync::Arc;
@@ -47,12 +47,16 @@ impl<P: Provider + 'static> Model<P> {
     /// Send a chat completion request, converting between wcore and
     /// crabllm-core types at the boundary.
     pub async fn send(&self, request: &Request) -> Result<Response> {
-        let ct_req = convert::to_ct_request(request);
+        let mut ct_req = convert::to_ct_request(request);
+        // Explicit non-streaming. Equivalent to leaving `stream` unset on the
+        // wire (serde skips `None`), but matches the streaming path's
+        // explicit-flag pattern below for symmetry and to make intent clear.
+        ct_req.stream = Some(false);
         let ct_resp = self
             .inner
             .chat_completion(&ct_req)
             .await
-            .with_context(|| format!("model send failed for '{}'", request.model))?;
+            .map_err(|e| format_provider_error(&request.model, "send", e))?;
         Ok(convert::from_ct_response(ct_resp))
     }
 
@@ -64,16 +68,24 @@ impl<P: Provider + 'static> Model<P> {
         request: Request,
     ) -> impl Stream<Item = Result<StreamChunk>> + Send + 'static {
         let inner = Arc::clone(&self.inner);
-        let ct_req = convert::to_ct_request(&request);
+        let mut ct_req = convert::to_ct_request(&request);
+        // Required: without `stream: true` in the request body, OpenAI-shaped
+        // endpoints return a single non-SSE JSON response, the SSE parser in
+        // crabllm-provider sees no `data:` prefixes, the byte stream completes
+        // with zero chunks, and the agent loop yields a Done event with empty
+        // content. Symptom is "send a message, no reply, no error" — silently
+        // dropped responses. The deleted crates/model wrapper set this flag
+        // explicitly; this is the same lift.
+        ct_req.stream = Some(true);
         let model_label = request.model.clone();
         try_stream! {
             let mut stream = inner
                 .chat_completion_stream(&ct_req)
                 .await
-                .with_context(|| format!("model stream open failed for '{model_label}'"))?;
+                .map_err(|e| format_provider_error(&model_label, "stream open", e))?;
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk
-                    .with_context(|| format!("model stream chunk failed for '{model_label}'"))?;
+                    .map_err(|e| format_provider_error(&model_label, "stream chunk", e))?;
                 yield convert::from_ct_chunk(chunk);
             }
         }
@@ -91,5 +103,37 @@ impl<P: Provider + 'static> Clone for Model<P> {
 impl<P: Provider + 'static> std::fmt::Debug for Model<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Model").finish()
+    }
+}
+
+/// Convert a `crabllm_core::Error` into an `anyhow::Error` with a
+/// human-readable message that includes the upstream's actual failure
+/// reason. For `Error::Provider { status, body }`, attempts to parse the
+/// body as an OpenAI-shaped `ApiError` and extract `error.message`; falls
+/// back to the truncated raw body. Other variants use the upstream
+/// Display impl directly.
+///
+/// This matters because anyhow's `with_context` only shows the outermost
+/// context message on a default `{e}` Display — the root cause lives in
+/// the source chain and is invisible to callers that don't explicitly
+/// format `{e:#}`. Inlining the root cause into a single message means
+/// any surface (TUI, daemon log, etc.) sees the actual failure reason
+/// whether or not it walks the error chain.
+fn format_provider_error(model: &str, op: &str, e: crabllm_core::Error) -> anyhow::Error {
+    match e {
+        crabllm_core::Error::Provider { status, body } => {
+            let msg = serde_json::from_str::<ApiError>(&body)
+                .map(|api_err| api_err.error.message)
+                .unwrap_or_else(|_| truncate(&body, 200));
+            anyhow::anyhow!("model {op} failed for '{model}' (HTTP {status}): {msg}")
+        }
+        other => anyhow::anyhow!("model {op} failed for '{model}': {other}"),
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => format!("{}...", &s[..i]),
+        None => s.to_string(),
     }
 }
