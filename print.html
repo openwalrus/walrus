@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1688d608.js";
+            window.path_to_searchindex_js = "searchindex-d035661f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0568fcff.js"></script>
@@ -633,7 +633,6 @@ format.</li>
     async fn send(&amp;self, request: &amp;Request) -&gt; Result&lt;Response&gt;;
     fn stream(&amp;self, request: Request) -&gt; impl Stream&lt;Item = Result&lt;StreamChunk&gt;&gt;;
     fn context_limit(&amp;self, model: &amp;str) -&gt; usize;
-    fn active_model(&amp;self) -&gt; String;
 }
 <span class="boring">}</span></code></pre>
 <p>The trait is in core because agents are generic over <code>Model</code>. The implementation
