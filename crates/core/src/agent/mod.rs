@@ -15,7 +15,7 @@ pub use config::AgentConfig;
 use crabllm_core::{ChatCompletionRequest, Provider, Role, Tool, ToolCall, ToolChoice, Usage};
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
-use futures_util::{StreamExt, stream::FuturesUnordered};
+use futures_util::{StreamExt, future::join_all, stream::FuturesUnordered};
 use tokio::sync::{mpsc, oneshot, watch};
 pub use tool::{AsTool, ToolDescription, ToolRequest, ToolSender};
 
@@ -174,15 +174,16 @@ impl<P: Provider + 'static> Agent<P> {
         let mut tool_results = Vec::new();
         if !tool_calls.is_empty() {
             let sender = last_sender(history);
-            for tc in &tool_calls {
-                let result = self
-                    .dispatch_tool(
-                        &tc.function.name,
-                        &tc.function.arguments,
-                        &sender,
-                        conversation_id,
-                    )
-                    .await;
+            let outputs = join_all(tool_calls.iter().map(|tc| {
+                self.dispatch_tool(
+                    &tc.function.name,
+                    &tc.function.arguments,
+                    &sender,
+                    conversation_id,
+                )
+            }))
+            .await;
+            for (tc, result) in tool_calls.iter().zip(outputs) {
                 let entry = HistoryEntry::tool(&result, tc.id.clone(), &tc.function.name);
                 history.push(entry.clone());
                 tool_results.push(entry);
