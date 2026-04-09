@@ -2,16 +2,23 @@
 //!
 //! A cron entry triggers a skill into a session on a schedule. The session
 //! carries the agent — no redundancy. Memory is authoritative at runtime;
-//! disk (`crons.toml`) is recovery for restarts.
+//! the [`Storage`](wcore::Storage) key `cron/crons.toml` is recovery for
+//! restarts.
 
 use crate::daemon::event::{DaemonEvent, DaemonEventSender};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 use tokio::{
     sync::{Mutex, broadcast},
     task::JoinHandle,
 };
-use wcore::protocol::message::{ClientMessage, SendMsg};
+use wcore::{
+    Storage,
+    protocol::message::{ClientMessage, SendMsg},
+};
+
+/// Storage key for the cron TOML blob.
+const CRONS_KEY: &str = "cron/crons.toml";
 
 /// Persistent cron entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,7 +49,7 @@ pub struct CronStore {
     entries: HashMap<u64, CronEntry>,
     handles: HashMap<u64, JoinHandle<()>>,
     next_id: u64,
-    crons_path: PathBuf,
+    storage: Arc<dyn Storage>,
     event_tx: DaemonEventSender,
     shutdown_tx: broadcast::Sender<()>,
 }
@@ -55,37 +62,43 @@ fn validate_schedule(schedule: &str) -> Result<(), String> {
 }
 
 impl CronStore {
-    /// Load crons from disk. Missing file is not an error.
-    /// Entries with invalid schedules are skipped with a warning.
+    /// Load crons from [`CRONS_KEY`] in the given [`Storage`]. Missing
+    /// or unparsable blobs yield an empty store; entries with invalid
+    /// schedules are skipped with a warning.
     pub fn load(
-        crons_path: PathBuf,
+        storage: Arc<dyn Storage>,
         event_tx: DaemonEventSender,
         shutdown_tx: broadcast::Sender<()>,
     ) -> Self {
         let mut entries = HashMap::new();
         let mut max_id = 0u64;
-        if let Ok(content) = std::fs::read_to_string(&crons_path) {
-            if let Ok(file) = toml::from_str::<CronFile>(&content) {
-                for entry in file.cron {
-                    if let Err(e) = validate_schedule(&entry.schedule) {
-                        tracing::warn!("cron {}: {e}, skipping", entry.id);
-                        continue;
+        match storage.get(CRONS_KEY) {
+            Ok(Some(bytes)) => match std::str::from_utf8(&bytes) {
+                Ok(content) => match toml::from_str::<CronFile>(content) {
+                    Ok(file) => {
+                        for entry in file.cron {
+                            if let Err(e) = validate_schedule(&entry.schedule) {
+                                tracing::warn!("cron {}: {e}, skipping", entry.id);
+                                continue;
+                            }
+                            max_id = max_id.max(entry.id);
+                            entries.insert(entry.id, entry);
+                        }
                     }
-                    max_id = max_id.max(entry.id);
-                    entries.insert(entry.id, entry);
-                }
-            } else {
-                tracing::warn!(
-                    "failed to parse {}, starting with empty crons",
-                    crons_path.display()
-                );
-            }
+                    Err(e) => {
+                        tracing::warn!("failed to parse {CRONS_KEY}, starting empty: {e}");
+                    }
+                },
+                Err(_) => tracing::warn!("{CRONS_KEY} is not valid UTF-8, ignoring"),
+            },
+            Ok(None) => {}
+            Err(e) => tracing::warn!("failed to read {CRONS_KEY}: {e}"),
         }
         Self {
             entries,
             handles: HashMap::new(),
             next_id: max_id + 1,
-            crons_path,
+            storage,
             event_tx,
             shutdown_tx,
         }
@@ -135,7 +148,8 @@ impl CronStore {
         self.entries.values().cloned().collect()
     }
 
-    /// Write-through to `crons.toml`. Uses atomic write (tmp + rename).
+    /// Write-through to Storage. Serialization failures are logged and
+    /// swallowed — the in-memory state remains authoritative.
     fn save(&self) {
         let file = CronFile {
             cron: self.entries.values().cloned().collect(),
@@ -147,17 +161,8 @@ impl CronStore {
                 return;
             }
         };
-        let tmp = self.crons_path.with_extension("toml.tmp");
-        if let Err(e) = std::fs::write(&tmp, &content) {
-            tracing::error!("failed to write {}: {e}", tmp.display());
-            return;
-        }
-        if let Err(e) = std::fs::rename(&tmp, &self.crons_path) {
-            tracing::error!(
-                "failed to rename {} -> {}: {e}",
-                tmp.display(),
-                self.crons_path.display()
-            );
+        if let Err(e) = self.storage.put(CRONS_KEY, content.as_bytes()) {
+            tracing::error!("failed to write {CRONS_KEY}: {e}");
         }
     }
 

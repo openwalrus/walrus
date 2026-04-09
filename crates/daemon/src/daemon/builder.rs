@@ -145,11 +145,8 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
 
         let runtime =
             Self::build_runtime(config, config_dir, &event_tx, host, &build_provider).await?;
-        let cron_store = crate::cron::CronStore::load(
-            config_dir.join("crons.toml"),
-            event_tx.clone(),
-            shutdown_tx,
-        );
+        let cron_store =
+            crate::cron::CronStore::load(runtime.storage.clone(), event_tx.clone(), shutdown_tx);
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
         // The event bus lives in runtime now; the daemon supplies a
