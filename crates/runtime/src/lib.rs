@@ -6,6 +6,7 @@ pub mod mcp;
 pub mod memory;
 pub mod os;
 pub mod skill;
+pub mod storage;
 pub mod task;
 
 pub use config::{MemoryConfig, SystemConfig, TasksConfig};
@@ -14,3 +15,4 @@ pub use host::{Host, NoHost};
 pub use mcp::McpHandler;
 pub use memory::Memory;
 pub use skill::SkillHandler;
+pub use storage::{MemStorage, Storage};
