@@ -27,7 +27,10 @@ pub fn validate_providers(providers: &BTreeMap<String, ProviderDef>) -> Result<(
     Ok(())
 }
 
+mod backfill;
 mod loader;
+
+pub use backfill::backfill_local_agent_ids;
 
 /// Top-level daemon configuration (`config.toml`).
 ///

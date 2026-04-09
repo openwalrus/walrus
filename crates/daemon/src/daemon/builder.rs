@@ -137,6 +137,13 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
         host: H,
         build_provider: BuildProvider<P>,
     ) -> Result<Self> {
+        // One-shot migration: stamp stable ULIDs onto any local agents
+        // that predate the AgentId field. Runs before manifests are
+        // resolved so the runtime sees the backfilled values.
+        if let Err(e) = crate::config::backfill_local_agent_ids(config_dir) {
+            tracing::warn!("agent id backfill failed: {e}");
+        }
+
         let runtime =
             Self::build_runtime(config, config_dir, &event_tx, host, &build_provider).await?;
         let cron_store = crate::cron::CronStore::load(

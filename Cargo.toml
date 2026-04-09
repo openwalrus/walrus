@@ -94,6 +94,7 @@ textwrap = "0.16"
 toml = "0.8"
 toml_edit = "0.22"
 tracing = "0.1"
+ulid = { version = "1", features = ["serde"] }
 tracing-subscriber = "0.3"
 url = "2"
 

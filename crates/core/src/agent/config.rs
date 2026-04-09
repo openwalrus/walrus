@@ -3,7 +3,7 @@
 //! [`AgentConfig`] is a serializable struct holding all agent parameters.
 //! Used by [`super::AgentBuilder`] to construct an [`super::Agent`].
 
-use crate::model::ToolChoice;
+use crate::{AgentId, model::ToolChoice};
 use serde::{Deserialize, Serialize};
 
 /// Default maximum iterations for agent execution.
@@ -22,7 +22,12 @@ const DEFAULT_COMPACT_TOOL_MAX_LEN: usize = 1024;
 /// TOML deserialization target and the runtime agent definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
-    /// Agent identifier. Derived from TOML key, not stored in TOML.
+    /// Stable ULID identity. Missing from the TOML on pre-existing
+    /// installs — the daemon backfills a fresh ULID on startup and
+    /// writes it back to the local manifest.
+    #[serde(default)]
+    pub id: AgentId,
+    /// Agent name. Derived from TOML key, not stored in TOML.
     #[serde(skip)]
     pub name: String,
     /// Human-readable description.
@@ -81,6 +86,7 @@ fn default_compact_tool_max_len() -> usize {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
+            id: AgentId::nil(),
             name: String::new(),
             description: String::new(),
             system_prompt: String::new(),
@@ -99,9 +105,11 @@ impl Default for AgentConfig {
 }
 
 impl AgentConfig {
-    /// Create a new config with the given name and defaults for everything else.
+    /// Create a new config with the given name, a fresh ULID, and
+    /// defaults for everything else.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
+            id: AgentId::new(),
             name: name.into(),
             ..Default::default()
         }

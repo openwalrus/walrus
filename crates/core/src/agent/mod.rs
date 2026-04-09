@@ -16,6 +16,7 @@ use crabllm_core::{ChatCompletionRequest, Provider, Role, Tool, ToolCall, ToolCh
 use event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason};
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all, stream::FuturesUnordered};
+pub use id::AgentId;
 use tokio::sync::{mpsc, oneshot, watch};
 pub use tool::{AsTool, ToolDescription, ToolRequest, ToolSender};
 
@@ -23,6 +24,7 @@ mod builder;
 mod compact;
 pub mod config;
 pub mod event;
+mod id;
 pub mod tool;
 
 /// A neutral placeholder assistant message returned by `step()` when the
