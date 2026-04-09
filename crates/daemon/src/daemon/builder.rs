@@ -272,7 +272,13 @@ async fn build_env<H: Host>(
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
 
-    Ok(Env::new(skills, mcp_handler, cwd, memory, host))
+    // Pluggable persistence backend — filesystem-rooted at the config dir.
+    // Nothing consumes it yet; later phases migrate memory, skills,
+    // sessions, agents, event bus and cron onto this handle.
+    let storage: Arc<dyn runtime::Storage> =
+        Arc::new(crate::storage::FsStorage::new(config_dir.to_path_buf()));
+
+    Ok(Env::new(skills, mcp_handler, cwd, memory, storage, host))
 }
 
 /// Build a [`ToolSender`] that forwards [`ToolRequest`]s into the daemon

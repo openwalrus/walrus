@@ -7,6 +7,7 @@ pub mod daemon;
 pub mod event_bus;
 pub mod hook;
 pub mod provider;
+pub mod storage;
 
 pub use config::DaemonConfig;
 #[cfg(unix)]

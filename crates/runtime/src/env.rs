@@ -5,11 +5,13 @@
 //! specific tools (`ask_user`, `delegate`) are routed through the
 //! [`Host`](crate::host::Host).
 
-use crate::{host::Host, mcp::McpHandler, memory::Memory, os, skill, skill::SkillHandler};
+use crate::{
+    host::Host, mcp::McpHandler, memory::Memory, os, skill, skill::SkillHandler, storage::Storage,
+};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    sync::RwLock,
+    sync::{Arc, RwLock},
 };
 use wcore::{AgentConfig, AgentEvent, Hook, ToolRegistry, model::HistoryEntry};
 
@@ -47,6 +49,11 @@ pub struct Env<H: Host = crate::NoHost> {
     /// single inserts/removes — never held across an `.await`.
     pub(crate) scopes: RwLock<BTreeMap<String, AgentScope>>,
     pub(crate) agent_descriptions: RwLock<BTreeMap<String, String>>,
+    /// Pluggable persistence backend, shared with runtime subsystems that
+    /// need to read/write state. Phase 2 wires the field; later phases
+    /// migrate individual subsystems (memory, skills, sessions, agents,
+    /// event bus) onto it.
+    pub(crate) storage: Arc<dyn Storage>,
     /// Host providing server-specific functionality.
     pub host: H,
 }
@@ -58,6 +65,7 @@ impl<H: Host> Env<H> {
         mcp: McpHandler,
         cwd: PathBuf,
         memory: Option<Memory>,
+        storage: Arc<dyn Storage>,
         host: H,
     ) -> Self {
         Self {
@@ -67,8 +75,14 @@ impl<H: Host> Env<H> {
             memory,
             scopes: RwLock::new(BTreeMap::new()),
             agent_descriptions: RwLock::new(BTreeMap::new()),
+            storage,
             host,
         }
+    }
+
+    /// Shared handle to the persistence backend.
+    pub fn storage(&self) -> &Arc<dyn Storage> {
+        &self.storage
     }
 
     /// Access memory.
