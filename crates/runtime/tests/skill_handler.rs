@@ -1,24 +1,29 @@
-//! Tests for SkillHandler — skill loading from directories.
+//! Tests for SkillHandler — skill loading through the Storage trait.
 
-use crabtalk_runtime::SkillHandler;
-use std::fs;
-use tempfile::TempDir;
+use crabtalk_runtime::{MemStorage, SkillHandler, SkillRoot, Storage};
+use std::{path::PathBuf, sync::Arc};
 
-fn write_skill(dir: &std::path::Path, name: &str) {
-    let skill_dir = dir.join(name);
-    fs::create_dir_all(&skill_dir).unwrap();
+fn write_skill(storage: &dyn Storage, name: &str) {
+    let key = format!("{name}/SKILL.md");
     let content =
         format!("---\nname: {name}\ndescription: test skill\n---\nSkill body for {name}.");
-    fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+    storage.put(&key, content.as_bytes()).unwrap();
+}
+
+fn root(storage: Arc<dyn Storage>, label: &str) -> SkillRoot {
+    SkillRoot {
+        label: PathBuf::from(label),
+        storage,
+    }
 }
 
 #[test]
 fn load_from_single_dir() {
-    let dir = TempDir::new().unwrap();
-    write_skill(dir.path(), "greet");
-    write_skill(dir.path(), "search");
+    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    write_skill(storage.as_ref(), "greet");
+    write_skill(storage.as_ref(), "search");
 
-    let handler = SkillHandler::load(vec![dir.path().to_path_buf()], &[]).unwrap();
+    let handler = SkillHandler::load(vec![root(storage, "dir")], &[]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.skills.len(), 2);
     assert!(reg.contains("greet"));
@@ -27,33 +32,24 @@ fn load_from_single_dir() {
 
 #[test]
 fn load_from_multiple_dirs() {
-    let dir1 = TempDir::new().unwrap();
-    let dir2 = TempDir::new().unwrap();
-    write_skill(dir1.path(), "skill-a");
-    write_skill(dir2.path(), "skill-b");
+    let s1: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    let s2: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    write_skill(s1.as_ref(), "skill-a");
+    write_skill(s2.as_ref(), "skill-b");
 
-    let handler = SkillHandler::load(
-        vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()],
-        &[],
-    )
-    .unwrap();
+    let handler = SkillHandler::load(vec![root(s1, "dir1"), root(s2, "dir2")], &[]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.skills.len(), 2);
 }
 
 #[test]
 fn load_skips_missing_dir() {
-    let dir = TempDir::new().unwrap();
-    write_skill(dir.path(), "exists");
+    let empty: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    write_skill(storage.as_ref(), "exists");
 
-    let handler = SkillHandler::load(
-        vec![
-            std::path::PathBuf::from("/nonexistent/path"),
-            dir.path().to_path_buf(),
-        ],
-        &[],
-    )
-    .unwrap();
+    let handler =
+        SkillHandler::load(vec![root(empty, "empty"), root(storage, "dir")], &[]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.skills.len(), 1);
     assert!(reg.contains("exists"));
@@ -61,39 +57,29 @@ fn load_skips_missing_dir() {
 
 #[test]
 fn load_empty_dir() {
-    let dir = TempDir::new().unwrap();
-    let handler = SkillHandler::load(vec![dir.path().to_path_buf()], &[]).unwrap();
+    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    let handler = SkillHandler::load(vec![root(storage, "dir")], &[]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert!(reg.skills.is_empty());
 }
 
 #[test]
 fn load_conflict_first_dir_wins() {
-    let dir1 = TempDir::new().unwrap();
-    let dir2 = TempDir::new().unwrap();
+    let s1: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    let s2: Arc<dyn Storage> = Arc::new(MemStorage::new());
 
-    // Write different bodies so we can tell which one loaded
-    let skill_dir = dir1.path().join("shared");
-    fs::create_dir_all(&skill_dir).unwrap();
-    fs::write(
-        skill_dir.join("SKILL.md"),
-        "---\nname: shared\ndescription: from dir1\n---\nfirst body",
+    s1.put(
+        "shared/SKILL.md",
+        b"---\nname: shared\ndescription: from dir1\n---\nfirst body",
+    )
+    .unwrap();
+    s2.put(
+        "shared/SKILL.md",
+        b"---\nname: shared\ndescription: from dir2\n---\nsecond body",
     )
     .unwrap();
 
-    let skill_dir = dir2.path().join("shared");
-    fs::create_dir_all(&skill_dir).unwrap();
-    fs::write(
-        skill_dir.join("SKILL.md"),
-        "---\nname: shared\ndescription: from dir2\n---\nsecond body",
-    )
-    .unwrap();
-
-    let handler = SkillHandler::load(
-        vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()],
-        &[],
-    )
-    .unwrap();
+    let handler = SkillHandler::load(vec![root(s1, "dir1"), root(s2, "dir2")], &[]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.skills.len(), 1);
     // First dir wins — verify it's from dir1
@@ -102,18 +88,16 @@ fn load_conflict_first_dir_wins() {
 
 #[test]
 fn load_skips_hidden_dirs() {
-    let dir = TempDir::new().unwrap();
-    write_skill(dir.path(), "visible");
-    // Create a hidden directory
-    let hidden = dir.path().join(".hidden");
-    fs::create_dir_all(&hidden).unwrap();
-    fs::write(
-        hidden.join("SKILL.md"),
-        "---\nname: hidden\ndescription: x\n---\nbody",
-    )
-    .unwrap();
+    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    write_skill(storage.as_ref(), "visible");
+    storage
+        .put(
+            ".hidden/SKILL.md",
+            b"---\nname: hidden\ndescription: x\n---\nbody",
+        )
+        .unwrap();
 
-    let handler = SkillHandler::load(vec![dir.path().to_path_buf()], &[]).unwrap();
+    let handler = SkillHandler::load(vec![root(storage, "dir")], &[]).unwrap();
     let reg = handler.registry.blocking_lock();
     assert_eq!(reg.skills.len(), 1);
     assert!(reg.contains("visible"));

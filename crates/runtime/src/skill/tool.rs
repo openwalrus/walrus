@@ -44,22 +44,25 @@ impl<H: Host> Env<H> {
             return Err(format!("invalid skill name: {name}"));
         }
 
-        // Try exact load from each skill directory.
+        // Try exact load from each configured skill root.
         if !name.is_empty() {
-            for dir in &self.skills.skill_dirs {
-                let skill_dir = dir.join(name);
-                let skill_file = skill_dir.join("SKILL.md");
-                if let Ok(content) = tokio::fs::read_to_string(&skill_file).await {
-                    return match loader::parse_skill_md(&content) {
-                        Ok(skill) => {
-                            let body = skill.body.clone();
-                            self.skills.registry.lock().await.upsert(skill);
-                            let dir_path = skill_dir.display();
-                            Ok(format!("{body}\n\nSkill directory: {dir_path}"))
-                        }
-                        Err(e) => Err(format!("failed to parse skill: {e}")),
-                    };
-                }
+            let key = format!("{name}/SKILL.md");
+            for root in &self.skills.roots {
+                let Ok(Some(bytes)) = root.storage.get(&key) else {
+                    continue;
+                };
+                let Ok(content) = std::str::from_utf8(&bytes) else {
+                    return Err("skill manifest is not valid UTF-8".to_owned());
+                };
+                return match loader::parse_skill_md(content) {
+                    Ok(skill) => {
+                        let body = skill.body.clone();
+                        self.skills.registry.lock().await.upsert(skill);
+                        let dir_path = root.label.join(name);
+                        Ok(format!("{body}\n\nSkill directory: {}", dir_path.display()))
+                    }
+                    Err(e) => Err(format!("failed to parse skill: {e}")),
+                };
             }
         }
 

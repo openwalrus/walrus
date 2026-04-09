@@ -8,7 +8,7 @@ use crate::{
 use anyhow::Result;
 use crabllm_core::Provider;
 use crabllm_provider::{ProviderRegistry, RemoteProvider};
-use runtime::{Env, SkillHandler, host::Host, mcp::McpHandler, memory::Memory};
+use runtime::{Env, SkillHandler, SkillRoot, host::Host, mcp::McpHandler, memory::Memory};
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
@@ -52,7 +52,8 @@ pub(crate) fn resolve_plugin_skills(
     for entry in skills.drain(..) {
         if entry.contains('/') {
             if let Some(dir) = plugin_skill_dirs.get(&entry) {
-                match runtime::skill::loader::load_skills_dir(dir) {
+                let storage = crate::storage::FsStorage::new(dir.clone());
+                match runtime::skill::loader::load_skills_from_storage(&storage) {
                     Ok(registry) => {
                         for skill in &registry.skills {
                             resolved.push(skill.name.clone());
@@ -243,11 +244,21 @@ async fn build_env<H: Host>(
     manifest: &ResolvedManifest,
     host: H,
 ) -> Result<Env<H>> {
-    let skills = SkillHandler::load(manifest.skill_dirs.clone(), &manifest.disabled.skills)
-        .unwrap_or_else(|e| {
-            tracing::warn!("failed to load skills: {e}");
-            SkillHandler::default()
-        });
+    // Per-directory FsStorage instances so the runtime doesn't touch
+    // std::fs to discover skill manifests.
+    let skill_roots: Vec<SkillRoot> = manifest
+        .skill_dirs
+        .iter()
+        .filter(|dir| dir.exists())
+        .map(|dir| SkillRoot {
+            label: dir.clone(),
+            storage: Arc::new(crate::storage::FsStorage::new(dir.clone())),
+        })
+        .collect();
+    let skills = SkillHandler::load(skill_roots, &manifest.disabled.skills).unwrap_or_else(|e| {
+        tracing::warn!("failed to load skills: {e}");
+        SkillHandler::default()
+    });
 
     // Inject [env] from config.toml into each MCP's env map, skipping disabled.
     let mcp_servers: Vec<_> = manifest

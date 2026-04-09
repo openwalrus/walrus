@@ -1,8 +1,11 @@
 //! Skill markdown loading.
 
-use crate::skill::{Skill, SkillRegistry};
+use crate::{
+    skill::{Skill, SkillRegistry},
+    storage::Storage,
+};
 use serde::{Deserialize, Deserializer};
-use std::{collections::BTreeMap, path::Path};
+use std::collections::BTreeMap;
 use wcore::utils::split_yaml_frontmatter;
 
 /// Accept both `"a, b, c"` (string) and `["a", "b", "c"]` (sequence) for tool lists.
@@ -57,49 +60,38 @@ pub fn parse_skill_md(content: &str) -> anyhow::Result<Skill> {
     })
 }
 
-/// Load skills by searching for `SKILL.md` files in subdirectories.
-pub fn load_skills_dir(path: impl AsRef<Path>) -> anyhow::Result<SkillRegistry> {
-    let path = path.as_ref();
+/// Load all skills the given [`Storage`] backend can see. The scan looks
+/// for any key ending in `SKILL.md`, interpreting the segment before the
+/// final slash as the skill's directory (a bundle root). Hidden path
+/// components (names starting with `.`) are skipped.
+pub fn load_skills_from_storage(storage: &dyn Storage) -> anyhow::Result<SkillRegistry> {
     let mut registry = SkillRegistry::new();
-    scan_skills(path, &mut registry)?;
+    let keys = storage.list("")?;
+    for key in keys {
+        if !is_skill_manifest_key(&key) {
+            continue;
+        }
+        let Some(bytes) = storage.get(&key)? else {
+            continue;
+        };
+        let Ok(content) = std::str::from_utf8(&bytes) else {
+            tracing::warn!("skill manifest {key} is not valid UTF-8, skipping");
+            continue;
+        };
+        match parse_skill_md(content) {
+            Ok(skill) => registry.add(skill),
+            Err(e) => tracing::warn!("failed to parse {key}: {e}"),
+        }
+    }
     Ok(registry)
 }
 
-fn scan_skills(dir: &Path, registry: &mut SkillRegistry) -> anyhow::Result<()> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return Ok(()),
-    };
-
-    for entry in entries {
-        let entry = entry?;
-        let entry_path = entry.path();
-        if !entry_path.is_dir() {
-            continue;
-        }
-
-        if entry
-            .file_name()
-            .to_str()
-            .is_some_and(|n| n.starts_with('.'))
-        {
-            continue;
-        }
-
-        let skill_file = entry_path.join("SKILL.md");
-        if skill_file.exists() {
-            let content = std::fs::read_to_string(&skill_file)
-                .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", skill_file.display()))?;
-            match parse_skill_md(&content) {
-                Ok(skill) => registry.add(skill),
-                Err(e) => {
-                    tracing::warn!("failed to parse {}: {e}", skill_file.display());
-                }
-            }
-        } else {
-            scan_skills(&entry_path, registry)?;
-        }
+/// Is `key` a candidate SKILL.md manifest? Must end in `SKILL.md` and
+/// have no dot-prefixed path component (matching the old fs scanner
+/// which skipped hidden directories).
+fn is_skill_manifest_key(key: &str) -> bool {
+    if !key.ends_with("SKILL.md") {
+        return false;
     }
-
-    Ok(())
+    !key.split('/').any(|segment| segment.starts_with('.'))
 }

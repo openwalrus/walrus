@@ -1,7 +1,7 @@
 //! Crabtalk skill registry — skill matching and prompt enrichment.
 
 pub use {
-    handler::SkillHandler,
+    handler::{SkillHandler, SkillRoot},
     registry::{Skill, SkillRegistry},
 };
 

@@ -1,37 +1,47 @@
-//! Crabtalk skill handler — initial load from disk.
+//! Crabtalk skill handler — initial load through [`Storage`] backends.
 
-use crate::skill::{SkillRegistry, loader};
+use crate::{
+    skill::{SkillRegistry, loader},
+    storage::Storage,
+};
 use anyhow::Result;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
+
+/// A single root the skill handler reads from. `label` is the display path
+/// (used in log messages and the dispatch tool's `Skill directory:`
+/// hint); `storage` is a [`Storage`] rooted at that path, through which
+/// actual reads happen.
+pub struct SkillRoot {
+    pub label: PathBuf,
+    pub storage: Arc<dyn Storage>,
+}
 
 /// Skill registry owner.
 pub struct SkillHandler {
     /// The skill registry (Mutex for interior-mutability from `dispatch_load_skill`).
     pub registry: Mutex<SkillRegistry>,
-    /// Skill directories to search (local first, then packages).
-    pub skill_dirs: Vec<PathBuf>,
+    /// Ordered list of skill roots to search (local first, then packages).
+    pub roots: Vec<SkillRoot>,
 }
 
 impl Default for SkillHandler {
     fn default() -> Self {
         Self {
             registry: Mutex::new(SkillRegistry::new()),
-            skill_dirs: Vec::new(),
+            roots: Vec::new(),
         }
     }
 }
 
 impl SkillHandler {
-    /// Load skills from multiple directories. Tolerates missing directories
-    /// by skipping them. Skills whose names appear in `disabled` are excluded.
-    pub fn load(skill_dirs: Vec<PathBuf>, disabled: &[String]) -> Result<Self> {
+    /// Load skills from the given roots. Tolerates missing/empty roots.
+    /// Skills whose names appear in `disabled` are excluded; duplicates
+    /// from later roots are skipped with a warning (first root wins).
+    pub fn load(roots: Vec<SkillRoot>, disabled: &[String]) -> Result<Self> {
         let mut registry = SkillRegistry::new();
-        for dir in &skill_dirs {
-            if !dir.exists() {
-                continue;
-            }
-            match loader::load_skills_dir(dir) {
+        for root in &roots {
+            match loader::load_skills_from_storage(root.storage.as_ref()) {
                 Ok(r) => {
                     let count = r.skills.len();
                     for skill in &r.skills {
@@ -41,23 +51,23 @@ impl SkillHandler {
                             tracing::warn!(
                                 "skill '{}' from {} conflicts with already-loaded skill, skipping",
                                 skill.name,
-                                dir.display()
+                                root.label.display()
                             );
                         } else {
                             registry.add(skill.clone());
                         }
                     }
-                    tracing::info!("loaded {count} skill(s) from {}", dir.display());
+                    tracing::info!("loaded {count} skill(s) from {}", root.label.display());
                 }
                 Err(e) => {
-                    tracing::warn!("could not load skills from {}: {e}", dir.display());
+                    tracing::warn!("could not load skills from {}: {e}", root.label.display());
                 }
             }
         }
         tracing::info!("total {} skill(s) loaded", registry.skills.len());
         Ok(Self {
             registry: Mutex::new(registry),
-            skill_dirs,
+            roots,
         })
     }
 }

@@ -202,13 +202,16 @@ impl<H: Host> Env<H> {
             }
         }
 
-        // Try to load the skill from disk.
-        for dir in &self.skills.skill_dirs {
-            let skill_file = dir.join(name).join("SKILL.md");
-            let Ok(file_content) = std::fs::read_to_string(&skill_file) else {
+        // Try to load the skill from each configured root.
+        let key = format!("{name}/SKILL.md");
+        for root in &self.skills.roots {
+            let Ok(Some(bytes)) = root.storage.get(&key) else {
                 continue;
             };
-            let Ok(skill) = skill::loader::parse_skill_md(&file_content) else {
+            let Ok(file_content) = std::str::from_utf8(&bytes) else {
+                continue;
+            };
+            let Ok(skill) = skill::loader::parse_skill_md(file_content) else {
                 continue;
             };
             let body = remainder.trim_start();

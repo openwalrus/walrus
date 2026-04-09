@@ -14,5 +14,5 @@ pub use env::Env;
 pub use host::{Host, NoHost};
 pub use mcp::McpHandler;
 pub use memory::Memory;
-pub use skill::SkillHandler;
+pub use skill::{SkillHandler, SkillRoot};
 pub use storage::{MemStorage, Storage};
