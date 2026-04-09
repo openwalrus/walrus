@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d035661f.js";
+            window.path_to_searchindex_js = "../searchindex-86ebca6a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0568fcff.js"></script>
@@ -253,18 +253,19 @@ a streamed agent response:</p>
 <li><code>Chunk { content }</code> — text delta.</li>
 <li><code>Thinking { content }</code> — thinking/reasoning delta.</li>
 <li><code>ToolStart { calls[] }</code> — tool invocations beginning.</li>
-<li><code>ToolResult { call_id, output, duration_ms }</code> — single tool result.</li>
+<li><code>ToolResult { call_id, output, duration_ms, is_error }</code> — single tool result. <code>is_error</code> signals the handler reported failure; <code>output</code> carries the text in either case so clients can render it. UIs use the flag to style errors distinctly; agents can use it for retry decisions without string-matching on error messages.</li>
 <li><code>ToolsComplete</code> — all pending tool calls finished.</li>
 <li><code>AskUser { questions[] }</code> — agent needs user input.</li>
 <li><code>End { agent, error }</code> — stream closed (error is empty on success).</li>
 </ul>
 <p>The client reads <code>StreamEvent</code>s until it receives <code>End</code>, which is the terminal
 sentinel.</p>
+<p><strong>Tool result ordering.</strong> When a single agent step produces N tool calls, the runtime dispatches them concurrently and emits <code>ToolResult</code> events in <strong>completion order</strong> — fast tools are reported as soon as they finish, slow siblings report later. The event stream is therefore not ordered by the call index in <code>ToolStart.calls[]</code>. Clients correlate by <code>call_id</code>, which is the primary key; do not assume positional alignment with the <code>ToolStart</code> call list.</p>
 <h3 id="agent-events"><a class="header" href="#agent-events">Agent events</a></h3>
 <p><code>AgentEventMsg</code> carries a <code>kind</code> enum (<code>TEXT_DELTA</code>, <code>THINKING_DELTA</code>,
 <code>TOOL_START</code>, <code>TOOL_RESULT</code>, <code>TOOLS_COMPLETE</code>, <code>DONE</code>) plus agent name, session
 ID, content, and timestamp. Used by <code>SubscribeEvents</code> for live monitoring of all
-agent activity across sessions.</p>
+agent activity across sessions. For <code>TOOL_RESULT</code> events, the <code>tool_is_error</code> field mirrors the streaming protocol’s <code>is_error</code> — monitoring clients use it to aggregate error rates per tool type without parsing output strings.</p>
 <p><code>AgentEventMsg</code> overlaps with <code>StreamEvent</code> — both represent the agent execution
 lifecycle. <code>StreamEvent</code> is the per-request streaming format (rich, typed
 variants). <code>AgentEventMsg</code> is the cross-session monitoring format (flat, single

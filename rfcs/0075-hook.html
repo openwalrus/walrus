@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d035661f.js";
+            window.path_to_searchindex_js = "../searchindex-86ebca6a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0568fcff.js"></script>
@@ -258,6 +258,8 @@ daemon infrastructure.</p>
 name. It’s not part of the <code>Hook</code> trait itself (the trait only registers
 schemas). The runtime calls <code>dispatch_tool</code> when an agent produces a tool call.
 Dispatch enforces scoping before routing.</p>
+<p>Dispatch returns <code>Result&lt;String, String&gt;</code>. <code>Ok</code> carries normal tool output; <code>Err</code> carries a handler-reported failure (invalid args, not found, scope rejection, operation error) or a dispatch-level failure (no tool sender, tool channel closed, reply dropped). The same convention applies to the <code>Host</code> trait methods for server-specific tools (<code>dispatch_ask_user</code>, <code>dispatch_delegate</code>, <code>dispatch_custom_tool</code>). The distinction propagates to the <code>AgentEvent::ToolResult.output</code> field and to the wire protocol’s <code>is_error</code> flag so UIs can render errors distinctly and agents can make retry decisions without string-matching error messages. <code>HistoryEntry::tool</code> still stores the inner string regardless of the arm — the LLM wire format has no <code>is_error</code> field, so the model sees the text either way.</p>
+<p>When an agent step produces multiple tool calls, the runtime dispatches them concurrently via <code>FuturesUnordered</code>; tool results are appended to history in the original call order (positional pairing with tool_calls is load-bearing for providers that correlate by index), but the <code>ToolResult</code> events fire in completion order so UIs show fast tools immediately without waiting on slow siblings.</p>
 <h2 id="alternatives"><a class="header" href="#alternatives">Alternatives</a></h2>
 <p><strong>Separate traits per concern.</strong> One trait for prompt building, one for tools,
 one for events. Rejected because they always compose together and the single
