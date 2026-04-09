@@ -4,6 +4,7 @@ use crate::{Env, host::Host};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use wcore::{
+    Storage,
     agent::{AsTool, ToolDescription},
     model::Tool,
 };
@@ -28,7 +29,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Edit::as_tool()]
 }
 
-impl<H: Host> Env<H> {
+impl<H: Host, S: Storage + 'static> Env<H, S> {
     pub async fn dispatch_edit(
         &self,
         args: &str,

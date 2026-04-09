@@ -42,18 +42,18 @@ pub type FireCallback = Arc<dyn Fn(&EventSubscription, &str) + Send + Sync>;
 
 /// In-memory event bus with subscription routing + Storage-backed
 /// recovery.
-pub struct EventBus {
+pub struct EventBus<S: Storage> {
     subscriptions: HashMap<u64, EventSubscription>,
     next_id: u64,
-    storage: Arc<dyn Storage>,
+    storage: Arc<S>,
     fire: FireCallback,
 }
 
-impl EventBus {
+impl<S: Storage> EventBus<S> {
     /// Load subscriptions from [`SUBSCRIPTIONS_KEY`] in the given
     /// [`Storage`]. Missing or unparsable blobs are tolerated — they
     /// yield an empty subscription set.
-    pub fn load(storage: Arc<dyn Storage>, fire: FireCallback) -> Self {
+    pub fn load(storage: Arc<S>, fire: FireCallback) -> Self {
         let mut subscriptions = HashMap::new();
         let mut max_id = 0u64;
         match storage.get(SUBSCRIPTIONS_KEY) {

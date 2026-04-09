@@ -1,12 +1,12 @@
 //! Tests for read and edit tools.
 
-use crabtalk_runtime::{Env, MemStorage, NoHost, SkillHandler, Storage, mcp::McpHandler};
+use crabtalk_runtime::{Env, MemStorage, NoHost, SkillHandler, mcp::McpHandler};
 use std::sync::Arc;
 
-async fn test_env(cwd: std::path::PathBuf) -> Env<NoHost> {
+async fn test_env(cwd: std::path::PathBuf) -> Env<NoHost, MemStorage> {
     let skills = SkillHandler::default();
     let mcp = McpHandler::load(&[]).await;
-    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    let storage = Arc::new(MemStorage::new());
     Env::new(skills, mcp, cwd, None, storage, NoHost)
 }
 

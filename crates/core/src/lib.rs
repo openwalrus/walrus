@@ -21,6 +21,8 @@ pub use config::{
     Setup, check_skill_conflicts, external_source_name, filter_disabled_external, load_agents_dir,
     load_agents_dirs, repo_slug, resolve_manifests, scan_skill_names,
 };
+#[cfg(feature = "test-utils")]
+pub use runtime::hook::TestHook;
 pub use runtime::{
     Conversation, Runtime,
     conversation::{ConversationMeta, find_latest_conversation, sender_slug},

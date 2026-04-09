@@ -5,7 +5,7 @@ use crabtalk_core::{
 };
 use std::sync::Arc;
 
-fn mem() -> Arc<dyn Storage> {
+fn mem() -> Arc<MemStorage> {
     Arc::new(MemStorage::new())
 }
 

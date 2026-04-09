@@ -44,16 +44,16 @@ const LEGACY_MEMORY_BAK: &str = "memory/memory.md.bak";
 const LEGACY_USER_BAK: &str = "memory/user.md.bak";
 const LEGACY_FACTS_BAK: &str = "memory/facts.toml.bak";
 
-pub struct Memory {
-    storage: Arc<dyn Storage>,
+pub struct Memory<S: Storage> {
+    storage: Arc<S>,
     entries: RwLock<HashMap<String, MemoryEntry>>,
     index: RwLock<String>,
     config: MemoryConfig,
 }
 
-impl Memory {
+impl<S: Storage> Memory<S> {
     /// Open (or create) memory storage against the given backend.
-    pub fn open(config: MemoryConfig, storage: Arc<dyn Storage>) -> Self {
+    pub fn open(config: MemoryConfig, storage: Arc<S>) -> Self {
         let mem = Self {
             storage,
             entries: RwLock::new(HashMap::new()),
@@ -276,7 +276,7 @@ impl Memory {
 /// The Storage trait has no `rename` — it's a KV store. The legacy
 /// migration fakes it with copy+delete, which is fine for one-shot
 /// backfill where atomicity doesn't matter.
-fn rename_key(storage: &dyn Storage, from: &str, to: &str) {
+fn rename_key(storage: &impl Storage, from: &str, to: &str) {
     if let Ok(Some(bytes)) = storage.get(from) {
         if storage.put(to, &bytes).is_ok() {
             let _ = storage.delete(from);

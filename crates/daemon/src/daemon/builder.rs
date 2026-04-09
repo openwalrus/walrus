@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
-use wcore::{AgentConfig, Runtime, ToolRequest, model::Model};
+use wcore::{AgentConfig, Hook, Runtime, ToolRequest, model::Model};
 
 /// The concrete provider type the default daemon uses: a `crabllm`
 /// `ProviderRegistry<RemoteProvider>` wrapped in a `Retrying` layer. The
@@ -86,7 +86,7 @@ pub(crate) fn build_single_agent_config(
     name: &str,
     config: &DaemonConfig,
     manifest: &ResolvedManifest,
-    storage: &dyn runtime::Storage,
+    storage: &impl wcore::Storage,
 ) -> Result<AgentConfig> {
     let default_model = config
         .system
@@ -146,7 +146,7 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
         let runtime =
             Self::build_runtime(config, config_dir, &event_tx, host, &build_provider).await?;
         let cron_store =
-            crate::cron::CronStore::load(runtime.storage.clone(), event_tx.clone(), shutdown_tx);
+            crate::cron::CronStore::load(runtime.storage().clone(), event_tx.clone(), shutdown_tx);
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
         // The event bus lives in runtime now; the daemon supplies a
@@ -169,7 +169,7 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
                 reply: reply_tx,
             });
         });
-        let event_bus = runtime::event_bus::EventBus::load(runtime.storage.clone(), fire);
+        let event_bus = runtime::event_bus::EventBus::load(runtime.storage().clone(), fire);
         let events = Arc::new(Mutex::new(event_bus));
         Ok(Self {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),
@@ -221,15 +221,14 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
         event_tx: &DaemonEventSender,
         host: H,
         build_provider: &BuildProvider<P>,
-    ) -> Result<Runtime<P, Env<H>>> {
+    ) -> Result<Runtime<P, Env<H, crate::storage::FsStorage>>> {
         let (mut manifest, _warnings) = resolve_manifests(config_dir);
         manifest.disabled = config.disabled.clone();
         wcore::filter_disabled_external(&mut manifest.skill_dirs, &manifest.disabled.external);
         let model = build_provider(config)?;
         let hook = build_env(config, config_dir, &manifest, host).await?;
-        let storage = hook.storage().clone();
         let tool_tx = build_tool_sender(event_tx);
-        let mut runtime = Runtime::new(model, hook, Some(tool_tx), storage).await;
+        let mut runtime = Runtime::new(model, hook, Some(tool_tx)).await;
         load_agents(&mut runtime, config_dir, config, &manifest)?;
         Ok(runtime)
     }
@@ -266,7 +265,7 @@ async fn build_env<H: Host>(
     config_dir: &Path,
     manifest: &ResolvedManifest,
     host: H,
-) -> Result<Env<H>> {
+) -> Result<Env<H, crate::storage::FsStorage>> {
     // Per-directory FsStorage instances so the runtime doesn't touch
     // std::fs to discover skill manifests.
     let skill_roots: Vec<SkillRoot> = manifest
@@ -300,9 +299,9 @@ async fn build_env<H: Host>(
 
     // Pluggable persistence backend — filesystem-rooted at the config
     // dir. Memory takes a clone of the same handle that lands on Env so
-    // the whole runtime shares one Storage instance.
-    let storage: Arc<dyn runtime::Storage> =
-        Arc::new(crate::storage::FsStorage::new(config_dir.to_path_buf()));
+    // the whole runtime shares one Storage instance. The concrete type
+    // flows through the generic on Env — no trait objects.
+    let storage = Arc::new(crate::storage::FsStorage::new(config_dir.to_path_buf()));
 
     let memory = Some(Memory::open(config.system.memory.clone(), storage.clone()));
 
@@ -328,7 +327,7 @@ fn build_tool_sender(event_tx: &DaemonEventSender) -> wcore::ToolSender {
 
 /// Load agents and add them to the runtime.
 fn load_agents<P: Provider + 'static, H: Host + 'static>(
-    runtime: &mut Runtime<P, Env<H>>,
+    runtime: &mut Runtime<P, Env<H, crate::storage::FsStorage>>,
     config_dir: &Path,
     config: &DaemonConfig,
     manifest: &ResolvedManifest,
@@ -423,7 +422,7 @@ fn load_agents<P: Provider + 'static, H: Host + 'static>(
 /// agents have `AgentId::nil()` so they never hit the Storage path and
 /// always take the fs fallback — matching today's behaviour.
 fn resolve_agent_prompt(
-    storage: &dyn runtime::Storage,
+    storage: &impl wcore::Storage,
     config: &AgentConfig,
     name: &str,
     prompt_map: &BTreeMap<String, String>,

@@ -12,6 +12,7 @@ use crate::{
         event::{DaemonEvent, DaemonEventSender},
     },
     hook::host::DaemonHost,
+    storage::FsStorage,
 };
 use anyhow::Result;
 use crabllm_core::Provider;
@@ -39,9 +40,11 @@ mod protocol;
 /// [`Daemon::reload`] can swap it atomically while in-flight requests that
 /// already cloned the inner `Arc` complete normally.
 pub struct Daemon<P: Provider + 'static = DefaultProvider, B: Host + 'static = DaemonHost> {
-    /// The crabtalk runtime, swappable via [`Daemon::reload`].
+    /// The crabtalk runtime, swappable via [`Daemon::reload`]. The
+    /// storage backend is always [`FsStorage`] — the daemon owns the
+    /// filesystem layering boundary.
     #[allow(clippy::type_complexity)]
-    pub runtime: Arc<RwLock<Arc<Runtime<P, Env<B>>>>>,
+    pub runtime: Arc<RwLock<Arc<Runtime<P, Env<B, FsStorage>>>>>,
     /// Config directory — stored so [`Daemon::reload`] can re-read config from disk.
     pub(crate) config_dir: PathBuf,
     /// Sender for the daemon event loop — cloned into `Runtime` as `ToolSender`
@@ -51,9 +54,9 @@ pub struct Daemon<P: Provider + 'static = DefaultProvider, B: Host + 'static = D
     /// When the daemon was started (for uptime calculation).
     pub(crate) started_at: std::time::Instant,
     /// Daemon-level cron scheduler. Survives runtime reloads.
-    pub(crate) crons: Arc<Mutex<CronStore>>,
+    pub(crate) crons: Arc<Mutex<CronStore<FsStorage>>>,
     /// Event bus — subscription-based routing. Survives runtime reloads.
-    pub(crate) events: Arc<Mutex<EventBus>>,
+    pub(crate) events: Arc<Mutex<EventBus<FsStorage>>>,
     /// Closure that builds `Model<P>` from config — called on initial
     /// construction and on every `reload()`.
     pub(crate) build_provider: BuildProvider<P>,

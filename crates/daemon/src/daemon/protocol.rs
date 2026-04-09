@@ -26,7 +26,7 @@ use wcore::protocol::{
         UpdateAgentMsg, UserSteeredEvent, plugin_event, stream_event,
     },
 };
-use wcore::{AgentEvent, AgentStep};
+use wcore::{AgentEvent, AgentStep, Hook, Storage};
 
 impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
     async fn send(&self, req: SendMsg) -> Result<SendResponse> {
@@ -663,7 +663,7 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
         sender: String,
     ) -> Result<Vec<ConversationInfo>> {
         let rt = self.runtime.read().await.clone();
-        Ok(scan_sessions(rt.storage.as_ref(), &agent, &sender))
+        Ok(scan_sessions(rt.storage().as_ref(), &agent, &sender))
     }
 
     async fn get_conversation_history(&self, file_path: String) -> Result<ConversationHistory> {
@@ -672,7 +672,7 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
         // through the runtime Storage.
         let slug = file_path;
         let rt = self.runtime.read().await.clone();
-        let (meta, messages) = wcore::Conversation::load_context(rt.storage.as_ref(), &slug)
+        let (meta, messages) = wcore::Conversation::load_context(rt.storage().as_ref(), &slug)
             .with_context(|| format!("conversation not found: {slug}"))?;
         Ok(ConversationHistory {
             title: meta.title,
@@ -696,7 +696,7 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
     async fn delete_conversation(&self, file_path: String) -> Result<()> {
         let slug = file_path;
         let rt = self.runtime.read().await.clone();
-        let storage = rt.storage.as_ref();
+        let storage = rt.storage().as_ref();
         let prefix = format!("sessions/{slug}/");
         let keys = storage
             .list(&prefix)
@@ -1475,7 +1475,11 @@ fn plugin_output(content: &str) -> PluginEvent {
 /// `{agent_slug}_{sender_slug}_{seq}` layout defined in
 /// `wcore::runtime::conversation`, and every session has a `meta` blob
 /// plus zero or more `step-<n>` keys underneath its slug.
-fn scan_sessions(storage: &dyn wcore::Storage, agent: &str, sender: &str) -> Vec<ConversationInfo> {
+fn scan_sessions(
+    storage: &impl wcore::Storage,
+    agent: &str,
+    sender: &str,
+) -> Vec<ConversationInfo> {
     let Ok(keys) = storage.list("sessions/") else {
         return Vec::new();
     };

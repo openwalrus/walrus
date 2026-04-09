@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::fmt::Write;
 use wcore::{
+    Storage,
     agent::{AsTool, ToolDescription},
     model::Tool,
 };
@@ -36,7 +37,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Read::as_tool()]
 }
 
-impl<H: Host> Env<H> {
+impl<H: Host, S: Storage + 'static> Env<H, S> {
     pub async fn dispatch_read(
         &self,
         args: &str,

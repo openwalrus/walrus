@@ -213,7 +213,7 @@ impl Conversation {
     /// Ensure a session slug exists, minting one and persisting an
     /// initial meta blob on first call. No-op if the slug was already
     /// assigned (e.g. on a load path).
-    pub fn ensure_slug(&mut self, storage: &dyn Storage) {
+    pub fn ensure_slug(&mut self, storage: &impl Storage) {
         if self.slug.is_some() {
             return;
         }
@@ -228,7 +228,7 @@ impl Conversation {
 
     /// Write the meta blob for this conversation (overwrites any
     /// existing one).
-    pub fn write_meta(&self, storage: &dyn Storage) {
+    pub fn write_meta(&self, storage: &impl Storage) {
         let Some(ref slug) = self.slug else {
             return;
         };
@@ -249,20 +249,20 @@ impl Conversation {
 
     /// Alias kept for legacy callers: rewrite meta is exactly
     /// overwriting the single meta blob.
-    pub fn rewrite_meta(&self, storage: &dyn Storage) {
+    pub fn rewrite_meta(&self, storage: &impl Storage) {
         self.write_meta(storage);
     }
 
     /// Set the conversation title and rewrite meta. The slug stays
     /// stable — unlike the old JSONL path, there's no file rename.
-    pub fn set_title(&mut self, storage: &dyn Storage, title: &str) {
+    pub fn set_title(&mut self, storage: &impl Storage, title: &str) {
         self.title = title.to_string();
         self.write_meta(storage);
     }
 
     /// Append history entries as individual `step-<nnnnnn>` keys.
     /// Auto-injected entries are skipped so they don't pollute replay.
-    pub fn append_messages(&mut self, storage: &dyn Storage, entries: &[HistoryEntry]) {
+    pub fn append_messages(&mut self, storage: &impl Storage, entries: &[HistoryEntry]) {
         for entry in entries {
             if entry.auto_injected {
                 continue;
@@ -274,7 +274,7 @@ impl Conversation {
     /// Append trace event entries. Events are persisted alongside
     /// messages and compact markers but are skipped when reconstructing
     /// the LLM working context (see [`Self::load_context`]).
-    pub fn append_events(&mut self, storage: &dyn Storage, events: &[EventLine]) {
+    pub fn append_events(&mut self, storage: &impl Storage, events: &[EventLine]) {
         for event in events {
             self.append_line(storage, ConversationLine::Event(event.clone()));
         }
@@ -282,7 +282,7 @@ impl Conversation {
 
     /// Append a compact marker. The marker doubles as an archive
     /// boundary: it stores the summary, a short title, and a timestamp.
-    pub fn append_compact(&mut self, storage: &dyn Storage, summary: &str) {
+    pub fn append_compact(&mut self, storage: &impl Storage, summary: &str) {
         let line = ConversationLine::Compact {
             compact: summary.to_string(),
             title: compact_title(summary),
@@ -291,7 +291,7 @@ impl Conversation {
         self.append_line(storage, line);
     }
 
-    fn append_line(&mut self, storage: &dyn Storage, line: ConversationLine) {
+    fn append_line(&mut self, storage: &impl Storage, line: ConversationLine) {
         let Some(ref slug) = self.slug else {
             tracing::warn!("append called on conversation with no slug");
             return;
@@ -311,7 +311,7 @@ impl Conversation {
     /// forward; if there is no compact marker, all entries are
     /// returned. Trace events are excluded from the returned history.
     pub fn load_context(
-        storage: &dyn Storage,
+        storage: &impl Storage,
         slug: &str,
     ) -> anyhow::Result<(ConversationMeta, Vec<HistoryEntry>)> {
         let meta_bytes = storage
@@ -364,7 +364,10 @@ impl Conversation {
     /// Load all archive segments for a session slug. Each compact
     /// marker becomes an [`ArchiveSegment`] with title, summary, and
     /// timestamp. Segments come back in chronological order.
-    pub fn load_archives(storage: &dyn Storage, slug: &str) -> anyhow::Result<Vec<ArchiveSegment>> {
+    pub fn load_archives(
+        storage: &impl Storage,
+        slug: &str,
+    ) -> anyhow::Result<Vec<ArchiveSegment>> {
         let keys = storage.list(&step_prefix(slug))?;
         let mut archives = Vec::new();
         for key in keys {
@@ -391,7 +394,7 @@ impl Conversation {
 /// Find the latest session slug for an (agent, created_by) identity,
 /// or `None` if no session exists.
 pub fn find_latest_conversation(
-    storage: &dyn Storage,
+    storage: &impl Storage,
     agent: &str,
     created_by: &str,
 ) -> Option<String> {
@@ -423,7 +426,7 @@ pub fn find_latest_conversation(
 /// Recover the next `step-<nnnnnn>` counter for a session by finding
 /// the highest existing step key under its prefix. Used on load so
 /// subsequent appends don't collide with persisted steps.
-pub fn next_step_counter(storage: &dyn Storage, slug: &str) -> u64 {
+pub fn next_step_counter(storage: &impl Storage, slug: &str) -> u64 {
     let prefix = step_prefix(slug);
     let keys = storage.list(&prefix).unwrap_or_default();
     let mut max = 0u64;
@@ -442,7 +445,7 @@ pub fn next_step_counter(storage: &dyn Storage, slug: &str) -> u64 {
 /// prefix is the full `sessions/<agent>_<sender>_` (trailing
 /// underscore) — we take every key under it, parse the seq segment,
 /// and return `max + 1`.
-fn next_seq(storage: &dyn Storage, prefix: &str) -> u32 {
+fn next_seq(storage: &impl Storage, prefix: &str) -> u32 {
     let keys = storage.list(prefix).unwrap_or_default();
     let mut max = 0u32;
     for key in keys {

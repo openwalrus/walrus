@@ -1,14 +1,14 @@
 //! Tests for Env dispatch logic — no daemon, no network, no disk.
 
-use crabtalk_runtime::{Env, MemStorage, NoHost, SkillHandler, Storage, mcp::McpHandler};
+use crabtalk_runtime::{Env, MemStorage, NoHost, SkillHandler, mcp::McpHandler};
 use std::{path::PathBuf, sync::Arc};
 use wcore::AgentConfig;
 
-async fn test_hook() -> Env<NoHost> {
+async fn test_hook() -> Env<NoHost, MemStorage> {
     let skills = SkillHandler::default();
     let mcp = McpHandler::load(&[]).await;
     let cwd = PathBuf::from("/test");
-    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
+    let storage = Arc::new(MemStorage::new());
     Env::new(skills, mcp, cwd, None, storage, NoHost)
 }
 

@@ -3,7 +3,7 @@
 use crate::{Env, host::Host};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use wcore::agent::ToolDescription;
+use wcore::{Storage, agent::ToolDescription};
 
 #[derive(Deserialize, JsonSchema)]
 pub struct Mcp {
@@ -20,7 +20,7 @@ impl ToolDescription for Mcp {
         "Call an MCP tool by name, or list available tools if no exact match.";
 }
 
-impl<H: Host> Env<H> {
+impl<H: Host, S: Storage + 'static> Env<H, S> {
     pub async fn dispatch_mcp(&self, args: &str, agent: &str) -> Result<String, String> {
         let input: Mcp =
             serde_json::from_str(args).map_err(|e| format!("invalid arguments: {e}"))?;

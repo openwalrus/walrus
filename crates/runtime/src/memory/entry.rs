@@ -81,12 +81,12 @@ impl MemoryEntry {
     }
 
     /// Write this entry to storage.
-    pub fn save(&self, storage: &dyn Storage) -> Result<()> {
+    pub fn save(&self, storage: &impl Storage) -> Result<()> {
         storage.put(&self.key, self.serialize().as_bytes())
     }
 
     /// Delete this entry from storage.
-    pub fn delete(&self, storage: &dyn Storage) -> Result<()> {
+    pub fn delete(&self, storage: &impl Storage) -> Result<()> {
         storage.delete(&self.key)
     }
 

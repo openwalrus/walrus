@@ -1,17 +1,31 @@
 //! Hook trait — lifecycle backend for agent building, event observation,
-//! and tool schema registration.
+//! tool schema registration, and persistence.
 //!
 //! All hook crates implement this trait. [`Runtime`](crate) calls these
-//! methods at the appropriate lifecycle points. `DaemonEnv` composes
-//! multiple Hook implementations by delegating to each.
+//! methods at the appropriate lifecycle points and reaches the
+//! persistence backend through the [`Hook::Storage`] associated type.
 
-use crate::{AgentConfig, AgentEvent, agent::tool::ToolRegistry, model::HistoryEntry};
-use std::future::Future;
+use crate::{AgentConfig, AgentEvent, Storage, agent::tool::ToolRegistry, model::HistoryEntry};
+use std::{future::Future, sync::Arc};
 
-/// Lifecycle backend for agent building, event observation, and tool registration.
+/// Lifecycle backend for agent building, event observation, tool
+/// registration, and persistence.
 ///
-/// Default implementations are no-ops so implementors only override what they need.
+/// Implementors supply a concrete [`Storage`] type via the associated
+/// [`Storage`](Self::Storage) item — the runtime reaches it through
+/// [`storage`](Self::storage) and uses it for session persistence,
+/// memory entries, and anything else that needs to outlive the
+/// process. Non-storage methods default to no-ops so implementors only
+/// override what they need.
 pub trait Hook: Send + Sync {
+    /// Persistence backend this hook exposes to the runtime.
+    type Storage: Storage + 'static;
+
+    /// Shared handle to the persistence backend. Conversation
+    /// persistence, session replay, and subsystem state all route
+    /// reads and writes through here.
+    fn storage(&self) -> &Arc<Self::Storage>;
+
     /// Called by `Runtime::add_agent()` before building the `Agent`.
     ///
     /// Enriches the agent config: appends skill instructions, injects memory
@@ -68,4 +82,34 @@ pub trait Hook: Send + Sync {
     }
 }
 
-impl Hook for () {}
+/// Trivial [`Hook`] with no lifecycle behaviour backed by an in-memory
+/// [`MemStorage`](crate::MemStorage). Useful in tests that need a
+/// `Runtime` but don't care about persistence beyond "don't crash".
+#[cfg(feature = "test-utils")]
+#[derive(Default)]
+pub struct TestHook {
+    storage: Arc<crate::MemStorage>,
+}
+
+#[cfg(feature = "test-utils")]
+impl TestHook {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Build a [`TestHook`] that shares an existing `MemStorage` — handy
+    /// when two runtimes (e.g. pre- and post-reload) need to see the
+    /// same session state.
+    pub fn with_storage(storage: Arc<crate::MemStorage>) -> Self {
+        Self { storage }
+    }
+}
+
+#[cfg(feature = "test-utils")]
+impl Hook for TestHook {
+    type Storage = crate::MemStorage;
+
+    fn storage(&self) -> &Arc<Self::Storage> {
+        &self.storage
+    }
+}

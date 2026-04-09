@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use wcore::{
+    Storage,
     agent::{AsTool, ToolDescription},
     model::Tool,
 };
@@ -26,7 +27,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Bash::as_tool()]
 }
 
-impl<H: Host> Env<H> {
+impl<H: Host, S: Storage + 'static> Env<H, S> {
     /// Dispatch a `bash` tool call — run a command directly.
     ///
     /// A non-zero exit code is *not* an `Err` — the shell ran successfully

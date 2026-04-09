@@ -7,19 +7,19 @@
 //! cannot be overridden per-test. The files are tiny JSONL and harmless.
 
 use crabtalk_core::{
-    AgentConfig, AgentEvent, AgentStopReason, MemStorage, Runtime, Storage,
+    AgentConfig, AgentEvent, AgentStopReason, Runtime, TestHook,
     model::{
         Model,
         test_provider::{TestProvider, text_chunks},
     },
 };
 use futures_util::StreamExt;
-use std::sync::Arc;
 
 /// Build a `Runtime` from a `TestProvider`, wrapping the provider in `Model<P>`.
-fn runtime(provider: TestProvider) -> impl std::future::Future<Output = Runtime<TestProvider, ()>> {
-    let storage: Arc<dyn Storage> = Arc::new(MemStorage::new());
-    Runtime::new(Model::new(provider), (), None, storage)
+fn runtime(
+    provider: TestProvider,
+) -> impl std::future::Future<Output = Runtime<TestProvider, TestHook>> {
+    Runtime::new(Model::new(provider), TestHook::new(), None)
 }
 
 // --- Agent registry ---

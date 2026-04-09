@@ -45,11 +45,11 @@ struct CronFile {
 }
 
 /// In-memory cron store with per-entry timer tasks.
-pub struct CronStore {
+pub struct CronStore<S: Storage> {
     entries: HashMap<u64, CronEntry>,
     handles: HashMap<u64, JoinHandle<()>>,
     next_id: u64,
-    storage: Arc<dyn Storage>,
+    storage: Arc<S>,
     event_tx: DaemonEventSender,
     shutdown_tx: broadcast::Sender<()>,
 }
@@ -61,12 +61,12 @@ fn validate_schedule(schedule: &str) -> Result<(), String> {
         .map_err(|e| format!("invalid cron schedule '{schedule}': {e}"))
 }
 
-impl CronStore {
+impl<S: Storage + 'static> CronStore<S> {
     /// Load crons from [`CRONS_KEY`] in the given [`Storage`]. Missing
     /// or unparsable blobs yield an empty store; entries with invalid
     /// schedules are skipped with a warning.
     pub fn load(
-        storage: Arc<dyn Storage>,
+        storage: Arc<S>,
         event_tx: DaemonEventSender,
         shutdown_tx: broadcast::Sender<()>,
     ) -> Self {
@@ -105,7 +105,7 @@ impl CronStore {
     }
 
     /// Spawn timer tasks for all loaded entries.
-    pub fn start_all(&mut self, store: Arc<Mutex<CronStore>>) {
+    pub fn start_all(&mut self, store: Arc<Mutex<CronStore<S>>>) {
         let ids: Vec<u64> = self.entries.keys().copied().collect();
         for id in ids {
             self.spawn_timer(id, store.clone());
@@ -120,7 +120,7 @@ impl CronStore {
     pub fn create(
         &mut self,
         mut entry: CronEntry,
-        store: Arc<Mutex<CronStore>>,
+        store: Arc<Mutex<CronStore<S>>>,
     ) -> Result<CronEntry, String> {
         validate_schedule(&entry.schedule)?;
         entry.id = self.next_id;
@@ -168,7 +168,7 @@ impl CronStore {
 
     /// Spawn a timer task for a single entry.
     /// One-shot crons self-delete through the `store` handle after firing.
-    fn spawn_timer(&mut self, id: u64, store: Arc<Mutex<CronStore>>) {
+    fn spawn_timer(&mut self, id: u64, store: Arc<Mutex<CronStore<S>>>) {
         let Some(entry) = self.entries.get(&id).cloned() else {
             return;
         };

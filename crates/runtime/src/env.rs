@@ -37,33 +37,32 @@ const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget"];
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &["delegate"];
 
-pub struct Env<H: Host = crate::NoHost> {
+pub struct Env<H: Host, S: Storage + 'static> {
     pub(crate) skills: SkillHandler,
     pub(crate) mcp: McpHandler,
     pub(crate) cwd: PathBuf,
-    pub(crate) memory: Option<Memory>,
+    pub(crate) memory: Option<Memory<S>>,
     /// Per-agent dispatch scopes. Behind a sync `RwLock` so agent CRUD can
     /// mutate in place through `&self`. Critical sections are lookups or
     /// single inserts/removes — never held across an `.await`.
     pub(crate) scopes: RwLock<BTreeMap<String, AgentScope>>,
     pub(crate) agent_descriptions: RwLock<BTreeMap<String, String>>,
-    /// Pluggable persistence backend, shared with runtime subsystems that
-    /// need to read/write state. Phase 2 wires the field; later phases
-    /// migrate individual subsystems (memory, skills, sessions, agents,
-    /// event bus) onto it.
-    pub(crate) storage: Arc<dyn Storage>,
+    /// Pluggable persistence backend, shared with runtime subsystems
+    /// that need to read/write state. Concrete type flows through the
+    /// `S` generic — no trait objects, no runtime dispatch.
+    pub(crate) storage: Arc<S>,
     /// Host providing server-specific functionality.
     pub host: H,
 }
 
-impl<H: Host> Env<H> {
+impl<H: Host, S: Storage + 'static> Env<H, S> {
     /// Create a new Env with the given backends.
     pub fn new(
         skills: SkillHandler,
         mcp: McpHandler,
         cwd: PathBuf,
-        memory: Option<Memory>,
-        storage: Arc<dyn Storage>,
+        memory: Option<Memory<S>>,
+        storage: Arc<S>,
         host: H,
     ) -> Self {
         Self {
@@ -78,13 +77,8 @@ impl<H: Host> Env<H> {
         }
     }
 
-    /// Shared handle to the persistence backend.
-    pub fn storage(&self) -> &Arc<dyn Storage> {
-        &self.storage
-    }
-
     /// Access memory.
-    pub fn memory(&self) -> Option<&Memory> {
+    pub fn memory(&self) -> Option<&Memory<S>> {
         self.memory.as_ref()
     }
 
@@ -293,7 +287,13 @@ impl<H: Host> Env<H> {
     }
 }
 
-impl<H: Host + 'static> Hook for Env<H> {
+impl<H: Host + 'static, S: Storage + 'static> Hook for Env<H, S> {
+    type Storage = S;
+
+    fn storage(&self) -> &Arc<S> {
+        &self.storage
+    }
+
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
         config.system_prompt.push_str(&os::environment_block());
 

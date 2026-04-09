@@ -79,7 +79,7 @@ pub fn backfill_local_agent_ids(config_dir: &Path) -> Result<()> {
 pub fn migrate_local_agent_prompts(
     config_dir: &Path,
     manifest: &ResolvedManifest,
-    storage: &dyn Storage,
+    storage: &impl Storage,
 ) -> Result<()> {
     let legacy_dir = config_dir.join(wcore::paths::AGENTS_DIR);
     if !legacy_dir.exists() {

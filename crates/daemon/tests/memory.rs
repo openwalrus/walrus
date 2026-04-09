@@ -3,7 +3,7 @@
 use runtime::{MemStorage, Memory, MemoryConfig, Storage};
 use std::sync::Arc;
 
-fn test_memory() -> Memory {
+fn test_memory() -> Memory<MemStorage> {
     Memory::open(MemoryConfig::default(), Arc::new(MemStorage::new()))
 }
 
