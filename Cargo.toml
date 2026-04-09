@@ -107,3 +107,6 @@ debug = false
 debug-assertions = false
 overflow-checks = false
 strip = true
+
+[workspace.metadata.conta]
+ignore = []
