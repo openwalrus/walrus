@@ -152,8 +152,27 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
         );
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
-        let event_bus =
-            crate::event_bus::EventBus::load(config_dir.join("events.toml"), event_tx.clone());
+        // The event bus lives in runtime now; the daemon supplies a
+        // fire callback that forwards matched subscriptions into its
+        // own event loop as DaemonEvent::Message.
+        let fire_tx = event_tx.clone();
+        let fire: runtime::event_bus::FireCallback = Arc::new(move |sub, payload| {
+            use wcore::protocol::message::{ClientMessage, SendMsg};
+            let (reply_tx, _) = tokio::sync::mpsc::channel(1);
+            let msg = ClientMessage::from(SendMsg {
+                agent: sub.target_agent.clone(),
+                content: payload.to_owned(),
+                sender: Some(format!("event:{}", sub.source)),
+                cwd: None,
+                guest: None,
+                tool_choice: None,
+            });
+            let _ = fire_tx.send(DaemonEvent::Message {
+                msg,
+                reply: reply_tx,
+            });
+        });
+        let event_bus = runtime::event_bus::EventBus::load(runtime.storage.clone(), fire);
         let events = Arc::new(Mutex::new(event_bus));
         Ok(Self {
             runtime: Arc::new(RwLock::new(Arc::new(runtime))),

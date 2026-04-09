@@ -697,6 +697,7 @@ dependencies = [
  "serde_yml",
  "tempfile",
  "tokio",
+ "toml",
  "tracing",
 ]
 

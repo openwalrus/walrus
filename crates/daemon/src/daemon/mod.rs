@@ -11,12 +11,11 @@ use crate::{
         builder::{BuildProvider, DefaultProvider, build_default_provider},
         event::{DaemonEvent, DaemonEventSender},
     },
-    event_bus::EventBus,
     hook::host::DaemonHost,
 };
 use anyhow::Result;
 use crabllm_core::Provider;
-use runtime::{Env, host::Host};
+use runtime::{Env, event_bus::EventBus, host::Host};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,

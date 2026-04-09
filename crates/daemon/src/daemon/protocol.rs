@@ -1,9 +1,10 @@
 //! Server trait implementation for the Daemon.
 
-use crate::{cron::CronEntry, daemon::Daemon, event_bus::EventSubscription};
+use crate::{cron::CronEntry, daemon::Daemon};
 use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use futures_util::{StreamExt, pin_mut};
+use runtime::event_bus::EventSubscription;
 use runtime::host::Host;
 use std::sync::Arc;
 use std::{

@@ -22,6 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yml.workspace = true
 tokio = { workspace = true, features = ["process"] }
+toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
