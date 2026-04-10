@@ -1,10 +1,10 @@
 //! Runtime — agent registry, conversation management, and hook orchestration.
 //!
 //! [`Runtime`] holds agents as immutable definitions and conversations as
-//! per-conversation `Arc<Mutex<Conversation>>` containers. Tool schemas are
-//! registered once at startup via `hook.on_register_tools()`. Execution
-//! methods (`send_to`, `stream_to`) take a conversation ID, lock the
-//! conversation, clone the agent, and run with the conversation's history.
+//! per-conversation `Arc<Mutex<Conversation>>` containers. Tool schemas and
+//! handlers are registered by the caller at construction. Execution methods
+//! (`send_to`, `stream_to`) take a conversation ID, lock the conversation,
+//! clone the agent, and run with the conversation's history.
 
 use anyhow::{Result, bail};
 use async_stream::stream;
@@ -41,15 +41,17 @@ pub struct Runtime<C: Config> {
 }
 
 impl<C: Config> Runtime<C> {
-    /// Create a new runtime with the given model, hook, and storage.
-    pub async fn new(
+    /// Create a new runtime with the given model, hook, storage, and tools.
+    ///
+    /// Tool schemas and handlers are registered by the caller before
+    /// construction — see [`Env::register_handler`](crate::Env::register_handler).
+    pub fn new(
         model: Model<C::Provider>,
         hook: C::Hook,
         storage: Arc<C::Storage>,
         tool_tx: Option<ToolSender>,
+        tools: ToolRegistry,
     ) -> Self {
-        let mut tools = ToolRegistry::new();
-        hook.on_register_tools(&mut tools).await;
         Self {
             model,
             hook,

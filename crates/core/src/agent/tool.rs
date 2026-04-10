@@ -9,7 +9,7 @@
 use crabllm_core::{FunctionDef, Tool, ToolType};
 use heck::ToSnakeCase;
 use schemars::JsonSchema;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot};
 
 /// Sender half of the agent tool channel.
@@ -41,6 +41,25 @@ pub struct ToolRequest {
     /// Set by the runtime; the agent passes it through as an opaque value.
     pub conversation_id: Option<u64>,
 }
+
+/// Arguments passed to a tool handler during dispatch.
+pub struct ToolDispatch {
+    /// JSON-encoded arguments string.
+    pub args: String,
+    /// Name of the agent making this call.
+    pub agent: String,
+    /// Sender identity (empty for local/owner conversations).
+    pub sender: String,
+    /// Conversation ID, if running within a conversation.
+    pub conversation_id: Option<u64>,
+}
+
+/// A type-erased async tool handler.
+pub type ToolHandler = Arc<
+    dyn Fn(ToolDispatch) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// Schema-only registry of named tools.
 ///

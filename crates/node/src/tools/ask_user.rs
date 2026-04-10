@@ -1,10 +1,10 @@
-//! Tool schema for the built-in `ask_user` tool.
-//!
-//! Schema types live here. Dispatch logic is server-specific and lives in
-//! the [`Host`](crate::host::Host) implementation.
+//! Ask-user tool handler factory.
 
+use runtime::host::Host;
 use serde::Deserialize;
+use std::sync::Arc;
 use wcore::{
+    ToolDispatch, ToolHandler,
     agent::{AsTool, ToolDescription},
     model::Tool,
 };
@@ -43,6 +43,15 @@ impl ToolDescription for AskUser {
     const DESCRIPTION: &'static str = r#"Ask the user one or more structured questions with predefined options. Each question needs a short UI header, the full question text, and options with labels and descriptions. The user picks from the options or types a free-text "Other" answer. Returns JSON mapping question text to selected label. For multi_select, the answer is a comma-joined string like "Option A, Option B"."#;
 }
 
-pub fn tools() -> Vec<Tool> {
-    vec![AskUser::as_tool()]
+pub fn handler<H: Host + 'static>(host: H) -> (Tool, ToolHandler) {
+    (
+        AskUser::as_tool(),
+        Arc::new(move |call: ToolDispatch| {
+            let host = host.clone();
+            Box::pin(async move {
+                host.dispatch_ask_user(&call.args, call.conversation_id)
+                    .await
+            })
+        }),
+    )
 }

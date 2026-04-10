@@ -43,4 +43,5 @@ default = ["fs"]
 fs = ["dep:toml", "dep:toml_edit", "dep:ulid"]
 
 [dev-dependencies]
+tempfile.workspace = true
 wcore = { workspace = true, features = ["test-utils"] }

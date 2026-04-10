@@ -1,25 +1,26 @@
 //! Env — the embeddable engine environment.
 //!
-//! [`Env`] composes skill, MCP, OS, and memory sub-hooks. It implements
-//! `wcore::Hook` and provides the central `dispatch_tool` entry point.
-//! Server-specific tools (`ask_user`, `delegate`) are routed through the
-//! [`Host`](crate::host::Host).
+//! [`Env`] implements `wcore::Hook` and provides the central `dispatch_tool`
+//! entry point. Tool handlers are registered dynamically at startup — there
+//! is no hardcoded dispatch table.
 
-use crate::{host::Host, memory::Memory, os, skill};
+use crate::{host::Host, memory::Memory, os};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
-use wcore::{AgentConfig, AgentEvent, Hook, model::HistoryEntry, repos::Storage};
+use wcore::{
+    AgentConfig, AgentEvent, Hook, ToolDispatch, ToolHandler, model::HistoryEntry, repos::Storage,
+};
 
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
 pub struct AgentScope {
-    pub(crate) tools: Vec<String>,
-    pub(crate) members: Vec<String>,
-    pub(crate) skills: Vec<String>,
-    pub(crate) mcps: Vec<String>,
+    pub tools: Vec<String>,
+    pub members: Vec<String>,
+    pub skills: Vec<String>,
+    pub mcps: Vec<String>,
 }
 
 /// Base tools always included in every agent's whitelist.
@@ -39,30 +40,44 @@ const TASK_TOOLS: &[&str] = &["delegate"];
 
 pub struct Env<H: Host, S: Storage> {
     pub(crate) storage: Arc<S>,
-    pub(crate) memory: Option<Memory<S>>,
+    pub(crate) memory: Option<Arc<Memory<S>>>,
     pub(crate) cwd: PathBuf,
-    pub(crate) scopes: RwLock<BTreeMap<String, AgentScope>>,
+    pub scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
     pub(crate) agent_descriptions: RwLock<BTreeMap<String, String>>,
     /// Host providing server-specific functionality.
     pub host: H,
+    /// Dynamically registered tool handlers.
+    handlers: BTreeMap<String, ToolHandler>,
 }
 
 impl<H: Host, S: Storage> Env<H, S> {
     /// Create a new Env with the given backends.
-    pub fn new(storage: Arc<S>, cwd: PathBuf, memory: Option<Memory<S>>, host: H) -> Self {
+    pub fn new(
+        storage: Arc<S>,
+        cwd: PathBuf,
+        memory: Option<Arc<Memory<S>>>,
+        host: H,
+        scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
+    ) -> Self {
         Self {
             storage,
             memory,
             cwd,
-            scopes: RwLock::new(BTreeMap::new()),
+            scopes,
             agent_descriptions: RwLock::new(BTreeMap::new()),
             host,
+            handlers: BTreeMap::new(),
         }
     }
 
     /// Access memory.
     pub fn memory(&self) -> Option<&Memory<S>> {
-        self.memory.as_ref()
+        self.memory.as_deref()
+    }
+
+    /// Register a tool handler for dynamic dispatch.
+    pub fn register_handler(&mut self, name: String, handler: ToolHandler) {
+        self.handlers.insert(name, handler);
     }
 
     /// List connected MCP servers with their tool names.
@@ -190,44 +205,6 @@ impl<H: Host, S: Storage> Env<H, S> {
         }
     }
 
-    /// Validate member scope and delegate to the bridge.
-    async fn dispatch_delegate(&self, args: &str, agent: &str) -> Result<String, String> {
-        let input: crate::task::Delegate =
-            serde_json::from_str(args).map_err(|e| format!("invalid arguments: {e}"))?;
-        if input.tasks.is_empty() {
-            return Err("no tasks provided".to_owned());
-        }
-        {
-            let scopes = self.scopes.read().expect("scopes lock poisoned");
-            if let Some(scope) = scopes.get(agent)
-                && !scope.members.is_empty()
-            {
-                for task in &input.tasks {
-                    if !scope.members.iter().any(|m| m == &task.agent) {
-                        return Err(format!(
-                            "agent '{}' is not in your members list",
-                            task.agent
-                        ));
-                    }
-                }
-            }
-        }
-        self.host.dispatch_delegate(args, agent).await
-    }
-
-    /// Dispatch the `mcp` tool — extract scope, delegate to Host.
-    async fn dispatch_mcp(&self, args: &str, agent: &str) -> Result<String, String> {
-        let allowed_mcps: Vec<String> = self
-            .scopes
-            .read()
-            .expect("scopes lock poisoned")
-            .get(agent)
-            .filter(|s| !s.mcps.is_empty())
-            .map(|s| s.mcps.clone())
-            .unwrap_or_default();
-        self.host.dispatch_mcp(args, &allowed_mcps).await
-    }
-
     /// Route a tool call by name to the appropriate handler.
     pub async fn dispatch_tool(
         &self,
@@ -247,27 +224,18 @@ impl<H: Host, S: Storage> Env<H, S> {
                 return Err(format!("tool not available: {name}"));
             }
         }
-        match name {
-            "mcp" => self.dispatch_mcp(args, agent).await,
-            "skill" => self.dispatch_skill(args, agent).await,
-            "bash" if sender.contains(':') => {
-                Err("bash is only available in the command line interface".to_owned())
-            }
-            "bash" => self.dispatch_bash(args, conversation_id).await,
-            "read" => self.dispatch_read(args, conversation_id).await,
-            "edit" => self.dispatch_edit(args, conversation_id).await,
-            "recall" => self.dispatch_recall(args).await,
-            "remember" => self.dispatch_remember(args).await,
-            "memory" => self.dispatch_memory(args).await,
-            "forget" => self.dispatch_forget(args).await,
-            "delegate" => self.dispatch_delegate(args, agent).await,
-            "ask_user" => self.host.dispatch_ask_user(args, conversation_id).await,
-            name => {
-                self.host
-                    .dispatch_custom_tool(name, args, agent, conversation_id)
-                    .await
-            }
-        }
+        let handler = self
+            .handlers
+            .get(name)
+            .ok_or_else(|| format!("tool not registered: {name}"))?
+            .clone();
+        handler(ToolDispatch {
+            args: args.to_owned(),
+            agent: agent.to_owned(),
+            sender: sender.to_owned(),
+            conversation_id,
+        })
+        .await
     }
 }
 
@@ -396,23 +364,6 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
             );
         }
         entries
-    }
-
-    async fn on_register_tools(&self, tools: &mut wcore::ToolRegistry) {
-        // MCP tool schemas from the host (daemon provides these).
-        let mcp_tools = self.host.mcp_tools();
-        if !mcp_tools.is_empty() {
-            tools.insert_all(mcp_tools);
-        }
-        tools.insert_all(os::tool::tools());
-        tools.insert_all(os::read::tools());
-        tools.insert_all(os::edit::tools());
-        tools.insert_all(skill::tool::tools());
-        tools.insert_all(crate::task::tools());
-        tools.insert_all(crate::ask_user::tools());
-        if self.memory.is_some() {
-            tools.insert_all(crate::memory::tool::tools());
-        }
     }
 
     fn on_event(&self, agent: &str, conversation_id: u64, event: &AgentEvent) {

@@ -8,6 +8,7 @@ pub mod node;
 pub mod provider;
 #[cfg(feature = "fs")]
 pub mod storage;
+pub mod tools;
 
 pub use hook::NodeEnv;
 #[cfg(unix)]

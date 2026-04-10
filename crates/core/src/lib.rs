@@ -13,7 +13,7 @@
 pub use agent::{
     Agent, AgentBuilder, AgentConfig, AgentId,
     event::{AgentEvent, AgentResponse, AgentStep, AgentStopReason},
-    tool::{ToolRegistry, ToolRequest, ToolSender},
+    tool::{ToolDispatch, ToolHandler, ToolRegistry, ToolRequest, ToolSender},
 };
 pub use config::{
     ApiStandard, ManifestConfig, McpServerConfig, MemoryConfig, NodeConfig, PackageMeta,

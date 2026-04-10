@@ -9,7 +9,7 @@ use crate::{
 use anyhow::Result;
 use crabllm_core::Provider;
 use crabllm_provider::{ProviderRegistry, RemoteProvider};
-use runtime::{Env, Runtime, host::Host, memory::Memory};
+use runtime::{Env, Memory, Runtime, host::Host};
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
@@ -165,9 +165,9 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
         host.set_mcp(mcp_handler);
 
-        let (hook, storage) = build_env(config, config_dir, &manifest, host)?;
+        let (hook, storage, tools) = build_env(config, config_dir, &manifest, host)?;
         let tool_tx = build_tool_sender(event_tx);
-        let mut runtime = Runtime::new(model, hook, storage, Some(tool_tx)).await;
+        let mut runtime = Runtime::new(model, hook, storage, Some(tool_tx), tools);
         load_agents(&mut runtime, config_dir, config, &manifest)?;
         Ok(runtime)
     }
@@ -208,12 +208,12 @@ fn mcp_servers(config: &NodeConfig, manifest: &ResolvedManifest) -> Vec<wcore::M
         .collect()
 }
 
-fn build_env<H: Host>(
+fn build_env<H: Host + 'static>(
     config: &NodeConfig,
     config_dir: &Path,
     manifest: &ResolvedManifest,
     host: H,
-) -> Result<(Env<H, FsStorage>, Arc<FsStorage>)> {
+) -> Result<(Env<H, FsStorage>, Arc<FsStorage>, wcore::ToolRegistry)> {
     let skill_roots: Vec<PathBuf> = manifest
         .skill_dirs
         .iter()
@@ -232,9 +232,78 @@ fn build_env<H: Host>(
         manifest.agent_dirs.clone(),
     ));
 
-    let memory = Some(Memory::open(config.system.memory.clone(), storage.clone()));
+    let memory = Arc::new(Memory::open(config.system.memory.clone(), storage.clone()));
     let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
-    Ok((Env::new(storage.clone(), cwd, memory, host), storage))
+    let scopes = Arc::new(std::sync::RwLock::new(BTreeMap::new()));
+
+    let mut env = Env::new(
+        storage.clone(),
+        cwd.clone(),
+        Some(memory.clone()),
+        host.clone(),
+        scopes.clone(),
+    );
+
+    // Register tool handlers.
+    let mut tools = wcore::ToolRegistry::new();
+
+    let register = |tools: &mut wcore::ToolRegistry,
+                    env: &mut Env<H, FsStorage>,
+                    entry: (wcore::model::Tool, wcore::ToolHandler)| {
+        let (schema, handler) = entry;
+        let name = schema.function.name.clone();
+        tools.insert(schema);
+        env.register_handler(name, handler);
+    };
+
+    register(
+        &mut tools,
+        &mut env,
+        crate::tools::os::bash(cwd.clone(), host.clone()),
+    );
+    register(
+        &mut tools,
+        &mut env,
+        crate::tools::os::read(cwd.clone(), host.clone()),
+    );
+    register(
+        &mut tools,
+        &mut env,
+        crate::tools::os::edit(cwd, host.clone()),
+    );
+
+    for entry in crate::tools::memory::handlers(memory) {
+        register(&mut tools, &mut env, entry);
+    }
+
+    register(
+        &mut tools,
+        &mut env,
+        crate::tools::skill::handler(storage.clone(), scopes.clone()),
+    );
+    register(
+        &mut tools,
+        &mut env,
+        crate::tools::delegate::handler(host.clone(), scopes.clone()),
+    );
+    register(
+        &mut tools,
+        &mut env,
+        crate::tools::ask_user::handler(host.clone()),
+    );
+
+    // MCP tools — each schema gets the same shared handler.
+    let mcp_tools = host.mcp_tools();
+    if !mcp_tools.is_empty() {
+        let mcp_handler = crate::tools::mcp::handler(host, scopes.clone());
+        for schema in mcp_tools {
+            let name = schema.function.name.clone();
+            tools.insert(schema);
+            env.register_handler(name, mcp_handler.clone());
+        }
+    }
+
+    Ok((env, storage, tools))
 }
 
 fn build_tool_sender(event_tx: &NodeEventSender) -> wcore::ToolSender {

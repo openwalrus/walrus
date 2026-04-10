@@ -54,7 +54,7 @@ impl Host for NodeHost {
         args: &str,
         conversation_id: Option<u64>,
     ) -> Result<String, String> {
-        let input: runtime::ask_user::AskUser =
+        let input: crate::tools::ask_user::AskUser =
             serde_json::from_str(args).map_err(|e| format!("invalid arguments: {e}"))?;
 
         let conversation_id =
@@ -83,7 +83,7 @@ impl Host for NodeHost {
     }
 
     async fn dispatch_delegate(&self, args: &str, _agent: &str) -> Result<String, String> {
-        let input: runtime::task::Delegate =
+        let input: crate::tools::delegate::Delegate =
             serde_json::from_str(args).map_err(|e| format!("invalid arguments: {e}"))?;
 
         // Register ephemeral agents and resolve agent names.

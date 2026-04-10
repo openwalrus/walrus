@@ -1,8 +1,9 @@
-//! Host — trait for server-specific tool dispatch.
+//! Host — trait for server-specific capabilities.
 //!
 //! The runtime crate defines this trait. The daemon implements it to provide
-//! `ask_user`, `delegate`, per-conversation CWD resolution, and layered
-//! instruction discovery. Embedded users get [`NoHost`] with no-op defaults.
+//! per-conversation CWD resolution, event broadcasting, MCP bridge, and
+//! layered instruction discovery. Embedded users get [`NoHost`] with
+//! no-op defaults.
 
 use std::path::{Path, PathBuf};
 
@@ -118,20 +119,6 @@ pub trait Host: Send + Sync + Clone {
     /// type-erased so the runtime crate doesn't depend on the daemon's
     /// MCP types. DaemonHost downcasts; other hosts ignore.
     fn set_mcp(&mut self, _handler: std::sync::Arc<dyn std::any::Any + Send + Sync>) {}
-
-    /// Handle a tool call not matched by the built-in dispatch table.
-    /// Downstream hosts override this to inject private tools.
-    ///
-    /// Returns `Ok` on success, `Err` for unknown tools or failures.
-    fn dispatch_custom_tool(
-        &self,
-        name: &str,
-        _args: &str,
-        _agent: &str,
-        _conversation_id: Option<u64>,
-    ) -> impl std::future::Future<Output = Result<String, String>> + Send {
-        async move { Err(format!("tool not available: {name}")) }
-    }
 }
 
 /// No-op host for embedded use.
