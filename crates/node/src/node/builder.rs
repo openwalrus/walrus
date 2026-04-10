@@ -152,14 +152,20 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         config: &NodeConfig,
         config_dir: &Path,
         event_tx: &NodeEventSender,
-        host: H,
+        mut host: H,
         build_provider: &BuildProvider<P>,
     ) -> Result<Runtime<P, Env<H, FsStorage>>> {
         let (mut manifest, _warnings) = resolve_manifests(config_dir);
         manifest.disabled = config.disabled.clone();
         wcore::filter_disabled_external(&mut manifest.skill_dirs, &manifest.disabled.external);
         let model = build_provider(config)?;
-        let hook = build_env(config, config_dir, &manifest, host).await?;
+
+        // Build MCP before the env so the host has it from the start.
+        let servers = mcp_servers(config, &manifest);
+        let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
+        host.set_mcp(mcp_handler);
+
+        let hook = build_env(config, config_dir, &manifest, host)?;
         let tool_tx = build_tool_sender(event_tx);
         let mut runtime = Runtime::new(model, hook, Some(tool_tx)).await;
         load_agents(&mut runtime, config_dir, config, &manifest)?;
@@ -186,11 +192,27 @@ fn build_providers(config: &NodeConfig) -> Result<Model<DefaultProvider>> {
     Ok(Model::new(retrying))
 }
 
-async fn build_env<H: Host>(
+/// Build MCP server configs from manifest + node config env vars.
+fn mcp_servers(config: &NodeConfig, manifest: &ResolvedManifest) -> Vec<wcore::McpServerConfig> {
+    manifest
+        .mcps
+        .iter()
+        .filter(|(name, _)| !manifest.disabled.mcps.contains(name))
+        .map(|(_, mcp)| {
+            let mut mcp = mcp.clone();
+            for (k, v) in &config.env {
+                mcp.env.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            mcp
+        })
+        .collect()
+}
+
+fn build_env<H: Host>(
     config: &NodeConfig,
     config_dir: &Path,
     manifest: &ResolvedManifest,
-    mut host: H,
+    host: H,
 ) -> Result<Env<H, FsStorage>> {
     let skill_roots: Vec<PathBuf> = manifest
         .skill_dirs
@@ -210,25 +232,8 @@ async fn build_env<H: Host>(
         manifest.agent_dirs.clone(),
     ));
 
-    let mcp_servers: Vec<_> = manifest
-        .mcps
-        .iter()
-        .filter(|(name, _)| !manifest.disabled.mcps.contains(name))
-        .map(|(_, mcp)| {
-            let mut mcp = mcp.clone();
-            for (k, v) in &config.env {
-                mcp.env.entry(k.clone()).or_insert_with(|| v.clone());
-            }
-            mcp
-        })
-        .collect();
-
     let memory = Some(Memory::open(config.system.memory.clone(), storage.clone()));
-
     let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
-
-    let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&mcp_servers).await);
-    host.set_mcp(mcp_handler);
     Ok(Env::new(storage, cwd, memory, host))
 }
 
