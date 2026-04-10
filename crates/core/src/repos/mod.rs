@@ -17,11 +17,13 @@ pub mod mem;
 pub mod memory;
 pub mod sessions;
 pub mod skills;
+pub mod storage;
 
 pub use agents::AgentRepo;
 pub use memory::{MemoryEntry, MemoryRepo, slugify};
 pub use sessions::{SessionHandle, SessionRepo, SessionSnapshot, SessionSummary};
 pub use skills::{Skill, SkillRepo};
+pub use storage::Storage;
 
 use std::sync::Arc;
 

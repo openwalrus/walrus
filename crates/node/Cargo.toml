@@ -1,0 +1,12 @@
+[package]
+name = "crabtalk-node"
+description = "Crabtalk node — runtime + transport + event loop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+wcore.workspace = true

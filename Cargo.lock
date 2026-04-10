@@ -650,6 +650,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "crabtalk-node"
+version = "0.0.20"
+dependencies = [
+ "crabtalk-core",
+]
+
+[[package]]
 name = "crabtalk-outlook"
 version = "0.0.20"
 dependencies = [
