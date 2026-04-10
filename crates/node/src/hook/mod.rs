@@ -1,7 +1,7 @@
-//! Hook module — re-exports Env<NodeHost, NodeRepos> as NodeEnv.
+//! Hook module — re-exports Env<NodeHost, FsStorage> as NodeEnv.
 
 pub mod host;
 
 /// The daemon's environment type — Env with NodeHost for
-/// server-specific dispatch and NodeRepos for persistence.
-pub type NodeEnv = runtime::Env<host::NodeHost, crate::repos::NodeRepos>;
+/// server-specific dispatch and FsStorage for persistence.
+pub type NodeEnv = runtime::Env<host::NodeHost, crate::repos::FsStorage>;

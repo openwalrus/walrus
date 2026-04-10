@@ -5,7 +5,7 @@ use crate::{
     Node, NodeConfig,
     config::{ResolvedManifest, resolve_manifests},
     node::event::{NodeEvent, NodeEventSender},
-    repos::{FsAgentRepo, FsMemoryRepo, FsSessionRepo, FsSkillRepo, NodeRepos},
+    repos::FsStorage,
 };
 use anyhow::Result;
 use crabllm_core::Provider;
@@ -154,7 +154,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         event_tx: &NodeEventSender,
         host: H,
         build_provider: &BuildProvider<P>,
-    ) -> Result<Runtime<P, Env<H, NodeRepos>>> {
+    ) -> Result<Runtime<P, Env<H, FsStorage>>> {
         let (mut manifest, _warnings) = resolve_manifests(config_dir);
         manifest.disabled = config.disabled.clone();
         wcore::filter_disabled_external(&mut manifest.skill_dirs, &manifest.disabled.external);
@@ -191,8 +191,7 @@ async fn build_env<H: Host>(
     config_dir: &Path,
     manifest: &ResolvedManifest,
     mut host: H,
-) -> Result<Env<H, NodeRepos>> {
-    // Build repos.
+) -> Result<Env<H, FsStorage>> {
     let skill_roots: Vec<PathBuf> = manifest
         .skill_dirs
         .iter()
@@ -202,18 +201,14 @@ async fn build_env<H: Host>(
     let memory_root = config_dir.join("memory");
     let sessions_root = config_dir.join("sessions");
 
-    let repos = Arc::new(NodeRepos {
-        memory: Arc::new(FsMemoryRepo::new(memory_root)),
-        skills: Arc::new(FsSkillRepo::new(
-            skill_roots,
-            manifest.disabled.skills.clone(),
-        )),
-        sessions: Arc::new(FsSessionRepo::new(sessions_root)),
-        agents: Arc::new(FsAgentRepo::new(
-            config_dir.to_path_buf(),
-            manifest.agent_dirs.clone(),
-        )),
-    });
+    let storage = Arc::new(FsStorage::new(
+        config_dir.to_path_buf(),
+        memory_root,
+        sessions_root,
+        skill_roots,
+        manifest.disabled.skills.clone(),
+        manifest.agent_dirs.clone(),
+    ));
 
     let mcp_servers: Vec<_> = manifest
         .mcps
@@ -228,13 +223,13 @@ async fn build_env<H: Host>(
         })
         .collect();
 
-    let memory = Some(Memory::open(config.system.memory.clone(), repos.clone()));
+    let memory = Some(Memory::open(config.system.memory.clone(), storage.clone()));
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
 
     let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&mcp_servers).await);
     host.set_mcp(mcp_handler);
-    Ok(Env::new(repos, cwd, memory, host))
+    Ok(Env::new(storage, cwd, memory, host))
 }
 
 fn build_tool_sender(event_tx: &NodeEventSender) -> wcore::ToolSender {
@@ -251,7 +246,7 @@ fn build_tool_sender(event_tx: &NodeEventSender) -> wcore::ToolSender {
 }
 
 fn load_agents<P: Provider + 'static, H: Host + 'static>(
-    runtime: &mut Runtime<P, Env<H, NodeRepos>>,
+    runtime: &mut Runtime<P, Env<H, FsStorage>>,
     config_dir: &Path,
     config: &NodeConfig,
     manifest: &ResolvedManifest,

@@ -9,7 +9,7 @@ use crate::{
         builder::{BuildProvider, DefaultProvider, build_default_provider},
         event::{NodeEvent, NodeEventSender},
     },
-    repos::NodeRepos,
+    repos::FsStorage,
 };
 use anyhow::Result;
 use crabllm_core::Provider;
@@ -28,7 +28,7 @@ mod protocol;
 /// Shared daemon state.
 pub struct Node<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
     #[allow(clippy::type_complexity)]
-    pub runtime: Arc<RwLock<Arc<Runtime<P, Env<B, NodeRepos>>>>>,
+    pub runtime: Arc<RwLock<Arc<Runtime<P, Env<B, FsStorage>>>>>,
     pub(crate) config_dir: PathBuf,
     pub(crate) event_tx: NodeEventSender,
     pub(crate) started_at: std::time::Instant,
