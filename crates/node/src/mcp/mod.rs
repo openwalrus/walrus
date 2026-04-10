@@ -11,3 +11,4 @@ mod client;
 pub mod config;
 pub mod dispatch;
 mod handler;
+pub mod tool;

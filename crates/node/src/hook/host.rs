@@ -343,7 +343,7 @@ impl Host for NodeHost {
     }
 
     fn mcp_tools(&self) -> Vec<wcore::model::Tool> {
-        vec![runtime::mcp::tool::Mcp::as_tool()]
+        vec![crate::mcp::tool::Mcp::as_tool()]
     }
 
     fn set_mcp(&mut self, handler: std::sync::Arc<dyn std::any::Any + Send + Sync>) {
