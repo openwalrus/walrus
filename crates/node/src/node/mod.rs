@@ -15,6 +15,7 @@ use anyhow::Result;
 use crabllm_core::Provider;
 use runtime::{Env, Runtime, host::Host};
 use std::{
+    marker::PhantomData,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -25,10 +26,20 @@ pub(crate) mod builder;
 pub mod event;
 mod protocol;
 
+/// Config binding for a node: ties Provider + Host to FsStorage + Env.
+pub struct NodeCfg<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
+    _marker: PhantomData<(P, B)>,
+}
+
+impl<P: Provider + 'static, B: Host + 'static> wcore::Config for NodeCfg<P, B> {
+    type Storage = FsStorage;
+    type Provider = P;
+    type Hook = Env<B, FsStorage>;
+}
+
 /// Shared daemon state.
 pub struct Node<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
-    #[allow(clippy::type_complexity)]
-    pub runtime: Arc<RwLock<Arc<Runtime<P, Env<B, FsStorage>>>>>,
+    pub runtime: Arc<RwLock<Arc<Runtime<NodeCfg<P, B>>>>>,
     pub(crate) config_dir: PathBuf,
     pub(crate) event_tx: NodeEventSender,
     pub(crate) started_at: std::time::Instant,

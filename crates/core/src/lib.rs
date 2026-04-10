@@ -24,7 +24,7 @@ pub use config::{
 #[cfg(feature = "test-utils")]
 pub use runtime::hook::TestHook;
 pub use runtime::{
-    Conversation,
+    Config, Conversation,
     conversation::{ArchiveSegment, ConversationMeta, EventLine, sender_slug},
     hook::Hook,
 };

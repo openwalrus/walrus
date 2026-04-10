@@ -8,7 +8,7 @@
 
 use anyhow::{Result, bail};
 use async_stream::stream;
-use crabllm_core::{ChatCompletionRequest, Message, Provider, Role, ToolChoice};
+use crabllm_core::{ChatCompletionRequest, Message, Role, ToolChoice};
 use futures_core::Stream;
 use futures_util::StreamExt;
 use std::{
@@ -20,18 +20,19 @@ use std::{
 };
 use tokio::sync::{Mutex, RwLock, mpsc, watch};
 use wcore::{
-    Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason, Conversation,
-    Hook, ToolRegistry, ToolSender,
+    Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason, Config,
+    Conversation, Hook, ToolRegistry, ToolSender,
     model::{HistoryEntry, Model},
     repos::{SessionHandle, Storage},
 };
 
 /// The crabtalk runtime.
-pub struct Runtime<P: Provider + 'static, H: Hook> {
-    pub model: Model<P>,
-    pub hook: H,
-    agents: StdRwLock<BTreeMap<String, Agent<P>>>,
-    ephemeral_agents: RwLock<BTreeMap<String, Agent<P>>>,
+pub struct Runtime<C: Config> {
+    pub model: Model<C::Provider>,
+    pub hook: C::Hook,
+    storage: Arc<C::Storage>,
+    agents: StdRwLock<BTreeMap<String, Agent<C::Provider>>>,
+    ephemeral_agents: RwLock<BTreeMap<String, Agent<C::Provider>>>,
     conversations: RwLock<BTreeMap<u64, Arc<Mutex<Conversation>>>>,
     next_conversation_id: AtomicU64,
     pub tools: ToolRegistry,
@@ -39,14 +40,20 @@ pub struct Runtime<P: Provider + 'static, H: Hook> {
     steering: RwLock<BTreeMap<u64, watch::Sender<Option<String>>>>,
 }
 
-impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
-    /// Create a new runtime with the given model and hook backend.
-    pub async fn new(model: Model<P>, hook: H, tool_tx: Option<ToolSender>) -> Self {
+impl<C: Config> Runtime<C> {
+    /// Create a new runtime with the given model, hook, and storage.
+    pub async fn new(
+        model: Model<C::Provider>,
+        hook: C::Hook,
+        storage: Arc<C::Storage>,
+        tool_tx: Option<ToolSender>,
+    ) -> Self {
         let mut tools = ToolRegistry::new();
         hook.on_register_tools(&mut tools).await;
         Self {
             model,
             hook,
+            storage,
             agents: StdRwLock::new(BTreeMap::new()),
             ephemeral_agents: RwLock::new(BTreeMap::new()),
             conversations: RwLock::new(BTreeMap::new()),
@@ -57,9 +64,9 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         }
     }
 
-    /// Access the persistence backend through the hook.
-    pub fn storage(&self) -> &Arc<H::Storage> {
-        self.hook.storage()
+    /// Access the persistence backend.
+    pub fn storage(&self) -> &Arc<C::Storage> {
+        &self.storage
     }
 
     // --- Agent registry ---
@@ -86,7 +93,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
             .is_some()
     }
 
-    fn build_agent(&self, config: AgentConfig) -> (String, Agent<P>) {
+    fn build_agent(&self, config: AgentConfig) -> (String, Agent<C::Provider>) {
         let config = self.hook.on_build_agent(config);
         let name = config.name.clone();
         let tools = self.tools.filtered_snapshot(&config.tools);
@@ -127,7 +134,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         self.ephemeral_agents.write().await.remove(name);
     }
 
-    async fn resolve_agent(&self, name: &str) -> Option<Agent<P>> {
+    async fn resolve_agent(&self, name: &str) -> Option<Agent<C::Provider>> {
         let persistent = self
             .agents
             .read()
@@ -172,7 +179,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         }
 
         // 2. Storage lookup — find latest persisted session for this identity.
-        let storage = self.hook.storage();
+        let storage = self.storage();
         if let Ok(Some(handle)) = storage.find_latest_session(agent, created_by)
             && let Ok(Some(snapshot)) = storage.load_session(&handle)
         {
@@ -208,7 +215,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
 
     /// Load a specific conversation by session handle.
     pub async fn load_specific_conversation(&self, handle: SessionHandle) -> Result<u64> {
-        let storage = self.hook.storage();
+        let storage = self.storage();
         let snapshot = storage
             .load_session(&handle)?
             .ok_or_else(|| anyhow::anyhow!("session '{}' not found", handle.as_str()))?;
@@ -299,10 +306,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         a.compact(&history).await
     }
 
-    pub async fn transfer_conversations<P2: Provider + 'static, H2: Hook>(
-        &self,
-        dest: &mut Runtime<P2, H2>,
-    ) {
+    pub async fn transfer_conversations<C2: Config>(&self, dest: &mut Runtime<C2>) {
         let conversations = self.conversations.read().await;
         let dest_conversations = dest.conversations.get_mut();
         for (id, conversation) in conversations.iter() {
@@ -318,7 +322,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         if conversation.handle.is_some() {
             return;
         }
-        let storage = self.hook.storage();
+        let storage = self.storage();
         match storage.create_session(&conversation.agent, &conversation.created_by) {
             Ok(handle) => conversation.handle = Some(handle),
             Err(e) => tracing::warn!("failed to create session: {e}"),
@@ -338,7 +342,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         let Some(ref handle) = conversation.handle else {
             return;
         };
-        let storage = self.hook.storage();
+        let storage = self.storage();
 
         if let Some(summary) = compact_summary {
             let _ = storage.append_session_compact(handle, &summary);
@@ -371,7 +375,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         conversation_mutex: Arc<Mutex<Conversation>>,
     ) {
         let model = self.model.clone();
-        let storage = self.hook.storage().clone();
+        let storage = self.storage().clone();
         let model_name = self
             .agents
             .read()
