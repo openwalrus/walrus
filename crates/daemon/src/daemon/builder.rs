@@ -351,12 +351,11 @@ fn resolve_agent_prompt(
     name: &str,
     prompt_map: &BTreeMap<String, String>,
 ) -> Option<String> {
-    if !config.id.is_nil() {
-        if let Ok(Some(loaded)) = repo.load(&config.id) {
-            if !loaded.system_prompt.is_empty() {
-                return Some(loaded.system_prompt);
-            }
-        }
+    if !config.id.is_nil()
+        && let Ok(Some(loaded)) = repo.load(&config.id)
+        && !loaded.system_prompt.is_empty()
+    {
+        return Some(loaded.system_prompt);
     }
     prompt_map.get(name).cloned()
 }

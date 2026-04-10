@@ -126,10 +126,10 @@ impl SessionRepo for FsSessionRepo {
                 continue;
             }
             let seq_str = &name[prefix.len()..];
-            if let Ok(seq) = seq_str.parse::<u32>() {
-                if best.as_ref().is_none_or(|(b, _)| seq > *b) {
-                    best = Some((seq, name.to_string()));
-                }
+            if let Ok(seq) = seq_str.parse::<u32>()
+                && best.as_ref().is_none_or(|(b, _)| seq > *b)
+            {
+                best = Some((seq, name.to_string()));
             }
         }
         Ok(best.map(|(_, slug)| SessionHandle::new(slug)))
@@ -295,10 +295,10 @@ fn recover_step_counter(dir: &PathBuf) -> u64 {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if let Some(suffix) = name.strip_prefix("step-") {
-                if let Ok(n) = suffix.parse::<u64>() {
-                    max = max.max(n);
-                }
+            if let Some(suffix) = name.strip_prefix("step-")
+                && let Ok(n) = suffix.parse::<u64>()
+            {
+                max = max.max(n);
             }
         }
     }
@@ -312,11 +312,10 @@ fn next_session_seq(root: &PathBuf, prefix: &str) -> u32 {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with(prefix) {
-                let seq_str = &name[prefix.len()..];
-                if let Ok(seq) = seq_str.parse::<u32>() {
-                    max = max.max(seq);
-                }
+            if let Some(seq_str) = name.strip_prefix(prefix)
+                && let Ok(seq) = seq_str.parse::<u32>()
+            {
+                max = max.max(seq);
             }
         }
     }

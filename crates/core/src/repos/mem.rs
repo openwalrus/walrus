@@ -326,12 +326,12 @@ impl AgentRepo for InMemoryAgentRepo {
             .iter()
             .find(|(_, (c, _))| c.id == *id)
             .map(|(n, _)| n.clone());
-        if let Some(old_name) = old_name {
-            if let Some((mut config, prompt)) = agents.remove(&old_name) {
-                config.name = new_name.to_owned();
-                agents.insert(new_name.to_owned(), (config, prompt));
-                return Ok(true);
-            }
+        if let Some(old_name) = old_name
+            && let Some((mut config, prompt)) = agents.remove(&old_name)
+        {
+            config.name = new_name.to_owned();
+            agents.insert(new_name.to_owned(), (config, prompt));
+            return Ok(true);
         }
         Ok(false)
     }

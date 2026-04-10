@@ -478,10 +478,10 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
 
             // Remove the repo-keyed prompt and legacy fs prompt.
             let rt = self.runtime.read().await.clone();
-            if let Some(id) = existing_id {
-                if let Err(e) = rt.repos().agents().delete(&id) {
-                    tracing::warn!("failed to delete agent prompt for {id}: {e}");
-                }
+            if let Some(id) = existing_id
+                && let Err(e) = rt.repos().agents().delete(&id)
+            {
+                tracing::warn!("failed to delete agent prompt for {id}: {e}");
             }
             let legacy = self
                 .config_dir

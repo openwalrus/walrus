@@ -47,12 +47,11 @@ impl AgentRepo for FsAgentRepo {
         }
         let path = self.prompt_path(id);
         match fs::read_to_string(&path) {
-            Ok(prompt) => {
-                let mut config = AgentConfig::default();
-                config.id = *id;
-                config.system_prompt = prompt;
-                Ok(Some(config))
-            }
+            Ok(prompt) => Ok(Some(AgentConfig {
+                id: *id,
+                system_prompt: prompt,
+                ..Default::default()
+            })),
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }

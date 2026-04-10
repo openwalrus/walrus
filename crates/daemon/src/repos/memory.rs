@@ -40,7 +40,7 @@ impl MemoryRepo for FsMemoryRepo {
         for entry in fs::read_dir(&dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "md") {
+            if path.extension().is_some_and(|e| e == "md") {
                 let content = fs::read_to_string(&path)?;
                 match MemoryEntry::parse(&content) {
                     Ok(parsed) => entries.push(parsed),
