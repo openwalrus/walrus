@@ -10,7 +10,7 @@ use crate::{
     Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason,
     agent::tool::{ToolRegistry, ToolSender},
     model::{HistoryEntry, Model},
-    repos::{Repos, SessionHandle, SessionRepo},
+    repos::{SessionHandle, Storage},
     runtime::hook::Hook,
 };
 use anyhow::{Result, bail};
@@ -64,8 +64,8 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
     }
 
     /// Access the persistence backend through the hook.
-    pub fn repos(&self) -> &H::Repos {
-        self.hook.repos()
+    pub fn storage(&self) -> &Arc<H::Storage> {
+        self.hook.storage()
     }
 
     // --- Agent registry ---
@@ -177,10 +177,10 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
             }
         }
 
-        // 2. Repo lookup — find latest persisted session for this identity.
-        let sessions = self.hook.repos().sessions();
-        if let Ok(Some(handle)) = sessions.find_latest(agent, created_by)
-            && let Ok(Some(snapshot)) = sessions.load(&handle)
+        // 2. Storage lookup — find latest persisted session for this identity.
+        let storage = self.hook.storage();
+        if let Ok(Some(handle)) = storage.find_latest_session(agent, created_by)
+            && let Ok(Some(snapshot)) = storage.load_session(&handle)
         {
             let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
             let mut conversation = Conversation::new(id, agent, created_by);
@@ -214,9 +214,9 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
 
     /// Load a specific conversation by session handle.
     pub async fn load_specific_conversation(&self, handle: SessionHandle) -> Result<u64> {
-        let sessions = self.hook.repos().sessions();
-        let snapshot = sessions
-            .load(&handle)?
+        let storage = self.hook.storage();
+        let snapshot = storage
+            .load_session(&handle)?
             .ok_or_else(|| anyhow::anyhow!("session '{}' not found", handle.as_str()))?;
         if !self.has_agent(&snapshot.meta.agent).await {
             bail!("agent '{}' not registered", snapshot.meta.agent);
@@ -324,8 +324,8 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         if conversation.handle.is_some() {
             return;
         }
-        let sessions = self.hook.repos().sessions();
-        match sessions.create(&conversation.agent, &conversation.created_by) {
+        let storage = self.hook.storage();
+        match storage.create_session(&conversation.agent, &conversation.created_by) {
             Ok(handle) => conversation.handle = Some(handle),
             Err(e) => tracing::warn!("failed to create session: {e}"),
         }
@@ -344,17 +344,17 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         let Some(ref handle) = conversation.handle else {
             return;
         };
-        let sessions = self.hook.repos().sessions();
+        let storage = self.hook.storage();
 
         if let Some(summary) = compact_summary {
-            let _ = sessions.append_compact(handle, &summary);
+            let _ = storage.append_session_compact(handle, &summary);
             if conversation.history.len() > 1 {
                 let tail: Vec<_> = conversation.history[1..]
                     .iter()
                     .filter(|e| !e.auto_injected)
                     .cloned()
                     .collect();
-                let _ = sessions.append_messages(handle, &tail);
+                let _ = storage.append_session_messages(handle, &tail);
             }
         } else {
             let new_entries: Vec<_> = conversation.history[pre_run_len..]
@@ -362,12 +362,12 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                 .filter(|e| !e.auto_injected)
                 .cloned()
                 .collect();
-            let _ = sessions.append_messages(handle, &new_entries);
+            let _ = storage.append_session_messages(handle, &new_entries);
         }
         if !event_trace.is_empty() {
-            let _ = sessions.append_events(handle, event_trace);
+            let _ = storage.append_session_events(handle, event_trace);
         }
-        let _ = sessions.update_meta(handle, &conversation.meta());
+        let _ = storage.update_session_meta(handle, &conversation.meta());
     }
 
     fn spawn_title_generation(
@@ -377,7 +377,7 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
         conversation_mutex: Arc<Mutex<Conversation>>,
     ) {
         let model = self.model.clone();
-        let sessions = self.hook.repos().sessions().clone();
+        let storage = self.hook.storage().clone();
         let model_name = self
             .agents
             .read()
@@ -445,7 +445,8 @@ impl<P: Provider + 'static, H: Hook + 'static> Runtime<P, H> {
                             if conversation.title.is_empty() {
                                 conversation.title = title;
                                 if let Some(ref handle) = conversation.handle {
-                                    let _ = sessions.update_meta(handle, &conversation.meta());
+                                    let _ =
+                                        storage.update_session_meta(handle, &conversation.meta());
                                 }
                             }
                         }

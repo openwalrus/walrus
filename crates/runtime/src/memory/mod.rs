@@ -11,7 +11,7 @@ use std::{
 };
 use wcore::{
     model::{HistoryEntry, Role},
-    repos::{MemoryEntry, MemoryRepo},
+    repos::{MemoryEntry, Storage},
 };
 
 pub mod bm25;
@@ -22,18 +22,18 @@ const MEMORY_PROMPT: &str = include_str!("../../prompts/memory.md");
 
 pub const DEFAULT_SOUL: &str = include_str!("../../prompts/crab.md");
 
-pub struct Memory<M: MemoryRepo> {
-    repo: Arc<M>,
+pub struct Memory<S: Storage> {
+    storage: Arc<S>,
     entries: RwLock<HashMap<String, MemoryEntry>>,
     index: RwLock<String>,
     config: MemoryConfig,
 }
 
-impl<M: MemoryRepo> Memory<M> {
-    /// Open memory storage against the given repo backend.
-    pub fn open(config: MemoryConfig, repo: Arc<M>) -> Self {
+impl<S: Storage> Memory<S> {
+    /// Open memory storage against the given storage backend.
+    pub fn open(config: MemoryConfig, storage: Arc<S>) -> Self {
         let mem = Self {
-            repo,
+            storage,
             entries: RwLock::new(HashMap::new()),
             index: RwLock::new(String::new()),
             config,
@@ -45,7 +45,7 @@ impl<M: MemoryRepo> Memory<M> {
     }
 
     fn load_entries(&self) {
-        let loaded = match self.repo.list() {
+        let loaded = match self.storage.list_memories() {
             Ok(entries) => entries,
             Err(_) => return,
         };
@@ -56,7 +56,7 @@ impl<M: MemoryRepo> Memory<M> {
     }
 
     fn load_index(&self) {
-        if let Ok(Some(content)) = self.repo.load_index() {
+        if let Ok(Some(content)) = self.storage.load_memory_index() {
             *self.index.write().unwrap() = content;
         }
     }
@@ -98,7 +98,7 @@ impl<M: MemoryRepo> Memory<M> {
             description,
             content,
         };
-        if let Err(e) = self.repo.save(&entry) {
+        if let Err(e) = self.storage.save_memory(&entry) {
             return format!("failed to save entry: {e}");
         }
         self.entries.write().unwrap().insert(name.clone(), entry);
@@ -110,7 +110,7 @@ impl<M: MemoryRepo> Memory<M> {
         let mut entries = self.entries.write().unwrap();
         match entries.remove(name) {
             Some(_) => {
-                if let Err(e) = self.repo.delete(name) {
+                if let Err(e) = self.storage.delete_memory(name) {
                     tracing::warn!("failed to delete memory entry '{name}': {e}");
                 }
                 format!("forgot: {name}")
@@ -121,7 +121,7 @@ impl<M: MemoryRepo> Memory<M> {
 
     /// Overwrite MEMORY.md (the curated overview).
     pub fn write_index(&self, content: &str) -> String {
-        if let Err(e) = self.repo.save_index(content) {
+        if let Err(e) = self.storage.save_memory_index(content) {
             return format!("failed to write MEMORY.md: {e}");
         }
         *self.index.write().unwrap() = content.to_owned();

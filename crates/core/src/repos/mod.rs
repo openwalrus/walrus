@@ -1,15 +1,9 @@
-//! Domain-shaped repository traits for runtime persistence.
+//! Persistence traits and domain types.
 //!
-//! Four traits — one per persistence aggregate:
-//!
-//! - [`MemoryRepo`] — memory entries + curated index.
-//! - [`SkillRepo`] — skill discovery and loading.
-//! - [`SessionRepo`] — conversation sessions (create, append, replay).
-//! - [`AgentRepo`] — agent config + prompt persistence.
-//!
-//! The [`Repos`] composite trait bundles all four behind a single
-//! associated type on [`Hook`](crate::Hook). Daemon provides filesystem
-//! implementations; tests use in-memory backends.
+//! [`Storage`] is the unified persistence backend — one trait, one
+//! implementation per backend. It replaces the legacy `Repos` composite
+//! and four sub-traits which are kept temporarily as a bridge for
+//! existing filesystem implementations.
 
 pub mod agents;
 #[cfg(feature = "test-utils")]

@@ -7,7 +7,7 @@ use std::fmt::Write;
 use wcore::{
     agent::{AsTool, ToolDescription},
     model::Tool,
-    repos::Repos,
+    repos::Storage,
 };
 
 /// Default maximum number of lines to return per read.
@@ -37,7 +37,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Read::as_tool()]
 }
 
-impl<H: Host, R: Repos> Env<H, R> {
+impl<H: Host, S: Storage> Env<H, S> {
     pub async fn dispatch_read(
         &self,
         args: &str,

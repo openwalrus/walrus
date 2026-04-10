@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
-use wcore::{AgentConfig, Runtime, ToolRequest, model::Model, repos::Repos};
+use wcore::{AgentConfig, Runtime, ToolRequest, model::Model, repos::Storage};
 
 pub type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
 
@@ -35,7 +35,7 @@ pub(crate) fn build_single_agent_config(
     name: &str,
     config: &DaemonConfig,
     manifest: &ResolvedManifest,
-    agent_repo: &impl wcore::repos::AgentRepo,
+    storage: &impl Storage,
 ) -> Result<AgentConfig> {
     let default_model = config
         .system
@@ -61,7 +61,7 @@ pub(crate) fn build_single_agent_config(
 
     let prompts = crate::config::load_agents_dirs(&manifest.agent_dirs)?;
     let prompt_map: BTreeMap<String, String> = prompts.into_iter().collect();
-    let prompt = resolve_agent_prompt(agent_repo, agent_config, name, &prompt_map)
+    let prompt = resolve_agent_prompt(storage, agent_config, name, &prompt_map)
         .ok_or_else(|| anyhow::anyhow!("agent '{name}' has no prompt"))?;
 
     let mut agent = agent_config.clone();
@@ -202,7 +202,7 @@ async fn build_env<H: Host>(
     let memory_root = config_dir.join("memory");
     let sessions_root = config_dir.join("sessions");
 
-    let repos = DaemonRepos {
+    let repos = Arc::new(DaemonRepos {
         memory: Arc::new(FsMemoryRepo::new(memory_root)),
         skills: Arc::new(FsSkillRepo::new(
             skill_roots,
@@ -213,14 +213,8 @@ async fn build_env<H: Host>(
             config_dir.to_path_buf(),
             manifest.agent_dirs.clone(),
         )),
-    };
+    });
 
-    // MCP servers.
-    // Note: McpHandler::load is async but we're in a sync context here.
-    // The daemon builder calls this from an async context, so we use
-    // block_in_place. Actually, let me keep this sync by making build_env async.
-    // ... Actually the old code was async too. Let me make this async.
-    // For now, let's just create the handler with an empty list and load later.
     let mcp_servers: Vec<_> = manifest
         .mcps
         .iter()
@@ -234,10 +228,7 @@ async fn build_env<H: Host>(
         })
         .collect();
 
-    let memory = Some(Memory::open(
-        config.system.memory.clone(),
-        repos.memory.clone(),
-    ));
+    let memory = Some(Memory::open(config.system.memory.clone(), repos.clone()));
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
 
@@ -266,11 +257,9 @@ fn load_agents<P: Provider + 'static, H: Host + 'static>(
     manifest: &ResolvedManifest,
 ) -> Result<()> {
     // One-shot migration: hoist legacy prompt files into ULID-keyed storage.
-    if let Err(e) = crate::config::migrate_local_agent_prompts(
-        config_dir,
-        manifest,
-        runtime.repos().agents().as_ref(),
-    ) {
+    if let Err(e) =
+        crate::config::migrate_local_agent_prompts(config_dir, manifest, runtime.storage().as_ref())
+    {
         tracing::warn!("local agent prompt migration failed: {e}");
     }
 
@@ -291,7 +280,7 @@ fn load_agents<P: Provider + 'static, H: Host + 'static>(
     runtime.add_agent(crab_config);
 
     // Sub-agents from manifests.
-    let agent_repo = runtime.repos().agents().clone();
+    let storage = runtime.storage().clone();
     for (name, agent_config) in &manifest.agents {
         if name == wcore::paths::DEFAULT_AGENT {
             tracing::warn!(
@@ -300,8 +289,7 @@ fn load_agents<P: Provider + 'static, H: Host + 'static>(
             );
             continue;
         }
-        let Some(prompt) =
-            resolve_agent_prompt(agent_repo.as_ref(), agent_config, name, &prompt_map)
+        let Some(prompt) = resolve_agent_prompt(storage.as_ref(), agent_config, name, &prompt_map)
         else {
             tracing::warn!("agent '{name}' has no prompt, skipping");
             continue;
@@ -346,13 +334,13 @@ fn load_agents<P: Provider + 'static, H: Host + 'static>(
 /// Resolve an agent's prompt, preferring the repo (ULID key) and falling
 /// back to the legacy filesystem prompt map.
 fn resolve_agent_prompt(
-    repo: &impl wcore::repos::AgentRepo,
+    storage: &impl Storage,
     config: &AgentConfig,
     name: &str,
     prompt_map: &BTreeMap<String, String>,
 ) -> Option<String> {
     if !config.id.is_nil()
-        && let Ok(Some(loaded)) = repo.load(&config.id)
+        && let Ok(Some(loaded)) = storage.load_agent(&config.id)
         && !loaded.system_prompt.is_empty()
     {
         return Some(loaded.system_prompt);

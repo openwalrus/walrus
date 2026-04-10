@@ -6,7 +6,7 @@ use serde::Deserialize;
 use wcore::{
     agent::{AsTool, ToolDescription},
     model::Tool,
-    repos::Repos,
+    repos::Storage,
 };
 
 use crate::os::read::MAX_FILE_SIZE;
@@ -29,7 +29,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Edit::as_tool()]
 }
 
-impl<H: Host, R: Repos> Env<H, R> {
+impl<H: Host, S: Storage> Env<H, S> {
     pub async fn dispatch_edit(
         &self,
         args: &str,

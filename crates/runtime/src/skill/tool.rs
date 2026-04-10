@@ -5,7 +5,7 @@ use serde::Deserialize;
 use wcore::{
     agent::{AsTool, ToolDescription},
     model::Tool,
-    repos::{Repos, SkillRepo},
+    repos::Storage,
 };
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -23,7 +23,7 @@ pub fn tools() -> Vec<Tool> {
     vec![SkillTool::as_tool()]
 }
 
-impl<H: Host, R: Repos> Env<H, R> {
+impl<H: Host, S: Storage> Env<H, S> {
     pub async fn dispatch_skill(&self, args: &str, agent: &str) -> Result<String, String> {
         let input: SkillTool =
             serde_json::from_str(args).map_err(|e| format!("invalid arguments: {e}"))?;
@@ -47,7 +47,7 @@ impl<H: Host, R: Repos> Env<H, R> {
 
         // Try exact load from the repo.
         if !name.is_empty() {
-            match self.repos.skills().load(name) {
+            match self.storage.load_skill(name) {
                 Ok(Some(skill)) => return Ok(skill.body),
                 Ok(None) => {} // fall through to fuzzy search
                 Err(e) => return Err(format!("failed to load skill: {e}")),
@@ -64,7 +64,7 @@ impl<H: Host, R: Repos> Env<H, R> {
             .map(|s| s.skills.clone())
             .unwrap_or_default();
 
-        let skills = self.repos.skills().list().unwrap_or_default();
+        let skills = self.storage.list_skills().unwrap_or_default();
         let matches: Vec<String> = skills
             .iter()
             .filter(|s| {

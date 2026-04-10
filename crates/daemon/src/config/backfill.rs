@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use toml_edit::{DocumentMut, Item, value};
 use ulid::Ulid;
-use wcore::{ResolvedManifest, paths::LOCAL_DIR, repos::AgentRepo};
+use wcore::{ResolvedManifest, paths::LOCAL_DIR, repos::Storage};
 
 /// Ensure every `[agents.<name>]` entry in `local/CrabTalk.toml` has an
 /// `id` field. Missing entries get a fresh ULID.
@@ -60,7 +60,7 @@ pub fn backfill_local_agent_ids(config_dir: &Path) -> Result<()> {
 pub fn migrate_local_agent_prompts(
     config_dir: &Path,
     manifest: &ResolvedManifest,
-    repo: &impl AgentRepo,
+    storage: &impl Storage,
 ) -> Result<()> {
     let legacy_dir = config_dir.join(wcore::paths::AGENTS_DIR);
     if !legacy_dir.exists() {
@@ -73,7 +73,7 @@ pub fn migrate_local_agent_prompts(
             continue;
         }
         // Check if prompt already exists in repo.
-        if let Ok(Some(loaded)) = repo.load(&cfg.id)
+        if let Ok(Some(loaded)) = storage.load_agent(&cfg.id)
             && !loaded.system_prompt.is_empty()
         {
             continue;
@@ -84,7 +84,8 @@ pub fn migrate_local_agent_prompts(
         }
         let content = std::fs::read_to_string(&legacy_path)
             .with_context(|| format!("read {}", legacy_path.display()))?;
-        repo.upsert(cfg, &content)
+        storage
+            .upsert_agent(cfg, &content)
             .with_context(|| format!("migrate prompt for agent '{name}'"))?;
         tracing::info!(
             "migrated agent prompt '{name}' -> agents/{}/prompt.md",

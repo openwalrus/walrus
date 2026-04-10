@@ -1,11 +1,12 @@
 //! Tests for read and edit tools.
 
 use crabtalk_runtime::{Env, NoHost};
-use wcore::repos::mem::InMemoryRepos;
+use std::sync::Arc;
+use wcore::repos::mem::InMemoryStorage;
 
-async fn test_env(cwd: std::path::PathBuf) -> Env<NoHost, InMemoryRepos> {
-    let repos = InMemoryRepos::new();
-    Env::new(repos, cwd, None, NoHost)
+async fn test_env(cwd: std::path::PathBuf) -> Env<NoHost, InMemoryStorage> {
+    let storage = Arc::new(InMemoryStorage::new());
+    Env::new(storage, cwd, None, NoHost)
 }
 
 // --- read ---

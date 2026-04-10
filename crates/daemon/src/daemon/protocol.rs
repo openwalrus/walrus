@@ -26,10 +26,7 @@ use wcore::protocol::{
         UpdateAgentMsg, UserSteeredEvent, plugin_event, stream_event,
     },
 };
-use wcore::{
-    AgentEvent, AgentStep,
-    repos::{AgentRepo, Repos, SessionRepo},
-};
+use wcore::{AgentEvent, AgentStep, repos::Storage};
 
 impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
     async fn send(&self, req: SendMsg) -> Result<SendResponse> {
@@ -479,7 +476,7 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
             // Remove the repo-keyed prompt and legacy fs prompt.
             let rt = self.runtime.read().await.clone();
             if let Some(id) = existing_id
-                && let Err(e) = rt.repos().agents().delete(&id)
+                && let Err(e) = rt.storage().delete_agent(&id)
             {
                 tracing::warn!("failed to delete agent prompt for {id}: {e}");
             }
@@ -664,11 +661,7 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
         sender: String,
     ) -> Result<Vec<ConversationInfo>> {
         let rt = self.runtime.read().await.clone();
-        Ok(scan_sessions(
-            rt.repos().sessions().as_ref(),
-            &agent,
-            &sender,
-        ))
+        Ok(scan_sessions(rt.storage().as_ref(), &agent, &sender))
     }
 
     async fn get_conversation_history(&self, file_path: String) -> Result<ConversationHistory> {
@@ -679,9 +672,8 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
         let rt = self.runtime.read().await.clone();
         let handle = wcore::repos::SessionHandle::new(&slug);
         let snapshot = rt
-            .repos()
-            .sessions()
-            .load(&handle)?
+            .storage()
+            .load_session(&handle)?
             .ok_or_else(|| anyhow::anyhow!("conversation not found: {slug}"))?;
         let meta = snapshot.meta;
         let messages = snapshot.history;
@@ -708,7 +700,7 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Daemon<P, H> {
         let slug = file_path;
         let rt = self.runtime.read().await.clone();
         let handle = wcore::repos::SessionHandle::new(&slug);
-        let deleted = rt.repos().sessions().delete(&handle)?;
+        let deleted = rt.storage().delete_session(&handle)?;
         if !deleted {
             anyhow::bail!("conversation not found: {slug}");
         }
@@ -1285,7 +1277,7 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
             name,
             &config,
             &manifest,
-            rt.repos().agents().as_ref(),
+            rt.storage().as_ref(),
         )?;
         // `upsert_agent` returns the post-`on_build_agent` config so the
         // dispatch scope matches the form actually stored in the registry.
@@ -1385,9 +1377,8 @@ impl<P: Provider + 'static, H: Host + 'static> Daemon<P, H> {
             id: *id,
             ..Default::default()
         };
-        rt.repos()
-            .agents()
-            .upsert(&config, prompt)
+        rt.storage()
+            .upsert_agent(&config, prompt)
             .with_context(|| format!("failed to write agent prompt for {id}"))
     }
 
@@ -1475,8 +1466,8 @@ fn plugin_output(content: &str) -> PluginEvent {
 /// Scan sessions out of the runtime Storage and return conversation info.
 ///
 /// List conversations via the session repo.
-fn scan_sessions(repo: &impl SessionRepo, agent: &str, sender: &str) -> Vec<ConversationInfo> {
-    let Ok(summaries) = repo.list_sessions() else {
+fn scan_sessions(storage: &impl Storage, agent: &str, sender: &str) -> Vec<ConversationInfo> {
+    let Ok(summaries) = storage.list_sessions() else {
         return Vec::new();
     };
 

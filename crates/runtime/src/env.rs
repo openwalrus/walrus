@@ -6,12 +6,12 @@
 //! [`Host`](crate::host::Host).
 
 use crate::{host::Host, memory::Memory, os, skill};
-use std::{collections::BTreeMap, path::PathBuf, sync::RwLock};
-use wcore::{
-    AgentConfig, AgentEvent, Hook,
-    model::HistoryEntry,
-    repos::{Repos, SkillRepo},
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{Arc, RwLock},
 };
+use wcore::{AgentConfig, AgentEvent, Hook, model::HistoryEntry, repos::Storage};
 
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.
 #[derive(Default)]
@@ -37,9 +37,9 @@ const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget"];
 /// Task delegation tools.
 const TASK_TOOLS: &[&str] = &["delegate"];
 
-pub struct Env<H: Host, R: Repos> {
-    pub(crate) repos: R,
-    pub(crate) memory: Option<Memory<R::Memory>>,
+pub struct Env<H: Host, S: Storage> {
+    pub(crate) storage: Arc<S>,
+    pub(crate) memory: Option<Memory<S>>,
     pub(crate) cwd: PathBuf,
     pub(crate) scopes: RwLock<BTreeMap<String, AgentScope>>,
     pub(crate) agent_descriptions: RwLock<BTreeMap<String, String>>,
@@ -47,11 +47,11 @@ pub struct Env<H: Host, R: Repos> {
     pub host: H,
 }
 
-impl<H: Host, R: Repos> Env<H, R> {
+impl<H: Host, S: Storage> Env<H, S> {
     /// Create a new Env with the given backends.
-    pub fn new(repos: R, cwd: PathBuf, memory: Option<Memory<R::Memory>>, host: H) -> Self {
+    pub fn new(storage: Arc<S>, cwd: PathBuf, memory: Option<Memory<S>>, host: H) -> Self {
         Self {
-            repos,
+            storage,
             memory,
             cwd,
             scopes: RwLock::new(BTreeMap::new()),
@@ -61,7 +61,7 @@ impl<H: Host, R: Repos> Env<H, R> {
     }
 
     /// Access memory.
-    pub fn memory(&self) -> Option<&Memory<R::Memory>> {
+    pub fn memory(&self) -> Option<&Memory<S>> {
         self.memory.as_ref()
     }
 
@@ -175,8 +175,8 @@ impl<H: Host, R: Repos> Env<H, R> {
             }
         }
 
-        // Load via SkillRepo.
-        match self.repos.skills().load(name) {
+        // Load via Storage.
+        match self.storage.load_skill(name) {
             Ok(Some(skill)) => {
                 let body = remainder.trim_start();
                 let block = format!("<skill name=\"{name}\">\n{}\n</skill>", skill.body);
@@ -271,11 +271,11 @@ impl<H: Host, R: Repos> Env<H, R> {
     }
 }
 
-impl<H: Host + 'static, R: Repos> Hook for Env<H, R> {
-    type Repos = R;
+impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
+    type Storage = S;
 
-    fn repos(&self) -> &R {
-        &self.repos
+    fn storage(&self) -> &Arc<S> {
+        &self.storage
     }
 
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
@@ -298,8 +298,8 @@ impl<H: Host + 'static, R: Repos> Hook for Env<H, R> {
             ));
         }
 
-        // List visible skills from the repo.
-        if let Ok(all_skills) = self.repos.skills().list() {
+        // List visible skills from storage.
+        if let Ok(all_skills) = self.storage.list_skills() {
             let visible: Vec<&wcore::repos::Skill> = if config.skills.is_empty() {
                 all_skills.iter().collect()
             } else {

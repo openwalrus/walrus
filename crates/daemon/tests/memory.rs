@@ -1,11 +1,11 @@
-//! Integration tests for the memory system using InMemoryMemoryRepo (no disk I/O).
+//! Integration tests for the memory system using InMemoryStorage (no disk I/O).
 
 use runtime::{Memory, MemoryConfig};
 use std::sync::Arc;
-use wcore::repos::{MemoryRepo, mem::InMemoryMemoryRepo};
+use wcore::repos::mem::InMemoryStorage;
 
-fn test_memory() -> Memory<InMemoryMemoryRepo> {
-    Memory::open(MemoryConfig::default(), Arc::new(InMemoryMemoryRepo::new()))
+fn test_memory() -> Memory<InMemoryStorage> {
+    Memory::open(MemoryConfig::default(), Arc::new(InMemoryStorage::new()))
 }
 
 #[test]
@@ -146,31 +146,34 @@ fn recall_respects_limit() {
 
 #[test]
 fn migration_converts_legacy_files() {
-    use wcore::repos::MemoryEntry;
+    use wcore::repos::{MemoryEntry, Storage};
 
-    let repo = Arc::new(InMemoryMemoryRepo::new());
+    let storage = Arc::new(InMemoryStorage::new());
 
-    // Pre-populate the repo with entries that would have come from legacy files.
-    repo.save(&MemoryEntry {
-        name: "memory-md".to_owned(),
-        description: "Legacy memory.md content".to_owned(),
-        content: "Luna is a golden retriever\n\nUser works on Crabtalk".to_owned(),
-    })
-    .unwrap();
-    repo.save(&MemoryEntry {
-        name: "user-md".to_owned(),
-        description: "Legacy user.md content".to_owned(),
-        content: "Name: Alice\nRole: Developer".to_owned(),
-    })
-    .unwrap();
-    repo.save(&MemoryEntry {
-        name: "facts-toml".to_owned(),
-        description: "Legacy facts.toml content".to_owned(),
-        content: "dog_name = \"Luna\"\nlanguage = \"Rust\"".to_owned(),
-    })
-    .unwrap();
+    // Pre-populate storage with entries that would have come from legacy files.
+    storage
+        .save_memory(&MemoryEntry {
+            name: "memory-md".to_owned(),
+            description: "Legacy memory.md content".to_owned(),
+            content: "Luna is a golden retriever\n\nUser works on Crabtalk".to_owned(),
+        })
+        .unwrap();
+    storage
+        .save_memory(&MemoryEntry {
+            name: "user-md".to_owned(),
+            description: "Legacy user.md content".to_owned(),
+            content: "Name: Alice\nRole: Developer".to_owned(),
+        })
+        .unwrap();
+    storage
+        .save_memory(&MemoryEntry {
+            name: "facts-toml".to_owned(),
+            description: "Legacy facts.toml content".to_owned(),
+            content: "dog_name = \"Luna\"\nlanguage = \"Rust\"".to_owned(),
+        })
+        .unwrap();
 
-    let mem = Memory::open(MemoryConfig::default(), repo);
+    let mem = Memory::open(MemoryConfig::default(), storage);
 
     let result = mem.recall("golden retriever", 5);
     assert!(result.contains("golden retriever"));

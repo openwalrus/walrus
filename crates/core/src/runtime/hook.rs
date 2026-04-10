@@ -3,29 +3,28 @@
 //!
 //! All hook crates implement this trait. [`Runtime`](crate) calls these
 //! methods at the appropriate lifecycle points and reaches the
-//! persistence backend through the [`Hook::Repos`] associated type.
+//! persistence backend through the [`Hook::Storage`] associated type.
 
 use crate::{
-    AgentConfig, AgentEvent, agent::tool::ToolRegistry, model::HistoryEntry, repos::Repos,
+    AgentConfig, AgentEvent, agent::tool::ToolRegistry, model::HistoryEntry, repos::Storage,
 };
-use std::future::Future;
+use std::{future::Future, sync::Arc};
 
 /// Lifecycle backend for agent building, event observation, tool
 /// registration, and persistence.
 ///
-/// Implementors supply a concrete [`Repos`] type via the associated
-/// item — the runtime reaches it through [`repos`](Self::repos) and
-/// uses it for session persistence, memory entries, skill loading, and
-/// agent storage. Non-persistence methods default to no-ops so
+/// Implementors supply a concrete [`Storage`] type via the associated
+/// item — the runtime reaches it through [`storage`](Self::storage)
+/// and uses it for session persistence, memory entries, skill loading,
+/// and agent storage. Non-persistence methods default to no-ops so
 /// implementors only override what they need.
 pub trait Hook: Send + Sync {
     /// Persistence backend this hook exposes to the runtime.
-    type Repos: Repos;
+    type Storage: Storage;
 
-    /// Shared handle to the persistence backend. Conversation
-    /// persistence, session replay, and subsystem state all route
-    /// reads and writes through here.
-    fn repos(&self) -> &Self::Repos;
+    /// Shared handle to the persistence backend. Returns an Arc
+    /// so callers can clone into spawned tasks when needed.
+    fn storage(&self) -> &Arc<Self::Storage>;
 
     /// Called by `Runtime::add_agent()` before building the `Agent`.
     fn on_build_agent(&self, config: AgentConfig) -> AgentConfig {
@@ -56,12 +55,20 @@ pub trait Hook: Send + Sync {
     }
 }
 
-/// Trivial [`Hook`] backed by [`InMemoryRepos`](crate::repos::mem::InMemoryRepos).
+/// Trivial [`Hook`] backed by [`InMemoryStorage`](crate::repos::mem::InMemoryStorage).
 /// Useful in tests that need a `Runtime` but don't care about persistence.
 #[cfg(feature = "test-utils")]
-#[derive(Default)]
 pub struct TestHook {
-    repos: crate::repos::mem::InMemoryRepos,
+    storage: Arc<crate::repos::mem::InMemoryStorage>,
+}
+
+#[cfg(feature = "test-utils")]
+impl Default for TestHook {
+    fn default() -> Self {
+        Self {
+            storage: Arc::new(crate::repos::mem::InMemoryStorage::new()),
+        }
+    }
 }
 
 #[cfg(feature = "test-utils")]
@@ -73,9 +80,9 @@ impl TestHook {
 
 #[cfg(feature = "test-utils")]
 impl Hook for TestHook {
-    type Repos = crate::repos::mem::InMemoryRepos;
+    type Storage = crate::repos::mem::InMemoryStorage;
 
-    fn repos(&self) -> &Self::Repos {
-        &self.repos
+    fn storage(&self) -> &Arc<Self::Storage> {
+        &self.storage
     }
 }

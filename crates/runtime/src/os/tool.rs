@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use wcore::{
     agent::{AsTool, ToolDescription},
     model::Tool,
-    repos::Repos,
+    repos::Storage,
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -27,7 +27,7 @@ pub fn tools() -> Vec<Tool> {
     vec![Bash::as_tool()]
 }
 
-impl<H: Host, R: Repos> Env<H, R> {
+impl<H: Host, S: Storage> Env<H, S> {
     /// Dispatch a `bash` tool call — run a command directly.
     ///
     /// A non-zero exit code is *not* an `Err` — the shell ran successfully
