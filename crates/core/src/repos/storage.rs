@@ -6,7 +6,7 @@
 //! One implementation per backend — filesystem, in-memory, database.
 
 use crate::{
-    AgentConfig, AgentId, ManifestConfig,
+    AgentConfig, AgentId, ManifestConfig, NodeConfig,
     model::HistoryEntry,
     repos::{MemoryEntry, SessionHandle, SessionSnapshot, SessionSummary, Skill},
     runtime::conversation::{ArchiveSegment, ConversationMeta, EventLine},
@@ -112,6 +112,14 @@ pub trait Storage: Send + Sync + 'static {
 
     /// Overwrite the local manifest.
     fn save_local_manifest(&self, manifest: &ManifestConfig) -> Result<()>;
+
+    // ── Config ──────────────────────────────────────────────────────
+
+    /// Load the node configuration (`config.toml`).
+    fn load_config(&self) -> Result<NodeConfig>;
+
+    /// Overwrite the node configuration.
+    fn save_config(&self, config: &NodeConfig) -> Result<()>;
 
     /// Create the initial config directory structure if it doesn't exist.
     fn scaffold(&self) -> Result<()>;

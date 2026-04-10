@@ -12,7 +12,7 @@ use std::{
     sync::Mutex,
 };
 use wcore::{
-    AgentConfig, AgentId, ArchiveSegment, ConversationMeta, EventLine, ManifestConfig,
+    AgentConfig, AgentId, ArchiveSegment, ConversationMeta, EventLine, ManifestConfig, NodeConfig,
     model::HistoryEntry,
     repos::{MemoryEntry, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage, slugify},
 };
@@ -552,6 +552,20 @@ impl Storage for FsStorage {
         fs::create_dir_all(&dir)?;
         let content = toml::to_string_pretty(manifest)?;
         atomic_write(&dir.join("CrabTalk.toml"), content.as_bytes())
+    }
+
+    fn load_config(&self) -> Result<NodeConfig> {
+        let path = self.config_dir.join(wcore::paths::CONFIG_FILE);
+        if !path.exists() {
+            return Ok(NodeConfig::default());
+        }
+        NodeConfig::load(&path)
+    }
+
+    fn save_config(&self, config: &NodeConfig) -> Result<()> {
+        let path = self.config_dir.join(wcore::paths::CONFIG_FILE);
+        let content = toml::to_string_pretty(config)?;
+        atomic_write(&path, content.as_bytes())
     }
 
     fn scaffold(&self) -> Result<()> {

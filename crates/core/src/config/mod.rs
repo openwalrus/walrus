@@ -2,7 +2,9 @@
 
 pub mod manifest;
 pub mod mcp;
+pub mod node;
 pub mod provider;
+pub mod system;
 
 pub use manifest::{
     DisabledItems, ManifestConfig, PackageMeta, ResolvedManifest, Setup, check_skill_conflicts,
@@ -10,4 +12,6 @@ pub use manifest::{
     resolve_manifests, scan_skill_names,
 };
 pub use mcp::McpServerConfig;
+pub use node::{NodeConfig, validate_providers};
 pub use provider::{ApiStandard, PROVIDER_PRESETS, ProviderDef, ProviderPreset};
+pub use system::{MemoryConfig, SystemConfig, TasksConfig};

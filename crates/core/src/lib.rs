@@ -17,9 +17,10 @@ pub use agent::{
     tool::{ToolRegistry, ToolRequest, ToolSender},
 };
 pub use config::{
-    ApiStandard, ManifestConfig, McpServerConfig, PackageMeta, ProviderDef, ResolvedManifest,
-    Setup, check_skill_conflicts, external_source_name, filter_disabled_external, load_agents_dir,
-    load_agents_dirs, repo_slug, resolve_manifests, scan_skill_names,
+    ApiStandard, ManifestConfig, McpServerConfig, MemoryConfig, NodeConfig, PackageMeta,
+    ProviderDef, ResolvedManifest, Setup, SystemConfig, TasksConfig, check_skill_conflicts,
+    external_source_name, filter_disabled_external, load_agents_dir, load_agents_dirs, repo_slug,
+    resolve_manifests, scan_skill_names, validate_providers,
 };
 #[cfg(feature = "test-utils")]
 pub use runtime::hook::TestHook;
