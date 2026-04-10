@@ -1,7 +1,7 @@
 //! Hook trait — lifecycle backend for agent building, event observation,
 //! tool schema registration, and persistence.
 //!
-//! All hook crates implement this trait. [`Runtime`](crate) calls these
+//! All hook crates implement this trait. The runtime calls these
 //! methods at the appropriate lifecycle points and reaches the
 //! persistence backend through the [`Hook::Storage`] associated type.
 

@@ -4,14 +4,15 @@
 //! test gets its own in-memory storage via `TestHook::new()` — no
 //! shared global state, no filesystem I/O, no node.
 
-use crabtalk_core::{
-    AgentConfig, AgentEvent, AgentStopReason, Runtime, TestHook,
+use crabtalk_runtime::Runtime;
+use futures_util::StreamExt;
+use wcore::{
+    AgentConfig, AgentEvent, AgentStopReason, TestHook,
     model::{
         Model,
         test_provider::{TestProvider, text_chunks},
     },
 };
-use futures_util::StreamExt;
 
 /// Build a `Runtime` from a `TestProvider`, wrapping the provider in `Model<P>`.
 fn runtime(
@@ -70,9 +71,9 @@ async fn remove_agent_returns_true_when_present() {
 #[tokio::test]
 async fn register_and_unregister_tool() {
     let mut runtime = runtime(TestProvider::with_chunks(vec![])).await;
-    let tool = crabtalk_core::model::Tool {
-        kind: crabtalk_core::model::ToolType::Function,
-        function: crabtalk_core::model::FunctionDef {
+    let tool = wcore::model::Tool {
+        kind: wcore::model::ToolType::Function,
+        function: wcore::model::FunctionDef {
             name: "bash".into(),
             description: Some("run commands".into()),
             parameters: None,
