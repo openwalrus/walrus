@@ -1,11 +1,7 @@
 //! Node construction and lifecycle methods.
 
 use crate::mcp::McpHandler;
-use crate::{
-    Node, NodeConfig,
-    node::{SharedRuntime, event::NodeEventSender},
-    storage::FsStorage,
-};
+use crate::{Node, NodeConfig, node::SharedRuntime, storage::FsStorage};
 use anyhow::Result;
 use crabllm_core::Provider;
 use crabllm_provider::{ProviderRegistry, RemoteProvider};
@@ -78,7 +74,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
     pub(crate) async fn build(
         config: &NodeConfig,
         config_dir: &Path,
-        event_tx: NodeEventSender,
         shutdown_tx: broadcast::Sender<()>,
         host: H,
         build_provider: BuildProvider<P>,
@@ -96,7 +91,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let (runtime, mcp) = Self::build_runtime(
             config,
             config_dir,
-            &event_tx,
             host,
             &build_provider,
             runtime_once.clone(),
@@ -161,7 +155,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         Ok(Self {
             runtime: shared_runtime,
             config_dir: config_dir.to_path_buf(),
-            event_tx,
             started_at: std::time::Instant::now(),
             crons,
             events,
@@ -186,7 +179,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let (mut new_runtime, _mcp) = Self::build_runtime(
             &config,
             &self.config_dir,
-            &self.event_tx,
             host,
             &self.build_provider,
             runtime_once,
@@ -218,7 +210,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
     async fn build_runtime(
         config: &NodeConfig,
         config_dir: &Path,
-        event_tx: &NodeEventSender,
         host: H,
         build_provider: &BuildProvider<P>,
         runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
@@ -236,7 +227,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             config_dir,
             &manifest,
             host,
-            event_tx.clone(),
             mcp_handler.clone(),
             runtime_once,
         )?;
@@ -286,7 +276,6 @@ fn build_env<P: Provider + 'static, H: Host + 'static>(
     config_dir: &Path,
     manifest: &ResolvedManifest,
     host: H,
-    event_tx: NodeEventSender,
     mcp_handler: Arc<McpHandler>,
     runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
 ) -> Result<(Env<H, FsStorage>, Arc<FsStorage>, wcore::ToolRegistry)> {
@@ -364,7 +353,7 @@ fn build_env<P: Provider + 'static, H: Host + 'static>(
     register(
         &mut tools,
         &mut env,
-        crate::delegate::handler::<P, H>(event_tx, scopes.clone(), runtime_once),
+        crate::delegate::handler::<P, H>(scopes.clone(), runtime_once),
     );
     register(&mut tools, &mut env, tools::ask_user::handler(pending_asks));
 

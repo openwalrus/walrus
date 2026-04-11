@@ -5,10 +5,7 @@ use crate::{
     cron::CronStore,
     event_bus::EventBus,
     hook::host::NodeHost,
-    node::{
-        builder::{BuildProvider, DefaultProvider, build_default_provider},
-        event::{NodeEvent, NodeEventSender},
-    },
+    node::builder::{BuildProvider, DefaultProvider, build_default_provider},
     storage::FsStorage,
 };
 use anyhow::Result;
@@ -30,7 +27,6 @@ use wcore::{
 };
 
 pub(crate) mod builder;
-pub mod event;
 mod protocol;
 
 /// Config binding for a node: ties Provider + Host to FsStorage + Env.
@@ -52,7 +48,6 @@ pub type SharedRuntime<P, B> = Arc<RwLock<Arc<Runtime<NodeCfg<P, B>>>>>;
 pub struct Node<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
     pub runtime: SharedRuntime<P, B>,
     pub(crate) config_dir: PathBuf,
-    pub(crate) event_tx: NodeEventSender,
     pub(crate) started_at: std::time::Instant,
     pub(crate) crons: Arc<Mutex<CronStore<P, B>>>,
     pub(crate) events: Arc<std::sync::Mutex<EventBus>>,
@@ -65,7 +60,6 @@ impl<P: Provider + 'static, B: Host + 'static> Clone for Node<P, B> {
         Self {
             runtime: self.runtime.clone(),
             config_dir: self.config_dir.clone(),
-            event_tx: self.event_tx.clone(),
             started_at: self.started_at,
             crons: self.crons.clone(),
             events: self.events.clone(),
@@ -80,7 +74,7 @@ impl Node<DefaultProvider, NodeHost> {
         Self::start_with(
             config_dir,
             |config: &NodeConfig| build_default_provider(config),
-            |_event_tx| {
+            || {
                 let (events_tx, _) = broadcast::channel(256);
                 NodeHost { events_tx }
             },
@@ -97,55 +91,37 @@ impl<P: Provider + 'static, B: Host + 'static> Node<P, B> {
     ) -> Result<NodeHandle<P, B>>
     where
         BP: Fn(&NodeConfig) -> Result<Model<P>> + Send + Sync + 'static,
-        BB: FnOnce(NodeEventSender) -> B,
+        BB: FnOnce() -> B,
     {
         let config_path = config_dir.join(wcore::paths::CONFIG_FILE);
         let config = NodeConfig::load(&config_path)?;
         tracing::info!("loaded configuration from {}", config_path.display());
 
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<NodeEvent>();
-
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
-        let shutdown_event_tx = event_tx.clone();
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            let _ = shutdown_rx.recv().await;
-            let _ = shutdown_event_tx.send(NodeEvent::Shutdown);
-        });
 
-        let backend = build_backend(event_tx.clone());
+        let backend = build_backend();
         let build_provider: BuildProvider<P> = Arc::new(build_provider);
         let node = Node::build(
             &config,
             config_dir,
-            event_tx.clone(),
             shutdown_tx.clone(),
             backend,
             build_provider,
         )
         .await?;
 
-        let n = node.clone();
-        let event_loop_join = tokio::spawn(async move {
-            n.handle_events(event_rx).await;
-        });
-
         Ok(NodeHandle {
             config,
-            event_tx,
             shutdown_tx,
             node,
-            event_loop_join: Some(event_loop_join),
         })
     }
 }
 
 pub struct NodeHandle<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
     pub config: NodeConfig,
-    pub event_tx: NodeEventSender,
     pub shutdown_tx: broadcast::Sender<()>,
     pub node: Node<P, B>,
-    event_loop_join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl<P: Provider + 'static, B: Host + 'static> NodeHandle<P, B> {
@@ -153,11 +129,8 @@ impl<P: Provider + 'static, B: Host + 'static> NodeHandle<P, B> {
         Ok(())
     }
 
-    pub async fn shutdown(mut self) -> Result<()> {
+    pub async fn shutdown(self) -> Result<()> {
         let _ = self.shutdown_tx.send(());
-        if let Some(join) = self.event_loop_join.take() {
-            join.await?;
-        }
         Ok(())
     }
 }

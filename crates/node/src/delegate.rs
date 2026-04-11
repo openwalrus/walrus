@@ -1,6 +1,6 @@
 //! Delegate tool handler factory.
 
-use crate::node::{SharedRuntime, event::NodeEventSender};
+use crate::node::SharedRuntime;
 use crabllm_core::Provider;
 use runtime::{AgentScope, host::Host};
 use serde::Deserialize;
@@ -48,7 +48,6 @@ impl ToolDescription for Delegate {
 }
 
 pub fn handler<P: Provider + 'static, H: Host + 'static>(
-    _event_tx: NodeEventSender,
     scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
     runtime: Arc<OnceLock<SharedRuntime<P, H>>>,
 ) -> ToolEntry {
