@@ -41,6 +41,10 @@ const TASK_TOOLS: &[&str] = &["delegate"];
 /// Per-conversation working directory overrides (shared with OS tool handlers).
 pub type ConversationCwds = Arc<tokio::sync::Mutex<std::collections::HashMap<u64, PathBuf>>>;
 
+/// Pending ask_user oneshots (shared with ask_user handler and protocol layer).
+pub type PendingAsks =
+    Arc<tokio::sync::Mutex<std::collections::HashMap<u64, tokio::sync::oneshot::Sender<String>>>>;
+
 pub struct Env<H: Host, S: Storage> {
     pub(crate) storage: Arc<S>,
     pub(crate) memory: Option<Arc<Memory<S>>>,
@@ -49,6 +53,10 @@ pub struct Env<H: Host, S: Storage> {
     pub(crate) agent_descriptions: RwLock<BTreeMap<String, String>>,
     /// Per-conversation CWD overrides.
     pub conversation_cwds: ConversationCwds,
+    /// Pending ask_user replies.
+    pub pending_asks: PendingAsks,
+    /// MCP server names + tool lists (set at construction, read-only).
+    pub(crate) mcp_servers: Vec<(String, Vec<String>)>,
     /// Host providing server-specific functionality.
     pub host: H,
     /// Dynamically registered tool handlers.
@@ -64,6 +72,8 @@ impl<H: Host, S: Storage> Env<H, S> {
         host: H,
         scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
         conversation_cwds: ConversationCwds,
+        pending_asks: PendingAsks,
+        mcp_servers: Vec<(String, Vec<String>)>,
     ) -> Self {
         Self {
             storage,
@@ -72,6 +82,8 @@ impl<H: Host, S: Storage> Env<H, S> {
             scopes,
             agent_descriptions: RwLock::new(BTreeMap::new()),
             conversation_cwds,
+            pending_asks,
+            mcp_servers,
             host,
             handlers: BTreeMap::new(),
         }
@@ -88,8 +100,8 @@ impl<H: Host, S: Storage> Env<H, S> {
     }
 
     /// List connected MCP servers with their tool names.
-    pub fn mcp_servers(&self) -> Vec<(String, Vec<String>)> {
-        self.host.mcp_servers()
+    pub fn mcp_servers(&self) -> &[(String, Vec<String>)] {
+        &self.mcp_servers
     }
 
     /// Register an agent's scope for dispatch enforcement.
@@ -258,9 +270,8 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
         }
 
         let mut hints = Vec::new();
-        let mcp_servers = self.host.mcp_servers();
-        if !mcp_servers.is_empty() {
-            let names: Vec<&str> = mcp_servers.iter().map(|(n, _)| n.as_str()).collect();
+        if !self.mcp_servers.is_empty() {
+            let names: Vec<&str> = self.mcp_servers.iter().map(|(n, _)| n.as_str()).collect();
             hints.push(format!(
                 "MCP servers: {}. Use the mcp tool to list or call tools.",
                 names.join(", ")

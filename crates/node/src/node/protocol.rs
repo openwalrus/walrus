@@ -356,7 +356,15 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Node<P, H> {
             .ok_or_else(|| {
                 anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'")
             })?;
-        if rt.hook.host.reply_to_ask(conversation_id, content).await? {
+        if let Some(tx) = rt.hook.pending_asks.lock().await.remove(&conversation_id) {
+            let _ = tx.send(content);
+            return Ok(());
+        }
+        // Retry once after a short delay — the ask_user handler may not have
+        // inserted the oneshot yet if the reply races the tool call.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if let Some(tx) = rt.hook.pending_asks.lock().await.remove(&conversation_id) {
+            let _ = tx.send(content);
             return Ok(());
         }
         anyhow::bail!("no pending ask_user for agent='{agent}' sender='{sender}'")
@@ -696,8 +704,8 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Node<P, H> {
         let connected: std::collections::BTreeMap<String, usize> = rt
             .hook
             .mcp_servers()
-            .into_iter()
-            .map(|(name, tools)| (name, tools.len()))
+            .iter()
+            .map(|(name, tools)| (name.clone(), tools.len()))
             .collect();
 
         let mut mcps = Vec::new();

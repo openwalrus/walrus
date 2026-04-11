@@ -6,15 +6,10 @@
 
 use crate::node::event::{NodeEvent, NodeEventSender};
 use runtime::host::Host;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-use tokio::sync::{Mutex, broadcast, oneshot};
+use std::path::Path;
+use tokio::sync::broadcast;
 use wcore::{
     AgentEvent,
-    agent::AsTool,
     protocol::message::{AgentEventKind, AgentEventMsg, ToolCallInfo},
 };
 
@@ -23,20 +18,15 @@ use wcore::{
 /// content to render meaningful previews.
 const MAX_TOOL_OUTPUT_BROADCAST: usize = 2048;
 
-/// Server-specific host for the daemon. Owns event channels and the MCP
-/// bridge. Session state (CWD overrides, pending asks) is shared via Arc
-/// with tool handlers and the Env, not owned exclusively by the host.
+/// Server-specific host for the daemon — event broadcasting and
+/// instruction discovery. Tool dispatch and session state live on
+/// shared Arcs captured by handler factories and the Env.
 #[derive(Clone)]
 pub struct NodeHost {
-    /// Event channel for task delegation.
+    /// Event channel for delegate and event bus routing.
     pub(crate) event_tx: NodeEventSender,
-    /// Pending `ask_user` oneshots, keyed by conversation_id.
-    pub(crate) pending_asks: Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>,
     /// Broadcast channel for agent events (console subscription).
     pub(crate) events_tx: broadcast::Sender<AgentEventMsg>,
-    /// MCP bridge — connects to MCP tool servers. Daemon-owned because
-    /// MCP involves spawning child processes and opening HTTP connections.
-    pub(crate) mcp: Arc<crate::mcp::McpHandler>,
 }
 
 impl Host for NodeHost {
@@ -170,39 +160,12 @@ impl Host for NodeHost {
         }
     }
 
-    async fn reply_to_ask(&self, session: u64, content: String) -> anyhow::Result<bool> {
-        if let Some(tx) = self.pending_asks.lock().await.remove(&session) {
-            let _ = tx.send(content);
-            return Ok(true);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        if let Some(tx) = self.pending_asks.lock().await.remove(&session) {
-            let _ = tx.send(content);
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
     fn subscribe_events(&self) -> Option<broadcast::Receiver<AgentEventMsg>> {
         Some(self.events_tx.subscribe())
     }
 
     fn discover_instructions(&self, cwd: &Path) -> Option<String> {
         discover_instructions(cwd)
-    }
-
-    fn mcp_servers(&self) -> Vec<(String, Vec<String>)> {
-        self.mcp.cached_list()
-    }
-
-    fn mcp_tools(&self) -> Vec<wcore::model::Tool> {
-        vec![crate::mcp::tool::Mcp::as_tool()]
-    }
-
-    fn set_mcp(&mut self, handler: std::sync::Arc<dyn std::any::Any + Send + Sync>) {
-        if let Ok(mcp) = handler.downcast::<crate::mcp::McpHandler>() {
-            self.mcp = mcp;
-        }
     }
 }
 

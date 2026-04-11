@@ -1,8 +1,8 @@
 //! Ask-user tool handler factory.
 
 use serde::Deserialize;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::{Mutex, oneshot};
+use std::{sync::Arc, time::Duration};
+use tokio::sync::oneshot;
 use wcore::{
     ToolDispatch, ToolHandler,
     agent::{AsTool, ToolDescription},
@@ -46,10 +46,7 @@ impl ToolDescription for AskUser {
     const DESCRIPTION: &'static str = r#"Ask the user one or more structured questions with predefined options. Each question needs a short UI header, the full question text, and options with labels and descriptions. The user picks from the options or types a free-text "Other" answer. Returns JSON mapping question text to selected label. For multi_select, the answer is a comma-joined string like "Option A, Option B"."#;
 }
 
-/// Pending ask_user oneshots, keyed by conversation_id.
-pub type PendingAsks = Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>;
-
-pub fn handler(pending_asks: PendingAsks) -> (Tool, ToolHandler) {
+pub fn handler(pending_asks: runtime::PendingAsks) -> (Tool, ToolHandler) {
     (
         AskUser::as_tool(),
         Arc::new(move |call: ToolDispatch| {

@@ -10,21 +10,11 @@
 use std::path::Path;
 
 /// Trait for server-specific capabilities that the runtime cannot
-/// provide locally.
+/// provide locally: event broadcasting and instruction discovery.
 pub trait Host: Send + Sync + Clone {
     /// Called when an agent event occurs. The daemon uses this to broadcast
     /// protobuf events to console subscribers. Default: no-op.
     fn on_agent_event(&self, _agent: &str, _conversation_id: u64, _event: &wcore::AgentEvent) {}
-
-    /// Deliver a user reply to a pending `ask_user` tool call.
-    /// Returns `true` if a pending ask was found and resolved.
-    fn reply_to_ask(
-        &self,
-        _session: u64,
-        _content: String,
-    ) -> impl std::future::Future<Output = anyhow::Result<bool>> + Send {
-        async { Ok(false) }
-    }
 
     /// Subscribe to agent events. Returns `None` if event broadcasting
     /// is not supported by this host.
@@ -42,22 +32,6 @@ pub trait Host: Send + Sync + Clone {
     fn discover_instructions(&self, _cwd: &Path) -> Option<String> {
         None
     }
-
-    /// List connected MCP servers with their tool names.
-    /// Used by `on_build_agent` to inject available tools into the prompt.
-    fn mcp_servers(&self) -> Vec<(String, Vec<String>)> {
-        Vec::new()
-    }
-
-    /// Return MCP tool schemas for registration in the tool registry.
-    fn mcp_tools(&self) -> Vec<wcore::model::Tool> {
-        Vec::new()
-    }
-
-    /// Inject the MCP handler after async construction. The handler is
-    /// type-erased so the runtime crate doesn't depend on the daemon's
-    /// MCP types. DaemonHost downcasts; other hosts ignore.
-    fn set_mcp(&mut self, _handler: std::sync::Arc<dyn std::any::Any + Send + Sync>) {}
 }
 
 /// No-op host for embedded use.
