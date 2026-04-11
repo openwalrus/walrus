@@ -4,11 +4,15 @@ pub mod cron;
 pub mod event_bus;
 pub mod hook;
 pub mod mcp;
+pub mod memory;
 pub mod node;
 pub mod provider;
+pub mod skill;
 #[cfg(feature = "fs")]
 pub mod storage;
 pub mod tools;
+
+pub use memory::Memory;
 
 pub use hook::NodeEnv;
 #[cfg(unix)]

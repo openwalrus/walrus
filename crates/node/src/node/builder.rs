@@ -1,6 +1,7 @@
 //! Node construction and lifecycle methods.
 
 use crate::mcp::McpHandler;
+use crate::memory::Memory;
 use crate::{
     Node, NodeConfig,
     node::event::{NodeEvent, NodeEventSender},
@@ -9,7 +10,7 @@ use crate::{
 use anyhow::Result;
 use crabllm_core::Provider;
 use crabllm_provider::{ProviderRegistry, RemoteProvider};
-use runtime::{Env, Memory, Runtime, host::Host};
+use runtime::{Env, Runtime, host::Host};
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
@@ -28,7 +29,7 @@ pub fn build_default_provider(config: &NodeConfig) -> Result<Model<DefaultProvid
     build_providers(config)
 }
 
-pub(crate) const SYSTEM_AGENT: &str = runtime::memory::DEFAULT_SOUL;
+pub(crate) const SYSTEM_AGENT: &str = crate::memory::DEFAULT_SOUL;
 
 /// Build the `AgentConfig` for a single named agent.
 pub(crate) fn build_single_agent_config(

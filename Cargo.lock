@@ -543,6 +543,7 @@ version = "0.0.20"
 dependencies = [
  "crabllm-core",
  "crabtalk-core",
+ "crabtalk-node",
  "crabtalk-runtime",
  "criterion",
  "futures-util",
@@ -643,6 +644,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "serde_yml",
  "tempfile",
  "tokio",
  "toml",
@@ -692,19 +694,11 @@ version = "0.0.20"
 dependencies = [
  "anyhow",
  "async-stream",
- "chrono",
  "crabllm-core",
  "crabtalk-core",
  "futures-core",
  "futures-util",
- "reqwest 0.13.2",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "serde_yml",
- "tempfile",
  "tokio",
- "toml",
  "tracing",
 ]
 

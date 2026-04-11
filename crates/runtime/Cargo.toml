@@ -1,6 +1,6 @@
 [package]
 name = "crabtalk-runtime"
-description = "Crabtalk agent runtime — tool dispatch, MCP, skills, and memory"
+description = "Crabtalk agent runtime — execution loop, tool dispatch, and lifecycle hooks"
 documentation = "https://docs.rs/crabtalk-runtime"
 readme = "README.md"
 version.workspace = true
@@ -17,20 +17,11 @@ crabllm-core.workspace = true
 # crates.io
 anyhow.workspace = true
 async-stream.workspace = true
-chrono.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
-reqwest.workspace = true
-schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-serde_yml.workspace = true
-tokio = { workspace = true, features = ["process"] }
-toml.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-futures-util.workspace = true
-tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wcore = { workspace = true, features = ["test-utils"] }
