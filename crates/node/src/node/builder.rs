@@ -1,11 +1,7 @@
 //! Node construction and lifecycle methods.
 
 use crate::mcp::McpHandler;
-use crate::{
-    Node, NodeConfig,
-    node::event::{NodeEvent, NodeEventSender},
-    storage::FsStorage,
-};
+use crate::{Node, NodeConfig, node::SharedRuntime, storage::FsStorage};
 use anyhow::Result;
 use crabllm_core::Provider;
 use crabllm_provider::{ProviderRegistry, RemoteProvider};
@@ -13,11 +9,11 @@ use runtime::{Env, Runtime, host::Host};
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
 use tools::Memory;
-use wcore::{AgentConfig, ToolRequest, model::Model, repos::Storage};
+use wcore::{AgentConfig, model::Model, repos::Storage};
 use wcore::{ResolvedManifest, resolve_manifests};
 
 pub type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
@@ -78,7 +74,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
     pub(crate) async fn build(
         config: &NodeConfig,
         config_dir: &Path,
-        event_tx: NodeEventSender,
         shutdown_tx: broadcast::Sender<()>,
         host: H,
         build_provider: BuildProvider<P>,
@@ -87,36 +82,79 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             tracing::warn!("agent id backfill failed: {e}");
         }
 
-        let (runtime, mcp) =
-            Self::build_runtime(config, config_dir, &event_tx, host, &build_provider).await?;
-        let cron_store =
-            crate::cron::CronStore::load(config_dir.to_path_buf(), event_tx.clone(), shutdown_tx);
+        // Pre-allocate a late-bind slot for the shared runtime. Delegate
+        // tool handlers capture this OnceLock at build time and read the
+        // installed SharedRuntime at dispatch time, breaking the circular
+        // dependency between Env construction and Runtime construction.
+        let runtime_once: Arc<OnceLock<SharedRuntime<P, H>>> = Arc::new(OnceLock::new());
+
+        let (runtime, mcp) = Self::build_runtime(
+            config,
+            config_dir,
+            host,
+            &build_provider,
+            runtime_once.clone(),
+        )
+        .await?;
+        let shared_runtime: SharedRuntime<P, H> = Arc::new(RwLock::new(Arc::new(runtime)));
+        runtime_once
+            .set(shared_runtime.clone())
+            .unwrap_or_else(|_| panic!("runtime already initialized"));
+        let cron_store = crate::cron::CronStore::load(
+            config_dir.to_path_buf(),
+            shared_runtime.clone(),
+            shutdown_tx,
+        );
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
 
-        let fire_tx = event_tx.clone();
+        // Subscription matches fire new messages into the matched agent by
+        // calling rt.send_to directly — no protocol round-trip.
+        let fire_runtime = shared_runtime.clone();
         let fire: crate::event_bus::FireCallback = Arc::new(move |sub, payload| {
-            use wcore::protocol::message::{ClientMessage, SendMsg};
-            let (reply_tx, _) = tokio::sync::mpsc::channel(1);
-            let msg = ClientMessage::from(SendMsg {
-                agent: sub.target_agent.clone(),
-                content: payload.to_owned(),
-                sender: Some(format!("event:{}", sub.source)),
-                cwd: None,
-                guest: None,
-                tool_choice: None,
-            });
-            let _ = fire_tx.send(NodeEvent::Message {
-                msg,
-                reply: reply_tx,
+            let runtime = fire_runtime.clone();
+            let target_agent = sub.target_agent.clone();
+            let source = sub.source.clone();
+            let payload = payload.to_owned();
+            tokio::spawn(async move {
+                let rt = runtime.read().await.clone();
+                let sender = format!("event:{source}");
+                let conversation_id = match rt
+                    .get_or_create_conversation(&target_agent, &sender)
+                    .await
+                {
+                    Ok(id) => id,
+                    Err(e) => {
+                        tracing::warn!(
+                            "event fire: get_or_create_conversation(agent='{target_agent}'): {e}"
+                        );
+                        return;
+                    }
+                };
+                if let Err(e) = rt.send_to(conversation_id, &payload, &sender, None).await {
+                    tracing::warn!("event fire: send_to(agent='{target_agent}'): {e}");
+                }
             });
         });
         let event_bus = crate::event_bus::EventBus::load(config_dir.to_path_buf(), fire);
-        let events = Arc::new(Mutex::new(event_bus));
+        let events = Arc::new(std::sync::Mutex::new(event_bus));
+
+        // Install the event sink on Env so agent completion events publish
+        // into the bus without going through the node event loop.
+        {
+            let events_for_sink = events.clone();
+            let sink: runtime::EventSink = Arc::new(move |source: &str, payload: &str| {
+                events_for_sink
+                    .lock()
+                    .expect("event bus lock poisoned")
+                    .publish(source, payload);
+            });
+            shared_runtime.read().await.hook.set_event_sink(sink);
+        }
+
         Ok(Self {
-            runtime: Arc::new(RwLock::new(Arc::new(runtime))),
+            runtime: shared_runtime,
             config_dir: config_dir.to_path_buf(),
-            event_tx,
             started_at: std::time::Instant::now(),
             crons,
             events,
@@ -131,12 +169,19 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             let old_rt = self.runtime.read().await;
             old_rt.hook.host.clone()
         };
+        // Reuse the current SharedRuntime slot for late-binding — delegate
+        // handlers built for the new runtime will see this same handle,
+        // whose inner Arc<Runtime> we swap below.
+        let runtime_once: Arc<OnceLock<SharedRuntime<P, H>>> = Arc::new(OnceLock::new());
+        runtime_once
+            .set(self.runtime.clone())
+            .unwrap_or_else(|_| panic!("runtime_once already set"));
         let (mut new_runtime, _mcp) = Self::build_runtime(
             &config,
             &self.config_dir,
-            &self.event_tx,
             host,
             &self.build_provider,
+            runtime_once,
         )
         .await?;
         {
@@ -144,6 +189,18 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             (**old_runtime)
                 .transfer_conversations(&mut new_runtime)
                 .await;
+        }
+        // Wire the new Env to the existing node event bus before it goes
+        // live, so agent completion events continue to fan out.
+        {
+            let events_for_sink = self.events.clone();
+            let sink: runtime::EventSink = Arc::new(move |source: &str, payload: &str| {
+                events_for_sink
+                    .lock()
+                    .expect("event bus lock poisoned")
+                    .publish(source, payload);
+            });
+            new_runtime.hook.set_event_sink(sink);
         }
         *self.runtime.write().await = Arc::new(new_runtime);
         tracing::info!("daemon reloaded");
@@ -153,9 +210,9 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
     async fn build_runtime(
         config: &NodeConfig,
         config_dir: &Path,
-        event_tx: &NodeEventSender,
         host: H,
         build_provider: &BuildProvider<P>,
+        runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
     ) -> Result<(Runtime<crate::node::NodeCfg<P, H>>, Arc<McpHandler>)> {
         let (mut manifest, _warnings) = resolve_manifests(config_dir);
         manifest.disabled = config.disabled.clone();
@@ -165,16 +222,15 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let servers = mcp_servers(config, &manifest);
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
 
-        let (hook, storage, tools) = build_env(
+        let (hook, storage, tools) = build_env::<P, H>(
             config,
             config_dir,
             &manifest,
             host,
-            event_tx.clone(),
             mcp_handler.clone(),
+            runtime_once,
         )?;
-        let tool_tx = build_tool_sender(event_tx);
-        let mut runtime = Runtime::new(model, hook, storage, Some(tool_tx), tools);
+        let mut runtime = Runtime::new(model, hook, storage, tools);
         load_agents(&mut runtime, config_dir, config, &manifest)?;
         Ok((runtime, mcp_handler))
     }
@@ -215,13 +271,13 @@ fn mcp_servers(config: &NodeConfig, manifest: &ResolvedManifest) -> Vec<wcore::M
         .collect()
 }
 
-fn build_env<H: Host + 'static>(
+fn build_env<P: Provider + 'static, H: Host + 'static>(
     config: &NodeConfig,
     config_dir: &Path,
     manifest: &ResolvedManifest,
     host: H,
-    event_tx: NodeEventSender,
     mcp_handler: Arc<McpHandler>,
+    runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
 ) -> Result<(Env<H, FsStorage>, Arc<FsStorage>, wcore::ToolRegistry)> {
     let skill_roots: Vec<PathBuf> = manifest
         .skill_dirs
@@ -297,7 +353,7 @@ fn build_env<H: Host + 'static>(
     register(
         &mut tools,
         &mut env,
-        crate::delegate::handler(event_tx, scopes.clone()),
+        crate::delegate::handler::<P, H>(scopes.clone(), runtime_once),
     );
     register(&mut tools, &mut env, tools::ask_user::handler(pending_asks));
 
@@ -324,19 +380,6 @@ fn build_env<H: Host + 'static>(
     }
 
     Ok((env, storage, tools))
-}
-
-fn build_tool_sender(event_tx: &NodeEventSender) -> wcore::ToolSender {
-    let (tool_tx, mut tool_rx) = tokio::sync::mpsc::unbounded_channel::<ToolRequest>();
-    let event_tx = event_tx.clone();
-    tokio::spawn(async move {
-        while let Some(req) = tool_rx.recv().await {
-            if event_tx.send(NodeEvent::ToolCall(req)).is_err() {
-                break;
-            }
-        }
-    });
-    tool_tx
 }
 
 fn load_agents<P: Provider + 'static, H: Host + 'static>(

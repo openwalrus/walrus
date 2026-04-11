@@ -5,14 +5,12 @@ use crate::{
     cron::CronStore,
     event_bus::EventBus,
     hook::host::NodeHost,
-    node::{
-        builder::{BuildProvider, DefaultProvider, build_default_provider},
-        event::{NodeEvent, NodeEventSender},
-    },
+    node::builder::{BuildProvider, DefaultProvider, build_default_provider},
     storage::FsStorage,
 };
 use anyhow::Result;
 use crabllm_core::Provider;
+use futures_util::{StreamExt, pin_mut};
 use runtime::{Env, Runtime, host::Host};
 use std::{
     marker::PhantomData,
@@ -20,10 +18,15 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc, oneshot};
-use wcore::model::Model;
+// NOTE: EventBus uses std::sync::Mutex so it can be locked from
+// synchronous lifecycle hooks (Env::on_event). Protocol-facing
+// subscribe/unsubscribe/list paths use this same mutex.
+use wcore::{
+    model::Model,
+    protocol::{api::Server, message::ClientMessage},
+};
 
 pub(crate) mod builder;
-pub mod event;
 mod protocol;
 
 /// Config binding for a node: ties Provider + Host to FsStorage + Env.
@@ -45,10 +48,9 @@ pub type SharedRuntime<P, B> = Arc<RwLock<Arc<Runtime<NodeCfg<P, B>>>>>;
 pub struct Node<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
     pub runtime: SharedRuntime<P, B>,
     pub(crate) config_dir: PathBuf,
-    pub(crate) event_tx: NodeEventSender,
     pub(crate) started_at: std::time::Instant,
-    pub(crate) crons: Arc<Mutex<CronStore>>,
-    pub(crate) events: Arc<Mutex<EventBus>>,
+    pub(crate) crons: Arc<Mutex<CronStore<P, B>>>,
+    pub(crate) events: Arc<std::sync::Mutex<EventBus>>,
     pub(crate) build_provider: BuildProvider<P>,
     pub(crate) mcp: Arc<crate::mcp::McpHandler>,
 }
@@ -58,7 +60,6 @@ impl<P: Provider + 'static, B: Host + 'static> Clone for Node<P, B> {
         Self {
             runtime: self.runtime.clone(),
             config_dir: self.config_dir.clone(),
-            event_tx: self.event_tx.clone(),
             started_at: self.started_at,
             crons: self.crons.clone(),
             events: self.events.clone(),
@@ -73,12 +74,9 @@ impl Node<DefaultProvider, NodeHost> {
         Self::start_with(
             config_dir,
             |config: &NodeConfig| build_default_provider(config),
-            |event_tx| {
+            || {
                 let (events_tx, _) = broadcast::channel(256);
-                NodeHost {
-                    event_tx,
-                    events_tx,
-                }
+                NodeHost { events_tx }
             },
         )
         .await
@@ -93,55 +91,37 @@ impl<P: Provider + 'static, B: Host + 'static> Node<P, B> {
     ) -> Result<NodeHandle<P, B>>
     where
         BP: Fn(&NodeConfig) -> Result<Model<P>> + Send + Sync + 'static,
-        BB: FnOnce(NodeEventSender) -> B,
+        BB: FnOnce() -> B,
     {
         let config_path = config_dir.join(wcore::paths::CONFIG_FILE);
         let config = NodeConfig::load(&config_path)?;
         tracing::info!("loaded configuration from {}", config_path.display());
 
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<NodeEvent>();
-
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
-        let shutdown_event_tx = event_tx.clone();
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            let _ = shutdown_rx.recv().await;
-            let _ = shutdown_event_tx.send(NodeEvent::Shutdown);
-        });
 
-        let backend = build_backend(event_tx.clone());
+        let backend = build_backend();
         let build_provider: BuildProvider<P> = Arc::new(build_provider);
         let node = Node::build(
             &config,
             config_dir,
-            event_tx.clone(),
             shutdown_tx.clone(),
             backend,
             build_provider,
         )
         .await?;
 
-        let n = node.clone();
-        let event_loop_join = tokio::spawn(async move {
-            n.handle_events(event_rx).await;
-        });
-
         Ok(NodeHandle {
             config,
-            event_tx,
             shutdown_tx,
             node,
-            event_loop_join: Some(event_loop_join),
         })
     }
 }
 
 pub struct NodeHandle<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
     pub config: NodeConfig,
-    pub event_tx: NodeEventSender,
     pub shutdown_tx: broadcast::Sender<()>,
     pub node: Node<P, B>,
-    event_loop_join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl<P: Provider + 'static, B: Host + 'static> NodeHandle<P, B> {
@@ -149,21 +129,39 @@ impl<P: Provider + 'static, B: Host + 'static> NodeHandle<P, B> {
         Ok(())
     }
 
-    pub async fn shutdown(mut self) -> Result<()> {
+    pub async fn shutdown(self) -> Result<()> {
         let _ = self.shutdown_tx.send(());
-        if let Some(join) = self.event_loop_join.take() {
-            join.await?;
-        }
         Ok(())
     }
 }
 
 // ── Transport setup helpers ──────────────────────────────────────────
 
+/// Return a per-message callback that spawns a task driving
+/// `node.dispatch` and piping its output to `reply`. Shared between the
+/// UDS and TCP transports.
+fn dispatch_callback<P: Provider + 'static, H: Host + 'static>(
+    node: Node<P, H>,
+) -> impl Fn(ClientMessage, mpsc::Sender<wcore::protocol::message::ServerMessage>) + Clone + Send + 'static
+{
+    move |msg, reply| {
+        let node = node.clone();
+        tokio::spawn(async move {
+            let stream = node.dispatch(msg);
+            pin_mut!(stream);
+            while let Some(server_msg) = stream.next().await {
+                if reply.send(server_msg).await.is_err() {
+                    break;
+                }
+            }
+        });
+    }
+}
+
 #[cfg(unix)]
-pub fn setup_socket(
+pub fn setup_socket<P: Provider + 'static, H: Host + 'static>(
+    node: Node<P, H>,
     shutdown_tx: &broadcast::Sender<()>,
-    event_tx: &NodeEventSender,
 ) -> Result<(&'static Path, tokio::task::JoinHandle<()>)> {
     let resolved_path: &'static Path = &wcore::paths::SOCKET_PATH;
     if let Some(parent) = resolved_path.parent() {
@@ -177,33 +175,27 @@ pub fn setup_socket(
     tracing::info!("daemon listening on {}", resolved_path.display());
 
     let socket_shutdown = bridge_shutdown(shutdown_tx.subscribe());
-    let socket_tx = event_tx.clone();
     let join = tokio::spawn(transport::uds::accept_loop(
         listener,
-        move |msg, reply| {
-            let _ = socket_tx.send(NodeEvent::Message { msg, reply });
-        },
+        dispatch_callback(node),
         socket_shutdown,
     ));
 
     Ok((resolved_path, join))
 }
 
-pub fn setup_tcp(
+pub fn setup_tcp<P: Provider + 'static, H: Host + 'static>(
+    node: Node<P, H>,
     shutdown_tx: &broadcast::Sender<()>,
-    event_tx: &NodeEventSender,
 ) -> Result<(tokio::task::JoinHandle<()>, u16)> {
     let (std_listener, addr) = transport::tcp::bind()?;
     let listener = tokio::net::TcpListener::from_std(std_listener)?;
     tracing::info!("daemon listening on tcp://{addr}");
 
     let tcp_shutdown = bridge_shutdown(shutdown_tx.subscribe());
-    let tcp_tx = event_tx.clone();
     let join = tokio::spawn(transport::tcp::accept_loop(
         listener,
-        move |msg, reply| {
-            let _ = tcp_tx.send(NodeEvent::Message { msg, reply });
-        },
+        dispatch_callback(node),
         tcp_shutdown,
     ));
 

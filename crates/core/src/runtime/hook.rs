@@ -36,11 +36,3 @@ pub trait Hook: Send + Sync {
         Vec::new()
     }
 }
-
-/// Trivial [`Hook`] for tests that don't need lifecycle customization.
-#[cfg(feature = "test-utils")]
-#[derive(Default)]
-pub struct TestHook;
-
-#[cfg(feature = "test-utils")]
-impl Hook for TestHook {}

@@ -1,4 +1,4 @@
-//! Crabtalk node — runtime + transport + event loop.
+//! Crabtalk node — runtime + transports + protocol adapter.
 
 pub mod cron;
 pub mod delegate;
@@ -16,7 +16,6 @@ pub use node::setup_socket;
 pub use node::{
     Node, NodeHandle, bridge_shutdown,
     builder::{BuildProvider, DefaultProvider, build_default_provider},
-    event::{NodeEvent, NodeEventSender},
     setup_tcp,
 };
 pub use tools::Memory;
