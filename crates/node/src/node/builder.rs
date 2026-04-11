@@ -3,7 +3,10 @@
 use crate::mcp::McpHandler;
 use crate::{
     Node, NodeConfig,
-    node::event::{NodeEvent, NodeEventSender},
+    node::{
+        SharedRuntime,
+        event::{NodeEvent, NodeEventSender},
+    },
     storage::FsStorage,
 };
 use anyhow::Result;
@@ -13,7 +16,7 @@ use runtime::{Env, Runtime, host::Host};
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
 use tools::Memory;
@@ -87,8 +90,25 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             tracing::warn!("agent id backfill failed: {e}");
         }
 
-        let (runtime, mcp) =
-            Self::build_runtime(config, config_dir, &event_tx, host, &build_provider).await?;
+        // Pre-allocate a late-bind slot for the shared runtime. Delegate
+        // tool handlers capture this OnceLock at build time and read the
+        // installed SharedRuntime at dispatch time, breaking the circular
+        // dependency between Env construction and Runtime construction.
+        let runtime_once: Arc<OnceLock<SharedRuntime<P, H>>> = Arc::new(OnceLock::new());
+
+        let (runtime, mcp) = Self::build_runtime(
+            config,
+            config_dir,
+            &event_tx,
+            host,
+            &build_provider,
+            runtime_once.clone(),
+        )
+        .await?;
+        let shared_runtime: SharedRuntime<P, H> = Arc::new(RwLock::new(Arc::new(runtime)));
+        runtime_once
+            .set(shared_runtime.clone())
+            .unwrap_or_else(|_| panic!("runtime already initialized"));
         let cron_store =
             crate::cron::CronStore::load(config_dir.to_path_buf(), event_tx.clone(), shutdown_tx);
         let crons = Arc::new(Mutex::new(cron_store));
@@ -114,7 +134,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let event_bus = crate::event_bus::EventBus::load(config_dir.to_path_buf(), fire);
         let events = Arc::new(Mutex::new(event_bus));
         Ok(Self {
-            runtime: Arc::new(RwLock::new(Arc::new(runtime))),
+            runtime: shared_runtime,
             config_dir: config_dir.to_path_buf(),
             event_tx,
             started_at: std::time::Instant::now(),
@@ -131,12 +151,20 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             let old_rt = self.runtime.read().await;
             old_rt.hook.host.clone()
         };
+        // Reuse the current SharedRuntime slot for late-binding — delegate
+        // handlers built for the new runtime will see this same handle,
+        // whose inner Arc<Runtime> we swap below.
+        let runtime_once: Arc<OnceLock<SharedRuntime<P, H>>> = Arc::new(OnceLock::new());
+        runtime_once
+            .set(self.runtime.clone())
+            .unwrap_or_else(|_| panic!("runtime_once already set"));
         let (mut new_runtime, _mcp) = Self::build_runtime(
             &config,
             &self.config_dir,
             &self.event_tx,
             host,
             &self.build_provider,
+            runtime_once,
         )
         .await?;
         {
@@ -156,6 +184,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         event_tx: &NodeEventSender,
         host: H,
         build_provider: &BuildProvider<P>,
+        runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
     ) -> Result<(Runtime<crate::node::NodeCfg<P, H>>, Arc<McpHandler>)> {
         let (mut manifest, _warnings) = resolve_manifests(config_dir);
         manifest.disabled = config.disabled.clone();
@@ -165,13 +194,14 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let servers = mcp_servers(config, &manifest);
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
 
-        let (hook, storage, tools) = build_env(
+        let (hook, storage, tools) = build_env::<P, H>(
             config,
             config_dir,
             &manifest,
             host,
             event_tx.clone(),
             mcp_handler.clone(),
+            runtime_once,
         )?;
         let mut runtime = Runtime::new(model, hook, storage, tools);
         load_agents(&mut runtime, config_dir, config, &manifest)?;
@@ -214,13 +244,14 @@ fn mcp_servers(config: &NodeConfig, manifest: &ResolvedManifest) -> Vec<wcore::M
         .collect()
 }
 
-fn build_env<H: Host + 'static>(
+fn build_env<P: Provider + 'static, H: Host + 'static>(
     config: &NodeConfig,
     config_dir: &Path,
     manifest: &ResolvedManifest,
     host: H,
     event_tx: NodeEventSender,
     mcp_handler: Arc<McpHandler>,
+    runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
 ) -> Result<(Env<H, FsStorage>, Arc<FsStorage>, wcore::ToolRegistry)> {
     let skill_roots: Vec<PathBuf> = manifest
         .skill_dirs
@@ -296,7 +327,7 @@ fn build_env<H: Host + 'static>(
     register(
         &mut tools,
         &mut env,
-        crate::delegate::handler(event_tx, scopes.clone()),
+        crate::delegate::handler::<P, H>(event_tx, scopes.clone(), runtime_once),
     );
     register(&mut tools, &mut env, tools::ask_user::handler(pending_asks));
 

@@ -1,16 +1,20 @@
 //! Delegate tool handler factory.
 
-use crate::node::event::{NodeEvent, NodeEventSender};
-use runtime::AgentScope;
+use crate::node::{
+    SharedRuntime,
+    event::{NodeEvent, NodeEventSender},
+};
+use crabllm_core::Provider;
+use runtime::{AgentScope, host::Host};
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, RwLock,
+        Arc, OnceLock, RwLock,
         atomic::{AtomicU64, Ordering},
     },
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use wcore::{
     ToolDispatch, ToolEntry,
     agent::{AsTool, ToolDescription},
@@ -47,9 +51,10 @@ impl ToolDescription for Delegate {
     const DESCRIPTION: &'static str = "Delegate tasks to other agents. Runs all tasks in parallel. Set background=true to return immediately with task IDs — results arrive via agent completion events.";
 }
 
-pub fn handler(
+pub fn handler<P: Provider + 'static, H: Host + 'static>(
     event_tx: NodeEventSender,
     scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
+    runtime: Arc<OnceLock<SharedRuntime<P, H>>>,
 ) -> ToolEntry {
     ToolEntry {
         schema: Delegate::as_tool(),
@@ -58,6 +63,7 @@ pub fn handler(
         handler: Arc::new(move |call: ToolDispatch| {
             let event_tx = event_tx.clone();
             let scopes = scopes.clone();
+            let runtime = runtime.clone();
             Box::pin(async move {
                 let input: Delegate = serde_json::from_str(&call.args)
                     .map_err(|e| format!("invalid arguments: {e}"))?;
@@ -79,13 +85,20 @@ pub fn handler(
                         }
                     }
                 }
-                dispatch_delegate(input, &event_tx).await
+                let shared = runtime
+                    .get()
+                    .ok_or_else(|| "delegate: runtime not initialized".to_owned())?;
+                dispatch_delegate(input, &event_tx, shared).await
             })
         }),
     }
 }
 
-async fn dispatch_delegate(input: Delegate, event_tx: &NodeEventSender) -> Result<String, String> {
+async fn dispatch_delegate<P: Provider + 'static, H: Host + 'static>(
+    input: Delegate,
+    event_tx: &NodeEventSender,
+    shared: &SharedRuntime<P, H>,
+) -> Result<String, String> {
     let mut ephemeral_names = Vec::new();
     let mut tasks = Vec::with_capacity(input.tasks.len());
     for task in input.tasks {
@@ -97,9 +110,8 @@ async fn dispatch_delegate(input: Delegate, event_tx: &NodeEventSender) -> Resul
             };
             let mut config = wcore::AgentConfig::new(&name);
             config.system_prompt = prompt;
-            let (tx, rx) = oneshot::channel();
-            let _ = event_tx.send(NodeEvent::AddEphemeral { config, reply: tx });
-            let _ = rx.await;
+            let rt = shared.read().await.clone();
+            rt.add_ephemeral(config).await;
             ephemeral_names.push(name.clone());
             name
         } else {
@@ -125,13 +137,14 @@ async fn dispatch_delegate(input: Delegate, event_tx: &NodeEventSender) -> Resul
             handles.push(handle);
         }
         if !ephemeral_names.is_empty() {
-            let event_tx = event_tx.clone();
+            let shared = shared.clone();
             tokio::spawn(async move {
                 for h in handles {
                     let _ = h.await;
                 }
+                let rt = shared.read().await.clone();
                 for name in ephemeral_names {
-                    let _ = event_tx.send(NodeEvent::RemoveEphemeral { name });
+                    rt.remove_ephemeral(&name).await;
                 }
             });
         }
@@ -152,8 +165,11 @@ async fn dispatch_delegate(input: Delegate, event_tx: &NodeEventSender) -> Resul
         }));
     }
 
-    for name in ephemeral_names {
-        let _ = event_tx.send(NodeEvent::RemoveEphemeral { name });
+    if !ephemeral_names.is_empty() {
+        let rt = shared.read().await.clone();
+        for name in ephemeral_names {
+            rt.remove_ephemeral(&name).await;
+        }
     }
 
     serde_json::to_string(&results).map_err(|e| format!("serialization error: {e}"))

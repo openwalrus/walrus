@@ -8,13 +8,10 @@ use crate::node::Node;
 use crabllm_core::Provider;
 use futures_util::{StreamExt, pin_mut};
 use runtime::host::Host;
-use tokio::sync::{mpsc, oneshot};
-use wcore::{
-    AgentConfig,
-    protocol::{
-        api::Server,
-        message::{ClientMessage, ServerMessage},
-    },
+use tokio::sync::mpsc;
+use wcore::protocol::{
+    api::Server,
+    message::{ClientMessage, ServerMessage},
 };
 
 /// Inbound event from any source, processed by the central event loop.
@@ -34,13 +31,6 @@ pub enum NodeEvent {
         /// JSON payload delivered as message content to target agents.
         payload: String,
     },
-    /// Register an ephemeral agent for delegate dispatch.
-    AddEphemeral {
-        config: AgentConfig,
-        reply: oneshot::Sender<()>,
-    },
-    /// Remove an ephemeral agent after delegate completion.
-    RemoveEphemeral { name: String },
     /// Graceful shutdown request.
     Shutdown,
 }
@@ -61,15 +51,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
                 NodeEvent::Message { msg, reply } => self.handle_message(msg, reply),
                 NodeEvent::PublishEvent { source, payload } => {
                     self.events.lock().await.publish(&source, &payload);
-                }
-                NodeEvent::AddEphemeral { config, reply } => {
-                    let rt = self.runtime.read().await.clone();
-                    rt.add_ephemeral(config).await;
-                    let _ = reply.send(());
-                }
-                NodeEvent::RemoveEphemeral { name } => {
-                    let rt = self.runtime.read().await.clone();
-                    rt.remove_ephemeral(&name).await;
                 }
                 NodeEvent::Shutdown => {
                     tracing::info!("event loop shutting down");
