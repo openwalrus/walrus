@@ -325,26 +325,34 @@ impl<P: Provider + 'static, H: Host + 'static> Server for Node<P, H> {
             target_agent: req.target_agent,
             once: req.once,
         };
-        let created = self.events.lock().await.subscribe(sub);
+        let created = self
+            .events
+            .lock()
+            .expect("event bus lock poisoned")
+            .subscribe(sub);
         Ok(subscription_to_info(&created))
     }
 
     async fn unsubscribe_event(&self, id: u64) -> Result<bool> {
-        Ok(self.events.lock().await.unsubscribe(id))
+        Ok(self
+            .events
+            .lock()
+            .expect("event bus lock poisoned")
+            .unsubscribe(id))
     }
 
     async fn list_subscriptions(&self) -> Result<SubscriptionList> {
-        let subs = self.events.lock().await.list();
+        let subs = self.events.lock().expect("event bus lock poisoned").list();
         Ok(SubscriptionList {
             subscriptions: subs.iter().map(subscription_to_info).collect(),
         })
     }
 
     async fn publish_event(&self, req: PublishEventMsg) -> Result<()> {
-        let _ = self.event_tx.send(crate::NodeEvent::PublishEvent {
-            source: req.source,
-            payload: req.payload,
-        });
+        self.events
+            .lock()
+            .expect("event bus lock poisoned")
+            .publish(&req.source, &req.payload);
         Ok(())
     }
 

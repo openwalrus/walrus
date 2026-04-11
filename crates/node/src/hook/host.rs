@@ -4,7 +4,6 @@
 //! MCP bridge management. Tool dispatch is handled by registered handlers,
 //! not by this Host implementation.
 
-use crate::node::event::{NodeEvent, NodeEventSender};
 use runtime::host::Host;
 use std::path::Path;
 use tokio::sync::broadcast;
@@ -23,8 +22,6 @@ const MAX_TOOL_OUTPUT_BROADCAST: usize = 2048;
 /// shared Arcs captured by handler factories and the Env.
 #[derive(Clone)]
 pub struct NodeHost {
-    /// Event channel for delegate and event bus routing.
-    pub(crate) event_tx: NodeEventSender,
     /// Broadcast channel for agent events (console subscription).
     pub(crate) events_tx: broadcast::Sender<AgentEventMsg>,
 }
@@ -149,15 +146,6 @@ impl Host for NodeHost {
             tool_output: p.tool_output,
             tool_is_error: p.tool_is_error,
         });
-
-        // Publish agent completion to the event bus.
-        if let AgentEvent::Done(response) = event {
-            let payload = response.final_response.clone().unwrap_or_default();
-            let _ = self.event_tx.send(NodeEvent::PublishEvent {
-                source: format!("agent:{}:done", agent),
-                payload,
-            });
-        }
     }
 
     fn subscribe_events(&self) -> Option<broadcast::Receiver<AgentEventMsg>> {

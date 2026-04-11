@@ -24,13 +24,6 @@ pub enum NodeEvent {
         /// Per-request reply channel for streaming `ServerMessage`s back.
         reply: mpsc::Sender<ServerMessage>,
     },
-    /// Publish an event to the event bus — fires matching subscriptions.
-    PublishEvent {
-        /// Namespaced source, e.g. `"agent:scout:done"`.
-        source: String,
-        /// JSON payload delivered as message content to target agents.
-        payload: String,
-    },
     /// Graceful shutdown request.
     Shutdown,
 }
@@ -49,9 +42,6 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         while let Some(event) = rx.recv().await {
             match event {
                 NodeEvent::Message { msg, reply } => self.handle_message(msg, reply),
-                NodeEvent::PublishEvent { source, payload } => {
-                    self.events.lock().await.publish(&source, &payload);
-                }
                 NodeEvent::Shutdown => {
                     tracing::info!("event loop shutting down");
                     break;

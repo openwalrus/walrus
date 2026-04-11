@@ -3,10 +3,7 @@
 use crate::mcp::McpHandler;
 use crate::{
     Node, NodeConfig,
-    node::{
-        SharedRuntime,
-        event::{NodeEvent, NodeEventSender},
-    },
+    node::{SharedRuntime, event::NodeEventSender},
     storage::FsStorage,
 };
 use anyhow::Result;
@@ -117,25 +114,50 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
 
-        let fire_tx = event_tx.clone();
+        // Subscription matches fire new messages into the matched agent by
+        // calling rt.send_to directly — no protocol round-trip.
+        let fire_runtime = shared_runtime.clone();
         let fire: crate::event_bus::FireCallback = Arc::new(move |sub, payload| {
-            use wcore::protocol::message::{ClientMessage, SendMsg};
-            let (reply_tx, _) = tokio::sync::mpsc::channel(1);
-            let msg = ClientMessage::from(SendMsg {
-                agent: sub.target_agent.clone(),
-                content: payload.to_owned(),
-                sender: Some(format!("event:{}", sub.source)),
-                cwd: None,
-                guest: None,
-                tool_choice: None,
-            });
-            let _ = fire_tx.send(NodeEvent::Message {
-                msg,
-                reply: reply_tx,
+            let runtime = fire_runtime.clone();
+            let target_agent = sub.target_agent.clone();
+            let source = sub.source.clone();
+            let payload = payload.to_owned();
+            tokio::spawn(async move {
+                let rt = runtime.read().await.clone();
+                let sender = format!("event:{source}");
+                let conversation_id = match rt
+                    .get_or_create_conversation(&target_agent, &sender)
+                    .await
+                {
+                    Ok(id) => id,
+                    Err(e) => {
+                        tracing::warn!(
+                            "event fire: get_or_create_conversation(agent='{target_agent}'): {e}"
+                        );
+                        return;
+                    }
+                };
+                if let Err(e) = rt.send_to(conversation_id, &payload, &sender, None).await {
+                    tracing::warn!("event fire: send_to(agent='{target_agent}'): {e}");
+                }
             });
         });
         let event_bus = crate::event_bus::EventBus::load(config_dir.to_path_buf(), fire);
-        let events = Arc::new(Mutex::new(event_bus));
+        let events = Arc::new(std::sync::Mutex::new(event_bus));
+
+        // Install the event sink on Env so agent completion events publish
+        // into the bus without going through the node event loop.
+        {
+            let events_for_sink = events.clone();
+            let sink: runtime::EventSink = Arc::new(move |source: &str, payload: &str| {
+                events_for_sink
+                    .lock()
+                    .expect("event bus lock poisoned")
+                    .publish(source, payload);
+            });
+            shared_runtime.read().await.hook.set_event_sink(sink);
+        }
+
         Ok(Self {
             runtime: shared_runtime,
             config_dir: config_dir.to_path_buf(),
@@ -175,6 +197,18 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             (**old_runtime)
                 .transfer_conversations(&mut new_runtime)
                 .await;
+        }
+        // Wire the new Env to the existing node event bus before it goes
+        // live, so agent completion events continue to fan out.
+        {
+            let events_for_sink = self.events.clone();
+            let sink: runtime::EventSink = Arc::new(move |source: &str, payload: &str| {
+                events_for_sink
+                    .lock()
+                    .expect("event bus lock poisoned")
+                    .publish(source, payload);
+            });
+            new_runtime.hook.set_event_sink(sink);
         }
         *self.runtime.write().await = Arc::new(new_runtime);
         tracing::info!("daemon reloaded");

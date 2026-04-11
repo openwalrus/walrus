@@ -46,6 +46,14 @@ pub type ConversationCwds = Arc<tokio::sync::Mutex<std::collections::HashMap<u64
 pub type PendingAsks =
     Arc<tokio::sync::Mutex<std::collections::HashMap<u64, tokio::sync::oneshot::Sender<String>>>>;
 
+/// Late-bindable sink for `agent:{name}:done` event publishes.
+///
+/// The node-level event bus lives outside wcore but wants to be
+/// notified when agents complete. Env stores a type-erased callable
+/// that the node installs after constructing its EventBus. `None`
+/// means no sink is wired up.
+pub type EventSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 pub struct Env<H: Host, S: Storage> {
     pub(crate) storage: Arc<S>,
     pub(crate) cwd: PathBuf,
@@ -59,6 +67,8 @@ pub struct Env<H: Host, S: Storage> {
     pub host: H,
     /// Registered tools — schema + handler + optional lifecycle hooks.
     entries: BTreeMap<String, ToolEntry>,
+    /// Late-bound sink for publishing `agent:{name}:done` events.
+    event_sink: RwLock<Option<EventSink>>,
 }
 
 impl<H: Host, S: Storage> Env<H, S> {
@@ -80,6 +90,7 @@ impl<H: Host, S: Storage> Env<H, S> {
             pending_asks,
             host,
             entries: BTreeMap::new(),
+            event_sink: RwLock::new(None),
         }
     }
 
@@ -87,6 +98,13 @@ impl<H: Host, S: Storage> Env<H, S> {
     pub fn register_tool(&mut self, entry: ToolEntry) {
         let name = entry.schema.function.name.clone();
         self.entries.insert(name, entry);
+    }
+
+    /// Install the late-bound [`EventSink`] used by `on_event` to publish
+    /// `agent:{name}:done` events. The node calls this once its event bus
+    /// has been constructed and wired to the shared runtime.
+    pub fn set_event_sink(&self, sink: EventSink) {
+        *self.event_sink.write().expect("event_sink lock poisoned") = Some(sink);
     }
 
     /// Register an agent's scope for dispatch enforcement.
@@ -349,5 +367,18 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
 
     fn on_event(&self, agent: &str, conversation_id: u64, event: &AgentEvent) {
         self.host.on_agent_event(agent, conversation_id, event);
+
+        // Fan out agent completion to the node event bus (if installed).
+        if let AgentEvent::Done(response) = event
+            && let Some(sink) = self
+                .event_sink
+                .read()
+                .expect("event_sink lock poisoned")
+                .clone()
+        {
+            let source = format!("agent:{agent}:done");
+            let payload = response.final_response.clone().unwrap_or_default();
+            sink(&source, &payload);
+        }
     }
 }

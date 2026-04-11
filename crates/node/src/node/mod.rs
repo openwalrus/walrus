@@ -20,6 +20,9 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc, oneshot};
+// NOTE: EventBus uses std::sync::Mutex so it can be locked from
+// synchronous lifecycle hooks (Env::on_event). Protocol-facing
+// subscribe/unsubscribe/list paths use this same mutex.
 use wcore::model::Model;
 
 pub(crate) mod builder;
@@ -48,7 +51,7 @@ pub struct Node<P: Provider + 'static = DefaultProvider, B: Host + 'static = Nod
     pub(crate) event_tx: NodeEventSender,
     pub(crate) started_at: std::time::Instant,
     pub(crate) crons: Arc<Mutex<CronStore<P, B>>>,
-    pub(crate) events: Arc<Mutex<EventBus>>,
+    pub(crate) events: Arc<std::sync::Mutex<EventBus>>,
     pub(crate) build_provider: BuildProvider<P>,
     pub(crate) mcp: Arc<crate::mcp::McpHandler>,
 }
@@ -73,12 +76,9 @@ impl Node<DefaultProvider, NodeHost> {
         Self::start_with(
             config_dir,
             |config: &NodeConfig| build_default_provider(config),
-            |event_tx| {
+            |_event_tx| {
                 let (events_tx, _) = broadcast::channel(256);
-                NodeHost {
-                    event_tx,
-                    events_tx,
-                }
+                NodeHost { events_tx }
             },
         )
         .await
