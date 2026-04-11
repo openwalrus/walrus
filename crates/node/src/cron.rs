@@ -4,14 +4,15 @@
 //! Memory is authoritative at runtime; `cron/crons.toml` under the
 //! config directory is recovery for restarts.
 
-use crate::node::event::{NodeEvent, NodeEventSender};
+use crate::node::SharedRuntime;
+use crabllm_core::Provider;
+use runtime::host::Host;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::{
     sync::{Mutex, broadcast},
     task::JoinHandle,
 };
-use wcore::protocol::message::{ClientMessage, SendMsg};
 
 /// Persistent cron entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,12 +38,12 @@ struct CronFile {
 }
 
 /// In-memory cron store with per-entry timer tasks.
-pub struct CronStore {
+pub struct CronStore<P: Provider + 'static, H: Host + 'static> {
     entries: HashMap<u64, CronEntry>,
     handles: HashMap<u64, JoinHandle<()>>,
     next_id: u64,
     path: PathBuf,
-    event_tx: NodeEventSender,
+    runtime: SharedRuntime<P, H>,
     shutdown_tx: broadcast::Sender<()>,
 }
 
@@ -52,11 +53,11 @@ fn validate_schedule(schedule: &str) -> Result<(), String> {
         .map_err(|e| format!("invalid cron schedule '{schedule}': {e}"))
 }
 
-impl CronStore {
+impl<P: Provider + 'static, H: Host + 'static> CronStore<P, H> {
     /// Load crons from `cron/crons.toml` under `root`.
     pub fn load(
         root: PathBuf,
-        event_tx: NodeEventSender,
+        runtime: SharedRuntime<P, H>,
         shutdown_tx: broadcast::Sender<()>,
     ) -> Self {
         let path = root.join("cron").join("crons.toml");
@@ -82,12 +83,12 @@ impl CronStore {
             handles: HashMap::new(),
             next_id: max_id + 1,
             path,
-            event_tx,
+            runtime,
             shutdown_tx,
         }
     }
 
-    pub fn start_all(&mut self, store: Arc<Mutex<CronStore>>) {
+    pub fn start_all(&mut self, store: Arc<Mutex<CronStore<P, H>>>) {
         let ids: Vec<u64> = self.entries.keys().copied().collect();
         for id in ids {
             self.spawn_timer(id, store.clone());
@@ -100,7 +101,7 @@ impl CronStore {
     pub fn create(
         &mut self,
         mut entry: CronEntry,
-        store: Arc<Mutex<CronStore>>,
+        store: Arc<Mutex<CronStore<P, H>>>,
     ) -> Result<CronEntry, String> {
         validate_schedule(&entry.schedule)?;
         entry.id = self.next_id;
@@ -145,15 +146,15 @@ impl CronStore {
         }
     }
 
-    fn spawn_timer(&mut self, id: u64, store: Arc<Mutex<CronStore>>) {
+    fn spawn_timer(&mut self, id: u64, store: Arc<Mutex<CronStore<P, H>>>) {
         let Some(entry) = self.entries.get(&id).cloned() else {
             return;
         };
-        let event_tx = self.event_tx.clone();
+        let runtime = self.runtime.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
         let once = entry.once;
         let handle = tokio::spawn(async move {
-            run_cron_timer(entry, event_tx, shutdown_rx).await;
+            run_cron_timer(entry, runtime, shutdown_rx).await;
             if once {
                 tracing::info!("cron {id}: one-shot completed, removing");
                 store.lock().await.delete(id);
@@ -163,9 +164,9 @@ impl CronStore {
     }
 }
 
-async fn run_cron_timer(
+async fn run_cron_timer<P: Provider + 'static, H: Host + 'static>(
     entry: CronEntry,
-    event_tx: NodeEventSender,
+    runtime: SharedRuntime<P, H>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) {
     let schedule = cron::Schedule::from_str(&entry.schedule).expect("pre-validated schedule");
@@ -213,19 +214,27 @@ async fn run_cron_timer(
             entry.sender,
         );
 
-        let (reply_tx, _) = tokio::sync::mpsc::channel(1);
-        let msg = ClientMessage::from(SendMsg {
-            agent: entry.agent.clone(),
-            content: format!("/{}", entry.skill),
-            sender: Some(entry.sender.clone()),
-            cwd: None,
-            guest: None,
-            tool_choice: None,
-        });
-        let _ = event_tx.send(NodeEvent::Message {
-            msg,
-            reply: reply_tx,
-        });
+        let rt = runtime.read().await.clone();
+        let conversation_id = match rt
+            .get_or_create_conversation(&entry.agent, &entry.sender)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!("cron {}: get_or_create_conversation: {e}", entry.id);
+                if entry.once {
+                    return;
+                }
+                continue;
+            }
+        };
+        let content = format!("/{}", entry.skill);
+        if let Err(e) = rt
+            .send_to(conversation_id, &content, &entry.sender, None)
+            .await
+        {
+            tracing::warn!("cron {}: send_to: {e}", entry.id);
+        }
 
         if entry.once {
             return;

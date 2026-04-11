@@ -47,7 +47,7 @@ pub struct Node<P: Provider + 'static = DefaultProvider, B: Host + 'static = Nod
     pub(crate) config_dir: PathBuf,
     pub(crate) event_tx: NodeEventSender,
     pub(crate) started_at: std::time::Instant,
-    pub(crate) crons: Arc<Mutex<CronStore>>,
+    pub(crate) crons: Arc<Mutex<CronStore<P, B>>>,
     pub(crate) events: Arc<Mutex<EventBus>>,
     pub(crate) build_provider: BuildProvider<P>,
     pub(crate) mcp: Arc<crate::mcp::McpHandler>,

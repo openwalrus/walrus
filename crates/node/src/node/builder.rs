@@ -109,8 +109,11 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         runtime_once
             .set(shared_runtime.clone())
             .unwrap_or_else(|_| panic!("runtime already initialized"));
-        let cron_store =
-            crate::cron::CronStore::load(config_dir.to_path_buf(), event_tx.clone(), shutdown_tx);
+        let cron_store = crate::cron::CronStore::load(
+            config_dir.to_path_buf(),
+            shared_runtime.clone(),
+            shutdown_tx,
+        );
         let crons = Arc::new(Mutex::new(cron_store));
         crons.lock().await.start_all(crons.clone());
 
