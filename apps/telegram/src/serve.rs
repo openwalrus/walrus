@@ -4,7 +4,7 @@ use crate::{
     COMMAND_HINT, GatewayMessage, KnownBots, NodeClient, StreamAccumulator, StreamResult,
     attachment_summary, parse_command,
 };
-use gateway::config::TelegramConfig;
+use sdk::config::TelegramConfig;
 use std::{collections::HashMap, sync::Arc};
 use teloxide::prelude::*;
 use teloxide::types::{ChatAction, InlineKeyboardButton, InlineKeyboardMarkup};

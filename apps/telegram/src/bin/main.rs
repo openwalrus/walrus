@@ -14,7 +14,7 @@ struct GatewayTelegram;
 
 impl GatewayTelegram {
     async fn run(&self) -> anyhow::Result<()> {
-        let client = gateway::NodeClient::platform_default()?;
+        let client = sdk::NodeClient::platform_default()?;
         let config_path = config_path();
         let config = TelegramConfig::load(&config_path)?;
         crabtalk_telegram::serve::run(client, &config).await

@@ -3,9 +3,8 @@
 pub mod api;
 pub mod serve;
 
-pub use gateway::*;
-
 use api::WeixinMessage;
+pub use sdk::*;
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
