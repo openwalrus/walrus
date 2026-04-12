@@ -1,8 +1,8 @@
 //! Env — the embeddable engine environment.
 //!
-//! [`Env`] implements [`Hook`] and provides the central `dispatch_tool`
-//! entry point. Tool handlers are registered dynamically at startup — there
-//! is no hardcoded dispatch table.
+//! [`Env`] orchestrates registered [`Hook`] implementations (tools and
+//! subsystems) and provides scope enforcement for dispatch. Tool
+//! handlers are registered dynamically at startup via `register_hook`.
 
 use crate::{Hook, host::Host};
 use std::{
@@ -47,11 +47,6 @@ pub type ConversationCwds = Arc<Mutex<HashMap<u64, PathBuf>>>;
 pub type PendingAsks = Arc<Mutex<HashMap<u64, oneshot::Sender<String>>>>;
 
 /// Late-bindable sink for `agent:{name}:done` event publishes.
-///
-/// The node-level event bus lives outside wcore but wants to be
-/// notified when agents complete. Env stores a type-erased callable
-/// that the node installs after constructing its EventBus. `None`
-/// means no sink is wired up.
 pub type EventSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 pub struct Env<H: Host, S: Storage> {
@@ -65,8 +60,12 @@ pub struct Env<H: Host, S: Storage> {
     pub pending_asks: PendingAsks,
     /// Host providing server-specific functionality.
     pub host: H,
-    /// Registered tools — schema + handler + optional lifecycle hooks.
+    /// Legacy tool entries (being replaced by hooks).
     entries: BTreeMap<String, ToolEntry>,
+    /// Registered hooks keyed by subsystem name.
+    hooks: BTreeMap<String, Arc<dyn Hook>>,
+    /// Tool name → owning hook for O(log n) dispatch.
+    dispatch_map: BTreeMap<String, Arc<dyn Hook>>,
     /// Late-bound sink for publishing `agent:{name}:done` events.
     event_sink: RwLock<Option<EventSink>>,
 }
@@ -90,19 +89,32 @@ impl<H: Host, S: Storage> Env<H, S> {
             pending_asks,
             host,
             entries: BTreeMap::new(),
+            hooks: BTreeMap::new(),
+            dispatch_map: BTreeMap::new(),
             event_sink: RwLock::new(None),
         }
     }
 
-    /// Register a tool with schema, handler, and optional lifecycle hooks.
+    /// Register a hook (tool subsystem) by name.
+    ///
+    /// The hook's `schema()` is called to populate the dispatch map so
+    /// tool calls route to this hook in O(log n).
+    pub fn register_hook(&mut self, name: impl Into<String>, hook: Arc<dyn Hook>) {
+        for tool in hook.schema() {
+            self.dispatch_map
+                .insert(tool.function.name.clone(), hook.clone());
+        }
+        self.hooks.insert(name.into(), hook);
+    }
+
+    /// Register a legacy tool entry (being replaced by `register_hook`).
     pub fn register_tool(&mut self, entry: ToolEntry) {
         let name = entry.schema.function.name.clone();
         self.entries.insert(name, entry);
     }
 
     /// Install the late-bound [`EventSink`] used by `on_event` to publish
-    /// `agent:{name}:done` events. The node calls this once its event bus
-    /// has been constructed and wired to the shared runtime.
+    /// `agent:{name}:done` events.
     pub fn set_event_sink(&self, sink: EventSink) {
         *self.event_sink.write().expect("event_sink lock poisoned") = Some(sink);
     }
@@ -147,7 +159,11 @@ impl<H: Host, S: Storage> Env<H, S> {
         }
 
         let mut whitelist: Vec<String> = BASE_TOOLS.iter().map(|&s| s.to_owned()).collect();
-        if MEMORY_TOOLS.iter().any(|&t| self.entries.contains_key(t)) {
+        // Check both hooks and legacy entries for memory tools.
+        let has_memory = MEMORY_TOOLS
+            .iter()
+            .any(|&t| self.dispatch_map.contains_key(t) || self.entries.contains_key(t));
+        if has_memory {
             for &t in MEMORY_TOOLS {
                 whitelist.push(t.to_owned());
             }
@@ -185,11 +201,9 @@ impl<H: Host, S: Storage> Env<H, S> {
     }
 
     /// Resolve a leading `/skill-name` command at the start of the message.
-    fn resolve_slash_skill(&self, agent: &str, content: &str) -> String {
+    fn resolve_slash_skill(&self, agent: &str, content: &str) -> Option<String> {
         let trimmed = content.trim_start();
-        let Some(rest) = trimmed.strip_prefix('/') else {
-            return content.to_owned();
-        };
+        let rest = trimmed.strip_prefix('/')?;
 
         let end = rest
             .find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-')
@@ -198,7 +212,7 @@ impl<H: Host, S: Storage> Env<H, S> {
         let remainder = &rest[end..];
 
         if name.is_empty() || name.contains("..") {
-            return content.to_owned();
+            return None;
         }
 
         // Enforce skill scope.
@@ -208,7 +222,7 @@ impl<H: Host, S: Storage> Env<H, S> {
                 && !scope.skills.is_empty()
                 && !scope.skills.iter().any(|s| s == name)
             {
-                return content.to_owned();
+                return None;
             }
         }
 
@@ -218,12 +232,12 @@ impl<H: Host, S: Storage> Env<H, S> {
                 let body = remainder.trim_start();
                 let block = format!("<skill name=\"{name}\">\n{}\n</skill>", skill.body);
                 if body.is_empty() {
-                    block
+                    Some(block)
                 } else {
-                    format!("{body}\n\n{block}")
+                    Some(format!("{body}\n\n{block}"))
                 }
             }
-            _ => content.to_owned(),
+            _ => None,
         }
     }
 
@@ -236,7 +250,7 @@ impl<H: Host, S: Storage> Env<H, S> {
         sender: &str,
         conversation_id: Option<u64>,
     ) -> Result<String, String> {
-        // Dispatch enforcement: reject tools not in the agent's whitelist.
+        // Scope enforcement: reject tools not in the agent's whitelist.
         {
             let scopes = self.scopes.read().expect("scopes lock poisoned");
             if let Some(scope) = scopes.get(agent)
@@ -246,18 +260,28 @@ impl<H: Host, S: Storage> Env<H, S> {
                 return Err(format!("tool not available: {name}"));
             }
         }
+
+        let call = ToolDispatch {
+            args: args.to_owned(),
+            agent: agent.to_owned(),
+            sender: sender.to_owned(),
+            conversation_id,
+        };
+
+        // Try hooks first (dispatch_map lookup).
+        if let Some(hook) = self.dispatch_map.get(name) {
+            if let Some(fut) = hook.dispatch(name, call.clone()) {
+                return fut.await;
+            }
+        }
+
+        // Fall back to legacy entries.
         let handler = self
             .entries
             .get(name)
             .ok_or_else(|| format!("tool not registered: {name}"))
             .map(|e| e.handler.clone())?;
-        handler(ToolDispatch {
-            args: args.to_owned(),
-            agent: agent.to_owned(),
-            sender: sender.to_owned(),
-            conversation_id,
-        })
-        .await
+        handler(call).await
     }
 }
 
@@ -276,7 +300,13 @@ impl<H: Host + 'static, S: Storage + 'static> ToolDispatcher for Env<H, S> {
 
 impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
-        // Append tool-provided system prompts.
+        // Hook system prompts.
+        for hook in self.hooks.values() {
+            if let Some(ref prompt) = hook.system_prompt() {
+                config.system_prompt.push_str(prompt);
+            }
+        }
+        // Legacy entry system prompts.
         for entry in self.entries.values() {
             if let Some(ref prompt) = entry.system_prompt {
                 config.system_prompt.push_str(prompt);
@@ -287,7 +317,14 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
         config
     }
 
-    fn preprocess(&self, agent: &str, content: &str) -> String {
+    fn preprocess(&self, agent: &str, content: &str) -> Option<String> {
+        // Try registered hooks first.
+        for hook in self.hooks.values() {
+            if let Some(result) = hook.preprocess(agent, content) {
+                return Some(result);
+            }
+        }
+        // Fall back to legacy slash-skill resolution.
         self.resolve_slash_skill(agent, content)
     }
 
@@ -321,7 +358,12 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
             }
         }
 
-        // Tool-provided before_run hooks.
+        // Hook-provided before_run.
+        for hook in self.hooks.values() {
+            injected.extend(hook.on_before_run(agent, conversation_id, history));
+        }
+
+        // Legacy entry before_run hooks.
         for entry in self.entries.values() {
             if let Some(ref hook) = entry.before_run {
                 injected.extend(hook(history));
@@ -366,6 +408,11 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
     }
 
     fn on_event(&self, agent: &str, conversation_id: u64, event: &AgentEvent) {
+        // Notify registered hooks.
+        for hook in self.hooks.values() {
+            hook.on_event(agent, conversation_id, event);
+        }
+
         self.host.on_agent_event(agent, conversation_id, event);
 
         // Fan out agent completion to the node event bus (if installed).

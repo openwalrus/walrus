@@ -467,7 +467,10 @@ impl<C: Config> Runtime<C> {
         content: &str,
         sender: &str,
     ) -> String {
-        let content = self.hook.preprocess(&conversation.agent, content);
+        let content = self
+            .hook
+            .preprocess(&conversation.agent, content)
+            .unwrap_or_else(|| content.to_owned());
         if sender.is_empty() {
             conversation.history.push(HistoryEntry::user(&content));
         } else {
@@ -644,7 +647,10 @@ impl<C: Config> Runtime<C> {
             let mut conversation = conversation_mutex.lock().await;
             let pre_run_len = conversation.history.len();
 
-            let content = self.hook.preprocess(&conversation.agent, &content);
+            let content = self
+                .hook
+                .preprocess(&conversation.agent, &content)
+                .unwrap_or_else(|| content.clone());
             if sender.is_empty() {
                 conversation.history.push(HistoryEntry::user(&content));
             } else {

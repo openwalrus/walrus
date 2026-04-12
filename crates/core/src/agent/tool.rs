@@ -31,6 +31,7 @@ pub trait ToolDispatcher: Send + Sync + 'static {
 }
 
 /// Arguments passed to a tool handler during dispatch.
+#[derive(Clone)]
 pub struct ToolDispatch {
     /// JSON-encoded arguments string.
     pub args: String,
