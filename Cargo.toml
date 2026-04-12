@@ -15,7 +15,7 @@ crabtalk-plugins = { path = "crates/plugins", version = "0.0.20" }
 crabtalk-telegram = { path = "apps/telegram", version = "0.0.20" }
 crabtalk-wechat = { path = "apps/wechat", version = "0.0.20" }
 gateway = { path = "crates/gateway", package = "crabtalk-gateway", version = "0.0.20" }
-cli = { path = "crates/cli", package = "crabtalk", version = "0.0.20" }
+tui = { path = "apps/tui", package = "crabtalk", version = "0.0.20" }
 node = { path = "crates/node", package = "crabtalk-node", version = "0.0.20" }
 runtime = { path = "crates/runtime", package = "crabtalk-runtime", version = "0.0.20" }
 transport = { path = "crates/transport", package = "crabtalk-transport", version = "0.0.20" }
@@ -65,7 +65,11 @@ reqwest = { version = "0.13", default-features = false, features = [
     "stream",
     "rustls-no-provider",
 ] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
 rmcp = { version = "1.3", default-features = false }
 axum = { version = "0.8", default-features = false, features = [
     "http1",

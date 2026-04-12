@@ -1,5 +1,5 @@
 [package]
-name = "crabtalk"
+name = "crabtalk-tui"
 description = "Run autonomous agents with built-in LLM inference"
 documentation = "https://docs.rs/crabtalk"
 readme = "README.md"

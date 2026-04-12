@@ -506,38 +506,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crabtalk"
-version = "0.0.20"
-dependencies = [
- "anyhow",
- "async-stream",
- "chrono",
- "clap",
- "console",
- "crabtalk-command",
- "crabtalk-core",
- "crabtalk-node",
- "crabtalk-plugins",
- "crabtalk-runtime",
- "crabtalk-transport",
- "crossterm 0.28.1",
- "dialoguer",
- "dirs",
- "futures-core",
- "futures-util",
- "heck",
- "ratatui",
- "rustls",
- "serde_json",
- "termimad",
- "tokio",
- "toml",
- "toml_edit",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "crabtalk-bench"
 version = "0.0.20"
 dependencies = [
@@ -757,6 +725,38 @@ dependencies = [
  "futures-core",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "crabtalk-tui"
+version = "0.0.20"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "chrono",
+ "clap",
+ "console",
+ "crabtalk-command",
+ "crabtalk-core",
+ "crabtalk-node",
+ "crabtalk-plugins",
+ "crabtalk-runtime",
+ "crabtalk-transport",
+ "crossterm 0.28.1",
+ "dialoguer",
+ "dirs",
+ "futures-core",
+ "futures-util",
+ "heck",
+ "ratatui",
+ "rustls",
+ "serde_json",
+ "termimad",
+ "tokio",
+ "toml",
+ "toml_edit",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
