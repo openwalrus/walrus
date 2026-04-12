@@ -17,7 +17,12 @@ pub mod service;
 
 /// Crabtalk — AI agent platform.
 #[derive(Parser, Debug)]
-#[command(name = "crabtalk", about = "Crabtalk — AI agent daemon")]
+#[command(
+    name = "crabtalk",
+    about = "Crabtalk — AI agent daemon",
+    subcommand_required = true,
+    arg_required_else_help = true
+)]
 pub struct Cli {
     /// Run the daemon in the foreground.
     #[arg(long)]
@@ -30,7 +35,7 @@ pub struct Cli {
     pub tcp: bool,
     /// Subcommand to execute.
     #[command(subcommand)]
-    pub command: Option<Command>,
+    pub command: Command,
 }
 
 /// Top-level subcommands.
@@ -83,18 +88,17 @@ impl Cli {
         }
 
         match self.command {
-            None => exec_default_client(),
-            Some(Command::Start { force }) => {
+            Command::Start { force } => {
                 ensure_config()?;
                 service::install(self.verbose.max(1), force)
             }
-            Some(Command::Stop) => service::uninstall(),
-            Some(Command::Restart) => {
+            Command::Stop => service::uninstall(),
+            Command::Restart => {
                 let _ = service::uninstall();
                 ensure_config()?;
                 service::install(self.verbose.max(1), true)
             }
-            Some(Command::Reload) => {
+            Command::Reload => {
                 let mut conn = connect(self.tcp).await?;
                 use wcore::protocol::message::{ClientMessage, client_message};
                 let msg = ClientMessage {
@@ -104,8 +108,8 @@ impl Cli {
                 println!("daemon reloaded");
                 Ok(())
             }
-            Some(Command::Events) => stream_events(connect(self.tcp).await?).await,
-            Some(Command::Pull { plugin, force }) => {
+            Command::Events => stream_events(connect(self.tcp).await?).await,
+            Command::Pull { plugin, force } => {
                 use std::io::Write;
                 let mut conn = connect(self.tcp).await?;
                 let stream =
@@ -146,7 +150,7 @@ impl Cli {
                 println!("Done: {plugin}");
                 Ok(())
             }
-            Some(Command::Rm { plugin }) => {
+            Command::Rm { plugin } => {
                 let mut conn = connect(self.tcp).await?;
                 let stream = conn.uninstall_plugin(plugin.clone());
                 tokio::pin!(stream);
@@ -167,7 +171,7 @@ impl Cli {
                 println!("Done: {plugin}");
                 Ok(())
             }
-            Some(Command::Ps) => {
+            Command::Ps => {
                 let run_dir = &*wcore::paths::RUN_DIR;
                 let mut found = false;
                 if let Ok(entries) = std::fs::read_dir(run_dir) {
@@ -197,8 +201,8 @@ impl Cli {
                 }
                 Ok(())
             }
-            Some(Command::Logs { tail_args }) => command::view_logs("daemon", &tail_args),
-            Some(Command::External(args)) => external::run(args),
+            Command::Logs { tail_args } => command::view_logs("daemon", &tail_args),
+            Command::External(args) => external::run(args),
         }
     }
 }
@@ -211,30 +215,6 @@ pub fn ensure_config() -> Result<()> {
     if config.provider.is_empty() {
         attach::setup_provider(&config_path)?;
     }
-    Ok(())
-}
-
-/// Exec the default client binary (crabtalk-tui) if available.
-fn exec_default_client() -> Result<()> {
-    if let Some(path) = external::find_binary("crabtalk-tui") {
-        let status = std::process::Command::new(&path)
-            .args(std::env::args_os().skip(1))
-            .status()
-            .with_context(|| format!("failed to run {}", path.display()))?;
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    println!("crabtalk daemon — no client installed\n");
-    println!("Available commands:");
-    println!("  crabtalk start       Install and start the daemon service");
-    println!("  crabtalk foreground   Run the daemon in the foreground");
-    println!("  crabtalk stop        Stop the daemon service");
-    println!("  crabtalk reload      Hot-reload daemon config");
-    println!("  crabtalk pull <pkg>  Install a plugin");
-    println!("  crabtalk rm <pkg>    Uninstall a plugin");
-    println!("  crabtalk ps          List running services");
-    println!("  crabtalk logs        View daemon logs");
-    println!("\nInstall a client:");
-    println!("  cargo install crabtalk-tui");
     Ok(())
 }
 
