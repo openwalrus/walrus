@@ -82,6 +82,10 @@ impl OsHook {
             let _ = write!(buf, "\n--- {total} total lines ---");
         }
 
+        if let Some(id) = call.conversation_id {
+            self.record_read(id, path);
+        }
+
         Ok(buf)
     }
 }

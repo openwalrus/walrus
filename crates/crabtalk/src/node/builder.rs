@@ -292,6 +292,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let scopes = env.scopes.clone();
         let conversation_cwds = env.conversation_cwds.clone();
         let pending_asks = env.pending_asks.clone();
+        let read_files: crate::hooks::os::ReadFiles = Default::default();
         let mcp_server_list = mcp_handler.cached_list();
 
         let mut tools = wcore::ToolRegistry::new();
@@ -313,6 +314,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             Arc::new(crate::hooks::os::OsHook::new(
                 cwd,
                 conversation_cwds.clone(),
+                read_files.clone(),
             )),
         );
 
@@ -340,6 +342,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
                 scopes.clone(),
                 runtime_once,
                 conversation_cwds,
+                read_files,
             )),
         );
         register_hook(

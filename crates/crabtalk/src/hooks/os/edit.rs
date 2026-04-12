@@ -39,6 +39,13 @@ impl OsHook {
             cwd.join(&input.path)
         };
 
+        if !self.was_read(call.conversation_id, &path) {
+            return Err(format!(
+                "you must read {} before editing it",
+                path.display()
+            ));
+        }
+
         match std::fs::metadata(&path) {
             Ok(m) if m.len() > MAX_FILE_SIZE => {
                 return Err(format!(

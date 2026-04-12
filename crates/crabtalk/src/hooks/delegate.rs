@@ -1,6 +1,6 @@
 //! Delegate tool — as a Hook implementation.
 
-use crate::node::SharedRuntime;
+use crate::{hooks::os::ReadFiles, node::SharedRuntime};
 use crabllm_core::Provider;
 use runtime::{AgentScope, ConversationCwds, Hook, host::Host};
 use serde::Deserialize;
@@ -53,6 +53,7 @@ pub struct DelegateHook<P: Provider + 'static, H: Host + 'static> {
     scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
     runtime: Arc<OnceLock<SharedRuntime<P, H>>>,
     conversation_cwds: ConversationCwds,
+    read_files: ReadFiles,
 }
 
 impl<P: Provider + 'static, H: Host + 'static> DelegateHook<P, H> {
@@ -60,11 +61,13 @@ impl<P: Provider + 'static, H: Host + 'static> DelegateHook<P, H> {
         scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
         runtime: Arc<OnceLock<SharedRuntime<P, H>>>,
         conversation_cwds: ConversationCwds,
+        read_files: ReadFiles,
     ) -> Self {
         Self {
             scopes,
             runtime,
             conversation_cwds,
+            read_files,
         }
     }
 }
@@ -103,7 +106,7 @@ impl<P: Provider + 'static, H: Host + 'static> Hook for DelegateHook<P, H> {
                 .runtime
                 .get()
                 .ok_or_else(|| "delegate: runtime not initialized".to_owned())?;
-            dispatch_delegate(input, shared, &self.conversation_cwds).await
+            dispatch_delegate(input, shared, &self.conversation_cwds, &self.read_files).await
         }))
     }
 }
@@ -112,6 +115,7 @@ async fn dispatch_delegate<P: Provider + 'static, H: Host + 'static>(
     input: Delegate,
     shared: &SharedRuntime<P, H>,
     conversation_cwds: &ConversationCwds,
+    read_files: &ReadFiles,
 ) -> Result<String, String> {
     let mut ephemeral_names = Vec::new();
     let mut tasks = Vec::with_capacity(input.tasks.len());
@@ -136,6 +140,7 @@ async fn dispatch_delegate<P: Provider + 'static, H: Host + 'static>(
         let handle = spawn_agent_task(
             shared.clone(),
             conversation_cwds.clone(),
+            read_files.clone(),
             agent_name.clone(),
             task.message,
             task.cwd,
@@ -205,6 +210,7 @@ fn ephemeral_agent_name() -> String {
 fn spawn_agent_task<P: Provider + 'static, H: Host + 'static>(
     shared: SharedRuntime<P, H>,
     conversation_cwds: ConversationCwds,
+    read_files: ReadFiles,
     agent: String,
     message: String,
     cwd: Option<String>,
@@ -235,6 +241,10 @@ fn spawn_agent_task<P: Provider + 'static, H: Host + 'static>(
         };
 
         conversation_cwds.lock().await.remove(&conversation_id);
+        read_files
+            .lock()
+            .expect("read_files lock poisoned")
+            .remove(&conversation_id);
         rt.close_conversation(conversation_id).await;
 
         (result_content, error_msg)

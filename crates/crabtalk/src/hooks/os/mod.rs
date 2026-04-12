@@ -5,8 +5,17 @@ mod edit;
 mod read;
 
 use runtime::{ConversationCwds, Hook};
-use std::{fmt::Write, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use wcore::{ToolDispatch, ToolFuture, agent::AsTool, model::HistoryEntry};
+
+/// Per-conversation set of files that have been read (shared with DelegateHook
+/// for cleanup when delegated conversations close).
+pub type ReadFiles = Arc<Mutex<HashMap<u64, HashSet<PathBuf>>>>;
 
 use bash::Bash;
 use edit::Edit;
@@ -30,14 +39,41 @@ fn environment_block() -> String {
 pub struct OsHook {
     cwd: PathBuf,
     conversation_cwds: ConversationCwds,
+    /// Files read per conversation — edit requires a prior read.
+    read_files: ReadFiles,
 }
 
 impl OsHook {
-    pub fn new(cwd: PathBuf, conversation_cwds: ConversationCwds) -> Self {
+    pub fn new(cwd: PathBuf, conversation_cwds: ConversationCwds, read_files: ReadFiles) -> Self {
         Self {
             cwd,
             conversation_cwds,
+            read_files,
         }
+    }
+
+    /// Record that a file was read in a conversation.
+    fn record_read(&self, conversation_id: u64, path: PathBuf) {
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
+        self.read_files
+            .lock()
+            .expect("read_files lock poisoned")
+            .entry(conversation_id)
+            .or_default()
+            .insert(path);
+    }
+
+    /// Check whether a file was read in a conversation.
+    fn was_read(&self, conversation_id: Option<u64>, path: &std::path::Path) -> bool {
+        let Some(id) = conversation_id else {
+            return false;
+        };
+        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        self.read_files
+            .lock()
+            .expect("read_files lock poisoned")
+            .get(&id)
+            .is_some_and(|set| set.contains(&path))
     }
 
     fn effective_cwd(&self, conversation_id: Option<u64>) -> PathBuf {
