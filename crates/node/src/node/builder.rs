@@ -206,8 +206,8 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         Ok(())
     }
 
-    /// Orchestrate a Runtime build: resolve manifest, build an empty
-    /// runtime (env + tools, no agents), then register agents on it.
+    /// Orchestrate a Runtime build: resolve manifest, build an empty env,
+    /// register tools on it, wrap in a Runtime, then register agents.
     async fn build_runtime(
         config: &NodeConfig,
         config_dir: &Path,
@@ -223,66 +223,78 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         let servers = mcp_servers(config, &manifest);
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
 
-        let (hook, storage, tools) = Self::build_env(
+        let (mut env, storage, cwd) = Self::empty_env(config_dir, &manifest, host);
+        let tools = Self::register_tools(
+            &mut env,
+            storage.clone(),
+            cwd,
             config,
-            config_dir,
-            &manifest,
-            host,
             mcp_handler.clone(),
             runtime_once,
-        )?;
-        let mut runtime = Runtime::new(model, hook, storage, tools);
+        );
+        let mut runtime = Runtime::new(model, env, storage, tools);
         Self::register_agents(&mut runtime, config, config_dir, &manifest)?;
         Ok((runtime, mcp_handler))
     }
 
-    /// Build the Env, FsStorage, and ToolRegistry for a runtime, with all
-    /// node-provided tools registered. Produces an env ready to be wrapped
-    /// in a `Runtime` — agents are added separately via `register_agents`.
-    fn build_env(
-        config: &NodeConfig,
+    /// Build an `Env` with storage, scopes, and conversation state wired
+    /// up — but no tools registered yet. Returns the env, a clone of its
+    /// storage for `Runtime::new`, and the cwd used for tool handlers.
+    fn empty_env(
         config_dir: &Path,
         manifest: &ResolvedManifest,
         host: H,
-        mcp_handler: Arc<McpHandler>,
-        runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
-    ) -> Result<(Env<H, FsStorage>, Arc<FsStorage>, wcore::ToolRegistry)> {
+    ) -> (Env<H, FsStorage>, Arc<FsStorage>, PathBuf) {
         let skill_roots: Vec<PathBuf> = manifest
             .skill_dirs
             .iter()
             .filter(|dir| dir.exists())
             .cloned()
             .collect();
-        let memory_root = config_dir.join("memory");
-        let sessions_root = config_dir.join("sessions");
 
         let storage = Arc::new(FsStorage::new(
             config_dir.to_path_buf(),
-            memory_root,
-            sessions_root,
+            config_dir.join("memory"),
+            config_dir.join("sessions"),
             skill_roots,
             manifest.disabled.skills.clone(),
             manifest.agent_dirs.clone(),
         ));
 
-        let memory = Arc::new(Memory::open(config.system.memory.clone(), storage.clone()));
         let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
         let scopes = Arc::new(std::sync::RwLock::new(BTreeMap::new()));
-
         let conversation_cwds: runtime::ConversationCwds =
             Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
         let pending_asks: runtime::PendingAsks =
             Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
-        let mcp_server_list = mcp_handler.cached_list();
 
-        let mut env = Env::new(
+        let env = Env::new(
             storage.clone(),
             cwd.clone(),
             host,
-            scopes.clone(),
-            conversation_cwds.clone(),
-            pending_asks.clone(),
+            scopes,
+            conversation_cwds,
+            pending_asks,
         );
+        (env, storage, cwd)
+    }
+
+    /// Populate `env`'s tool map (and a parallel `ToolRegistry`) with all
+    /// node-provided tools: bash/read/edit, memory, skill, delegate,
+    /// ask_user, and mcp (if any servers are configured).
+    fn register_tools(
+        env: &mut Env<H, FsStorage>,
+        storage: Arc<FsStorage>,
+        cwd: PathBuf,
+        config: &NodeConfig,
+        mcp_handler: Arc<McpHandler>,
+        runtime_once: Arc<OnceLock<SharedRuntime<P, H>>>,
+    ) -> wcore::ToolRegistry {
+        let memory = Arc::new(Memory::open(config.system.memory.clone(), storage.clone()));
+        let scopes = env.scopes.clone();
+        let conversation_cwds = env.conversation_cwds.clone();
+        let pending_asks = env.pending_asks.clone();
+        let mcp_server_list = mcp_handler.cached_list();
 
         let mut tools = wcore::ToolRegistry::new();
 
@@ -295,38 +307,34 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
 
         register(
             &mut tools,
-            &mut env,
+            env,
             tools::os::bash(cwd.clone(), conversation_cwds.clone()),
         );
         register(
             &mut tools,
-            &mut env,
+            env,
             tools::os::read(cwd.clone(), conversation_cwds.clone()),
         );
-        register(
-            &mut tools,
-            &mut env,
-            tools::os::edit(cwd, conversation_cwds),
-        );
+        register(&mut tools, env, tools::os::edit(cwd, conversation_cwds));
 
         for entry in tools::memory::handlers::handlers(memory) {
-            register(&mut tools, &mut env, entry);
+            register(&mut tools, env, entry);
         }
 
         register(
             &mut tools,
-            &mut env,
-            tools::skill::handler::handler(storage.clone(), scopes.clone()),
+            env,
+            tools::skill::handler::handler(storage, scopes.clone()),
         );
         register(
             &mut tools,
-            &mut env,
+            env,
             crate::delegate::handler::<P, H>(scopes.clone(), runtime_once),
         );
-        register(&mut tools, &mut env, tools::ask_user::handler(pending_asks));
+        register(&mut tools, env, tools::ask_user::handler(pending_asks));
 
         // MCP — register only if servers are configured.
-        if !mcp_handler.cached_list().is_empty() {
+        if !mcp_server_list.is_empty() {
             let mcp_prompt = format!(
                 "\n\n<resources>\nMCP servers: {}. Use the mcp tool to list or call tools.\n</resources>",
                 mcp_server_list
@@ -337,17 +345,17 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             );
             register(
                 &mut tools,
-                &mut env,
+                env,
                 wcore::ToolEntry {
                     schema: <crate::mcp::tool::Mcp as wcore::agent::AsTool>::as_tool(),
-                    handler: crate::mcp::tool::handler(mcp_handler, scopes.clone()),
+                    handler: crate::mcp::tool::handler(mcp_handler, scopes),
                     system_prompt: Some(mcp_prompt),
                     before_run: None,
                 },
             );
         }
 
-        Ok((env, storage, tools))
+        tools
     }
 
     /// Register all configured agents on a built runtime: the built-in
