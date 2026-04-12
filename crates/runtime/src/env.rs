@@ -213,10 +213,10 @@ impl<H: Host> Env<H> {
             conversation_id,
         };
 
-        if let Some(hook) = self.dispatch_map.get(name) {
-            if let Some(fut) = hook.dispatch(name, call) {
-                return fut.await;
-            }
+        if let Some(hook) = self.dispatch_map.get(name)
+            && let Some(fut) = hook.dispatch(name, call)
+        {
+            return fut.await;
         }
 
         Err(format!("tool not registered: {name}"))

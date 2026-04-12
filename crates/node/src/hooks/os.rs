@@ -90,13 +90,12 @@ impl OsHook {
     }
 
     fn effective_cwd(&self, conversation_id: Option<u64>) -> PathBuf {
-        if let Some(id) = conversation_id {
-            if let Ok(map) = self.conversation_cwds.try_lock() {
-                if let Some(cwd) = map.get(&id) {
-                    return cwd.clone();
-                }
+        if let Some(id) = conversation_id
+            && let Ok(map) = self.conversation_cwds.try_lock()
+                && let Some(cwd) = map.get(&id)
+            {
+                return cwd.clone();
             }
-        }
         self.cwd.clone()
     }
 
