@@ -370,22 +370,13 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
             }
         }
 
-        // Working directory.
+        // Layered instructions (Crab.md).
         let cwd = self
             .conversation_cwds
             .try_lock()
             .ok()
             .and_then(|m| m.get(&conversation_id).cloned())
             .unwrap_or_else(|| self.cwd.clone());
-        injected.push(
-            HistoryEntry::user(format!(
-                "<environment>\nworking_directory: {}\n</environment>",
-                cwd.display()
-            ))
-            .auto_injected(),
-        );
-
-        // Layered instructions (Crab.md).
         if let Some(instructions) = self.host.discover_instructions(&cwd) {
             injected.push(
                 HistoryEntry::user(format!("<instructions>\n{instructions}\n</instructions>"))

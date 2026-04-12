@@ -298,6 +298,18 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
 
         let mut tools = wcore::ToolRegistry::new();
 
+        // Helper: register a Hook — populates both Env and ToolRegistry.
+        let register_hook = |tools: &mut wcore::ToolRegistry,
+                             env: &mut Env<H, FsStorage>,
+                             name: &str,
+                             hook: Arc<dyn runtime::Hook>| {
+            for schema in hook.schema() {
+                tools.insert(schema);
+            }
+            env.register_hook(name, hook);
+        };
+
+        // Helper: register a legacy ToolEntry.
         let register = |tools: &mut wcore::ToolRegistry,
                         env: &mut Env<H, FsStorage>,
                         entry: wcore::ToolEntry| {
@@ -305,17 +317,12 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             env.register_tool(entry);
         };
 
-        register(
+        register_hook(
             &mut tools,
             env,
-            tools::os::bash(cwd.clone(), conversation_cwds.clone()),
+            "os",
+            Arc::new(tools::os::OsHook::new(cwd, conversation_cwds)),
         );
-        register(
-            &mut tools,
-            env,
-            tools::os::read(cwd.clone(), conversation_cwds.clone()),
-        );
-        register(&mut tools, env, tools::os::edit(cwd, conversation_cwds));
 
         for entry in tools::memory::handlers::handlers(memory) {
             register(&mut tools, env, entry);
