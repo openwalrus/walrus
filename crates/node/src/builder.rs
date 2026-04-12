@@ -1,5 +1,6 @@
 //! Node construction and lifecycle methods.
 
+use crate::hooks::Memory;
 use crate::mcp::McpHandler;
 use crate::{Node, NodeConfig, node::SharedRuntime, storage::FsStorage};
 use anyhow::Result;
@@ -12,7 +13,6 @@ use std::{
     sync::{Arc, OnceLock},
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
-use tools::Memory;
 use wcore::{AgentConfig, ResolvedManifest, model::Model, resolve_manifests, storage::Storage};
 
 pub type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
@@ -24,7 +24,7 @@ pub fn build_default_provider(config: &NodeConfig) -> Result<Model<DefaultProvid
     build_providers(config)
 }
 
-pub(crate) const SYSTEM_AGENT: &str = tools::memory::DEFAULT_SOUL;
+pub(crate) const SYSTEM_AGENT: &str = crate::hooks::memory::DEFAULT_SOUL;
 
 /// Build the `AgentConfig` for a single named agent.
 pub(crate) fn build_single_agent_config(
@@ -305,21 +305,24 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             &mut tools,
             env,
             "os",
-            Arc::new(tools::os::OsHook::new(cwd, conversation_cwds.clone())),
+            Arc::new(crate::hooks::os::OsHook::new(
+                cwd,
+                conversation_cwds.clone(),
+            )),
         );
 
         register_hook(
             &mut tools,
             env,
             "memory",
-            Arc::new(tools::memory::handlers::MemoryHook::new(memory)),
+            Arc::new(crate::hooks::memory::handlers::MemoryHook::new(memory)),
         );
 
         register_hook(
             &mut tools,
             env,
             "skill",
-            Arc::new(tools::skill::handler::SkillHook::new(
+            Arc::new(crate::hooks::skill::handler::SkillHook::new(
                 storage,
                 scopes.clone(),
             )),
@@ -338,7 +341,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             &mut tools,
             env,
             "ask_user",
-            Arc::new(tools::ask_user::AskUserHook::new(pending_asks)),
+            Arc::new(crate::hooks::ask_user::AskUserHook::new(pending_asks)),
         );
 
         // MCP — register only if servers are configured.

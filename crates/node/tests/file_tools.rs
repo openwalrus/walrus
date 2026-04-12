@@ -1,9 +1,9 @@
 //! Tests for read, edit, and bash tool handlers via OsHook.
 
+use crabtalk_node::hooks::os::OsHook;
 use runtime::Hook;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
-use tools::os::OsHook;
 use wcore::ToolDispatch;
 
 fn hook(cwd: PathBuf) -> OsHook {

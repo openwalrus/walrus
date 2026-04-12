@@ -22,9 +22,9 @@ pub mod entry {
     pub use wcore::storage::{MemoryEntry, slugify};
 }
 
-const MEMORY_PROMPT: &str = include_str!("../../prompts/memory.md");
+const MEMORY_PROMPT: &str = include_str!("../../../prompts/memory.md");
 
-pub const DEFAULT_SOUL: &str = include_str!("../../prompts/crab.md");
+pub const DEFAULT_SOUL: &str = include_str!("../../../prompts/crab.md");
 
 pub struct Memory<S: Storage> {
     storage: Arc<S>,
