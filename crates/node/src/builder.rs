@@ -324,9 +324,12 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             Arc::new(tools::os::OsHook::new(cwd, conversation_cwds)),
         );
 
-        for entry in tools::memory::handlers::handlers(memory) {
-            register(&mut tools, env, entry);
-        }
+        register_hook(
+            &mut tools,
+            env,
+            "memory",
+            Arc::new(tools::memory::handlers::MemoryHook::new(memory)),
+        );
 
         register(
             &mut tools,

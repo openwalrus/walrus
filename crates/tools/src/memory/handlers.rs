@@ -1,11 +1,13 @@
-//! Memory tool handler factories — recall, remember, forget, memory.
+//! Memory tools — recall, remember, forget, memory — as a Hook implementation.
 
 use super::Memory;
+use runtime::Hook;
 use serde::Deserialize;
 use std::sync::Arc;
 use wcore::{
-    ToolDispatch, ToolEntry,
+    ToolDispatch, ToolFuture,
     agent::{AsTool, ToolDescription},
+    model::HistoryEntry,
     storage::Storage,
 };
 
@@ -58,70 +60,69 @@ impl ToolDescription for MemoryTool {
     const DESCRIPTION: &'static str = "Overwrite MEMORY.md — your curated overview injected every session. Read it before overwriting.";
 }
 
-// ── Handlers ─────────────────────────────────────────────────────
+// ── Hook ────────────────────────────────────────────────────────
 
-pub fn handlers<S: Storage + 'static>(memory: Arc<Memory<S>>) -> Vec<ToolEntry> {
-    // Recall gets system_prompt (memory index) and before_run (auto-recall).
-    let m = memory.clone();
-    let m2 = memory.clone();
-    let recall = ToolEntry {
-        schema: Recall::as_tool(),
-        system_prompt: Some(m.build_prompt()),
-        before_run: Some(Arc::new(move |history| m2.before_run(history))),
-        handler: Arc::new(move |call: ToolDispatch| {
-            let mem = m.clone();
-            Box::pin(async move {
+/// Memory subsystem: recall, remember, forget, memory.
+///
+/// Owns the Memory index and provides auto-recall in on_before_run.
+pub struct MemoryHook<S: Storage> {
+    memory: Arc<Memory<S>>,
+}
+
+impl<S: Storage> MemoryHook<S> {
+    pub fn new(memory: Arc<Memory<S>>) -> Self {
+        Self { memory }
+    }
+}
+
+impl<S: Storage + 'static> Hook for MemoryHook<S> {
+    fn schema(&self) -> Vec<wcore::model::Tool> {
+        vec![
+            Recall::as_tool(),
+            Remember::as_tool(),
+            Forget::as_tool(),
+            MemoryTool::as_tool(),
+        ]
+    }
+
+    fn system_prompt(&self) -> Option<String> {
+        Some(self.memory.build_prompt())
+    }
+
+    fn on_before_run(
+        &self,
+        _agent: &str,
+        _conversation_id: u64,
+        history: &[HistoryEntry],
+    ) -> Vec<HistoryEntry> {
+        self.memory.before_run(history)
+    }
+
+    fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
+        match name {
+            "recall" => Some(Box::pin(async move {
                 let input: Recall = serde_json::from_str(&call.args)
                     .map_err(|e| format!("invalid arguments: {e}"))?;
-                Ok(mem.recall(&input.query, input.limit.unwrap_or(5)))
-            })
-        }),
-    };
-
-    let m = memory.clone();
-    let remember = ToolEntry {
-        schema: Remember::as_tool(),
-        system_prompt: None,
-        before_run: None,
-        handler: Arc::new(move |call: ToolDispatch| {
-            let mem = m.clone();
-            Box::pin(async move {
+                Ok(self.memory.recall(&input.query, input.limit.unwrap_or(5)))
+            })),
+            "remember" => Some(Box::pin(async move {
                 let input: Remember = serde_json::from_str(&call.args)
                     .map_err(|e| format!("invalid arguments: {e}"))?;
-                Ok(mem.remember(input.name, input.description, input.content))
-            })
-        }),
-    };
-
-    let m = memory.clone();
-    let forget = ToolEntry {
-        schema: Forget::as_tool(),
-        system_prompt: None,
-        before_run: None,
-        handler: Arc::new(move |call: ToolDispatch| {
-            let mem = m.clone();
-            Box::pin(async move {
+                Ok(self
+                    .memory
+                    .remember(input.name, input.description, input.content))
+            })),
+            "forget" => Some(Box::pin(async move {
                 let input: Forget = serde_json::from_str(&call.args)
                     .map_err(|e| format!("invalid arguments: {e}"))?;
-                Ok(mem.forget(&input.name))
-            })
-        }),
-    };
-
-    let m = memory;
-    let memory_tool = ToolEntry {
-        schema: MemoryTool::as_tool(),
-        system_prompt: None,
-        before_run: None,
-        handler: Arc::new(move |call: ToolDispatch| {
-            let mem = m.clone();
-            Box::pin(async move {
+                Ok(self.memory.forget(&input.name))
+            })),
+            "memory" => Some(Box::pin(async move {
                 let input: MemoryTool = serde_json::from_str(&call.args)
                     .map_err(|e| format!("invalid arguments: {e}"))?;
-                Ok(mem.write_index(&input.content))
-            })
-        }),
-    };
-
-    vec![recall, remember, forget, memory_tool]
+                Ok(self.memory.write_index(&input.content))
+            })),
+            _ => None,
+        }
+    }
 }
