@@ -5,7 +5,7 @@ use anyhow::Result;
 use crabllm_core::Provider;
 use runtime::host::Host;
 use wcore::protocol::message::*;
-use wcore::repos::Storage;
+use wcore::storage::Storage;
 
 pub(super) async fn list_conversations<P: Provider + 'static, H: Host + 'static>(
     node: &Node<P, H>,
@@ -21,7 +21,7 @@ pub(super) async fn get_conversation_history<P: Provider + 'static, H: Host + 's
     slug: String,
 ) -> Result<ConversationHistory> {
     let rt = node.runtime.read().await.clone();
-    let handle = wcore::repos::SessionHandle::new(&slug);
+    let handle = wcore::storage::SessionHandle::new(&slug);
     let snapshot = rt
         .storage()
         .load_session(&handle)?
@@ -52,7 +52,7 @@ pub(super) async fn delete_conversation<P: Provider + 'static, H: Host + 'static
     slug: String,
 ) -> Result<()> {
     let rt = node.runtime.read().await.clone();
-    let handle = wcore::repos::SessionHandle::new(&slug);
+    let handle = wcore::storage::SessionHandle::new(&slug);
     let deleted = rt.storage().delete_session(&handle)?;
     if !deleted {
         anyhow::bail!("conversation not found: {slug}");

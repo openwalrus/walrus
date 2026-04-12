@@ -1,7 +1,7 @@
 //! Tests for skill storage and lookup via InMemoryStorage.
 
 use wcore::{
-    repos::{Skill, Storage},
+    storage::{Skill, Storage},
     test_utils::InMemoryStorage,
 };
 

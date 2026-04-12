@@ -1,6 +1,6 @@
 //! Filesystem-backed persistence.
 //!
-//! [`FsStorage`] implements [`Storage`](wcore::repos::Storage)
+//! [`FsStorage`] implements [`Storage`](wcore::storage::Storage)
 //! with TOML configs, markdown prompts, and JSON session files.
 
 mod backfill;

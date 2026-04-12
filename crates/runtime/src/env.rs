@@ -12,7 +12,7 @@ use std::{
 };
 use wcore::{
     AgentConfig, AgentEvent, Hook, ToolDispatch, ToolDispatcher, ToolEntry, ToolFuture,
-    model::HistoryEntry, repos::Storage,
+    model::HistoryEntry, storage::Storage,
 };
 
 /// Per-agent scope for dispatch enforcement. Empty vecs = unrestricted.

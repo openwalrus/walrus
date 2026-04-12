@@ -3,8 +3,8 @@
 use crate::{
     AgentConfig, AgentId, ManifestConfig, NodeConfig,
     model::HistoryEntry,
-    repos::{MemoryEntry, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage},
     runtime::conversation::{ArchiveSegment, ConversationMeta, EventLine},
+    storage::{MemoryEntry, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage},
 };
 use anyhow::Result;
 use std::{collections::HashMap, sync::Mutex};

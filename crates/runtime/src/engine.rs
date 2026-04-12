@@ -23,7 +23,7 @@ use wcore::{
     Agent, AgentBuilder, AgentConfig, AgentEvent, AgentResponse, AgentStopReason, Config,
     Conversation, Hook, ToolDispatcher, ToolRegistry,
     model::{HistoryEntry, Model},
-    repos::{SessionHandle, Storage},
+    storage::{SessionHandle, Storage},
 };
 
 /// The crabtalk runtime.

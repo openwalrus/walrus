@@ -6,7 +6,7 @@ use std::sync::Arc;
 use wcore::{
     ToolDispatch, ToolEntry,
     agent::{AsTool, ToolDescription},
-    repos::Storage,
+    storage::Storage,
 };
 
 // ── Schemas ──────────────────────────────────────────────────────

@@ -35,8 +35,8 @@ pub mod config;
 pub mod model;
 pub mod paths;
 pub mod protocol;
-pub mod repos;
 mod runtime;
+pub mod storage;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 pub mod utils;

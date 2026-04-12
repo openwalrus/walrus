@@ -6,7 +6,7 @@
 //! itself does not know about storage keys, step counters, or file
 //! layouts.
 
-use crate::{AgentEvent, AgentStep, model::HistoryEntry, repos::SessionHandle};
+use crate::{AgentEvent, AgentStep, model::HistoryEntry, storage::SessionHandle};
 use crabllm_core::Usage;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -134,7 +134,7 @@ pub struct ArchiveSegment {
 /// A conversation tied to a specific agent.
 ///
 /// Pure working-context container. Persistence is delegated to the
-/// [`SessionRepo`](crate::repos::SessionRepo) via the session handle.
+/// [`SessionRepo`](crate::storage::SessionRepo) via the session handle.
 #[derive(Debug, Clone)]
 pub struct Conversation {
     /// Unique conversation identifier (monotonic counter, runtime-only).

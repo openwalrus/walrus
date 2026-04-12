@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use toml_edit::{DocumentMut, Item, value};
 use ulid::Ulid;
-use wcore::{ResolvedManifest, paths::LOCAL_DIR, repos::Storage};
+use wcore::{ResolvedManifest, paths::LOCAL_DIR, storage::Storage};
 
 /// Ensure every `[agents.<name>]` entry in `local/CrabTalk.toml` has an
 /// `id` field. Missing entries get a fresh ULID.

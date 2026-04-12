@@ -9,7 +9,7 @@ use std::{
 use wcore::{
     ToolDispatch, ToolEntry,
     agent::{AsTool, ToolDescription},
-    repos::Storage,
+    storage::Storage,
 };
 
 #[derive(Deserialize, schemars::JsonSchema)]

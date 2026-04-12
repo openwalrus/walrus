@@ -13,7 +13,7 @@ use std::{
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
 use tools::Memory;
-use wcore::{AgentConfig, ResolvedManifest, model::Model, repos::Storage, resolve_manifests};
+use wcore::{AgentConfig, ResolvedManifest, model::Model, resolve_manifests, storage::Storage};
 
 pub type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
 

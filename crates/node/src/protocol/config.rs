@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use runtime::host::Host;
 use wcore::protocol::message::*;
-use wcore::repos::Storage;
+use wcore::storage::Storage;
 
 pub(super) async fn list_providers<P: Provider + 'static, H: Host + 'static>(
     node: &Node<P, H>,

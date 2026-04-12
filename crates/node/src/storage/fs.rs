@@ -14,7 +14,9 @@ use std::{
 use wcore::{
     AgentConfig, AgentId, ArchiveSegment, ConversationMeta, EventLine, ManifestConfig, NodeConfig,
     model::HistoryEntry,
-    repos::{MemoryEntry, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage, slugify},
+    storage::{
+        MemoryEntry, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage, slugify,
+    },
 };
 
 use super::atomic_write;

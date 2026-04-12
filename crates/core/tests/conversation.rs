@@ -2,8 +2,8 @@
 
 use crabtalk_core::{
     model::HistoryEntry,
-    repos::{SessionHandle, Storage},
     sender_slug,
+    storage::{SessionHandle, Storage},
     test_utils::InMemoryStorage,
 };
 

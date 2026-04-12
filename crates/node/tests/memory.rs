@@ -146,7 +146,7 @@ fn recall_respects_limit() {
 
 #[test]
 fn migration_converts_legacy_files() {
-    use wcore::repos::{MemoryEntry, Storage};
+    use wcore::storage::{MemoryEntry, Storage};
 
     let storage = Arc::new(InMemoryStorage::new());
 

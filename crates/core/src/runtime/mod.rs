@@ -1,6 +1,6 @@
 //! Runtime types — conversation, hook, and configuration traits.
 
-use crate::{agent::ToolDispatcher, repos::Storage};
+use crate::{agent::ToolDispatcher, storage::Storage};
 use crabllm_core::Provider;
 
 pub mod conversation;

@@ -1,7 +1,7 @@
 //! Session I/O benchmarks: append throughput and load latency.
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use wcore::{model::HistoryEntry, repos::Storage, test_utils::InMemoryStorage};
+use wcore::{model::HistoryEntry, storage::Storage, test_utils::InMemoryStorage};
 
 fn generate_messages(n: usize) -> Vec<HistoryEntry> {
     (0..n)
@@ -17,7 +17,7 @@ fn generate_messages(n: usize) -> Vec<HistoryEntry> {
 
 /// Create a fresh `InMemoryStorage` with `n` messages already
 /// persisted, and return the storage + handle for replay.
-fn prepopulate_session(n: usize) -> (InMemoryStorage, wcore::repos::SessionHandle) {
+fn prepopulate_session(n: usize) -> (InMemoryStorage, wcore::storage::SessionHandle) {
     let storage = InMemoryStorage::new();
     let handle = storage.create_session("bench", "bench").unwrap();
     storage

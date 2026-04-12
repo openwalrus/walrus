@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Deserializer};
 use std::collections::BTreeMap;
-use wcore::{repos::Skill, utils::split_yaml_frontmatter};
+use wcore::{storage::Skill, utils::split_yaml_frontmatter};
 
 /// Accept both `"a, b, c"` (string) and `["a", "b", "c"]` (sequence) for tool lists.
 fn string_or_vec<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {

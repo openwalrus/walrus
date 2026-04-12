@@ -11,7 +11,7 @@ use std::{
 use wcore::{
     MemoryConfig,
     model::{HistoryEntry, Role},
-    repos::{MemoryEntry, Storage},
+    storage::{MemoryEntry, Storage},
 };
 
 pub mod bm25;
@@ -19,7 +19,7 @@ pub mod handlers;
 
 /// Re-exports from wcore for external consumers.
 pub mod entry {
-    pub use wcore::repos::{MemoryEntry, slugify};
+    pub use wcore::storage::{MemoryEntry, slugify};
 }
 
 const MEMORY_PROMPT: &str = include_str!("../../prompts/memory.md");
