@@ -1,8 +1,13 @@
 //! Node construction and lifecycle methods.
 
-use crate::hooks::Memory;
-use crate::mcp::McpHandler;
-use crate::{Node, NodeConfig, node::SharedRuntime, storage::FsStorage};
+use crate::{
+    Node, NodeConfig,
+    hooks::{Memory, delegate},
+    mcp::McpHandler,
+    node::SharedRuntime,
+    node::{cron, event},
+    storage::FsStorage,
+};
 use anyhow::Result;
 use crabllm_core::Provider;
 use crabllm_provider::{ProviderRegistry, RemoteProvider};
@@ -99,7 +104,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         runtime_once
             .set(shared_runtime.clone())
             .unwrap_or_else(|_| panic!("runtime already initialized"));
-        let cron_store = crate::cron::CronStore::load(
+        let cron_store = cron::CronStore::load(
             config_dir.to_path_buf(),
             shared_runtime.clone(),
             shutdown_tx,
@@ -110,7 +115,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
         // Subscription matches fire new messages into the matched agent by
         // calling rt.send_to directly — no protocol round-trip.
         let fire_runtime = shared_runtime.clone();
-        let fire: crate::event::FireCallback = Arc::new(move |sub, payload| {
+        let fire: event::FireCallback = Arc::new(move |sub, payload| {
             let runtime = fire_runtime.clone();
             let target_agent = sub.target_agent.clone();
             let source = sub.source.clone();
@@ -135,7 +140,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
                 }
             });
         });
-        let event_bus = crate::event::EventBus::load(config_dir.to_path_buf(), fire);
+        let event_bus = event::EventBus::load(config_dir.to_path_buf(), fire);
         let events = Arc::new(std::sync::Mutex::new(event_bus));
 
         // Install the event sink on Env so agent completion events publish
@@ -331,7 +336,7 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             &mut tools,
             env,
             "delegate",
-            Arc::new(crate::delegate::DelegateHook::<P, H>::new(
+            Arc::new(delegate::DelegateHook::<P, H>::new(
                 scopes.clone(),
                 runtime_once,
                 conversation_cwds,

@@ -1,6 +1,6 @@
 //! Agent CRUD: list, get, create, update, delete.
 
-use crate::node::Node;
+use crate::node::{self, Node};
 use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use runtime::host::Host;
@@ -115,7 +115,7 @@ async fn register_agent_from_disk<P: Provider + 'static, H: Host + 'static>(
     let (manifest, _warnings) = super::config::resolve_manifests(node).await?;
     let rt = node.runtime.read().await.clone();
     let agent_config =
-        crate::builder::build_single_agent_config(name, &config, &manifest, rt.storage().as_ref())?;
+        node::builder::build_single_agent_config(name, &config, &manifest, rt.storage().as_ref())?;
     let registered = rt.upsert_agent(agent_config);
     rt.hook.register_scope(name.to_owned(), &registered);
     Ok(())

@@ -1,13 +1,6 @@
 //! Node — the core struct composing runtime, transports, and lifecycle.
 
-use crate::{
-    NodeConfig,
-    builder::{BuildProvider, DefaultProvider, build_default_provider},
-    cron::CronStore,
-    event::EventBus,
-    host::NodeHost,
-    storage::FsStorage,
-};
+use crate::{NodeConfig, storage::FsStorage};
 use anyhow::Result;
 use crabllm_core::Provider;
 use futures_util::{StreamExt, pin_mut};
@@ -22,6 +15,17 @@ use wcore::{
     model::Model,
     protocol::{api::Server, message::ClientMessage},
 };
+use {
+    builder::{BuildProvider, DefaultProvider, build_default_provider},
+    cron::CronStore,
+    event::EventBus,
+    host::NodeHost,
+};
+
+pub mod builder;
+pub mod cron;
+pub mod event;
+pub mod host;
 
 /// Config binding for a node: ties Provider + Host to FsStorage + Env.
 pub struct NodeCfg<P: Provider + 'static = DefaultProvider, B: Host + 'static = NodeHost> {
