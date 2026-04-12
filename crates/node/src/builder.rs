@@ -331,10 +331,14 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             Arc::new(tools::memory::handlers::MemoryHook::new(memory)),
         );
 
-        register(
+        register_hook(
             &mut tools,
             env,
-            tools::skill::handler::handler(storage, scopes.clone()),
+            "skill",
+            Arc::new(tools::skill::handler::SkillHook::new(
+                storage,
+                scopes.clone(),
+            )),
         );
         register(
             &mut tools,

@@ -200,47 +200,6 @@ impl<H: Host, S: Storage> Env<H, S> {
         config.tools = whitelist;
     }
 
-    /// Resolve a leading `/skill-name` command at the start of the message.
-    fn resolve_slash_skill(&self, agent: &str, content: &str) -> Option<String> {
-        let trimmed = content.trim_start();
-        let rest = trimmed.strip_prefix('/')?;
-
-        let end = rest
-            .find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-')
-            .unwrap_or(rest.len());
-        let name = &rest[..end];
-        let remainder = &rest[end..];
-
-        if name.is_empty() || name.contains("..") {
-            return None;
-        }
-
-        // Enforce skill scope.
-        {
-            let scopes = self.scopes.read().expect("scopes lock poisoned");
-            if let Some(scope) = scopes.get(agent)
-                && !scope.skills.is_empty()
-                && !scope.skills.iter().any(|s| s == name)
-            {
-                return None;
-            }
-        }
-
-        // Load via Storage.
-        match self.storage.load_skill(name) {
-            Ok(Some(skill)) => {
-                let body = remainder.trim_start();
-                let block = format!("<skill name=\"{name}\">\n{}\n</skill>", skill.body);
-                if body.is_empty() {
-                    Some(block)
-                } else {
-                    Some(format!("{body}\n\n{block}"))
-                }
-            }
-            _ => None,
-        }
-    }
-
     /// Route a tool call by name to the appropriate handler.
     pub async fn dispatch_tool(
         &self,
@@ -318,14 +277,12 @@ impl<H: Host + 'static, S: Storage> Hook for Env<H, S> {
     }
 
     fn preprocess(&self, agent: &str, content: &str) -> Option<String> {
-        // Try registered hooks first.
         for hook in self.hooks.values() {
             if let Some(result) = hook.preprocess(agent, content) {
                 return Some(result);
             }
         }
-        // Fall back to legacy slash-skill resolution.
-        self.resolve_slash_skill(agent, content)
+        None
     }
 
     fn on_before_run(

@@ -1,13 +1,15 @@
-//! Skill tool handler factory.
+//! Skill tool — as a Hook implementation.
+//!
+//! Provides skill loading/discovery and slash-skill preprocessing.
 
-use runtime::AgentScope;
+use runtime::{AgentScope, Hook};
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     sync::{Arc, RwLock},
 };
 use wcore::{
-    ToolDispatch, ToolEntry,
+    ToolDispatch, ToolFuture,
     agent::{AsTool, ToolDescription},
     storage::Storage,
 };
@@ -23,80 +25,130 @@ impl ToolDescription for SkillTool {
     const DESCRIPTION: &'static str = "Load a skill by name. Returns its instructions on exact match, or lists matching skills otherwise.";
 }
 
-pub fn handler<S: Storage + 'static>(
+/// Skill subsystem: tool dispatch + slash-skill preprocessing.
+///
+/// Owns a Storage reference for loading skills and a scopes reference
+/// for enforcing per-agent skill whitelists.
+pub struct SkillHook<S: Storage> {
     storage: Arc<S>,
     scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
-) -> ToolEntry {
-    // Build skill listing for system prompt.
-    let skill_prompt = build_skill_prompt(storage.as_ref());
+}
 
-    ToolEntry {
-        schema: SkillTool::as_tool(),
-        system_prompt: skill_prompt,
-        before_run: None,
-        handler: Arc::new(move |call: ToolDispatch| {
-            let storage = storage.clone();
-            let scopes = scopes.clone();
-            Box::pin(async move {
-                let input: SkillTool = serde_json::from_str(&call.args)
-                    .map_err(|e| format!("invalid arguments: {e}"))?;
-                let name = &input.name;
+impl<S: Storage> SkillHook<S> {
+    pub fn new(storage: Arc<S>, scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>) -> Self {
+        Self { storage, scopes }
+    }
+}
 
-                // Enforce skill scope.
-                {
-                    let scopes = scopes.read().expect("scopes lock poisoned");
-                    if let Some(scope) = scopes.get(&call.agent)
-                        && !scope.skills.is_empty()
-                        && !scope.skills.iter().any(|s| s == name)
-                    {
-                        return Err(format!("skill not available: {name}"));
-                    }
-                }
+impl<S: Storage + 'static> Hook for SkillHook<S> {
+    fn schema(&self) -> Vec<wcore::model::Tool> {
+        vec![SkillTool::as_tool()]
+    }
 
-                // Guard against path traversal.
-                if name.contains("..") || name.contains('/') || name.contains('\\') {
-                    return Err(format!("invalid skill name: {name}"));
-                }
+    fn system_prompt(&self) -> Option<String> {
+        build_skill_prompt(self.storage.as_ref())
+    }
 
-                // Try exact load.
-                if !name.is_empty() {
-                    match storage.load_skill(name) {
-                        Ok(Some(skill)) => return Ok(skill.body),
-                        Ok(None) => {}
-                        Err(e) => return Err(format!("failed to load skill: {e}")),
-                    }
-                }
+    fn preprocess(&self, agent: &str, content: &str) -> Option<String> {
+        let trimmed = content.trim_start();
+        let rest = trimmed.strip_prefix('/')?;
 
-                // No exact match — fuzzy search / list all.
-                let query = name.to_lowercase();
-                let allowed: Vec<String> = scopes
-                    .read()
-                    .expect("scopes lock poisoned")
-                    .get(&call.agent)
-                    .map(|s| s.skills.clone())
-                    .unwrap_or_default();
+        let end = rest
+            .find(|c: char| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-')
+            .unwrap_or(rest.len());
+        let name = &rest[..end];
+        let remainder = &rest[end..];
 
-                let skills = storage.list_skills().unwrap_or_default();
-                let matches: Vec<String> = skills
-                    .iter()
-                    .filter(|s| {
-                        if !allowed.is_empty() && !allowed.iter().any(|a| a == s.name.as_str()) {
-                            return false;
-                        }
-                        query.is_empty()
-                            || s.name.to_lowercase().contains(&query)
-                            || s.description.to_lowercase().contains(&query)
-                    })
-                    .map(|s| format!("{}: {}", s.name, s.description))
-                    .collect();
+        if name.is_empty() || name.contains("..") {
+            return None;
+        }
 
-                if matches.is_empty() {
-                    Ok("no skills found".to_owned())
+        // Enforce skill scope.
+        {
+            let scopes = self.scopes.read().expect("scopes lock poisoned");
+            if let Some(scope) = scopes.get(agent)
+                && !scope.skills.is_empty()
+                && !scope.skills.iter().any(|s| s == name)
+            {
+                return None;
+            }
+        }
+
+        match self.storage.load_skill(name) {
+            Ok(Some(skill)) => {
+                let body = remainder.trim_start();
+                let block = format!("<skill name=\"{name}\">\n{}\n</skill>", skill.body);
+                if body.is_empty() {
+                    Some(block)
                 } else {
-                    Ok(matches.join("\n"))
+                    Some(format!("{body}\n\n{block}"))
                 }
-            })
-        }),
+            }
+            _ => None,
+        }
+    }
+
+    fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
+        if name != "skill" {
+            return None;
+        }
+        Some(Box::pin(async move {
+            let input: SkillTool =
+                serde_json::from_str(&call.args).map_err(|e| format!("invalid arguments: {e}"))?;
+            let name = &input.name;
+
+            // Enforce skill scope.
+            {
+                let scopes = self.scopes.read().expect("scopes lock poisoned");
+                if let Some(scope) = scopes.get(&call.agent)
+                    && !scope.skills.is_empty()
+                    && !scope.skills.iter().any(|s| s == name)
+                {
+                    return Err(format!("skill not available: {name}"));
+                }
+            }
+
+            if name.contains("..") || name.contains('/') || name.contains('\\') {
+                return Err(format!("invalid skill name: {name}"));
+            }
+
+            if !name.is_empty() {
+                match self.storage.load_skill(name) {
+                    Ok(Some(skill)) => return Ok(skill.body),
+                    Ok(None) => {}
+                    Err(e) => return Err(format!("failed to load skill: {e}")),
+                }
+            }
+
+            let query = name.to_lowercase();
+            let allowed: Vec<String> = self
+                .scopes
+                .read()
+                .expect("scopes lock poisoned")
+                .get(&call.agent)
+                .map(|s| s.skills.clone())
+                .unwrap_or_default();
+
+            let skills = self.storage.list_skills().unwrap_or_default();
+            let matches: Vec<String> = skills
+                .iter()
+                .filter(|s| {
+                    if !allowed.is_empty() && !allowed.iter().any(|a| a == s.name.as_str()) {
+                        return false;
+                    }
+                    query.is_empty()
+                        || s.name.to_lowercase().contains(&query)
+                        || s.description.to_lowercase().contains(&query)
+                })
+                .map(|s| format!("{}: {}", s.name, s.description))
+                .collect();
+
+            if matches.is_empty() {
+                Ok("no skills found".to_owned())
+            } else {
+                Ok(matches.join("\n"))
+            }
+        }))
     }
 }
 
