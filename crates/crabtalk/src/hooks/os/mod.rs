@@ -1,9 +1,9 @@
 //! OS tools — bash, read, edit — as a Hook implementation.
 
-mod bash;
-mod edit;
-mod read;
-
+use bash::Bash;
+pub use bash::BashConfig;
+use edit::Edit;
+use read::Read;
 use runtime::{ConversationCwds, Hook};
 use std::{
     collections::{HashMap, HashSet},
@@ -13,6 +13,10 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 use wcore::{ToolDispatch, ToolFuture, agent::AsTool, model::HistoryEntry};
+
+mod bash;
+mod edit;
+mod read;
 
 /// Per-conversation set of files that have been read (shared with DelegateHook
 /// for cleanup when delegated conversations close).
@@ -30,11 +34,6 @@ pub struct ApprovalRequest {
 
 /// Sender half of the approval channel.
 pub type ApprovalTx = mpsc::Sender<ApprovalRequest>;
-
-use bash::Bash;
-pub use bash::BashConfig;
-use edit::Edit;
-use read::Read;
 
 /// Maximum file size in bytes before refusing to read (50 MB).
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;

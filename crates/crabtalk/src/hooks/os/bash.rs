@@ -21,12 +21,26 @@ impl ToolDescription for Bash {
 
 // ── Config ──────────────────────────────────────────────────────────
 
+/// Result of a policy check on a single command.
+pub(super) enum Verdict {
+    /// Command matches an allow pattern — execute immediately.
+    Allow,
+    /// Command matches a deny pattern — reject, no override.
+    Deny(String),
+    /// Command matches an ask pattern, or doesn't match any allow pattern —
+    /// prompt the user for approval.
+    Ask(String),
+}
+
 /// Bash policy loaded from `~/.crabtalk/config/bash.toml`.
 #[derive(Deserialize, Default)]
 pub struct BashConfig {
     /// Command prefix patterns that are allowed (e.g. `"cargo *"`, `"git *"`).
     #[serde(default)]
     pub allow: Vec<String>,
+    /// Command prefix patterns that require interactive approval (e.g. `"git push *"`).
+    #[serde(default)]
+    pub ask: Vec<String>,
     /// Command prefix patterns that are denied (e.g. `"rm -rf *"`, `"sudo *"`).
     #[serde(default)]
     pub deny: Vec<String>,
@@ -50,47 +64,67 @@ impl BashConfig {
     }
 
     /// Check a single command against the policy.
-    ///
-    /// Returns `Ok(())` if allowed, `Err(reason)` if denied.
-    fn check_command(&self, command: &str) -> Result<(), String> {
+    fn check_command(&self, command: &str) -> Verdict {
         // Deny always wins.
-        for pattern in &self.deny {
-            if matches_pattern(pattern, command) {
-                return Err(format!("denied by policy: {command}"));
-            }
+        if self.deny.iter().any(|p| matches_pattern(p, command)) {
+            return Verdict::Deny(format!("denied by policy: {command}"));
         }
 
-        // If allow list is non-empty, command must match at least one.
-        if !self.allow.is_empty() && !self.allow.iter().any(|p| matches_pattern(p, command)) {
-            return Err(format!("not in allow list: {command}"));
+        // Allow matches → execute.
+        if self.allow.iter().any(|p| matches_pattern(p, command)) {
+            return Verdict::Allow;
+        }
+
+        // Ask matches → prompt.
+        if self.ask.iter().any(|p| matches_pattern(p, command)) {
+            return Verdict::Ask(format!("requires approval: {command}"));
         }
 
         // No allow list configured → allow everything (backwards compat).
-        Ok(())
+        if self.allow.is_empty() && self.ask.is_empty() {
+            return Verdict::Allow;
+        }
+
+        // Has rules but no match → needs approval.
+        Verdict::Ask(format!("not in allow list: {command}"))
     }
 
-    /// Check a (possibly compound) command against the policy.
-    pub fn check(&self, command: &str) -> Result<(), String> {
+    /// Check a (possibly compound) command. Returns the most restrictive
+    /// verdict across all subcommands: Deny > Ask > Allow.
+    pub(super) fn check(&self, command: &str) -> Verdict {
+        let mut needs_ask = None;
         for sub in split_compound(command) {
-            self.check_command(sub)?;
+            match self.check_command(sub) {
+                Verdict::Deny(reason) => return Verdict::Deny(reason),
+                Verdict::Ask(reason) => needs_ask = Some(reason),
+                Verdict::Allow => {}
+            }
         }
-        Ok(())
+        match needs_ask {
+            Some(reason) => Verdict::Ask(reason),
+            None => Verdict::Allow,
+        }
     }
 
     /// Build a system prompt block describing the policy.
     pub fn prompt_block(&self) -> Option<String> {
-        if self.allow.is_empty() && self.deny.is_empty() {
+        if self.allow.is_empty() && self.ask.is_empty() && self.deny.is_empty() {
             return None;
         }
         let mut block = String::from("\n\n<bash-policy>\n");
         if !self.allow.is_empty() {
             block.push_str(&format!("allowed: {}\n", self.allow.join(", ")));
         }
+        if !self.ask.is_empty() {
+            block.push_str(&format!("requires approval: {}\n", self.ask.join(", ")));
+        }
         if !self.deny.is_empty() {
             block.push_str(&format!("denied: {}\n", self.deny.join(", ")));
         }
-        if !self.allow.is_empty() {
-            block.push_str("Commands not matching the allow list will be rejected.\n");
+        if !self.allow.is_empty() || !self.ask.is_empty() {
+            block.push_str(
+                "Commands not matching the allow or ask list require interactive approval.\n",
+            );
         }
         block.push_str("</bash-policy>");
         Some(block)
@@ -156,20 +190,24 @@ impl OsHook {
         let input: Bash =
             serde_json::from_str(&call.args).map_err(|e| format!("invalid arguments: {e}"))?;
 
-        // Policy check — request interactive approval on denial.
-        if let Err(reason) = self.bash_config.check(&input.command) {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let request = super::ApprovalRequest {
-                command: input.command.clone(),
-                reason: reason.clone(),
-                reply: tx,
-            };
-            if self.approval_tx.send(request).await.is_err() {
-                return Err(reason);
-            }
-            match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
-                Ok(Ok(true)) => {} // approved, continue
-                _ => return Err(reason),
+        // Policy check.
+        match self.bash_config.check(&input.command) {
+            Verdict::Allow => {}
+            Verdict::Deny(reason) => return Err(reason),
+            Verdict::Ask(reason) => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let request = super::ApprovalRequest {
+                    command: input.command.clone(),
+                    reason: reason.clone(),
+                    reply: tx,
+                };
+                if self.approval_tx.send(request).await.is_err() {
+                    return Err(reason);
+                }
+                match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
+                    Ok(Ok(true)) => {} // approved, continue
+                    _ => return Err(reason),
+                }
             }
         }
 
