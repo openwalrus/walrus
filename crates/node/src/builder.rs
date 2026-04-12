@@ -341,7 +341,12 @@ impl<P: Provider + 'static, H: Host + 'static> Node<P, H> {
             env,
             crate::delegate::handler::<P, H>(scopes.clone(), runtime_once),
         );
-        register(&mut tools, env, tools::ask_user::handler(pending_asks));
+        register_hook(
+            &mut tools,
+            env,
+            "ask_user",
+            Arc::new(tools::ask_user::AskUserHook::new(pending_asks)),
+        );
 
         // MCP — register only if servers are configured.
         if !mcp_server_list.is_empty() {
