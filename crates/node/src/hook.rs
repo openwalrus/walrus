@@ -1,8 +1,4 @@
-//! NodeHost — server-specific Host implementation.
-//!
-//! Provides per-session CWD resolution, agent event broadcasting, and
-//! MCP bridge management. Tool dispatch is handled by registered handlers,
-//! not by this Host implementation.
+//! NodeHost — server-specific Host implementation and NodeEnv type alias.
 
 use runtime::host::Host;
 use std::path::Path;
@@ -12,14 +8,15 @@ use wcore::{
     protocol::message::{AgentEventKind, AgentEventMsg, ToolCallInfo},
 };
 
+/// The daemon's environment type — Env with NodeHost for
+/// server-specific dispatch and FsStorage for persistence.
+pub type NodeEnv = runtime::Env<NodeHost, crate::storage::FsStorage>;
+
 /// Tool result output is truncated to this many bytes in the broadcast.
-/// Keeps the firehose lightweight while still giving rich UIs enough
-/// content to render meaningful previews.
 const MAX_TOOL_OUTPUT_BROADCAST: usize = 2048;
 
 /// Server-specific host for the daemon — event broadcasting and
-/// instruction discovery. Tool dispatch and session state live on
-/// shared Arcs captured by handler factories and the Env.
+/// instruction discovery.
 #[derive(Clone)]
 pub struct NodeHost {
     /// Broadcast channel for agent events (console subscription).
@@ -28,9 +25,6 @@ pub struct NodeHost {
 
 impl Host for NodeHost {
     fn on_agent_event(&self, agent: &str, conversation_id: u64, event: &AgentEvent) {
-        /// Kind-specific payload built per match arm. `kind` is required —
-        /// no `Default` impl, so the compiler forces every arm to set it.
-        /// The other fields default to empty via struct update syntax.
         struct Payload {
             kind: AgentEventKind,
             content: String,
@@ -73,8 +67,6 @@ impl Host for NodeHost {
             AgentEvent::ToolCallsBegin(_) => return,
             AgentEvent::ToolCallsStart(calls) => {
                 tracing::debug!(%agent, count = calls.len(), "agent tool calls");
-                // Single pass over `calls` builds both the human label and
-                // the structured copy.
                 let mut labels = Vec::with_capacity(calls.len());
                 let mut structured = Vec::with_capacity(calls.len());
                 for c in calls {
@@ -132,10 +124,6 @@ impl Host for NodeHost {
                 }
             }
         };
-        // The sender field is derived from the conversation's created_by.
-        // Since we don't have access to conversation state here, we use
-        // conversation_id as a string placeholder — subscribers correlate
-        // by agent name.
         let _ = self.events_tx.send(AgentEventMsg {
             agent: agent.to_string(),
             sender: conversation_id.to_string(),
@@ -157,12 +145,6 @@ impl Host for NodeHost {
     }
 }
 
-/// Collect layered `Crab.md` instructions: global
-/// (`~/.crabtalk/Crab.md`) first, then any `Crab.md` files found
-/// walking up from `cwd` (root-first, project-last so project
-/// instructions take precedence). Paths under the config dir are
-/// skipped on the walk so a user who runs crabtalk from
-/// `~/.crabtalk/` doesn't double-count the global file.
 fn discover_instructions(cwd: &Path) -> Option<String> {
     let config_dir = &*wcore::paths::CONFIG_DIR;
     let mut layers = Vec::new();
@@ -238,10 +220,6 @@ fn human_tokens(n: u32) -> String {
     }
 }
 
-/// Build the human-readable label for a single tool call. Bash gets a
-/// special preview of its first line; everything else falls back to the
-/// function name. Used by the legacy `content` field for display-only
-/// consumers — rich UIs should read `tool_calls` directly.
 fn tool_call_label(c: &wcore::model::ToolCall) -> String {
     if c.function.name == "bash"
         && let Ok(v) = serde_json::from_str::<serde_json::Value>(&c.function.arguments)
@@ -252,14 +230,6 @@ fn tool_call_label(c: &wcore::model::ToolCall) -> String {
     c.function.name.clone()
 }
 
-/// Truncate a tool output to at most `max` bytes for the event broadcast,
-/// snapping back to a UTF-8 char boundary and appending an elision marker
-/// if anything was dropped. Keeps the firehose lightweight.
-///
-/// If `max` is smaller than the marker itself, returns just the marker
-/// (which may exceed `max`). Caller is expected to size `max` generously
-/// — the helper exists to cap pathological multi-MB tool outputs, not
-/// to enforce a precise byte budget.
 fn truncate_for_broadcast(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.to_owned();

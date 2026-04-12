@@ -5,7 +5,7 @@ use crate::{
     builder::{BuildProvider, DefaultProvider, build_default_provider},
     cron::CronStore,
     event::EventBus,
-    hook::host::NodeHost,
+    hook::NodeHost,
     storage::FsStorage,
 };
 use anyhow::Result;
