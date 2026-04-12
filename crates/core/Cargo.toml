@@ -11,7 +11,7 @@ repository.workspace = true
 keywords.workspace = true
 
 [features]
-test-utils = []
+testing = []
 
 [dependencies]
 # crabllm
@@ -34,7 +34,7 @@ tracing.workspace = true
 ulid.workspace = true
 
 [dev-dependencies]
-crabtalk-core = { path = ".", features = ["test-utils"] }
+crabtalk-core = { path = ".", features = ["testing"] }
 serde_json.workspace = true
 tempfile.workspace = true
 

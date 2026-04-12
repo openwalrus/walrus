@@ -10,9 +10,9 @@ use std::sync::Arc;
 use wcore::{
     AgentConfig, AgentEvent, AgentStopReason, ToolDispatcher, ToolFuture,
     model::Model,
-    test_utils::{
+    testing::{
         InMemoryStorage,
-        test_provider::{TestProvider, text_chunks},
+        provider::{TestProvider, text_chunks},
     },
 };
 

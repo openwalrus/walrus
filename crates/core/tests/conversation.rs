@@ -4,7 +4,7 @@ use crabtalk_core::{
     model::HistoryEntry,
     sender_slug,
     storage::{SessionHandle, Storage},
-    test_utils::InMemoryStorage,
+    testing::InMemoryStorage,
 };
 
 fn storage() -> InMemoryStorage {

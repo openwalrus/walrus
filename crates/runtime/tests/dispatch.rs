@@ -8,7 +8,7 @@ use std::{
 };
 use wcore::{
     AgentConfig, ToolDispatch, ToolEntry,
-    test_utils::{InMemoryStorage, test_schema},
+    testing::{InMemoryStorage, test_schema},
 };
 
 fn test_hook() -> Env<NoHost, InMemoryStorage> {

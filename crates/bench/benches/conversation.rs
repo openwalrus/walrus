@@ -1,7 +1,7 @@
 //! Session I/O benchmarks: append throughput and load latency.
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use wcore::{model::HistoryEntry, storage::Storage, test_utils::InMemoryStorage};
+use wcore::{model::HistoryEntry, storage::Storage, testing::InMemoryStorage};
 
 fn generate_messages(n: usize) -> Vec<HistoryEntry> {
     (0..n)

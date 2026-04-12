@@ -7,7 +7,7 @@
 use crabllm_core::{FunctionDef, Tool, ToolType};
 
 mod mem;
-pub mod test_provider;
+pub mod provider;
 
 pub use mem::InMemoryStorage;
 

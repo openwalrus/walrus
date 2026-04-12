@@ -5,7 +5,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-wcore = { workspace = true, features = ["test-utils"] }
+wcore = { workspace = true, features = ["testing"] }
 runtime.workspace = true
 tools.workspace = true
 crabllm-core.workspace = true

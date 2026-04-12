@@ -2,7 +2,7 @@
 
 use wcore::{
     storage::{Skill, Storage},
-    test_utils::InMemoryStorage,
+    testing::InMemoryStorage,
 };
 
 fn skill(name: &str, description: &str) -> Skill {
