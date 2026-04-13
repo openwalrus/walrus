@@ -639,6 +639,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "crabtalk-memory"
+version = "0.0.20"
+dependencies = [
+ "anyhow",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "crabtalk-outlook"
 version = "0.0.20"
 dependencies = [
