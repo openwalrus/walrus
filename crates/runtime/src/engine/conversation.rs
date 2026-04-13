@@ -10,6 +10,32 @@ use wcore::storage::{SessionHandle, Storage};
 use super::Runtime;
 
 impl<C: Config> Runtime<C> {
+    fn conversation_key(agent: &str, created_by: &str) -> (String, String) {
+        (agent.to_owned(), created_by.to_owned())
+    }
+
+    fn index_conversation(
+        index: &mut std::collections::BTreeMap<(String, String), u64>,
+        id: u64,
+        agent: &str,
+        created_by: &str,
+    ) {
+        index
+            .entry(Self::conversation_key(agent, created_by))
+            .or_insert(id);
+    }
+
+    async fn find_conversation_id_slow(&self, agent: &str, sender: &str) -> Option<u64> {
+        let conversations = self.conversations.read().await;
+        for (id, conv_mutex) in conversations.iter() {
+            let conv = conv_mutex.lock().await;
+            if conv.agent == agent && conv.created_by == sender {
+                return Some(*id);
+            }
+        }
+        None
+    }
+
     /// Get or create a conversation for the given (agent, created_by) identity.
     pub async fn get_or_create_conversation(&self, agent: &str, created_by: &str) -> Result<u64> {
         if !self.has_agent(agent).await {
@@ -17,14 +43,8 @@ impl<C: Config> Runtime<C> {
         }
 
         // 1. In-memory lookup.
-        {
-            let conversations = self.conversations.read().await;
-            for (id, conversation_mutex) in conversations.iter() {
-                let c = conversation_mutex.lock().await;
-                if c.agent == agent && c.created_by == created_by {
-                    return Ok(*id);
-                }
-            }
+        if let Some(id) = self.find_conversation_id(agent, created_by).await {
+            return Ok(id);
         }
 
         // 2. Storage lookup — find latest persisted session for this identity.
@@ -42,6 +62,8 @@ impl<C: Config> Runtime<C> {
                 .write()
                 .await
                 .insert(id, Arc::new(Mutex::new(conversation)));
+            let mut index = self.conversation_index.write().await;
+            Self::index_conversation(&mut index, id, agent, created_by);
             return Ok(id);
         }
 
@@ -59,6 +81,8 @@ impl<C: Config> Runtime<C> {
             .write()
             .await
             .insert(id, Arc::new(Mutex::new(conversation)));
+        let mut index = self.conversation_index.write().await;
+        Self::index_conversation(&mut index, id, agent, created_by);
         Ok(id)
     }
 
@@ -82,12 +106,46 @@ impl<C: Config> Runtime<C> {
             .write()
             .await
             .insert(id, Arc::new(Mutex::new(conversation)));
+        let mut index = self.conversation_index.write().await;
+        Self::index_conversation(&mut index, id, &snapshot.meta.agent, &snapshot.meta.created_by);
         Ok(id)
     }
 
     pub async fn close_conversation(&self, id: u64) -> bool {
         self.steering.write().await.remove(&id);
-        self.conversations.write().await.remove(&id).is_some()
+        let removed = self.conversations.write().await.remove(&id);
+        let Some(conversation_mutex) = removed else {
+            return false;
+        };
+
+        let (agent, created_by) = {
+            let conversation = conversation_mutex.lock().await;
+            (conversation.agent.clone(), conversation.created_by.clone())
+        };
+        let key = Self::conversation_key(&agent, &created_by);
+
+        let replacement = {
+            let conversations = self.conversations.read().await;
+            let mut replacement = None;
+            for (candidate_id, candidate_mutex) in conversations.iter() {
+                let candidate = candidate_mutex.lock().await;
+                if candidate.agent == agent && candidate.created_by == created_by {
+                    replacement = Some(*candidate_id);
+                    break;
+                }
+            }
+            replacement
+        };
+
+        let mut index = self.conversation_index.write().await;
+        if index.get(&key).copied() == Some(id) {
+            index.remove(&key);
+            if let Some(replacement_id) = replacement {
+                index.insert(key, replacement_id);
+            }
+        }
+
+        true
     }
 
     pub async fn steer(&self, conversation_id: u64, content: String) -> Result<()> {
@@ -113,14 +171,15 @@ impl<C: Config> Runtime<C> {
     }
 
     pub async fn find_conversation_id(&self, agent: &str, sender: &str) -> Option<u64> {
-        let conversations = self.conversations.read().await;
-        for (id, conv_mutex) in conversations.iter() {
-            let conv = conv_mutex.lock().await;
-            if conv.agent == agent && conv.created_by == sender {
-                return Some(*id);
-            }
+        let key = Self::conversation_key(agent, sender);
+        if let Some(id) = self.conversation_index.read().await.get(&key).copied() {
+            return Some(id);
         }
-        None
+
+        let id = self.find_conversation_id_slow(agent, sender).await?;
+        let mut index = self.conversation_index.write().await;
+        index.entry(key).or_insert(id);
+        Some(id)
     }
 
     pub async fn compact_conversation(&self, conversation_id: u64) -> Option<String> {
@@ -158,8 +217,12 @@ impl<C: Config> Runtime<C> {
     pub async fn transfer_conversations<C2: Config>(&self, dest: &mut Runtime<C2>) {
         let conversations = self.conversations.read().await;
         let dest_conversations = dest.conversations.get_mut();
+        let dest_index = dest.conversation_index.get_mut();
+        dest_index.clear();
         for (id, conversation) in conversations.iter() {
             dest_conversations.insert(*id, conversation.clone());
+            let conversation = conversation.lock().await;
+            Self::index_conversation(dest_index, *id, &conversation.agent, &conversation.created_by);
         }
         let next = self.next_conversation_id.load(Ordering::Relaxed);
         dest.next_conversation_id.store(next, Ordering::Relaxed);

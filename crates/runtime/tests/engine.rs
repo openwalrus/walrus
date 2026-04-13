@@ -152,6 +152,48 @@ async fn get_or_create_conversation_returns_existing() {
 }
 
 #[tokio::test]
+async fn find_conversation_id_uses_identity_lookup() {
+    let runtime = runtime(TestProvider::with_chunks(vec![]));
+    runtime.add_agent(AgentConfig::new("crab"));
+
+    let id = runtime
+        .create_conversation("crab", "indexed-user")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        runtime.find_conversation_id("crab", "indexed-user").await,
+        Some(id)
+    );
+}
+
+#[tokio::test]
+async fn closing_indexed_conversation_falls_back_to_duplicate() {
+    let runtime = runtime(TestProvider::with_chunks(vec![]));
+    runtime.add_agent(AgentConfig::new("crab"));
+
+    let first = runtime
+        .create_conversation("crab", "same-user")
+        .await
+        .unwrap();
+    let second = runtime
+        .create_conversation("crab", "same-user")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        runtime.find_conversation_id("crab", "same-user").await,
+        Some(first)
+    );
+
+    assert!(runtime.close_conversation(first).await);
+    assert_eq!(
+        runtime.find_conversation_id("crab", "same-user").await,
+        Some(second)
+    );
+}
+
+#[tokio::test]
 async fn get_or_create_conversation_rejects_unknown_agent() {
     let runtime = runtime(TestProvider::with_chunks(vec![]));
     let err = runtime
