@@ -1,7 +1,7 @@
 //! MCP tool — as a Hook implementation.
 
 use super::McpHandler;
-use crate::node::hook::AgentScope;
+use crate::daemon::hook::AgentScope;
 use runtime::Hook;
 use schemars::JsonSchema;
 use serde::Deserialize;

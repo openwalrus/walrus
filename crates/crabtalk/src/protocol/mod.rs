@@ -1,6 +1,6 @@
 //! Server trait implementation — thin delegates to domain modules.
 
-use crate::node::Node;
+use crate::daemon::Daemon;
 use anyhow::Result;
 use crabllm_core::Provider;
 use wcore::protocol::api::Server;
@@ -13,7 +13,7 @@ mod conversation;
 mod history;
 mod plugin;
 
-impl<P: Provider + 'static> Server for Node<P> {
+impl<P: Provider + 'static> Server for Daemon<P> {
     async fn send(&self, req: SendMsg) -> Result<SendResponse> {
         conversation::send(self, req).await
     }

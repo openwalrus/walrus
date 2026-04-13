@@ -1,4 +1,4 @@
-//! Node — the core struct composing runtime, transports, and lifecycle.
+//! Daemon — the core struct composing runtime, transports, and lifecycle.
 
 use crate::{NodeConfig, hooks, storage::FsStorage};
 use anyhow::Result;
@@ -16,7 +16,7 @@ use {
     builder::{BuildProvider, DefaultProvider, build_default_provider},
     cron::CronStore,
     event::EventBus,
-    host::NodeEnv,
+    host::DaemonEnv,
 };
 
 /// Per-conversation working directory overrides.
@@ -32,24 +32,24 @@ pub mod hook;
 pub mod host;
 
 /// Config binding for a node.
-pub struct NodeCfg<P: Provider + 'static = DefaultProvider> {
+pub struct DaemonCfg<P: Provider + 'static = DefaultProvider> {
     _marker: std::marker::PhantomData<P>,
 }
 
-impl<P: Provider + 'static> runtime::Config for NodeCfg<P> {
+impl<P: Provider + 'static> runtime::Config for DaemonCfg<P> {
     type Storage = FsStorage;
     type Provider = P;
-    type Env = NodeEnv;
+    type Env = DaemonEnv;
 }
 
 /// Shared runtime handle.
-pub type SharedRuntime<P> = Arc<RwLock<Arc<Runtime<NodeCfg<P>>>>>;
+pub type SharedRuntime<P> = Arc<RwLock<Arc<Runtime<DaemonCfg<P>>>>>;
 
 /// Shared daemon state.
-pub struct Node<P: Provider + 'static = DefaultProvider> {
+pub struct Daemon<P: Provider + 'static = DefaultProvider> {
     pub runtime: SharedRuntime<P>,
     /// Composite hook owning all sub-hooks and shared state.
-    pub hook: Arc<hook::NodeHook>,
+    pub hook: Arc<hook::DaemonHook>,
     pub(crate) config_dir: PathBuf,
     pub(crate) started_at: std::time::Instant,
     pub(crate) crons: Arc<Mutex<CronStore<P>>>,
@@ -64,7 +64,7 @@ pub struct Node<P: Provider + 'static = DefaultProvider> {
     pub approvals: Arc<std::sync::Mutex<Option<mpsc::Receiver<hooks::os::ApprovalRequest>>>>,
 }
 
-impl<P: Provider + 'static> Clone for Node<P> {
+impl<P: Provider + 'static> Clone for Daemon<P> {
     fn clone(&self) -> Self {
         Self {
             runtime: self.runtime.clone(),
@@ -82,8 +82,8 @@ impl<P: Provider + 'static> Clone for Node<P> {
     }
 }
 
-impl Node<DefaultProvider> {
-    pub async fn start(config_dir: &Path) -> Result<NodeHandle<DefaultProvider>> {
+impl Daemon<DefaultProvider> {
+    pub async fn start(config_dir: &Path) -> Result<DaemonHandle<DefaultProvider>> {
         let config_path = config_dir.join(wcore::paths::CONFIG_FILE);
         let config = NodeConfig::load(&config_path)?;
         tracing::info!("loaded configuration from {}", config_path.display());
@@ -92,23 +92,24 @@ impl Node<DefaultProvider> {
         let build_provider: BuildProvider<DefaultProvider> =
             Arc::new(|config: &NodeConfig| build_default_provider(config));
 
-        let node = Node::build(&config, config_dir, shutdown_tx.clone(), build_provider).await?;
+        let daemon =
+            Daemon::build(&config, config_dir, shutdown_tx.clone(), build_provider).await?;
 
-        Ok(NodeHandle {
+        Ok(DaemonHandle {
             config,
             shutdown_tx,
-            node,
+            daemon,
         })
     }
 }
 
-pub struct NodeHandle<P: Provider + 'static = DefaultProvider> {
+pub struct DaemonHandle<P: Provider + 'static = DefaultProvider> {
     pub config: NodeConfig,
     pub shutdown_tx: broadcast::Sender<()>,
-    pub node: Node<P>,
+    pub daemon: Daemon<P>,
 }
 
-impl<P: Provider + 'static> NodeHandle<P> {
+impl<P: Provider + 'static> DaemonHandle<P> {
     pub async fn wait_until_ready(&self) -> Result<()> {
         Ok(())
     }
@@ -122,13 +123,13 @@ impl<P: Provider + 'static> NodeHandle<P> {
 // ── Transport setup helpers ──────────────────────────────────────────
 
 fn dispatch_callback<P: Provider + 'static>(
-    node: Node<P>,
+    daemon: Daemon<P>,
 ) -> impl Fn(ClientMessage, mpsc::Sender<wcore::protocol::message::ServerMessage>) + Clone + Send + 'static
 {
     move |msg, reply| {
-        let node = node.clone();
+        let daemon = daemon.clone();
         tokio::spawn(async move {
-            let stream = node.dispatch(msg);
+            let stream = daemon.dispatch(msg);
             pin_mut!(stream);
             while let Some(server_msg) = stream.next().await {
                 if reply.send(server_msg).await.is_err() {
@@ -141,7 +142,7 @@ fn dispatch_callback<P: Provider + 'static>(
 
 #[cfg(unix)]
 pub fn setup_socket<P: Provider + 'static>(
-    node: Node<P>,
+    daemon: Daemon<P>,
     shutdown_tx: &broadcast::Sender<()>,
 ) -> Result<(&'static Path, tokio::task::JoinHandle<()>)> {
     let resolved_path: &'static Path = &wcore::paths::SOCKET_PATH;
@@ -158,7 +159,7 @@ pub fn setup_socket<P: Provider + 'static>(
     let socket_shutdown = bridge_shutdown(shutdown_tx.subscribe());
     let join = tokio::spawn(transport::uds::accept_loop(
         listener,
-        dispatch_callback(node),
+        dispatch_callback(daemon),
         socket_shutdown,
     ));
 
@@ -166,7 +167,7 @@ pub fn setup_socket<P: Provider + 'static>(
 }
 
 pub fn setup_tcp<P: Provider + 'static>(
-    node: Node<P>,
+    daemon: Daemon<P>,
     shutdown_tx: &broadcast::Sender<()>,
 ) -> Result<(tokio::task::JoinHandle<()>, u16)> {
     let (std_listener, addr) = transport::tcp::bind()?;
@@ -176,7 +177,7 @@ pub fn setup_tcp<P: Provider + 'static>(
     let tcp_shutdown = bridge_shutdown(shutdown_tx.subscribe());
     let join = tokio::spawn(transport::tcp::accept_loop(
         listener,
-        dispatch_callback(node),
+        dispatch_callback(daemon),
         tcp_shutdown,
     ));
 

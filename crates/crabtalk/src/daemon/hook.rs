@@ -1,4 +1,4 @@
-//! NodeHook — composite hook aggregating all sub-hooks with shared state.
+//! DaemonHook — composite hook aggregating all sub-hooks with shared state.
 //!
 //! This is the single Hook the runtime Env sees. It owns all sub-hooks
 //! (os, memory, skill, delegate, ask_user, mcp), the dispatch map, scope
@@ -24,7 +24,7 @@ pub struct AgentScope {
 pub type EventSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 /// Composite hook aggregating all node sub-hooks.
-pub struct NodeHook {
+pub struct DaemonHook {
     pub scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
     agent_descriptions: RwLock<BTreeMap<String, String>>,
     hooks: BTreeMap<String, Arc<dyn Hook>>,
@@ -32,7 +32,7 @@ pub struct NodeHook {
     event_sink: RwLock<Option<EventSink>>,
 }
 
-impl NodeHook {
+impl DaemonHook {
     pub fn new(scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>) -> Self {
         Self {
             scopes,
@@ -115,7 +115,7 @@ impl NodeHook {
     }
 }
 
-impl Hook for NodeHook {
+impl Hook for DaemonHook {
     fn schema(&self) -> Vec<crabllm_core::Tool> {
         self.hooks.values().flat_map(|h| h.schema()).collect()
     }

@@ -1,6 +1,6 @@
-//! NodeEnv — server-specific Host implementation and NodeEnv type alias.
+//! DaemonEnv — server-specific Host implementation and DaemonEnv type alias.
 
-use crate::node::{ConversationCwds, hook::NodeHook};
+use crate::daemon::{ConversationCwds, hook::DaemonHook};
 use runtime::Env;
 use std::{
     path::{Path, PathBuf},
@@ -18,21 +18,21 @@ const MAX_TOOL_OUTPUT_BROADCAST: usize = 2048;
 /// Server-specific host for the daemon — event broadcasting and
 /// instruction discovery.
 #[derive(Clone)]
-pub struct NodeEnv {
+pub struct DaemonEnv {
     /// Broadcast channel for agent events (console subscription).
     pub(crate) events_tx: broadcast::Sender<AgentEventMsg>,
     /// Base working directory.
     pub(crate) cwd: PathBuf,
-    /// Per-conversation CWD overrides (shared with NodeHook + OsHook + DelegateHook).
+    /// Per-conversation CWD overrides (shared with DaemonHook + OsHook + DelegateHook).
     pub(crate) conversation_cwds: ConversationCwds,
     /// Composite hook owning all sub-hooks and shared state.
-    pub(crate) hook: Arc<NodeHook>,
+    pub(crate) hook: Arc<DaemonHook>,
 }
 
-impl Env for NodeEnv {
-    type Hook = NodeHook;
+impl Env for DaemonEnv {
+    type Hook = DaemonHook;
 
-    fn hook(&self) -> &NodeHook {
+    fn hook(&self) -> &DaemonHook {
         &self.hook
     }
 
@@ -166,7 +166,7 @@ impl Env for NodeEnv {
     }
 }
 
-impl wcore::ToolDispatcher for NodeEnv {
+impl wcore::ToolDispatcher for DaemonEnv {
     fn dispatch<'a>(
         &'a self,
         name: &'a str,

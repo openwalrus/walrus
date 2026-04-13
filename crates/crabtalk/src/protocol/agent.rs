@@ -1,12 +1,12 @@
 //! Agent CRUD: list, get, create, update, delete.
 
-use crate::node::{self, Node};
+use crate::daemon::{self, Daemon};
 use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use wcore::protocol::message::*;
 use wcore::storage::Storage;
 
-pub(super) async fn list<P: Provider + 'static>(node: &Node<P>) -> Result<Vec<AgentInfo>> {
+pub(super) async fn list<P: Provider + 'static>(node: &Daemon<P>) -> Result<Vec<AgentInfo>> {
     let rt = node.runtime.read().await.clone();
     Ok(rt
         .agents()
@@ -15,7 +15,10 @@ pub(super) async fn list<P: Provider + 'static>(node: &Node<P>) -> Result<Vec<Ag
         .collect())
 }
 
-pub(super) async fn get<P: Provider + 'static>(node: &Node<P>, name: String) -> Result<AgentInfo> {
+pub(super) async fn get<P: Provider + 'static>(
+    node: &Daemon<P>,
+    name: String,
+) -> Result<AgentInfo> {
     let rt = node.runtime.read().await.clone();
     let config = rt
         .agent(&name)
@@ -24,7 +27,7 @@ pub(super) async fn get<P: Provider + 'static>(node: &Node<P>, name: String) -> 
 }
 
 pub(super) async fn create<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: CreateAgentMsg,
 ) -> Result<AgentInfo> {
     validate_agent_name(&req.name)?;
@@ -43,7 +46,7 @@ pub(super) async fn create<P: Provider + 'static>(
 }
 
 pub(super) async fn update<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: UpdateAgentMsg,
 ) -> Result<AgentInfo> {
     validate_agent_name(&req.name)?;
@@ -72,7 +75,7 @@ pub(super) async fn update<P: Provider + 'static>(
     get(node, req.name).await
 }
 
-pub(super) async fn delete<P: Provider + 'static>(node: &Node<P>, name: String) -> Result<bool> {
+pub(super) async fn delete<P: Provider + 'static>(node: &Daemon<P>, name: String) -> Result<bool> {
     let rt = node.runtime.read().await.clone();
     let storage = rt.storage();
 
@@ -98,19 +101,26 @@ pub(super) async fn delete<P: Provider + 'static>(node: &Node<P>, name: String) 
     Ok(removed)
 }
 
-async fn register_agent_from_disk<P: Provider + 'static>(node: &Node<P>, name: &str) -> Result<()> {
+async fn register_agent_from_disk<P: Provider + 'static>(
+    node: &Daemon<P>,
+    name: &str,
+) -> Result<()> {
     let config = super::config::load_config(node).await?;
     let (manifest, _warnings) = super::config::resolve_manifests(node).await?;
     let rt = node.runtime.read().await.clone();
-    let agent_config =
-        node::builder::build_single_agent_config(name, &config, &manifest, rt.storage().as_ref())?;
+    let agent_config = daemon::builder::build_single_agent_config(
+        name,
+        &config,
+        &manifest,
+        rt.storage().as_ref(),
+    )?;
     let registered = rt.upsert_agent(agent_config);
     node.hook.register_scope(name.to_owned(), &registered);
     Ok(())
 }
 
 async fn existing_agent_id<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     name: &str,
 ) -> Result<Option<wcore::AgentId>> {
     let rt = node.runtime.read().await.clone();
@@ -123,7 +133,7 @@ async fn existing_agent_id<P: Provider + 'static>(
 }
 
 async fn write_agent_to_manifest<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     name: &str,
     config_json: &str,
     expect_new: bool,
@@ -145,7 +155,7 @@ async fn write_agent_to_manifest<P: Provider + 'static>(
 }
 
 async fn write_agent_prompt_to_storage<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     id: &wcore::AgentId,
     prompt: &str,
 ) -> Result<()> {
@@ -160,7 +170,7 @@ async fn write_agent_prompt_to_storage<P: Provider + 'static>(
 }
 
 async fn write_system_crab_config<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     config_json: &str,
 ) -> Result<()> {
     let crab: wcore::AgentConfig =

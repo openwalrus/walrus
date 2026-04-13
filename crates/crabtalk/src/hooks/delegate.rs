@@ -1,8 +1,8 @@
 //! Delegate tool — as a Hook implementation.
 
-use crate::node::ConversationCwds;
-use crate::node::hook::AgentScope;
-use crate::{hooks::os::ReadFiles, node::SharedRuntime};
+use crate::daemon::ConversationCwds;
+use crate::daemon::hook::AgentScope;
+use crate::{daemon::SharedRuntime, hooks::os::ReadFiles};
 use crabllm_core::Provider;
 use runtime::Hook;
 use serde::Deserialize;

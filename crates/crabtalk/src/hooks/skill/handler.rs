@@ -2,7 +2,7 @@
 //!
 //! Provides skill loading/discovery and slash-skill preprocessing.
 
-use crate::node::hook::AgentScope;
+use crate::daemon::hook::AgentScope;
 use runtime::Hook;
 use serde::Deserialize;
 use std::{

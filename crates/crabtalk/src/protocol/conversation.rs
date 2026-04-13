@@ -1,6 +1,6 @@
 //! Conversation execution: send, stream, compact, kill, steer.
 
-use crate::node::Node;
+use crate::daemon::Daemon;
 use anyhow::Result;
 use crabllm_core::Provider;
 use futures_util::{StreamExt, pin_mut};
@@ -9,7 +9,7 @@ use wcore::AgentEvent;
 use wcore::protocol::message::*;
 
 pub(super) async fn send<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: SendMsg,
 ) -> Result<SendResponse> {
     let rt: Arc<_> = node.runtime.read().await.clone();
@@ -43,7 +43,7 @@ pub(super) async fn send<P: Provider + 'static>(
 }
 
 pub(super) fn stream<'a, P: Provider + 'static>(
-    node: &'a Node<P>,
+    node: &'a Daemon<P>,
     req: StreamMsg,
 ) -> impl futures_core::Stream<Item = Result<StreamEvent>> + Send + 'a {
     let runtime = node.runtime.clone();
@@ -173,7 +173,7 @@ pub(super) fn stream<'a, P: Provider + 'static>(
 }
 
 pub(super) async fn compact<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     agent: String,
     sender: String,
 ) -> Result<String> {
@@ -190,7 +190,7 @@ pub(super) async fn compact<P: Provider + 'static>(
 }
 
 pub(super) async fn list_active<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
 ) -> Result<Vec<ActiveConversationInfo>> {
     let rt = node.runtime.read().await.clone();
     let conversations = rt.conversations().await;
@@ -209,7 +209,7 @@ pub(super) async fn list_active<P: Provider + 'static>(
 }
 
 pub(super) async fn kill<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     agent: String,
     sender: String,
 ) -> Result<bool> {
@@ -226,7 +226,7 @@ pub(super) async fn kill<P: Provider + 'static>(
 }
 
 pub(super) async fn reply_to_ask<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     agent: String,
     sender: String,
     content: String,
@@ -265,7 +265,7 @@ pub(super) async fn reply_to_ask<P: Provider + 'static>(
 }
 
 pub(super) async fn steer<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: SteerSessionMsg,
 ) -> Result<()> {
     let rt = node.runtime.read().await.clone();

@@ -1,12 +1,12 @@
 //! Plugin lifecycle: install, uninstall, list, search.
 
-use crate::node::Node;
+use crate::daemon::Daemon;
 use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use wcore::protocol::message::*;
 
 pub(super) fn install<'a, P: Provider + 'static>(
-    node: &'a Node<P>,
+    node: &'a Daemon<P>,
     req: InstallPluginMsg,
 ) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send + 'a {
     async_stream::try_stream! {
@@ -90,7 +90,7 @@ pub(super) fn install<'a, P: Provider + 'static>(
 }
 
 pub(super) fn uninstall<'a, P: Provider + 'static>(
-    node: &'a Node<P>,
+    node: &'a Daemon<P>,
     plugin: String,
 ) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send + 'a {
     async_stream::try_stream! {
@@ -134,7 +134,7 @@ pub(super) fn uninstall<'a, P: Provider + 'static>(
     }
 }
 
-pub(super) async fn list<P: Provider + 'static>(node: &Node<P>) -> Result<Vec<PluginInfo>> {
+pub(super) async fn list<P: Provider + 'static>(node: &Daemon<P>) -> Result<Vec<PluginInfo>> {
     let mut result: Vec<PluginInfo> = scan_plugin_manifests(&node.config_dir)
         .into_iter()
         .map(|(name, manifest)| PluginInfo {

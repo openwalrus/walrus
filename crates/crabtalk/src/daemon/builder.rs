@@ -1,11 +1,11 @@
-//! Node construction and lifecycle methods.
+//! Daemon construction and lifecycle methods.
 
 use crate::{
-    Node, NodeConfig,
+    Daemon, NodeConfig,
+    daemon::{SharedRuntime, hook::DaemonHook},
+    daemon::{cron, event, host::DaemonEnv},
     hooks::{Memory, delegate},
     mcp::McpHandler,
-    node::{SharedRuntime, hook::NodeHook},
-    node::{cron, event, host::NodeEnv},
     storage::FsStorage,
 };
 use anyhow::Result;
@@ -74,7 +74,7 @@ pub(crate) fn build_single_agent_config(
     Ok(agent)
 }
 
-impl<P: Provider + 'static> Node<P> {
+impl<P: Provider + 'static> Daemon<P> {
     pub(crate) async fn build(
         config: &NodeConfig,
         config_dir: &Path,
@@ -90,7 +90,7 @@ impl<P: Provider + 'static> Node<P> {
         let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
         let (approval_tx, approval_rx) = tokio::sync::mpsc::channel(1);
         let approvals = Arc::new(std::sync::Mutex::new(Some(approval_rx)));
-        let node_hook = NodeHook::new(Arc::new(std::sync::RwLock::new(BTreeMap::new())));
+        let node_hook = DaemonHook::new(Arc::new(std::sync::RwLock::new(BTreeMap::new())));
 
         let (runtime, mcp, node_hook, os_hook, ask_hook) = Self::build_all(
             config,
@@ -147,7 +147,7 @@ impl<P: Provider + 'static> Node<P> {
 
         {
             let events_for_sink = events.clone();
-            let sink: crate::node::hook::EventSink =
+            let sink: crate::daemon::hook::EventSink =
                 Arc::new(move |source: &str, payload: &str| {
                     events_for_sink
                         .lock()
@@ -181,7 +181,7 @@ impl<P: Provider + 'static> Node<P> {
 
         let cwd = self.runtime.read().await.env.cwd.clone();
 
-        let node_hook = NodeHook::new(self.hook.scopes.clone());
+        let node_hook = DaemonHook::new(self.hook.scopes.clone());
 
         let (mut new_runtime, _mcp, new_hook, _, _) = Self::build_all(
             &config,
@@ -203,7 +203,7 @@ impl<P: Provider + 'static> Node<P> {
         }
         {
             let events_for_sink = self.events.clone();
-            let sink: crate::node::hook::EventSink =
+            let sink: crate::daemon::hook::EventSink =
                 Arc::new(move |source: &str, payload: &str| {
                     events_for_sink
                         .lock()
@@ -217,21 +217,21 @@ impl<P: Provider + 'static> Node<P> {
         Ok(())
     }
 
-    /// Build NodeHook, NodeEnv, and Runtime in one shot.
+    /// Build DaemonHook, DaemonEnv, and Runtime in one shot.
     async fn build_all(
         config: &NodeConfig,
         config_dir: &Path,
         build_provider: &BuildProvider<P>,
         runtime_once: Arc<OnceLock<SharedRuntime<P>>>,
         cwd: PathBuf,
-        mut node_hook: NodeHook,
-        conversation_cwds: crate::node::ConversationCwds,
-        pending_asks: crate::node::PendingAsks,
+        mut node_hook: DaemonHook,
+        conversation_cwds: crate::daemon::ConversationCwds,
+        pending_asks: crate::daemon::PendingAsks,
         approval_tx: crate::hooks::os::ApprovalTx,
     ) -> Result<(
-        Runtime<crate::node::NodeCfg<P>>,
+        Runtime<crate::daemon::DaemonCfg<P>>,
         Arc<McpHandler>,
-        Arc<NodeHook>,
+        Arc<DaemonHook>,
         Arc<crate::hooks::os::OsHook>,
         Arc<crate::hooks::ask_user::AskUserHook>,
     )> {
@@ -257,9 +257,9 @@ impl<P: Provider + 'static> Node<P> {
         );
         let node_hook = Arc::new(node_hook);
 
-        // Build NodeEnv.
+        // Build DaemonEnv.
         let (events_tx, _) = broadcast::channel(256);
-        let env = Arc::new(NodeEnv {
+        let env = Arc::new(DaemonEnv {
             events_tx,
             cwd,
             conversation_cwds,
@@ -295,15 +295,15 @@ impl<P: Provider + 'static> Node<P> {
     }
 
     fn register_tools(
-        node_hook: &mut NodeHook,
+        node_hook: &mut DaemonHook,
         storage: Arc<FsStorage>,
         config: &NodeConfig,
         config_dir: &Path,
         mcp_handler: Arc<McpHandler>,
         runtime_once: Arc<OnceLock<SharedRuntime<P>>>,
         cwd: PathBuf,
-        conversation_cwds: crate::node::ConversationCwds,
-        pending_asks: crate::node::PendingAsks,
+        conversation_cwds: crate::daemon::ConversationCwds,
+        pending_asks: crate::daemon::PendingAsks,
         approval_tx: crate::hooks::os::ApprovalTx,
     ) -> (
         Arc<crate::hooks::os::OsHook>,
@@ -370,7 +370,7 @@ impl<P: Provider + 'static> Node<P> {
     }
 
     fn register_agents(
-        runtime: &mut Runtime<crate::node::NodeCfg<P>>,
+        runtime: &mut Runtime<crate::daemon::DaemonCfg<P>>,
         config: &NodeConfig,
         config_dir: &Path,
         manifest: &ResolvedManifest,

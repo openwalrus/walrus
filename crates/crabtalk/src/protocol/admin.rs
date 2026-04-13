@@ -1,7 +1,7 @@
 //! Administrative handlers: ping, reload, stats, crons, events, services.
 
-use crate::node::Node;
-use crate::node::{cron::CronEntry, event::EventSubscription};
+use crate::daemon::Daemon;
+use crate::daemon::{cron::CronEntry, event::EventSubscription};
 use anyhow::Result;
 use crabllm_core::Provider;
 use runtime::Env;
@@ -13,11 +13,11 @@ pub(super) async fn ping() -> Result<()> {
     Ok(())
 }
 
-pub(super) async fn reload<P: Provider + 'static>(node: &Node<P>) -> Result<()> {
+pub(super) async fn reload<P: Provider + 'static>(node: &Daemon<P>) -> Result<()> {
     node.reload().await
 }
 
-pub(super) async fn get_stats<P: Provider + 'static>(node: &Node<P>) -> Result<DaemonStats> {
+pub(super) async fn get_stats<P: Provider + 'static>(node: &Daemon<P>) -> Result<DaemonStats> {
     let rt = node.runtime.read().await.clone();
     let active = rt.conversation_count().await;
     let agents = rt.agents().len() as u32;
@@ -36,7 +36,7 @@ pub(super) async fn get_stats<P: Provider + 'static>(node: &Node<P>) -> Result<D
 }
 
 pub(super) async fn create_cron<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: CreateCronMsg,
 ) -> Result<CronInfo> {
     let rt = node.runtime.read().await.clone();
@@ -62,11 +62,11 @@ pub(super) async fn create_cron<P: Provider + 'static>(
     Ok(cron_entry_to_info(&created))
 }
 
-pub(super) async fn delete_cron<P: Provider + 'static>(node: &Node<P>, id: u64) -> Result<bool> {
+pub(super) async fn delete_cron<P: Provider + 'static>(node: &Daemon<P>, id: u64) -> Result<bool> {
     Ok(node.crons.lock().await.delete(id))
 }
 
-pub(super) async fn list_crons<P: Provider + 'static>(node: &Node<P>) -> Result<CronList> {
+pub(super) async fn list_crons<P: Provider + 'static>(node: &Daemon<P>) -> Result<CronList> {
     let entries = node.crons.lock().await.list();
     Ok(CronList {
         crons: entries.iter().map(cron_entry_to_info).collect(),
@@ -74,7 +74,7 @@ pub(super) async fn list_crons<P: Provider + 'static>(node: &Node<P>) -> Result<
 }
 
 pub(super) fn subscribe_events<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
 ) -> impl futures_core::Stream<Item = Result<AgentEventMsg>> + Send {
     let runtime = node.runtime.clone();
     async_stream::try_stream! {
@@ -93,7 +93,7 @@ pub(super) fn subscribe_events<P: Provider + 'static>(
 }
 
 pub(super) async fn subscribe_event<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: SubscribeEventMsg,
 ) -> Result<SubscriptionInfo> {
     let rt = node.runtime.read().await.clone();
@@ -115,7 +115,7 @@ pub(super) async fn subscribe_event<P: Provider + 'static>(
 }
 
 pub(super) async fn unsubscribe_event<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     id: u64,
 ) -> Result<bool> {
     Ok(node
@@ -126,7 +126,7 @@ pub(super) async fn unsubscribe_event<P: Provider + 'static>(
 }
 
 pub(super) async fn list_subscriptions<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
 ) -> Result<SubscriptionList> {
     let subs = node.events.lock().expect("event bus lock poisoned").list();
     Ok(SubscriptionList {
@@ -135,7 +135,7 @@ pub(super) async fn list_subscriptions<P: Provider + 'static>(
 }
 
 pub(super) async fn publish_event<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     req: PublishEventMsg,
 ) -> Result<()> {
     node.events
@@ -146,7 +146,7 @@ pub(super) async fn publish_event<P: Provider + 'static>(
 }
 
 pub(super) async fn start_service<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     name: String,
     force: bool,
 ) -> Result<()> {
@@ -194,7 +194,7 @@ pub(super) async fn service_logs(name: String, lines: u32) -> Result<String> {
 }
 
 fn find_command_service<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     name: &str,
 ) -> Result<plugin::manifest::CommandConfig> {
     for (_, manifest) in super::plugin::scan_plugin_manifests(&node.config_dir) {

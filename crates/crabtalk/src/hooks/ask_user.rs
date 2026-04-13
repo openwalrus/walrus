@@ -1,6 +1,6 @@
 //! Ask-user tool — as a Hook implementation.
 
-use crate::node::PendingAsks;
+use crate::daemon::PendingAsks;
 use runtime::Hook;
 use serde::Deserialize;
 use std::time::Duration;

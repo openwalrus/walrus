@@ -1,6 +1,6 @@
 //! OS tools — bash, read, edit — as a Hook implementation.
 
-use crate::node::ConversationCwds;
+use crate::daemon::ConversationCwds;
 use bash::Bash;
 pub use bash::BashConfig;
 use edit::Edit;

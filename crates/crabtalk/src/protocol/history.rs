@@ -1,13 +1,13 @@
 //! Conversation history: list, get, delete persisted sessions.
 
-use crate::node::Node;
+use crate::daemon::Daemon;
 use anyhow::Result;
 use crabllm_core::Provider;
 use wcore::protocol::message::*;
 use wcore::storage::Storage;
 
 pub(super) async fn list_conversations<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     agent: String,
     sender: String,
 ) -> Result<Vec<ConversationInfo>> {
@@ -16,7 +16,7 @@ pub(super) async fn list_conversations<P: Provider + 'static>(
 }
 
 pub(super) async fn get_conversation_history<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     slug: String,
 ) -> Result<ConversationHistory> {
     let rt = node.runtime.read().await.clone();
@@ -47,7 +47,7 @@ pub(super) async fn get_conversation_history<P: Provider + 'static>(
 }
 
 pub(super) async fn delete_conversation<P: Provider + 'static>(
-    node: &Node<P>,
+    node: &Daemon<P>,
     slug: String,
 ) -> Result<()> {
     let rt = node.runtime.read().await.clone();

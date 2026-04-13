@@ -4,7 +4,7 @@
 //! Memory is authoritative at runtime; `cron/crons.toml` under the
 //! config directory is recovery for restarts.
 
-use crate::node::SharedRuntime;
+use crate::daemon::SharedRuntime;
 use crabllm_core::Provider;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
