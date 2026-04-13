@@ -55,6 +55,20 @@ impl Hook for McpHook {
         vec![Mcp::as_tool()]
     }
 
+    fn scoped_tools(&self, config: &wcore::AgentConfig) -> (Vec<String>, Option<String>) {
+        if config.mcps.is_empty() {
+            return (vec![], None);
+        }
+        let tools = self
+            .schema()
+            .iter()
+            .map(|t| t.function.name.clone())
+            .collect();
+        let names: Vec<&str> = config.mcps.iter().map(|s| s.as_str()).collect();
+        let line = format!("mcp servers: {}", names.join(", "));
+        (tools, Some(line))
+    }
+
     fn system_prompt(&self) -> Option<String> {
         Some(self.prompt.clone())
     }

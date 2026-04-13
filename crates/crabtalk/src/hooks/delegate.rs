@@ -79,6 +79,19 @@ impl<P: Provider + 'static> Hook for DelegateHook<P> {
         vec![Delegate::as_tool()]
     }
 
+    fn scoped_tools(&self, config: &wcore::AgentConfig) -> (Vec<String>, Option<String>) {
+        if config.members.is_empty() {
+            return (vec![], None);
+        }
+        let tools = self
+            .schema()
+            .iter()
+            .map(|t| t.function.name.clone())
+            .collect();
+        let line = format!("members: {}", config.members.join(", "));
+        (tools, Some(line))
+    }
+
     fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
         if name != "delegate" {
             return None;

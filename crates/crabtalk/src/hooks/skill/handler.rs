@@ -50,6 +50,19 @@ impl<S: Storage + 'static> Hook for SkillHook<S> {
         build_skill_prompt(self.storage.as_ref())
     }
 
+    fn scoped_tools(&self, config: &wcore::AgentConfig) -> (Vec<String>, Option<String>) {
+        if config.skills.is_empty() {
+            return (vec![], None);
+        }
+        let tools = self
+            .schema()
+            .iter()
+            .map(|t| t.function.name.clone())
+            .collect();
+        let line = format!("skills: {}", config.skills.join(", "));
+        (tools, Some(line))
+    }
+
     fn preprocess(&self, agent: &str, content: &str) -> Option<String> {
         let trimmed = content.trim_start();
         let rest = trimmed.strip_prefix('/')?;

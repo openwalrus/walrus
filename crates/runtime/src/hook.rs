@@ -46,6 +46,20 @@ pub trait Hook: Send + Sync {
         None
     }
 
+    /// Tools to include when building a scoped agent's whitelist, plus an
+    /// optional scope prompt line (e.g. `"skills: foo, bar"`).
+    ///
+    /// Default: include all tools from `schema()` unconditionally, no
+    /// scope line. Override to gate inclusion on agent config fields.
+    fn scoped_tools(&self, _config: &AgentConfig) -> (Vec<String>, Option<String>) {
+        let tools = self
+            .schema()
+            .iter()
+            .map(|t| t.function.name.clone())
+            .collect();
+        (tools, None)
+    }
+
     /// Dispatch a tool call by name. Return `None` if this hook doesn't
     /// own the tool — Env will try the next hook or the legacy entries.
     fn dispatch<'a>(&'a self, _name: &'a str, _call: ToolDispatch) -> Option<ToolFuture<'a>> {

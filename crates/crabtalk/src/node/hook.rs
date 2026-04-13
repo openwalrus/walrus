@@ -23,14 +23,6 @@ pub struct AgentScope {
 /// Late-bindable sink for `agent:{name}:done` event publishes.
 pub type EventSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
-/// Base tools always included in every agent's whitelist.
-const BASE_TOOLS: &[&str] = &["ask_user", "read", "edit"];
-const SHELL_TOOLS: &[&str] = &["bash"];
-const SKILL_TOOLS: &[&str] = &["skill"];
-const MCP_TOOLS: &[&str] = &["mcp"];
-const MEMORY_TOOLS: &[&str] = &["recall", "remember", "memory", "forget"];
-const TASK_TOOLS: &[&str] = &["delegate"];
-
 /// Composite hook aggregating all node sub-hooks.
 pub struct NodeHook {
     pub scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
@@ -104,45 +96,14 @@ impl NodeHook {
             return;
         }
 
-        let mut whitelist: Vec<String> = BASE_TOOLS.iter().map(|&s| s.to_owned()).collect();
-        if SHELL_TOOLS
-            .iter()
-            .any(|&t| self.dispatch_map.contains_key(t))
-        {
-            for &t in SHELL_TOOLS {
-                whitelist.push(t.to_owned());
-            }
-        }
-        if MEMORY_TOOLS
-            .iter()
-            .any(|&t| self.dispatch_map.contains_key(t))
-        {
-            for &t in MEMORY_TOOLS {
-                whitelist.push(t.to_owned());
-            }
-        }
+        let mut whitelist = Vec::new();
         let mut scope_lines = Vec::new();
-
-        if !config.skills.is_empty() {
-            for &t in SKILL_TOOLS {
-                whitelist.push(t.to_owned());
+        for hook in self.hooks.values() {
+            let (tools, line) = hook.scoped_tools(config);
+            whitelist.extend(tools);
+            if let Some(line) = line {
+                scope_lines.push(line);
             }
-            scope_lines.push(format!("skills: {}", config.skills.join(", ")));
-        }
-
-        if !config.mcps.is_empty() {
-            for &t in MCP_TOOLS {
-                whitelist.push(t.to_owned());
-            }
-            let server_names: Vec<&str> = config.mcps.iter().map(|s| s.as_str()).collect();
-            scope_lines.push(format!("mcp servers: {}", server_names.join(", ")));
-        }
-
-        if !config.members.is_empty() {
-            for &t in TASK_TOOLS {
-                whitelist.push(t.to_owned());
-            }
-            scope_lines.push(format!("members: {}", config.members.join(", ")));
         }
 
         if !scope_lines.is_empty() {
