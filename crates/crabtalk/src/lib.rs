@@ -5,7 +5,6 @@ pub mod hooks;
 pub mod mcp;
 mod protocol;
 pub mod provider;
-#[cfg(feature = "fs")]
 pub mod storage;
 
 #[cfg(unix)]

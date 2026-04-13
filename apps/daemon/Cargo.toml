@@ -16,7 +16,7 @@ path = "src/bin/main.rs"
 
 [dependencies]
 command.workspace = true
-crabtalk = { workspace = true, features = ["fs"] }
+crabtalk.workspace = true
 transport.workspace = true
 wcore.workspace = true
 
