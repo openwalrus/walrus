@@ -12,6 +12,8 @@ pub struct SystemConfig {
     pub tasks: TasksConfig,
     /// Built-in memory configuration (`[system.memory]`).
     pub memory: MemoryConfig,
+    /// Bash tool configuration (`[system.bash]`).
+    pub bash: BashConfig,
 }
 
 /// Task executor pool configuration.
@@ -34,6 +36,18 @@ impl Default for TasksConfig {
             task_timeout: 300,
         }
     }
+}
+
+/// Bash tool configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BashConfig {
+    /// Disable the bash tool entirely.
+    #[serde(default)]
+    pub disabled: bool,
+    /// Reject commands containing any of these strings (e.g. `".ssh"`).
+    #[serde(default)]
+    pub deny: Vec<String>,
 }
 
 /// Built-in memory configuration.

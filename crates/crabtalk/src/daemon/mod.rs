@@ -56,12 +56,10 @@ pub struct Daemon<P: Provider + 'static = DefaultProvider> {
     pub(crate) events: Arc<std::sync::Mutex<EventBus>>,
     pub(crate) build_provider: BuildProvider<P>,
     pub(crate) mcp: Arc<crate::mcp::McpHandler>,
-    /// OS tools hook — owns conversation CWDs, bash policy, approval channel.
+    /// OS tools hook — owns conversation CWDs and bash policy.
     pub(crate) os_hook: Arc<hooks::os::OsHook>,
     /// Ask-user hook — owns pending ask oneshots.
     pub(crate) ask_hook: Arc<hooks::ask_user::AskUserHook>,
-    /// Bash approval requests — take once to handle in the app layer.
-    pub approvals: Arc<std::sync::Mutex<Option<mpsc::Receiver<hooks::os::ApprovalRequest>>>>,
 }
 
 impl<P: Provider + 'static> Clone for Daemon<P> {
@@ -77,7 +75,6 @@ impl<P: Provider + 'static> Clone for Daemon<P> {
             mcp: self.mcp.clone(),
             os_hook: self.os_hook.clone(),
             ask_hook: self.ask_hook.clone(),
-            approvals: self.approvals.clone(),
         }
     }
 }

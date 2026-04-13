@@ -14,4 +14,4 @@ pub use manifest::{
 pub use mcp::McpServerConfig;
 pub use node::{NodeConfig, validate_providers};
 pub use provider::{ApiStandard, PROVIDER_PRESETS, ProviderDef, ProviderPreset};
-pub use system::{MemoryConfig, SystemConfig, TasksConfig};
+pub use system::{BashConfig, MemoryConfig, SystemConfig, TasksConfig};

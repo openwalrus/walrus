@@ -1,6 +1,6 @@
 //! Bash tool handler.
 
-use super::{Bash, config::Verdict};
+use super::Bash;
 use crate::hooks::os::OsHook;
 use wcore::ToolDispatch;
 
@@ -12,25 +12,8 @@ impl OsHook {
         let input: Bash =
             serde_json::from_str(&call.args).map_err(|e| format!("invalid arguments: {e}"))?;
 
-        // Policy check.
-        match self.bash_config.check(&input.command) {
-            Verdict::Allow => {}
-            Verdict::Deny(reason) => return Err(reason),
-            Verdict::Ask(reason) => {
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let request = crate::hooks::os::ApprovalRequest {
-                    command: input.command.clone(),
-                    reason: reason.clone(),
-                    reply: tx,
-                };
-                if self.approval_tx.send(request).await.is_err() {
-                    return Err(reason);
-                }
-                match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
-                    Ok(Ok(true)) => {} // approved, continue
-                    _ => return Err(reason),
-                }
-            }
+        if let Some(reason) = super::config::check(&self.bash_config, &input.command) {
+            return Err(reason);
         }
 
         let cwd = self.effective_cwd(call.conversation_id);

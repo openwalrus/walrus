@@ -1,9 +1,7 @@
 //! Bash tool — schema definition.
 
-mod config;
+pub(super) mod config;
 mod handler;
-
-pub use config::BashConfig;
 
 use schemars::JsonSchema;
 use serde::Deserialize;

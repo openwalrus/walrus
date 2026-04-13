@@ -18,10 +18,10 @@ pub use agent::{
     },
 };
 pub use config::{
-    ApiStandard, ManifestConfig, McpServerConfig, MemoryConfig, NodeConfig, PackageMeta,
-    ProviderDef, ResolvedManifest, Setup, SystemConfig, TasksConfig, check_skill_conflicts,
-    external_source_name, filter_disabled_external, load_agents_dir, load_agents_dirs, repo_slug,
-    resolve_manifests, scan_skill_names, validate_providers,
+    ApiStandard, BashConfig, ManifestConfig, McpServerConfig, MemoryConfig, NodeConfig,
+    PackageMeta, ProviderDef, ResolvedManifest, Setup, SystemConfig, TasksConfig,
+    check_skill_conflicts, external_source_name, filter_disabled_external, load_agents_dir,
+    load_agents_dirs, repo_slug, resolve_manifests, scan_skill_names, validate_providers,
 };
 pub use storage::{ArchiveSegment, ConversationMeta, EventLine, sender_slug};
 

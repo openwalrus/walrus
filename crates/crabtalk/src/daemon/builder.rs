@@ -88,8 +88,6 @@ impl<P: Provider + 'static> Daemon<P> {
         let runtime_once: Arc<OnceLock<SharedRuntime<P>>> = Arc::new(OnceLock::new());
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
-        let (approval_tx, approval_rx) = tokio::sync::mpsc::channel(1);
-        let approvals = Arc::new(std::sync::Mutex::new(Some(approval_rx)));
         let node_hook = DaemonHook::new(Arc::new(std::sync::RwLock::new(BTreeMap::new())));
 
         let (runtime, mcp, node_hook, os_hook, ask_hook) = Self::build_all(
@@ -101,7 +99,6 @@ impl<P: Provider + 'static> Daemon<P> {
             node_hook,
             Default::default(),
             Default::default(),
-            approval_tx,
         )
         .await?;
         let shared_runtime: SharedRuntime<P> = Arc::new(RwLock::new(Arc::new(runtime)));
@@ -168,7 +165,6 @@ impl<P: Provider + 'static> Daemon<P> {
             mcp,
             os_hook,
             ask_hook,
-            approvals,
         })
     }
 
@@ -192,7 +188,6 @@ impl<P: Provider + 'static> Daemon<P> {
             node_hook,
             self.os_hook.conversation_cwds().clone(),
             self.ask_hook.pending_asks().clone(),
-            self.os_hook.approval_tx().clone(),
         )
         .await?;
         {
@@ -227,7 +222,6 @@ impl<P: Provider + 'static> Daemon<P> {
         mut node_hook: DaemonHook,
         conversation_cwds: crate::daemon::ConversationCwds,
         pending_asks: crate::daemon::PendingAsks,
-        approval_tx: crate::hooks::os::ApprovalTx,
     ) -> Result<(
         Runtime<crate::daemon::DaemonCfg<P>>,
         Arc<McpHandler>,
@@ -247,13 +241,11 @@ impl<P: Provider + 'static> Daemon<P> {
             &mut node_hook,
             storage.clone(),
             config,
-            config_dir,
             mcp_handler.clone(),
             runtime_once,
             cwd.clone(),
             conversation_cwds.clone(),
             pending_asks,
-            approval_tx,
         );
         let node_hook = Arc::new(node_hook);
 
@@ -298,13 +290,11 @@ impl<P: Provider + 'static> Daemon<P> {
         node_hook: &mut DaemonHook,
         storage: Arc<FsStorage>,
         config: &NodeConfig,
-        config_dir: &Path,
         mcp_handler: Arc<McpHandler>,
         runtime_once: Arc<OnceLock<SharedRuntime<P>>>,
         cwd: PathBuf,
         conversation_cwds: crate::daemon::ConversationCwds,
         pending_asks: crate::daemon::PendingAsks,
-        approval_tx: crate::hooks::os::ApprovalTx,
     ) -> (
         Arc<crate::hooks::os::OsHook>,
         Arc<crate::hooks::ask_user::AskUserHook>,
@@ -314,13 +304,11 @@ impl<P: Provider + 'static> Daemon<P> {
         let read_files: crate::hooks::os::ReadFiles = Default::default();
         let mcp_server_list = mcp_handler.cached_list();
 
-        let bash_config = crate::hooks::os::BashConfig::load(config_dir);
         let os_hook = Arc::new(crate::hooks::os::OsHook::new(
             cwd,
             conversation_cwds.clone(),
             read_files.clone(),
-            bash_config,
-            approval_tx,
+            config.system.bash.clone(),
         ));
         node_hook.register_hook("os", os_hook.clone());
 

@@ -2,7 +2,6 @@
 
 use crate::daemon::ConversationCwds;
 use bash::Bash;
-pub use bash::BashConfig;
 use edit::Edit;
 use read::Read;
 use runtime::Hook;
@@ -12,8 +11,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tokio::sync::{mpsc, oneshot};
-use wcore::{ToolDispatch, ToolFuture, agent::AsTool, model::HistoryEntry};
+use wcore::{BashConfig, ToolDispatch, ToolFuture, agent::AsTool, model::HistoryEntry};
 
 mod bash;
 mod edit;
@@ -22,19 +20,6 @@ mod read;
 /// Per-conversation set of files that have been read (shared with DelegateHook
 /// for cleanup when delegated conversations close).
 pub type ReadFiles = Arc<Mutex<HashMap<u64, HashSet<PathBuf>>>>;
-
-/// A bash approval request sent to the app layer.
-pub struct ApprovalRequest {
-    /// The command that was denied.
-    pub command: String,
-    /// Why it was denied (e.g. "not in allow list" or "denied by policy").
-    pub reason: String,
-    /// Send `true` to approve, `false` to deny.
-    pub reply: oneshot::Sender<bool>,
-}
-
-/// Sender half of the approval channel.
-pub type ApprovalTx = mpsc::Sender<ApprovalRequest>;
 
 /// Maximum file size in bytes before refusing to read (50 MB).
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
@@ -58,8 +43,6 @@ pub struct OsHook {
     read_files: ReadFiles,
     /// Bash command policy.
     bash_config: BashConfig,
-    /// Approval channel for interactive bash policy prompts.
-    approval_tx: ApprovalTx,
 }
 
 impl OsHook {
@@ -68,25 +51,18 @@ impl OsHook {
         conversation_cwds: ConversationCwds,
         read_files: ReadFiles,
         bash_config: BashConfig,
-        approval_tx: ApprovalTx,
     ) -> Self {
         Self {
             cwd,
             conversation_cwds,
             read_files,
             bash_config,
-            approval_tx,
         }
     }
 
     /// Per-conversation CWD overrides.
     pub fn conversation_cwds(&self) -> &ConversationCwds {
         &self.conversation_cwds
-    }
-
-    /// Bash approval sender (for preservation across reloads).
-    pub fn approval_tx(&self) -> &ApprovalTx {
-        &self.approval_tx
     }
 
     /// Record that a file was read in a conversation.
@@ -126,12 +102,16 @@ impl OsHook {
 
 impl Hook for OsHook {
     fn schema(&self) -> Vec<wcore::model::Tool> {
-        vec![Bash::as_tool(), Read::as_tool(), Edit::as_tool()]
+        let mut tools = vec![Read::as_tool(), Edit::as_tool()];
+        if !self.bash_config.disabled {
+            tools.insert(0, Bash::as_tool());
+        }
+        tools
     }
 
     fn system_prompt(&self) -> Option<String> {
         let mut prompt = environment_block();
-        if let Some(policy) = self.bash_config.prompt_block() {
+        if let Some(policy) = bash::config::prompt_block(&self.bash_config) {
             prompt.push_str(&policy);
         }
         Some(prompt)
@@ -155,7 +135,7 @@ impl Hook for OsHook {
 
     fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
         match name {
-            "bash" => Some(Box::pin(self.handle_bash(call))),
+            "bash" if !self.bash_config.disabled => Some(Box::pin(self.handle_bash(call))),
             "read" => Some(Box::pin(self.handle_read(call))),
             "edit" => Some(Box::pin(self.handle_edit(call))),
             _ => None,

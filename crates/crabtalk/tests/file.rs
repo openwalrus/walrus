@@ -1,6 +1,6 @@
 //! Tests for read, edit, and bash tool handlers via OsHook.
 
-use crabtalk::hooks::os::{BashConfig, OsHook};
+use crabtalk::hooks::os::OsHook;
 use runtime::Hook;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
@@ -9,9 +9,7 @@ use wcore::ToolDispatch;
 fn hook(cwd: PathBuf) -> OsHook {
     let cwds = Arc::new(Mutex::new(HashMap::new()));
     let read_files = Default::default();
-    let bash_config = BashConfig::default();
-    let (approval_tx, _rx) = tokio::sync::mpsc::channel(1);
-    OsHook::new(cwd, cwds, read_files, bash_config, approval_tx)
+    OsHook::new(cwd, cwds, read_files, Default::default())
 }
 
 fn dispatch(args: &str) -> ToolDispatch {
