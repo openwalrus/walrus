@@ -16,4 +16,5 @@
 - [0082 - Scoping](rfcs/0082-scoping.md)
 - [0121 - Event Bus](rfcs/0121-event-bus.md)
 - [0135 - Agent-First Protocol](rfcs/0135-agent-first.md)
+- [0150 - Memory Store](rfcs/0150-memory-store.md)
 - [Superseded](rfcs/superseded.md)
