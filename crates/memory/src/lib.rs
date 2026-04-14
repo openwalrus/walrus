@@ -5,6 +5,7 @@
 //! persistence and dump/load land in later phases.
 
 mod bm25;
+mod dump;
 mod entry;
 mod error;
 mod file;

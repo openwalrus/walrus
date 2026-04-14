@@ -10,6 +10,8 @@ pub enum Error {
     Duplicate(String),
     #[error("bad memory file format: {0}")]
     BadFormat(&'static str),
+    #[error("invalid entry name for dump: {0:?}")]
+    InvalidName(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

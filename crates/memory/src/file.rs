@@ -17,7 +17,7 @@
 //! ```text
 //!   id          u64 LE
 //!   created_at  u64 LE
-//!   kind        u32 LE    (0 = Note, 1 = Archive)
+//!   kind        u32 LE    (0 = Note, 1 = Archive, 2 = Prompt)
 //!   name        u32 len LE + utf8 bytes
 //!   content     u32 len LE + utf8 bytes
 //!   alias_cnt   u32 LE
@@ -46,6 +46,7 @@ const VERSION: u32 = 1;
 const HEADER_LEN: usize = 16;
 const KIND_NOTE: u32 = 0;
 const KIND_ARCHIVE: u32 = 1;
+const KIND_PROMPT: u32 = 2;
 
 pub(crate) struct Snapshot {
     pub(crate) next_id: EntryId,
@@ -130,6 +131,7 @@ fn encode_entry(buf: &mut Vec<u8>, e: &Entry) -> Result<()> {
     let kind = match e.kind {
         EntryKind::Note => KIND_NOTE,
         EntryKind::Archive => KIND_ARCHIVE,
+        EntryKind::Prompt => KIND_PROMPT,
     };
     buf.extend_from_slice(&kind.to_le_bytes());
     encode_string(buf, &e.name)?;
@@ -192,6 +194,7 @@ impl<'a> Cursor<'a> {
         let kind = match self.read_u32()? {
             KIND_NOTE => EntryKind::Note,
             KIND_ARCHIVE => EntryKind::Archive,
+            KIND_PROMPT => EntryKind::Prompt,
             _ => return Err(Error::BadFormat("unknown entry kind")),
         };
         let name = self.read_string()?;

@@ -1,5 +1,6 @@
 use crate::{
     bm25::{Index, tokenize},
+    dump,
     entry::{Entry, EntryId, EntryKind},
     error::{Error, Result},
     file,
@@ -7,6 +8,7 @@ use crate::{
 };
 use std::{
     collections::HashMap,
+    fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -124,16 +126,12 @@ impl Memory {
         }
         let id = self.next_id;
         self.next_id += 1;
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
         let entry = Entry {
             id,
             name: name.clone(),
             content,
             aliases,
-            created_at,
+            created_at: now_unix(),
             kind,
         };
         self.reindex(&entry);
@@ -193,4 +191,86 @@ impl Memory {
         entries.sort_by_key(|e| e.id);
         file::write(path, self.next_id, &entries)
     }
+
+    /// Materialize the db as a markdown tree at `dir`. Each kind's
+    /// subdirectory is cleared before writing so renames and deletes
+    /// don't leave orphan files behind. Anything else in `dir` (e.g. a
+    /// user's `book.toml`) is left alone.
+    pub fn dump(&self, dir: impl AsRef<Path>) -> Result<()> {
+        let dir = dir.as_ref();
+        let mut by_kind: HashMap<EntryKind, Vec<&Entry>> = HashMap::new();
+        for e in self.entries.values() {
+            dump::validate_name(&e.name)?;
+            by_kind.entry(e.kind).or_default().push(e);
+        }
+
+        fs::create_dir_all(dir)?;
+        for (kind, subdir, _) in dump::KIND_SECTIONS {
+            let path = dir.join(subdir);
+            if path.exists() {
+                fs::remove_dir_all(&path)?;
+            }
+            if by_kind.get(kind).is_some_and(|v| !v.is_empty()) {
+                fs::create_dir_all(&path)?;
+                for e in &by_kind[kind] {
+                    fs::write(
+                        path.join(format!("{}.md", e.name)),
+                        dump::serialize_entry(e),
+                    )?;
+                }
+            }
+        }
+
+        fs::write(dir.join("SUMMARY.md"), dump::build_summary(&by_kind))?;
+        Ok(())
+    }
+
+    /// Replace the db's contents with entries read from a markdown tree
+    /// at `dir`. Validates fully before mutating — a mid-load error
+    /// leaves the current state untouched.
+    pub fn load(&mut self, dir: impl AsRef<Path>) -> Result<()> {
+        let dir = dir.as_ref();
+        let loaded = dump::read_tree(dir)?;
+
+        let mut entries: HashMap<EntryId, Entry> = HashMap::with_capacity(loaded.len());
+        let mut by_name: HashMap<String, EntryId> = HashMap::with_capacity(loaded.len());
+        let mut index = Index::new();
+        let mut next_id: EntryId = 1;
+
+        for item in loaded {
+            if by_name.contains_key(&item.name) {
+                return Err(Error::Duplicate(item.name));
+            }
+            let id = next_id;
+            next_id += 1;
+            let entry = Entry {
+                id,
+                name: item.name.clone(),
+                content: item.content,
+                aliases: item.aliases,
+                created_at: now_unix(),
+                kind: item.kind,
+            };
+            let mut terms = tokenize(&entry.content);
+            for alias in &entry.aliases {
+                terms.extend(tokenize(alias));
+            }
+            index.insert(id, &terms);
+            by_name.insert(item.name, id);
+            entries.insert(id, entry);
+        }
+
+        self.entries = entries;
+        self.by_name = by_name;
+        self.index = index;
+        self.next_id = next_id;
+        self.flush()
+    }
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
