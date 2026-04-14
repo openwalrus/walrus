@@ -25,7 +25,7 @@ impl Config for TestCfg {
 
 fn runtime(provider: TestProvider) -> Runtime<TestCfg> {
     let storage = Arc::new(InMemoryStorage::new());
-    let memory = Arc::new(std::sync::RwLock::new(memory::Memory::new()));
+    let memory = Arc::new(parking_lot::RwLock::new(memory::Memory::new()));
     Runtime::new(
         Model::new(provider),
         Arc::new(()),
@@ -283,9 +283,8 @@ async fn resume_prepends_archive_content_from_memory() {
     use wcore::{model::HistoryEntry, storage::Storage};
 
     let storage = Arc::new(InMemoryStorage::new());
-    let mem = Arc::new(std::sync::RwLock::new(memory::Memory::new()));
+    let mem = Arc::new(parking_lot::RwLock::new(memory::Memory::new()));
     mem.write()
-        .unwrap()
         .apply(Op::Add {
             name: "archive-test".into(),
             content: "earlier context, compacted".into(),
@@ -338,7 +337,7 @@ async fn resume_injects_placeholder_when_archive_missing() {
 
     let storage = Arc::new(InMemoryStorage::new());
     // Empty memory — the referenced archive doesn't exist.
-    let mem = Arc::new(std::sync::RwLock::new(memory::Memory::new()));
+    let mem = Arc::new(parking_lot::RwLock::new(memory::Memory::new()));
 
     let handle = storage.create_session("crab", "tester").unwrap();
     storage

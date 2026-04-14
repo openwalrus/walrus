@@ -8,7 +8,8 @@ use crate::{
     },
 };
 use anyhow::Result;
-use std::{collections::HashMap, sync::Mutex};
+use parking_lot::Mutex;
+use std::collections::HashMap;
 
 /// Per-session state in the in-memory backend.
 #[derive(Clone)]
@@ -59,23 +60,17 @@ impl Storage for InMemoryStorage {
     // ── Skills ─────────────────────────────────────────────────────
 
     fn list_skills(&self) -> Result<Vec<Skill>> {
-        Ok(self.skills.lock().unwrap().clone())
+        Ok(self.skills.lock().clone())
     }
 
     fn load_skill(&self, name: &str) -> Result<Option<Skill>> {
-        Ok(self
-            .skills
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|s| s.name == name)
-            .cloned())
+        Ok(self.skills.lock().iter().find(|s| s.name == name).cloned())
     }
 
     // ── Sessions ───────────────────────────────────────────────────
 
     fn create_session(&self, agent: &str, created_by: &str) -> Result<SessionHandle> {
-        let mut seq = self.next_session_seq.lock().unwrap();
+        let mut seq = self.next_session_seq.lock();
         *seq += 1;
         let slug = format!("{}_{}", agent, seq);
         let state = SessionState {
@@ -90,12 +85,12 @@ impl Storage for InMemoryStorage {
             events: Vec::new(),
             compacts: Vec::new(),
         };
-        self.sessions.lock().unwrap().insert(slug.clone(), state);
+        self.sessions.lock().insert(slug.clone(), state);
         Ok(SessionHandle::new(slug))
     }
 
     fn find_latest_session(&self, agent: &str, created_by: &str) -> Result<Option<SessionHandle>> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = self.sessions.lock();
         for (slug, state) in sessions.iter() {
             if state.meta.agent == agent && state.meta.created_by == created_by {
                 return Ok(Some(SessionHandle::new(slug.clone())));
@@ -105,7 +100,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn load_session(&self, handle: &SessionHandle) -> Result<Option<SessionSnapshot>> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = self.sessions.lock();
         let Some(state) = sessions.get(handle.as_str()) else {
             return Ok(None);
         };
@@ -118,7 +113,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = self.sessions.lock();
         Ok(sessions
             .iter()
             .map(|(slug, state)| SessionSummary {
@@ -133,7 +128,7 @@ impl Storage for InMemoryStorage {
         handle: &SessionHandle,
         entries: &[HistoryEntry],
     ) -> Result<()> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock();
         if let Some(state) = sessions.get_mut(handle.as_str()) {
             state.messages.extend(entries.iter().cloned());
         }
@@ -141,7 +136,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn append_session_events(&self, handle: &SessionHandle, events: &[EventLine]) -> Result<()> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock();
         if let Some(state) = sessions.get_mut(handle.as_str()) {
             state.events.extend(events.iter().cloned());
         }
@@ -149,7 +144,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn append_session_compact(&self, handle: &SessionHandle, archive_name: &str) -> Result<()> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock();
         if let Some(state) = sessions.get_mut(handle.as_str()) {
             state
                 .compacts
@@ -160,7 +155,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn update_session_meta(&self, handle: &SessionHandle, meta: &ConversationMeta) -> Result<()> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock();
         if let Some(state) = sessions.get_mut(handle.as_str()) {
             state.meta = meta.clone();
         }
@@ -168,12 +163,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn delete_session(&self, handle: &SessionHandle) -> Result<bool> {
-        Ok(self
-            .sessions
-            .lock()
-            .unwrap()
-            .remove(handle.as_str())
-            .is_some())
+        Ok(self.sessions.lock().remove(handle.as_str()).is_some())
     }
 
     // ── Agents ─────────────────────────────────────────────────────
@@ -182,7 +172,6 @@ impl Storage for InMemoryStorage {
         Ok(self
             .agents
             .lock()
-            .unwrap()
             .values()
             .map(|(c, prompt)| {
                 let mut config = c.clone();
@@ -193,7 +182,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn load_agent(&self, id: &AgentId) -> Result<Option<AgentConfig>> {
-        let agents = self.agents.lock().unwrap();
+        let agents = self.agents.lock();
         for (config, prompt) in agents.values() {
             if config.id == *id {
                 let mut c = config.clone();
@@ -205,7 +194,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn load_agent_by_name(&self, name: &str) -> Result<Option<AgentConfig>> {
-        let agents = self.agents.lock().unwrap();
+        let agents = self.agents.lock();
         if let Some((config, prompt)) = agents.get(name) {
             let mut c = config.clone();
             c.system_prompt = prompt.clone();
@@ -218,13 +207,12 @@ impl Storage for InMemoryStorage {
     fn upsert_agent(&self, config: &AgentConfig, prompt: &str) -> Result<()> {
         self.agents
             .lock()
-            .unwrap()
             .insert(config.name.clone(), (config.clone(), prompt.to_owned()));
         Ok(())
     }
 
     fn delete_agent(&self, id: &AgentId) -> Result<bool> {
-        let mut agents = self.agents.lock().unwrap();
+        let mut agents = self.agents.lock();
         let name = agents
             .iter()
             .find(|(_, (c, _))| c.id == *id)
@@ -238,7 +226,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn rename_agent(&self, id: &AgentId, new_name: &str) -> Result<bool> {
-        let mut agents = self.agents.lock().unwrap();
+        let mut agents = self.agents.lock();
         let old_name = agents
             .iter()
             .find(|(_, (c, _))| c.id == *id)
@@ -256,20 +244,20 @@ impl Storage for InMemoryStorage {
     // ── Manifest ───────────────────────────────────────────────────
 
     fn load_local_manifest(&self) -> Result<ManifestConfig> {
-        Ok(self.manifest.lock().unwrap().clone())
+        Ok(self.manifest.lock().clone())
     }
 
     fn save_local_manifest(&self, manifest: &ManifestConfig) -> Result<()> {
-        *self.manifest.lock().unwrap() = manifest.clone();
+        *self.manifest.lock() = manifest.clone();
         Ok(())
     }
 
     fn load_config(&self) -> Result<NodeConfig> {
-        Ok(self.config.lock().unwrap().clone())
+        Ok(self.config.lock().clone())
     }
 
     fn save_config(&self, config: &NodeConfig) -> Result<()> {
-        *self.config.lock().unwrap() = config.clone();
+        *self.config.lock() = config.clone();
         Ok(())
     }
 

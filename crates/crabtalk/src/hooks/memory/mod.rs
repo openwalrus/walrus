@@ -5,11 +5,9 @@
 
 use anyhow::Result;
 use memory::Memory as Store;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use runtime::Hook;
-use std::{
-    path::PathBuf,
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{path::PathBuf, sync::Arc};
 use wcore::{
     MemoryConfig, ToolDispatch, ToolFuture,
     agent::AsTool,
@@ -58,16 +56,12 @@ impl Memory {
         self.inner.clone()
     }
 
-    /// `unwrap` is intentional: nothing in `Memory` panics while holding
-    /// the store guard, so poisoning would only happen if a future caller
-    /// breaks that contract — and at that point a panic is the right
-    /// failure mode.
     pub(super) fn store_read(&self) -> RwLockReadGuard<'_, Store> {
-        self.inner.read().unwrap()
+        self.inner.read()
     }
 
     pub(super) fn store_write(&self) -> RwLockWriteGuard<'_, Store> {
-        self.inner.write().unwrap()
+        self.inner.write()
     }
 }
 

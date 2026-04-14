@@ -31,7 +31,7 @@ pub(super) async fn get_conversation_history<P: Provider + 'static>(
     // UI sees the same pre-compact context the model does on resume.
     if let Some(name) = snapshot.archive {
         let content = {
-            let mem = rt.memory().read().expect("memory lock poisoned");
+            let mem = rt.memory().read();
             mem.get(&name).map(|e| e.content.clone())
         };
         if let Some(summary) = content {

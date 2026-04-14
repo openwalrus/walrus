@@ -4,13 +4,14 @@ use crate::daemon::ConversationCwds;
 use crate::daemon::hook::AgentScope;
 use crate::{daemon::SharedRuntime, hooks::os::ReadFiles};
 use crabllm_core::Provider;
+use parking_lot::RwLock;
 use runtime::Hook;
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{
-        Arc, OnceLock, RwLock,
+        Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -100,7 +101,7 @@ impl<P: Provider + 'static> Hook for DelegateHook<P> {
                 return Err("no tasks provided".to_owned());
             }
             {
-                let scopes = self.scopes.read().expect("scopes lock poisoned");
+                let scopes = self.scopes.read();
                 if let Some(scope) = scopes.get(&call.agent)
                     && !scope.members.is_empty()
                 {
@@ -253,10 +254,7 @@ fn spawn_agent_task<P: Provider + 'static>(
         };
 
         conversation_cwds.lock().await.remove(&conversation_id);
-        read_files
-            .lock()
-            .expect("read_files lock poisoned")
-            .remove(&conversation_id);
+        read_files.lock().remove(&conversation_id);
         rt.close_conversation(conversation_id).await;
 
         (result_content, error_msg)

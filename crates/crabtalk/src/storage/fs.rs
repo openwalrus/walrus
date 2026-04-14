@@ -4,12 +4,12 @@
 //! separate Fs*Repo structs and the FsStorage composite.
 
 use anyhow::Result;
+use parking_lot::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     fs,
     io::ErrorKind,
     path::PathBuf,
-    sync::Mutex,
 };
 use wcore::{
     AgentConfig, AgentId, ConversationMeta, EventLine, ManifestConfig, NodeConfig,
@@ -68,7 +68,7 @@ impl FsStorage {
     }
 
     fn next_step(&self, slug: &str) -> u64 {
-        let mut counters = self.session_counters.lock().unwrap();
+        let mut counters = self.session_counters.lock();
         let counter = counters
             .entry(slug.to_owned())
             .or_insert_with(|| recover_step_counter(&self.session_dir(slug)));

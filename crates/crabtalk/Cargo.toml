@@ -28,6 +28,7 @@ cron.workspace = true
 async-stream.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
+parking_lot.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 schemars.workspace = true

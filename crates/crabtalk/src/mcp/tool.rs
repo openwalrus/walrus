@@ -2,13 +2,11 @@
 
 use super::McpHandler;
 use crate::daemon::hook::AgentScope;
+use parking_lot::RwLock;
 use runtime::Hook;
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::BTreeMap, sync::Arc};
 use wcore::{ToolDispatch, ToolFuture, agent::AsTool};
 
 /// Call an MCP tool by name, or list available tools if no exact match.
@@ -74,7 +72,6 @@ impl Hook for McpHook {
             let allowed_mcps: Vec<String> = self
                 .scopes
                 .read()
-                .expect("scopes lock poisoned")
                 .get(&call.agent)
                 .filter(|s| !s.mcps.is_empty())
                 .map(|s| s.mcps.clone())

@@ -88,7 +88,7 @@ impl<P: Provider + 'static> Daemon<P> {
         let runtime_once: Arc<OnceLock<SharedRuntime<P>>> = Arc::new(OnceLock::new());
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
-        let node_hook = DaemonHook::new(Arc::new(std::sync::RwLock::new(BTreeMap::new())));
+        let node_hook = DaemonHook::new(Arc::new(parking_lot::RwLock::new(BTreeMap::new())));
 
         let (runtime, mcp, node_hook, os_hook, ask_hook) = Self::build_all(
             config,
@@ -140,16 +140,13 @@ impl<P: Provider + 'static> Daemon<P> {
             });
         });
         let event_bus = event::EventBus::load(config_dir.to_path_buf(), fire);
-        let events = Arc::new(std::sync::Mutex::new(event_bus));
+        let events = Arc::new(parking_lot::Mutex::new(event_bus));
 
         {
             let events_for_sink = events.clone();
             let sink: crate::daemon::hook::EventSink =
                 Arc::new(move |source: &str, payload: &str| {
-                    events_for_sink
-                        .lock()
-                        .expect("event bus lock poisoned")
-                        .publish(source, payload);
+                    events_for_sink.lock().publish(source, payload);
                 });
             node_hook.set_event_sink(sink);
         }
@@ -200,10 +197,7 @@ impl<P: Provider + 'static> Daemon<P> {
             let events_for_sink = self.events.clone();
             let sink: crate::daemon::hook::EventSink =
                 Arc::new(move |source: &str, payload: &str| {
-                    events_for_sink
-                        .lock()
-                        .expect("event bus lock poisoned")
-                        .publish(source, payload);
+                    events_for_sink.lock().publish(source, payload);
                 });
             new_hook.set_event_sink(sink);
         }

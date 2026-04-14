@@ -153,12 +153,7 @@ impl<C: Config> Runtime<C> {
             }
             (conversation.agent.clone(), conversation.history.clone())
         };
-        let persistent = self
-            .agents
-            .read()
-            .expect("agents lock poisoned")
-            .get(&agent_name)
-            .cloned();
+        let persistent = self.agents.read().get(&agent_name).cloned();
         if let Some(a) = persistent {
             return a.compact(&history).await;
         }
@@ -193,7 +188,7 @@ impl<C: Config> Runtime<C> {
     ) -> Vec<HistoryEntry> {
         let Some(name) = archive else { return history };
         let content = {
-            let mem = self.memory.read().expect("memory lock poisoned");
+            let mem = self.memory.read();
             mem.get(name).map(|e| e.content.clone())
         };
         let prefix = content.unwrap_or_else(|| {
@@ -211,7 +206,7 @@ impl<C: Config> Runtime<C> {
     /// must skip the compact marker so a resume can't dangle.
     fn write_archive(&self, session_slug: &str, summary: String) -> Option<String> {
         let name = archive_base_name(session_slug);
-        let mut mem = self.memory.write().expect("memory lock poisoned");
+        let mut mem = self.memory.write();
         match mem.apply(Op::Add {
             name: name.clone(),
             content: summary,
@@ -293,7 +288,6 @@ impl<C: Config> Runtime<C> {
         let model_name = self
             .agents
             .read()
-            .expect("agents lock poisoned")
             .get(agent_name)
             .and_then(|a| a.config.model.clone())
             .unwrap_or_default();
