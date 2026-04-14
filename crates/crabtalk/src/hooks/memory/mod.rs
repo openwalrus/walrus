@@ -5,10 +5,15 @@ use anyhow::Result;
 use memory::{EntryKind, Memory as Store, Op};
 use std::{
     path::{Path, PathBuf},
-    sync::RwLock,
+    sync::{Arc, RwLock},
 };
 use wcore::MemoryConfig;
 use wcore::model::{HistoryEntry, Role};
+
+/// Shared handle to the underlying memory store. Clonable because the
+/// runtime needs a reference of its own for writing archives during
+/// compaction and reading them back on session resume.
+pub type SharedStore = Arc<RwLock<Store>>;
 
 pub mod handlers;
 
@@ -27,7 +32,7 @@ fn is_reserved(name: &str) -> bool {
 }
 
 pub struct Memory {
-    inner: RwLock<Store>,
+    inner: SharedStore,
     recall_limit: usize,
 }
 
@@ -52,9 +57,15 @@ impl Memory {
             store.checkpoint()?;
         }
         Ok(Self {
-            inner: RwLock::new(store),
+            inner: Arc::new(RwLock::new(store)),
             recall_limit: config.recall_limit,
         })
+    }
+
+    /// Clone the underlying store handle. Used to hand the same memory
+    /// to the runtime for archive writes and resume-time reads.
+    pub fn shared(&self) -> SharedStore {
+        self.inner.clone()
     }
 
     pub fn recall(&self, query: &str, limit: usize) -> String {

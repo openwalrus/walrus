@@ -694,6 +694,7 @@ dependencies = [
  "chrono",
  "crabllm-core",
  "crabtalk-core",
+ "crabtalk-memory",
  "futures-core",
  "futures-util",
  "tokio",

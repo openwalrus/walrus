@@ -238,7 +238,7 @@ impl<P: Provider + 'static> Daemon<P> {
         let servers = mcp_servers(config, &manifest);
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
         let storage = Self::build_storage(config_dir, &manifest);
-        let (os_hook, ask_hook) = Self::register_tools(
+        let (os_hook, ask_hook, shared_memory) = Self::register_tools(
             &mut node_hook,
             storage.clone(),
             config,
@@ -265,7 +265,7 @@ impl<P: Provider + 'static> Daemon<P> {
         for schema in Hook::schema(node_hook.as_ref()) {
             tools.insert(schema);
         }
-        let mut runtime = Runtime::new(model, env, storage, tools);
+        let mut runtime = Runtime::new(model, env, storage, shared_memory, tools);
         Self::register_agents(&mut runtime, config, config_dir, &manifest)?;
         Ok((runtime, mcp_handler, node_hook, os_hook, ask_hook))
     }
@@ -301,14 +301,17 @@ impl<P: Provider + 'static> Daemon<P> {
     ) -> Result<(
         Arc<crate::hooks::os::OsHook>,
         Arc<crate::hooks::ask_user::AskUserHook>,
+        runtime::SharedMemory,
     )> {
         let legacy_memory_dir = config_dir.join("memory");
         let legacy = legacy_memory_dir.exists().then_some(legacy_memory_dir);
-        let memory = Arc::new(Memory::open(
+        let memory_wrapper = Memory::open(
             config.system.memory.clone(),
             config_dir.join("memory.db"),
             legacy,
-        )?);
+        )?;
+        let shared_memory = memory_wrapper.shared();
+        let memory = Arc::new(memory_wrapper);
         let scopes = node_hook.scopes.clone();
         let read_files: crate::hooks::os::ReadFiles = Default::default();
         let mcp_server_list = mcp_handler.cached_list();
@@ -363,7 +366,7 @@ impl<P: Provider + 'static> Daemon<P> {
                 )),
             );
         }
-        Ok((os_hook, ask_hook))
+        Ok((os_hook, ask_hook, shared_memory))
     }
 
     fn register_agents(

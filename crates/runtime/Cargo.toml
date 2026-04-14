@@ -12,6 +12,7 @@ keywords.workspace = true
 
 [dependencies]
 wcore.workspace = true
+memory.workspace = true
 crabllm-core.workspace = true
 
 # crates.io

@@ -40,9 +40,6 @@ pub trait Storage: Send + Sync + 'static {
     /// Load a session's meta and working-context history.
     fn load_session(&self, handle: &SessionHandle) -> Result<Option<SessionSnapshot>>;
 
-    /// Load all archive segments (compact markers) for a session.
-    fn load_session_archives(&self, handle: &SessionHandle) -> Result<Vec<ArchiveSegment>>;
-
     /// List all sessions.
     fn list_sessions(&self) -> Result<Vec<SessionSummary>>;
 
@@ -56,8 +53,11 @@ pub trait Storage: Send + Sync + 'static {
     /// Append trace event entries.
     fn append_session_events(&self, handle: &SessionHandle, events: &[EventLine]) -> Result<()>;
 
-    /// Append a compact marker (archive boundary).
-    fn append_session_compact(&self, handle: &SessionHandle, summary: &str) -> Result<()>;
+    /// Append a compact marker (archive boundary). `archive_name`
+    /// references the `Archive`-kind entry in `memory` where the
+    /// summary content actually lives. The marker only carries the
+    /// pointer — session storage never sees the summary text.
+    fn append_session_compact(&self, handle: &SessionHandle, archive_name: &str) -> Result<()>;
 
     /// Overwrite session metadata.
     fn update_session_meta(&self, handle: &SessionHandle, meta: &ConversationMeta) -> Result<()>;
@@ -132,6 +132,11 @@ impl SessionHandle {
 pub struct SessionSnapshot {
     pub meta: ConversationMeta,
     pub history: Vec<HistoryEntry>,
+    /// Name of the `Archive`-kind memory entry whose content represents
+    /// the compacted prefix of this session, if any. Callers that want
+    /// the full resumed context resolve this against `memory` and
+    /// prepend the entry's content to `history`.
+    pub archive: Option<String>,
 }
 
 /// Summary returned by [`Storage::list_sessions`] for enumeration.
@@ -250,14 +255,6 @@ fn sum_step_usage(steps: &[AgentStep]) -> Usage {
         }
         acc
     })
-}
-
-/// A compaction archive segment.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchiveSegment {
-    pub title: String,
-    pub summary: String,
-    pub archived_at: String,
 }
 
 /// Sanitize a string into a filesystem-safe slug for session naming.

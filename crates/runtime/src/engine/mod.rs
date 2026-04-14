@@ -11,6 +11,7 @@ mod conversation;
 mod execution;
 
 use crate::{Config, Conversation};
+use memory::Memory;
 use std::{
     collections::BTreeMap,
     sync::{Arc, RwLock as StdRwLock, atomic::AtomicU64},
@@ -18,11 +19,17 @@ use std::{
 use tokio::sync::{Mutex, RwLock, watch};
 use wcore::{Agent, ToolRegistry, model::Model};
 
+/// Shared handle to the standalone memory store. Used by compaction to
+/// write Archive entries and by session resume to pull their content
+/// back as the replayed prefix.
+pub type SharedMemory = Arc<StdRwLock<Memory>>;
+
 /// The crabtalk runtime.
 pub struct Runtime<C: Config> {
     pub model: Model<C::Provider>,
     pub env: Arc<C::Env>,
     storage: Arc<C::Storage>,
+    memory: SharedMemory,
     agents: StdRwLock<BTreeMap<String, Agent<C::Provider>>>,
     ephemeral_agents: RwLock<BTreeMap<String, Agent<C::Provider>>>,
     conversations: RwLock<BTreeMap<u64, Arc<Mutex<Conversation>>>>,
@@ -32,17 +39,19 @@ pub struct Runtime<C: Config> {
 }
 
 impl<C: Config> Runtime<C> {
-    /// Create a new runtime with the given model, env, storage, and tools.
+    /// Create a new runtime with the given model, env, storage, memory, and tools.
     pub fn new(
         model: Model<C::Provider>,
         env: Arc<C::Env>,
         storage: Arc<C::Storage>,
+        memory: SharedMemory,
         tools: ToolRegistry,
     ) -> Self {
         Self {
             model,
             env,
             storage,
+            memory,
             agents: StdRwLock::new(BTreeMap::new()),
             ephemeral_agents: RwLock::new(BTreeMap::new()),
             conversations: RwLock::new(BTreeMap::new()),
@@ -55,5 +64,10 @@ impl<C: Config> Runtime<C> {
     /// Access the persistence backend.
     pub fn storage(&self) -> &Arc<C::Storage> {
         &self.storage
+    }
+
+    /// Access the shared memory store.
+    pub fn memory(&self) -> &SharedMemory {
+        &self.memory
     }
 }

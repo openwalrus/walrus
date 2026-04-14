@@ -12,7 +12,7 @@ use std::{
     sync::Mutex,
 };
 use wcore::{
-    AgentConfig, AgentId, ArchiveSegment, ConversationMeta, EventLine, ManifestConfig, NodeConfig,
+    AgentConfig, AgentId, ConversationMeta, EventLine, ManifestConfig, NodeConfig,
     model::HistoryEntry,
     storage::{SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage},
 };
@@ -105,14 +105,31 @@ use serde::{Deserialize, Serialize};
 #[serde(untagged)]
 enum StepLine {
     Compact {
+        /// Name of the `Archive`-kind entry in `memory` whose content
+        /// is the compacted prefix of the session up to this point.
+        archive_name: String,
+        archived_at: String,
+    },
+    /// Pre-Phase-5 compact marker that stored the summary inline.
+    /// Still recognized on read so older sessions keep their replay
+    /// boundary; the inline summary is no longer available, but the
+    /// boundary itself prevents stale pre-compact history from being
+    /// replayed.
+    LegacyCompact {
         compact: String,
-        #[serde(default, skip_serializing_if = "String::is_empty")]
+        #[serde(default)]
         title: String,
-        #[serde(default, skip_serializing_if = "String::is_empty")]
+        #[serde(default)]
         archived_at: String,
     },
     Event(EventLine),
     Entry(HistoryEntry),
+}
+
+impl StepLine {
+    fn is_compact_boundary(&self) -> bool {
+        matches!(self, Self::Compact { .. } | Self::LegacyCompact { .. })
+    }
 }
 
 // ── Storage implementation ─────────────────────────────────────────
@@ -261,7 +278,7 @@ impl Storage for FsStorage {
             let bytes = fs::read(entry.path())?;
             match serde_json::from_slice::<StepLine>(&bytes) {
                 Ok(line) => {
-                    if matches!(line, StepLine::Compact { .. }) {
+                    if line.is_compact_boundary() {
                         last_compact_idx = Some(lines.len());
                     }
                     lines.push(line);
@@ -274,51 +291,22 @@ impl Storage for FsStorage {
 
         let start = last_compact_idx.unwrap_or(0);
         let mut history = Vec::new();
+        let mut archive = None;
         for (i, line) in lines[start..].iter().enumerate() {
             match line {
-                StepLine::Compact { compact, .. } if i == 0 && last_compact_idx.is_some() => {
-                    history.push(HistoryEntry::user(compact));
+                StepLine::Compact { archive_name, .. } if i == 0 && last_compact_idx.is_some() => {
+                    archive = Some(archive_name.clone());
                 }
                 StepLine::Entry(entry) => history.push(entry.clone()),
-                StepLine::Event(_) | StepLine::Compact { .. } => {}
+                StepLine::Event(_) | StepLine::Compact { .. } | StepLine::LegacyCompact { .. } => {}
             }
         }
 
-        Ok(Some(SessionSnapshot { meta, history }))
-    }
-
-    fn load_session_archives(&self, handle: &SessionHandle) -> Result<Vec<ArchiveSegment>> {
-        let dir = self.session_dir(handle.as_str());
-        if !dir.exists() {
-            return Ok(Vec::new());
-        }
-        let mut step_files: Vec<_> = fs::read_dir(&dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_str()
-                    .is_some_and(|n| n.starts_with("step-"))
-            })
-            .collect();
-        step_files.sort_by_key(|e| e.file_name());
-
-        let mut archives = Vec::new();
-        for entry in step_files {
-            let bytes = fs::read(entry.path())?;
-            if let Ok(StepLine::Compact {
-                compact,
-                title,
-                archived_at,
-            }) = serde_json::from_slice(&bytes)
-            {
-                archives.push(ArchiveSegment {
-                    title,
-                    summary: compact,
-                    archived_at,
-                });
-            }
-        }
-        Ok(archives)
+        Ok(Some(SessionSnapshot {
+            meta,
+            history,
+            archive,
+        }))
     }
 
     fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
@@ -363,10 +351,9 @@ impl Storage for FsStorage {
         Ok(())
     }
 
-    fn append_session_compact(&self, handle: &SessionHandle, summary: &str) -> Result<()> {
+    fn append_session_compact(&self, handle: &SessionHandle, archive_name: &str) -> Result<()> {
         let line = StepLine::Compact {
-            compact: summary.to_owned(),
-            title: compact_title(summary),
+            archive_name: archive_name.to_owned(),
             archived_at: chrono::Utc::now().to_rfc3339(),
         };
         self.write_step(handle.as_str(), line)
@@ -526,14 +513,4 @@ fn next_session_seq(root: &PathBuf, prefix: &str) -> u32 {
         }
     }
     max + 1
-}
-
-fn compact_title(summary: &str) -> String {
-    let end = summary
-        .find(['.', '!', '?'])
-        .map(|i| i + 1)
-        .unwrap_or(summary.len())
-        .min(60);
-    let title = summary[..summary.floor_char_boundary(end)].trim();
-    title.to_string()
 }

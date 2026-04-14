@@ -4,8 +4,7 @@ use crate::{
     AgentConfig, AgentId, ManifestConfig, NodeConfig,
     model::HistoryEntry,
     storage::{
-        ArchiveSegment, ConversationMeta, EventLine, SessionHandle, SessionSnapshot,
-        SessionSummary, Skill, Storage,
+        ConversationMeta, EventLine, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage,
     },
 };
 use anyhow::Result;
@@ -110,33 +109,12 @@ impl Storage for InMemoryStorage {
         let Some(state) = sessions.get(handle.as_str()) else {
             return Ok(None);
         };
-        let history = if let Some((summary, _)) = state.compacts.last() {
-            let mut h = vec![HistoryEntry::user(summary)];
-            h.extend(state.messages.clone());
-            h
-        } else {
-            state.messages.clone()
-        };
+        let archive = state.compacts.last().map(|(name, _)| name.clone());
         Ok(Some(SessionSnapshot {
             meta: state.meta.clone(),
-            history,
+            history: state.messages.clone(),
+            archive,
         }))
-    }
-
-    fn load_session_archives(&self, handle: &SessionHandle) -> Result<Vec<ArchiveSegment>> {
-        let sessions = self.sessions.lock().unwrap();
-        let Some(state) = sessions.get(handle.as_str()) else {
-            return Ok(Vec::new());
-        };
-        Ok(state
-            .compacts
-            .iter()
-            .map(|(summary, archived_at)| ArchiveSegment {
-                title: summary.chars().take(60).collect(),
-                summary: summary.clone(),
-                archived_at: archived_at.clone(),
-            })
-            .collect())
     }
 
     fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
@@ -170,12 +148,12 @@ impl Storage for InMemoryStorage {
         Ok(())
     }
 
-    fn append_session_compact(&self, handle: &SessionHandle, summary: &str) -> Result<()> {
+    fn append_session_compact(&self, handle: &SessionHandle, archive_name: &str) -> Result<()> {
         let mut sessions = self.sessions.lock().unwrap();
         if let Some(state) = sessions.get_mut(handle.as_str()) {
             state
                 .compacts
-                .push((summary.to_owned(), chrono::Utc::now().to_rfc3339()));
+                .push((archive_name.to_owned(), chrono::Utc::now().to_rfc3339()));
             state.messages.clear();
         }
         Ok(())
