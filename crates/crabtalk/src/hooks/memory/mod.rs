@@ -1,7 +1,7 @@
 //! Memory hook — thin facade over `crabtalk-memory`. Per-tool files
-//! (`recall.rs`, `remember.rs`, `forget.rs`, `prompt.rs`) own the
-//! corresponding `Memory` methods and `MemoryHook` dispatch handlers.
-//! The `Hook` impl lives here because it isn't a tool.
+//! (`recall.rs`, `remember.rs`, `forget.rs`) own the corresponding
+//! `Memory` methods and `MemoryHook` dispatch handlers. See RFC 0150
+//! for the design.
 
 use anyhow::Result;
 use memory::Memory as Store;
@@ -17,12 +17,10 @@ use wcore::{
 };
 
 mod forget;
-mod prompt;
 mod recall;
 mod remember;
 
 use forget::Forget;
-use prompt::Prompt;
 use recall::Recall;
 use remember::Remember;
 
@@ -31,19 +29,13 @@ use remember::Remember;
 /// compaction and reading them back on session resume.
 pub type SharedStore = Arc<RwLock<Store>>;
 
-pub(super) const MEMORY_PROMPT: &str = include_str!("../../../prompts/memory.md");
 pub const DEFAULT_SOUL: &str = include_str!("../../../prompts/crab.md");
 
-/// Reserved entry name for the always-injected curated overview — what
-/// used to be `MEMORY.md`. Named `global` because per-agent prompts
-/// (v2) will live as sibling entries keyed by agent id.
-pub const GLOBAL_PROMPT_NAME: &str = "global";
-
-/// Reserved names users can't create/delete through `remember`/`forget`
-/// — their content is load-bearing for the agent's system prompt.
-pub(super) fn is_reserved(name: &str) -> bool {
-    name == GLOBAL_PROMPT_NAME
-}
+/// Behavioural guidance for the agent — when/how to use the memory
+/// tools. Tool *signatures* come from each struct's `///` doc comment
+/// via schemars; this prompt covers everything that doesn't fit in a
+/// per-arg description.
+const MEMORY_PROMPT: &str = include_str!("../../../prompts/memory.md");
 
 pub struct Memory {
     pub(super) inner: SharedStore,
@@ -91,16 +83,11 @@ impl MemoryHook {
 
 impl Hook for MemoryHook {
     fn schema(&self) -> Vec<Tool> {
-        vec![
-            Recall::as_tool(),
-            Remember::as_tool(),
-            Forget::as_tool(),
-            Prompt::as_tool(),
-        ]
+        vec![Recall::as_tool(), Remember::as_tool(), Forget::as_tool()]
     }
 
     fn system_prompt(&self) -> Option<String> {
-        Some(self.memory.build_prompt())
+        Some(format!("\n\n{MEMORY_PROMPT}"))
     }
 
     fn on_before_run(
@@ -117,7 +104,6 @@ impl Hook for MemoryHook {
             "recall" => Some(Box::pin(self.handle_recall(call))),
             "remember" => Some(Box::pin(self.handle_remember(call))),
             "forget" => Some(Box::pin(self.handle_forget(call))),
-            "memory" => Some(Box::pin(self.handle_memory(call))),
             _ => None,
         }
     }

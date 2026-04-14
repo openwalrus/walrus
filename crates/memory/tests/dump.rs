@@ -31,27 +31,17 @@ fn dump_creates_sections_and_summary() {
         "compacted summary",
         &[],
     );
-    add(
-        &mut mem,
-        EntryKind::Prompt,
-        "global",
-        "- [rust-style](rust-style.md)",
-        &[],
-    );
 
     mem.dump(&brain).unwrap();
 
     assert!(brain.join("notes/rust-style.md").is_file());
     assert!(brain.join("archives/20260401-session42.md").is_file());
-    assert!(brain.join("prompts/global.md").is_file());
 
     let summary = fs::read_to_string(brain.join("SUMMARY.md")).unwrap();
     assert!(summary.contains("# Notes"));
     assert!(summary.contains("# Archives"));
-    assert!(summary.contains("# Prompts"));
     assert!(summary.contains("[rust-style](notes/rust-style.md)"));
     assert!(summary.contains("[20260401-session42](archives/20260401-session42.md)"));
-    assert!(summary.contains("[global](prompts/global.md)"));
 }
 
 #[test]
@@ -105,20 +95,13 @@ fn round_trip_preserves_content_aliases_and_timestamp() {
         "session text",
         &["session-42", "compact"],
     );
-    add(
-        &mut mem,
-        EntryKind::Prompt,
-        "global",
-        "curated overview",
-        &[],
-    );
     let created_before: Vec<_> = mem.list().map(|e| (e.name.clone(), e.created_at)).collect();
     mem.dump(&brain).unwrap();
 
     let mut loaded = Memory::new();
     loaded.load(&brain).unwrap();
 
-    assert_eq!(loaded.list().count(), 3);
+    assert_eq!(loaded.list().count(), 2);
 
     let a = loaded.get("a").unwrap();
     assert_eq!(a.content, "line one\nline two");
@@ -128,9 +111,6 @@ fn round_trip_preserves_content_aliases_and_timestamp() {
     let arc = loaded.get("arc").unwrap();
     assert_eq!(arc.kind, EntryKind::Archive);
     assert_eq!(arc.aliases, vec!["session-42", "compact"]);
-
-    let global = loaded.get("global").unwrap();
-    assert_eq!(global.kind, EntryKind::Prompt);
 
     for (name, ts) in created_before {
         assert_eq!(loaded.get(&name).unwrap().created_at, ts);

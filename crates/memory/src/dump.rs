@@ -6,7 +6,6 @@
 //!   SUMMARY.md                ← auto-generated mdbook ToC (ignored on load)
 //!   notes/{name}.md           ← EntryKind::Note
 //!   archives/{name}.md        ← EntryKind::Archive
-//!   prompts/{name}.md         ← EntryKind::Prompt
 //! ```
 //!
 //! Entry file format: an HTML metadata block at the top, then the
@@ -50,7 +49,6 @@ use std::{collections::HashMap, fs, path::Path};
 pub(crate) const KIND_SECTIONS: &[(EntryKind, &str, &str)] = &[
     (EntryKind::Note, "notes", "Notes"),
     (EntryKind::Archive, "archives", "Archives"),
-    (EntryKind::Prompt, "prompts", "Prompts"),
 ];
 
 const META_OPEN: &str = "<div id=\"meta\">";

@@ -8,16 +8,20 @@
 
 ## Summary
 
-A standalone `crabtalk-memory` crate backing agent memory with a single binary db file, atomic persistence, and BM25 recall. The markdown tree is a human-facing export — not the primary store. Entries come in three kinds: `Note` (agent-written), `Archive` (compaction output), and `Prompt` (curated content auto-injected into the system prompt).
+A standalone `crabtalk-memory` crate backing agent memory with a single binary db file, atomic persistence, and BM25 recall. The markdown tree is a human-facing export — not the primary store. Entries come in two kinds: `Note` (agent-written via `remember`/`forget`) and `Archive` (compaction output). The agent's system prompt is human-managed via `Crab.md` (existing layered-instructions mechanism) — the memory store has no opinion on it.
 
 ## Motivation
 
 RFC 0038 bet on file-per-entry markdown as the primary store. In practice that premise did not hold:
 
-- **Atomic writes don't compose across many files.** Every remember/forget touched an entry file plus `MEMORY.md`; a crash mid-op left the tree inconsistent. A single-file db is atomic by rename+fsync.
+- **Atomic writes don't compose across many files.** Every remember/forget touched an entry file plus a sidecar index; a crash mid-op left the tree inconsistent. A single-file db is atomic by rename+fsync.
 - **Compaction archives need a store.** Agent-First ([0135](0135-agent-first.md)) made compaction archives first-class long-term memory. Archives share recall and lifecycle with notes, but aren't user-editable text — they're generated output. A kind-typed entry in the db is the right home.
 - **Aliases improve recall.** Humans reach for an entry under several names ("release" / "ship" / "deploy"). BM25 needs them as indexable terms, which frontmatter had no slot for.
 - **Dump/load still matters for humans.** Users want to read and edit memory with a text editor or mdbook. That's solved by exporting the db as a markdown tree on demand, not by making the tree the source of truth.
+
+A separate observation that shaped the API surface:
+
+- **The system prompt is not memory.** 0038 carried a `MEMORY.md` curated overview that the agent could rewrite via a dedicated `memory` tool. That conflated two different things: persistent recall (the agent's notes) and instructions (the human's prompt). It also gave the agent a footgun — overwriting the whole thing in a single tool call with no diff. Killed: the `memory` tool, the `Prompt` entry kind, and the reserved `global` name. The system prompt now lives in `Crab.md` (already a file, already layered, already human-edited). If a human wants the agent to edit it, they grant that in prose inside `Crab.md` and the agent uses the standard file-edit tools.
 
 ## Design
 
@@ -58,7 +62,7 @@ size  field        notes
 ----  -----------  -----------------------------------------------------
  8    id           u64
  8    created_at   u64   unix seconds
- 4    kind         u32   0 = Note, 1 = Archive, 2 = Prompt
+ 4    kind         u32   0 = Note, 1 = Archive
  4    name_len     u32
  *    name         utf8 bytes, name_len long
  4    content_len  u32
@@ -81,12 +85,12 @@ Every `apply(Op)` mutates RAM then flushes atomically. The flush sequence is:
 4. `rename(tmp, path)` — atomic on POSIX when on the same filesystem.
 5. `fsync` the parent directory so the rename itself is durable.
 
-A flush failure leaves RAM ahead of disk until the next successful op or the next `open` (which re-reads the file). WAL closes that window in v2. `Memory::checkpoint()` forces the same flush without a mutation — used by the legacy importer to guarantee the db file exists even when every migration op failed.
+A flush failure leaves RAM ahead of disk until the next successful op or the next `open` (which re-reads the file). WAL closes that window in v2. `Memory::checkpoint()` forces the same flush without a mutation.
 
 ### Entry model
 
 ```rust
-enum EntryKind { Note, Archive, Prompt }
+enum EntryKind { Note, Archive }
 
 struct Entry {
     id: u64,
@@ -100,7 +104,6 @@ struct Entry {
 
 - **Note** — remember/forget entries.
 - **Archive** — compaction output. Written by the runtime during compaction, surfaced by `recall` as long-term memory (per 0135).
-- **Prompt** — curated content auto-injected into the system prompt. One reserved entry named `global` replaces the old `MEMORY.md`. v2 will add per-agent prompts as sibling entries keyed by agent id.
 
 Kind is immutable per entry: `Update` rewrites content and aliases but keeps kind; use `Remove` + `Add` to change it.
 
@@ -129,18 +132,17 @@ Before each agent turn (`before_run`), the hook takes the first 8 words of the l
 
 ### System prompt
 
-`build_prompt()` wraps the `global` `Prompt` entry's content in a `<memory>` block and appends the tool instructions from `prompts/memory.md`. Missing or empty `global` → just the tool instructions.
+The hook contributes one `<system_prompt>` fragment: the contents of `prompts/memory.md`, which tells the agent *when* to use the memory tools (tool *signatures* come from each input struct's `///` doc comment via schemars). The agent's identity / behavior prompt is **not** the memory store's responsibility — it's `Crab.md`, layered from `<config_dir>/Crab.md` and any project-local `Crab.md` walked up from CWD (see `daemon::host::discover_instructions`).
 
 ### Tools
 
-Four tools exposed to the agent:
+Three tools exposed to the agent:
 
 - `remember(name, content, aliases)` — upsert a `Note`.
 - `forget(name)` — delete a `Note`.
 - `recall(query, limit)` — BM25 search, returns formatted results.
-- `memory(content)` — overwrite the reserved `global` `Prompt` entry.
 
-`global` is reserved: `remember`/`forget` refuse it so the system prompt stays load-bearing. The `memory` tool is the only way to edit it.
+There is no `memory` tool. Editing the agent's system prompt is a human action against `Crab.md`. If the human wants to delegate that authority, they say so in `Crab.md` and the agent uses the standard file-edit tools — no special-case tool, no reserved entry name, no parallel write path.
 
 ### Dump / load
 
@@ -152,7 +154,6 @@ brain/
   SUMMARY.md              ← mdbook ToC (ignored on load)
   notes/{name}.md
   archives/{name}.md
-  prompts/{name}.md
 ```
 
 The seeded `book.toml` sets `src = "."` so `mdbook serve brain/` works against the tree as-is — no shuffling into an `src/` subdirectory. It's only written when absent; any customizations survive later dumps.
@@ -176,15 +177,6 @@ Chosen for mdbook: `<dl>` / `<dt>` / `<dd>` is the semantic HTML for key-value m
 
 `Memory::load(dir)` reads the tree and *replaces* the db. It validates fully before mutating — a mid-load error leaves the current state untouched. Each kind's subdirectory is cleared on `dump` so renames and deletes don't leave orphan files behind; anything else in `dir` (e.g. a customized `book.toml`, a `theme/` directory) is left alone.
 
-### Legacy import
-
-On first open, if the db file doesn't exist and a legacy `memory/` directory (0038 layout) is supplied, the hook imports it one-shot:
-
-- `memory/entries/*.md` (YAML frontmatter) → `Note` entries
-- `memory/MEMORY.md`                       → the `global` `Prompt` entry
-
-Malformed entries are logged and skipped — one bad file can't block the upgrade. The old `description` field is folded into the first line of content. The db file is created unconditionally after the import so the next open doesn't re-enter the migration branch, even if every op failed.
-
 ## Alternatives
 
 **Stay with file-per-entry (0038).** Rejected — compaction archives need a real store, and atomic multi-file writes would require WAL anyway. A single file gets atomicity for free.
@@ -196,6 +188,5 @@ Malformed entries are logged and skipped — one bad file can't block the upgrad
 ## Unresolved Questions
 
 - WAL for crash safety in the window between the RAM mutation and the atomic flush.
-- Naming convention for per-agent `Prompt` entries (`agent:<id>`? a separate field?).
 - Should `load()` merge instead of replace?
 - Should archives expire or be garbage-collected past some age / count?

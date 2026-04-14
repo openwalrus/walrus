@@ -1,6 +1,6 @@
 //! `remember` — upsert a memory entry as an `EntryKind::Note`.
 
-use super::{Memory, MemoryHook, is_reserved};
+use super::{Memory, MemoryHook};
 use memory::{EntryKind, Op};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -20,9 +20,6 @@ pub struct Remember {
 
 impl Memory {
     pub fn remember(&self, name: String, content: String, aliases: Vec<String>) -> String {
-        if is_reserved(&name) {
-            return format!("'{name}' is reserved — use the memory tool to edit it");
-        }
         let mut store = self.store_write();
         let exists = store.get(&name).is_some();
         let op = if exists {

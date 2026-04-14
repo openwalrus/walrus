@@ -79,25 +79,6 @@ fn forget_nonexistent_returns_error() {
 }
 
 #[test]
-fn write_prompt_and_build_prompt() {
-    let mem = test_memory();
-
-    mem.write_prompt("# My Overview\n\nI know about Luna the dog.");
-
-    let prompt = mem.build_prompt();
-    assert!(prompt.contains("<memory>"));
-    assert!(prompt.contains("Luna the dog"));
-    assert!(prompt.contains("</memory>"));
-}
-
-#[test]
-fn build_prompt_without_global_skips_wrapper() {
-    let mem = test_memory();
-    let prompt = mem.build_prompt();
-    assert!(!prompt.contains("<memory>"));
-}
-
-#[test]
 fn remember_updates_existing() {
     let mem = test_memory();
 
@@ -156,23 +137,4 @@ fn aliases_boost_search() {
 
     let result = mem.recall("ship", 5);
     assert!(result.contains("deploy"));
-}
-
-#[test]
-fn remember_rejects_reserved_global_name() {
-    let mem = test_memory();
-    let result = mem.remember("global".into(), "hijacked".into(), vec![]);
-    assert!(result.contains("reserved"), "got: {result}");
-    // Prompt is still empty — the system-prompt wrapper must be absent.
-    assert!(!mem.build_prompt().contains("<memory>"));
-}
-
-#[test]
-fn forget_rejects_reserved_global_name() {
-    let mem = test_memory();
-    mem.write_prompt("# overview");
-    let result = mem.forget("global");
-    assert!(result.contains("reserved"), "got: {result}");
-    // Prompt content survives.
-    assert!(mem.build_prompt().contains("overview"));
 }

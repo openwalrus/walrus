@@ -1,6 +1,6 @@
 //! `forget` — delete a memory entry by name.
 
-use super::{Memory, MemoryHook, is_reserved};
+use super::{Memory, MemoryHook};
 use memory::Op;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -15,9 +15,6 @@ pub struct Forget {
 
 impl Memory {
     pub fn forget(&self, name: &str) -> String {
-        if is_reserved(name) {
-            return format!("'{name}' is reserved and cannot be forgotten");
-        }
         let mut store = self.store_write();
         match store.apply(Op::Remove {
             name: name.to_owned(),

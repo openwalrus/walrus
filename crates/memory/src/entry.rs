@@ -4,9 +4,6 @@ pub type EntryId = u64;
 pub enum EntryKind {
     Note,
     Archive,
-    /// Curated content auto-injected into the agent's system prompt.
-    /// One `global` plus optionally one per agent id.
-    Prompt,
 }
 
 #[derive(Clone, Debug)]
