@@ -303,13 +303,8 @@ impl<P: Provider + 'static> Daemon<P> {
         Arc<crate::hooks::ask_user::AskUserHook>,
         runtime::SharedMemory,
     )> {
-        let legacy_memory_dir = config_dir.join("memory");
-        let legacy = legacy_memory_dir.exists().then_some(legacy_memory_dir);
-        let memory_wrapper = Memory::open(
-            config.system.memory.clone(),
-            config_dir.join("memory.db"),
-            legacy,
-        )?;
+        let memory_wrapper =
+            Memory::open(config.system.memory.clone(), config_dir.join("memory.db"))?;
         let shared_memory = memory_wrapper.shared();
         let memory = Arc::new(memory_wrapper);
         let scopes = node_hook.scopes.clone();
@@ -326,7 +321,7 @@ impl<P: Provider + 'static> Daemon<P> {
 
         node_hook.register_hook(
             "memory",
-            Arc::new(crate::hooks::memory::handlers::MemoryHook::new(memory)),
+            Arc::new(crate::hooks::memory::MemoryHook::new(memory)),
         );
 
         node_hook.register_hook(

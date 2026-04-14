@@ -9,9 +9,9 @@ You have four memory tools:
 - **recall** — Search your memory entries by keyword. Returns ranked results.
   Recall also happens automatically each turn, but call it explicitly when you
   want to look something specific up.
-- **remember** — Save a memory entry with a name, description, and content.
-  The description determines search relevance — write it well. If an entry
-  with the same name exists, it gets updated.
+- **remember** — Save a memory entry with a name, content, and optional
+  aliases (alternative search terms for recall). If an entry with the same
+  name exists, it gets updated.
 - **forget** — Delete a memory entry by name. Use when information is outdated
   or wrong.
 - **memory** — Overwrite MEMORY.md, your curated overview that's injected at
