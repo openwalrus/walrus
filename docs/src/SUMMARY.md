@@ -9,6 +9,7 @@
 - [Conversations](spec/01-conversations.md)
 - [Dispatch](spec/02-dispatch.md)
 - [Memory](spec/03-memory.md)
+- [Runtime](spec/04-runtime.md)
 
 # RFCs
 
