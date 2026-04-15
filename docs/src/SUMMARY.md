@@ -7,6 +7,7 @@
 # Specification
 
 - [Conversations](spec/01-conversations.md)
+- [Dispatch](spec/02-dispatch.md)
 
 # RFCs
 
