@@ -11,6 +11,7 @@
 - [Memory](spec/03-memory.md)
 - [Runtime](spec/04-runtime.md)
 - [Daemon](spec/05-daemon.md)
+- [Providers](spec/06-providers.md)
 
 # RFCs
 
