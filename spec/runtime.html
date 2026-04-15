@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>0080 - Cron - The Crabtalk RFC Book</title>
+        <title>Runtime - The Crabtalk RFC Book</title>
 
 
         <!-- Custom HTML head -->
@@ -146,7 +146,7 @@
                         <a href="https://github.com/crabtalk/crabtalk" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
-                        <a href="https://github.com/crabtalk/crabtalk/edit/main/docs/src/src/rfcs/0080-cron.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/crabtalk/crabtalk/edit/main/docs/src/src/spec/runtime.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
                         </a>
 
@@ -180,92 +180,74 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="0080---cron"><a class="header" href="#0080---cron">0080 - Cron</a></h1>
+                        <h1 id="runtime"><a class="header" href="#runtime">Runtime</a></h1>
+<p>The runtime is the engine that drives agents. It owns conversations in memory, runs agent steps, dispatches tool calls, and applies compaction. It does not open sockets, accept connections, or schedule time. Capabilities that require I/O are provided to the runtime by its environment.</p>
+<h2 id="composition"><a class="header" href="#composition">Composition</a></h2>
+<p>A runtime is parameterized by a <code>Config</code> that names three associated types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Responsibility</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Storage</code></td><td>Persistence of conversations, skills, and memory.</td></tr>
+<tr><td><code>Provider</code></td><td>LLM request and streaming.</td></tr>
+<tr><td><code>Env</code></td><td>Node-specific capabilities and tool dispatch.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A binary supplies one <code>Config</code>. The daemon’s <code>Config</code> wires filesystem storage, a configured provider, and a node environment that owns hooks and event broadcasting. Tests supply a <code>Config</code> with in-memory storage, a stub provider, and <code>()</code> as the environment.</p>
+<h2 id="responsibilities"><a class="header" href="#responsibilities">Responsibilities</a></h2>
+<p>The runtime handles:</p>
 <ul>
-<li>Feature Name: Daemon-Level Cron Scheduler</li>
-<li>Start Date: 2026-03-20</li>
-<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/80">#80</a></li>
-<li>Crates: daemon</li>
+<li>Loading and saving conversations through <code>Storage</code>.</li>
+<li>Building an agent request from the current history, instructions, and tool schemas.</li>
+<li>Streaming responses from <code>Provider</code> and applying them to the conversation.</li>
+<li>Dispatching tool calls through <code>Env</code>.</li>
+<li>Emitting <code>AgentEvent</code> values for each step, tool call, and compaction.</li>
+<li>Producing compaction summaries and appending archive markers.</li>
 </ul>
-<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
-<p>A daemon-level cron system that triggers skills into sessions on a schedule,
-replacing the previous per-agent heartbeat mechanism.</p>
-<h2 id="motivation"><a class="header" href="#motivation">Motivation</a></h2>
-<p>Agents need periodic behavior — checking feeds, running maintenance, sending
-reminders. The original approach was a per-agent heartbeat config, but this was
-dead code and wrong-shaped: heartbeats are uniform intervals, while scheduled
-tasks need cron-style flexibility (every Monday at 9am, every 2 hours, etc.).</p>
-<p>The session already carries the agent and sender. A cron entry only needs to
-know which skill to fire and which session to fire it into.</p>
-<h2 id="design"><a class="header" href="#design">Design</a></h2>
-<p>A cron entry triggers a skill into a session on a schedule.</p>
-<h3 id="data-model"><a class="header" href="#data-model">Data model</a></h3>
-<pre><code class="language-toml">[[cron]]
-id = 1
-schedule = "0 */2 * * *"
-skill = "check-feeds"
-session = 12345
-quiet_start = "23:00"
-quiet_end = "07:00"
-once = false
-</code></pre>
+<h2 id="boundary"><a class="header" href="#boundary">Boundary</a></h2>
+<p>The runtime does not:</p>
 <ul>
-<li><code>id</code> — auto-incremented on create.</li>
-<li><code>schedule</code> — standard cron expression, validated on create and load.</li>
-<li><code>skill</code> — fired as <code>/{skill}</code> slash command into the session.</li>
-<li><code>session</code> — target session ID. The session determines the agent.</li>
-<li><code>quiet_start</code>/<code>quiet_end</code> — optional HH:MM window in the daemon’s local time.
-If fire time falls inside, skip silently. No queuing, no catch-up. Both must
-be set; if only one is provided, quiet hours are ignored.</li>
-<li><code>once</code> — fire once then delete from memory and disk.</li>
+<li>Bind listeners or accept transport connections.</li>
+<li>Spawn tasks for message routing or scheduling.</li>
+<li>Interpret protocol messages.</li>
+<li>Read the system clock for scheduling purposes.</li>
+<li>Manage process state such as PID files or signals.</li>
 </ul>
-<h3 id="persistence"><a class="header" href="#persistence">Persistence</a></h3>
-<p>Memory is authoritative at runtime. Disk (<code>crons.toml</code>) is recovery for
-restarts.</p>
+<p>These belong to the server that hosts the runtime.</p>
+<h2 id="env"><a class="header" href="#env">Env</a></h2>
+<p><code>Env</code> is the runtime’s only outward-facing capability surface. It provides:</p>
 <ul>
-<li><strong>Startup</strong>: load from disk, start timers. Invalid schedules are skipped with
-a warning.</li>
-<li><strong>Create/Delete</strong>: mutate memory, start/stop timer, atomic write to disk
-(tmp + rename).</li>
-<li><strong>Runtime reload</strong>: crons stay in memory — they survive runtime swaps.</li>
-<li><strong>Daemon restart</strong>: reload from disk.</li>
+<li><code>hook()</code> — the composite <code>Hook</code> that exposes tool schemas, dispatches tool calls, and participates in lifecycle events.</li>
+<li><code>on_agent_event(agent, conversation_id, event)</code> — hook point for side effects, such as event broadcasting or persistence of step traces.</li>
+<li><code>subscribe_events()</code> — optional subscription to a cross-conversation event stream, for servers that expose agent events to external clients.</li>
+<li><code>discover_instructions(cwd)</code> — collect instruction files applicable to a working directory.</li>
+<li><code>effective_cwd(conversation_id)</code> — resolve the working directory for a run, honoring any per-conversation override.</li>
 </ul>
-<h3 id="firing"><a class="header" href="#firing">Firing</a></h3>
-<p>Fire-and-forget via the daemon event channel. The cron sends a <code>ClientMessage</code>
-with content <code>/{skill}</code> and sender <code>"cron"</code>. The reply channel is dropped —
-output goes to session history only.</p>
-<h3 id="protocol"><a class="header" href="#protocol">Protocol</a></h3>
-<p>Three protocol operations on the <code>Server</code> trait:</p>
+<p>Methods that the runtime does not need in a given context have default implementations. An <code>Env</code> implementation may leave event broadcasting, instruction discovery, or CWD management at their defaults.</p>
+<h2 id="hook"><a class="header" href="#hook">Hook</a></h2>
+<p><code>Hook</code> is the single point through which the runtime reaches node-specific tools. A hook:</p>
 <ul>
-<li><code>CreateCron { schedule, skill, session, quiet_start?, quiet_end? }</code> → <code>CronInfo</code></li>
-<li><code>DeleteCron { id }</code> → success/not found</li>
-<li><code>ListCrons</code> → <code>CronList</code></li>
+<li>Advertises tool schemas for the LLM request.</li>
+<li>Dispatches tool calls by name, returning a future that yields the tool’s result.</li>
+<li>Participates in step lifecycle, observing starts, completions, and errors.</li>
 </ul>
-<p>Crons are process-lifetime, not session-lifetime. They survive runtime reloads,
-fire via the daemon event channel, and the runtime has no notion of time-based
-scheduling. This is a daemon concern.</p>
-<h2 id="alternatives"><a class="header" href="#alternatives">Alternatives</a></h2>
-<p><strong>Per-agent heartbeat config.</strong> The original approach. Rejected because it
-coupled scheduling to agent definition, couldn’t express cron-style schedules,
-and was dead code.</p>
-<p><strong>Client-side polling.</strong> A client can send messages on its own timer. This works
-but requires the client to be running. Daemon crons fire regardless of client
-state.</p>
-<h2 id="unresolved-questions"><a class="header" href="#unresolved-questions">Unresolved Questions</a></h2>
-<ul>
-<li>Should crons support arguments beyond the skill name?</li>
-<li>Should there be a max cron count to prevent resource exhaustion?</li>
-</ul>
+<p>A hook is composite: the daemon’s hook owns sub-hooks (OS tools, <code>ask_user</code>, delegation, event subscription, memory). Order of sub-hooks is fixed by the composite; the runtime sees a single <code>Hook</code>.</p>
+<h2 id="tool-dispatch"><a class="header" href="#tool-dispatch">Tool dispatch</a></h2>
+<p>A tool call from the agent carries the tool name, arguments, the originating agent and sender, and the conversation id. The runtime invokes <code>Env::hook().dispatch(name, call)</code>. If no sub-hook claims the name, the dispatch yields an error result; the agent receives the error as the tool’s output.</p>
+<p>Dispatch is asynchronous. The runtime awaits the tool future at the next step boundary and applies the result to the conversation before the following step.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../rfcs/0075-hook.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../spec/memory.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../rfcs/0082-scoping.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../spec/daemon.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -275,11 +257,11 @@ state.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../rfcs/0075-hook.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../spec/memory.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../rfcs/0082-scoping.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../spec/daemon.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

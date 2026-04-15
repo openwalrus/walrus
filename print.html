@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-21ff07ff.js";
+            window.path_to_searchindex_js = "searchindex-4e3917c0.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-48fce9c2.js"></script>
+        <script src="toc-740b34d7.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -250,6 +250,296 @@ can’t build a CrabTalk underneath them. The daemon must come first. The
 architecture must be right. Everything else follows.</p>
 <p>Let us proceed.</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="conversations"><a class="header" href="#conversations">Conversations</a></h1>
+<p>A conversation is the unit of agent interaction. It holds the message history an agent uses as working context, together with the state associated with that history.</p>
+<h2 id="identity"><a class="header" href="#identity">Identity</a></h2>
+<p>A conversation is identified by the pair <code>(agent, sender)</code>.</p>
+<ul>
+<li><code>agent</code> is the name of an agent configured in the daemon.</li>
+<li><code>sender</code> is a client-provided string identifying the counterparty. Clients choose their own convention, such as <code>"user"</code>, <code>"tg:12345"</code>, or <code>"delegate:42"</code>.</li>
+</ul>
+<p>The pair is the conversation’s only externally addressable name. The wire protocol carries no conversation identifier.</p>
+<h2 id="lifetime"><a class="header" href="#lifetime">Lifetime</a></h2>
+<p>A conversation is created on first reference to a pair <code>(agent, sender)</code> that does not yet exist, and persists across daemon restarts. Persistence is delegated to the configured <code>Storage</code> backend.</p>
+<p>At most one conversation exists for any given <code>(agent, sender)</code> pair.</p>
+<h2 id="addressing"><a class="header" href="#addressing">Addressing</a></h2>
+<p>Protocol messages that operate on a conversation carry <code>agent</code> and <code>sender</code> fields. The pair resolves to the conversation on which the operation acts.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Message</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>StreamMsg</code></td><td>Append user content, run the agent, stream the response.</td></tr>
+<tr><td><code>KillMsg</code></td><td>Cancel the in-flight run, if any.</td></tr>
+<tr><td><code>CompactMsg</code></td><td>Compact the current history into an archive (see Memory).</td></tr>
+<tr><td><code>ReplyToAsk</code></td><td>Supply content for a pending <code>ask_user</code> call.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>StreamMsg.sender</code> is optional. When omitted, the daemon resolves a default sender determined by the transport.</p>
+<h2 id="state"><a class="header" href="#state">State</a></h2>
+<p>A conversation holds:</p>
+<ul>
+<li><strong>History</strong> — an ordered sequence of history entries.</li>
+<li><strong>Title</strong> — a short human-readable label assigned by the <code>set_title</code> tool.</li>
+<li><strong>Working directory</strong> — the filesystem path used by OS-level tools during a run.</li>
+<li><strong>Archives</strong> — compacted prefixes of the history (see Memory).</li>
+</ul>
+<p>History ordering is total. New entries are appended; no entry is reordered or removed except through compaction.</p>
+<h2 id="working-directory"><a class="header" href="#working-directory">Working directory</a></h2>
+<p>Each conversation has a default working directory. <code>StreamMsg.cwd</code>, when set, overrides the default for the duration of the resulting run. The override does not modify the conversation’s default.</p>
+<h2 id="message-attribution"><a class="header" href="#message-attribution">Message attribution</a></h2>
+<p>Each assistant message in the history carries an <code>agent</code> field.</p>
+<ul>
+<li>An empty <code>agent</code> field denotes a message produced by the conversation’s primary agent, the one named by the conversation’s identity.</li>
+<li>A non-empty <code>agent</code> field denotes a guest turn (see Multi-agent).</li>
+</ul>
+<p>Messages produced by the daemon for protocol framing are marked as auto-injected and stripped from the history before each run.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dispatch"><a class="header" href="#dispatch">Dispatch</a></h1>
+<p>The daemon accepts client messages on its transports and produces a stream of server messages in response. Each message is handled independently, with no central event loop mediating between the transport and the operations.</p>
+<h2 id="entry-point"><a class="header" href="#entry-point">Entry point</a></h2>
+<p>Every transport (UDS, TCP, future additions) feeds <code>ClientMessage</code> values into the same dispatch callback. The callback spawns a Tokio task per message and polls the resulting stream, forwarding each <code>ServerMessage</code> back to the transport’s reply channel. When the stream ends or the reply channel closes, the task terminates.</p>
+<p>Concurrency is unbounded at this layer: nothing throttles or serializes incoming messages before they reach their handler.</p>
+<h2 id="dispatch-function"><a class="header" href="#dispatch-function">Dispatch function</a></h2>
+<p><code>Server::dispatch(ClientMessage) -&gt; Stream&lt;ServerMessage&gt;</code> is the single entry into the daemon’s operations. It inspects the <code>ClientMessage</code> variant and routes to the corresponding method on the <code>Server</code> trait.</p>
+<ul>
+<li>Request-response operations (<code>ping</code>, <code>kill_conversation</code>, <code>compact_conversation</code>, administrative calls) yield exactly one <code>ServerMessage</code>.</li>
+<li>Streaming operations (<code>stream</code>, <code>subscribe_events</code>) yield many <code>ServerMessage</code> values over time.</li>
+<li>Unknown or empty messages yield a single error response.</li>
+</ul>
+<p>The function is defined once in the core <code>Server</code> trait. Any implementor — the daemon, a test harness, a future alternative server — routes client messages the same way.</p>
+<h2 id="no-central-event-loop"><a class="header" href="#no-central-event-loop">No central event loop</a></h2>
+<p>There is no serializing queue, no <code>DaemonEvent</code> enum, and no actor that owns mutation. Operations reach into shared state directly and hold locks for the duration of the critical section.</p>
+<p>Shared state is protected by <code>parking_lot::Mutex</code> or <code>parking_lot::RwLock</code>. Event bus subscriptions, conversation working-directory overrides, pending <code>ask_user</code> replies, and cron state each live behind their own lock. Locks are acquired, the work is done, and the lock is released. Ordering between operations is whatever Tokio’s scheduler produces.</p>
+<h2 id="ordering-guarantees"><a class="header" href="#ordering-guarantees">Ordering guarantees</a></h2>
+<p>Within a single conversation, message ordering is total: <code>StreamMsg</code> appends to history in the order the daemon receives them. Clients that require strict ordering for a conversation are responsible for serializing their own sends.</p>
+<p>Between conversations, no ordering is guaranteed. Two <code>StreamMsg</code> values addressed to different <code>(agent, sender)</code> pairs may run in either order regardless of arrival time.</p>
+<h2 id="cancellation"><a class="header" href="#cancellation">Cancellation</a></h2>
+<p><code>KillMsg</code> cancels the in-flight run for its <code>(agent, sender)</code> pair. Cancellation propagates through the runtime to the active agent step, interrupting tool calls and LLM requests at the next await point. Already-emitted <code>ServerMessage</code> values are not retracted.</p>
+<p>A cancelled conversation remains valid. The next <code>StreamMsg</code> for the same pair resumes against the history as it existed at the point of cancellation.</p>
+<h2 id="event-bus"><a class="header" href="#event-bus">Event bus</a></h2>
+<p>The event bus is a subscription table, not a router. <code>publish(source, payload)</code> iterates subscriptions, invokes the <code>fire</code> callback for each match inline, and removes any subscription marked <code>once</code>. The callback fires under the bus’s lock; implementations must not reacquire it.</p>
+<p>The bus has no queue and no scheduler. Fan-out is as fast as the callback runs for each matching subscription.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="multi-agent"><a class="header" href="#multi-agent">Multi-agent</a></h1>
+<p>Multi-agent conversations let a second agent speak into an existing conversation as a guest. A guest turn is a first-class message from the guest agent; it is not a tool call, a delegation, or a paraphrase.</p>
+<h2 id="guest-turns"><a class="header" href="#guest-turns">Guest turns</a></h2>
+<p>A guest turn runs a named guest agent against the primary conversation’s history and appends the guest’s response to that history. The primary agent of the conversation is unchanged.</p>
+<p>A guest turn is requested by setting <code>StreamMsg.guest</code> to the name of the guest agent. The conversation is still addressed by the primary’s <code>(agent, sender)</code> pair; <code>guest</code> selects who speaks on this turn, not whose conversation it is.</p>
+<h2 id="flow"><a class="header" href="#flow">Flow</a></h2>
+<p>When <code>StreamMsg { agent: A, sender: S, guest: G, content: C }</code> is dispatched:</p>
+<ol>
+<li>The conversation <code>(A, S)</code> is resolved, creating it if necessary.</li>
+<li>The user content <code>C</code> is appended to the history.</li>
+<li>The daemon runs agent <code>G</code> against the history using <code>G</code>’s system prompt and instructions.</li>
+<li>The response is appended to the history, tagged with <code>agent: G</code>.</li>
+</ol>
+<p>The primary agent is not invoked on a guest turn. A subsequent <code>StreamMsg</code> without <code>guest</code> resumes normal operation with the primary agent against the updated history.</p>
+<h2 id="tools-on-guest-turns"><a class="header" href="#tools-on-guest-turns">Tools on guest turns</a></h2>
+<p>A guest turn is text-only. The guest agent’s tool schemas are not attached to the request, and any tool call emitted by the guest is rejected.</p>
+<p>Tool-using work belongs to the primary agent. A guest is a voice in the conversation, not a worker.</p>
+<h2 id="attribution"><a class="header" href="#attribution">Attribution</a></h2>
+<p>Each message in the history carries an <code>agent</code> field.</p>
+<ul>
+<li><code>agent</code> empty — the message originates from the conversation’s primary agent.</li>
+<li><code>agent</code> non-empty — the message originates from a guest. The value is the guest agent’s name.</li>
+</ul>
+<p>Attribution survives compaction: archive entries preserve the <code>agent</code> field of each archived message.</p>
+<h2 id="framing"><a class="header" href="#framing">Framing</a></h2>
+<p>When building a request, the runtime auto-injects framing messages that are not persisted between runs. Two framings exist:</p>
+<ul>
+<li><strong>Guest framing.</strong> Injected when a guest is running. It tells the guest that it is joining a conversation and explains the <code>&lt;from agent="..."&gt;</code> tag convention.</li>
+<li><strong>Primary framing.</strong> Injected when the primary is running and the history contains at least one message with a non-empty <code>agent</code>. It tells the primary that some messages are from guest agents and it should continue responding as itself.</li>
+</ul>
+<p>Framing messages are marked auto-injected. They are stripped from the history at the start of each run and re-injected for that run only. The history on disk never contains framing messages.</p>
+<h2 id="tagging"><a class="header" href="#tagging">Tagging</a></h2>
+<p>Assistant messages with a non-empty <code>agent</code> field are prefixed with <code>&lt;from agent="{name}"&gt;</code> when they appear in an LLM request. The prefix makes the speaker visible to whichever agent is currently reading the history.</p>
+<p>A message without an <code>agent</code> field carries no prefix.</p>
+<h2 id="cancellation-1"><a class="header" href="#cancellation-1">Cancellation</a></h2>
+<p><code>KillMsg</code> addresses the conversation by <code>(agent, sender)</code>. It cancels whichever run is in flight, whether that run is the primary or a guest. A cancelled guest turn leaves the user’s content appended to the history; the guest’s partial response is discarded.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="memory"><a class="header" href="#memory">Memory</a></h1>
+<p>Memory is a single-file entry store, shared by an agent across its conversations. It holds two kinds of content: notes that the agent writes deliberately, and archives that accumulate as conversations are compacted. Search is lexical (BM25); there are no embeddings.</p>
+<h2 id="entries"><a class="header" href="#entries">Entries</a></h2>
+<p>An entry has:</p>
+<ul>
+<li><code>id</code> — monotonic integer, assigned on insert.</li>
+<li><code>name</code> — the entry’s primary identifier. Unique within the memory.</li>
+<li><code>aliases</code> — alternative names that resolve to the same entry.</li>
+<li><code>content</code> — the entry’s text.</li>
+<li><code>kind</code> — <code>Note</code> or <code>Archive</code>.</li>
+<li><code>created_at</code> — creation timestamp.</li>
+</ul>
+<p>Entries are addressed by <code>name</code> or by any of their <code>aliases</code>. A name is rebindable through aliasing; the canonical <code>name</code> is whatever the agent most recently chose.</p>
+<h2 id="kinds"><a class="header" href="#kinds">Kinds</a></h2>
+<p><code>Note</code> entries are the agent’s long-term store. The agent adds, renames, aliases, and rewrites them through memory operations.</p>
+<p><code>Archive</code> entries are produced by compaction. Their <code>content</code> is the summary of a compacted conversation prefix. Archive entries are not rewritten after creation.</p>
+<p>Both kinds share the same index and search path. A search over memory returns both, ranked by relevance.</p>
+<h2 id="compaction"><a class="header" href="#compaction">Compaction</a></h2>
+<p>Compaction compresses a prefix of a conversation’s history into a summary and records a boundary in the history at the point of compression.</p>
+<p>When a conversation is compacted:</p>
+<ol>
+<li>The daemon summarizes the history prefix.</li>
+<li>The summary is written to the memory as an <code>Archive</code> entry with a generated <code>name</code>.</li>
+<li>A compact marker is appended to the conversation’s history, carrying the <code>archive_name</code> and <code>archived_at</code> timestamp.</li>
+</ol>
+<p>On the next run, the history is replayed from the latest compact marker. Entries before the marker are dropped from the working context; the archive remains available through memory search and by explicit name.</p>
+<p>A conversation can be compacted any number of times. Each compaction leaves one additional marker and one additional archive entry.</p>
+<h2 id="persistence"><a class="header" href="#persistence">Persistence</a></h2>
+<p>The memory is a single file. The file holds all entries, all aliases, and the search index snapshot. A write operation mutates memory in RAM and writes an atomic snapshot of the file on each successful apply.</p>
+<p>Opening an existing path reads the snapshot into RAM. Opening a non-existent path creates an empty memory; the file is written on the first successful apply.</p>
+<h2 id="search"><a class="header" href="#search">Search</a></h2>
+<p>Search is BM25 over the tokenized content and name of each entry. Results include the entry and its score. The caller chooses the cutoff — the store does not filter by relevance.</p>
+<p>The token set is the union of tokens from <code>content</code> and <code>name</code>; aliases do not contribute tokens. Aliases are resolution, not search.</p>
+<h2 id="operations"><a class="header" href="#operations">Operations</a></h2>
+<p>Memory exposes a closed set of write operations:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Add</code></td><td>Create a new entry with a given name, content, and kind.</td></tr>
+<tr><td><code>Rename</code></td><td>Change an entry’s canonical name.</td></tr>
+<tr><td><code>Alias</code></td><td>Bind an additional name to an existing entry.</td></tr>
+<tr><td><code>Write</code></td><td>Replace an entry’s content.</td></tr>
+<tr><td><code>Remove</code></td><td>Delete an entry and all its aliases.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Operations on <code>Archive</code> entries are permitted but not expected; the agent works with <code>Note</code> entries.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="runtime"><a class="header" href="#runtime">Runtime</a></h1>
+<p>The runtime is the engine that drives agents. It owns conversations in memory, runs agent steps, dispatches tool calls, and applies compaction. It does not open sockets, accept connections, or schedule time. Capabilities that require I/O are provided to the runtime by its environment.</p>
+<h2 id="composition"><a class="header" href="#composition">Composition</a></h2>
+<p>A runtime is parameterized by a <code>Config</code> that names three associated types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Responsibility</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Storage</code></td><td>Persistence of conversations, skills, and memory.</td></tr>
+<tr><td><code>Provider</code></td><td>LLM request and streaming.</td></tr>
+<tr><td><code>Env</code></td><td>Node-specific capabilities and tool dispatch.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A binary supplies one <code>Config</code>. The daemon’s <code>Config</code> wires filesystem storage, a configured provider, and a node environment that owns hooks and event broadcasting. Tests supply a <code>Config</code> with in-memory storage, a stub provider, and <code>()</code> as the environment.</p>
+<h2 id="responsibilities"><a class="header" href="#responsibilities">Responsibilities</a></h2>
+<p>The runtime handles:</p>
+<ul>
+<li>Loading and saving conversations through <code>Storage</code>.</li>
+<li>Building an agent request from the current history, instructions, and tool schemas.</li>
+<li>Streaming responses from <code>Provider</code> and applying them to the conversation.</li>
+<li>Dispatching tool calls through <code>Env</code>.</li>
+<li>Emitting <code>AgentEvent</code> values for each step, tool call, and compaction.</li>
+<li>Producing compaction summaries and appending archive markers.</li>
+</ul>
+<h2 id="boundary"><a class="header" href="#boundary">Boundary</a></h2>
+<p>The runtime does not:</p>
+<ul>
+<li>Bind listeners or accept transport connections.</li>
+<li>Spawn tasks for message routing or scheduling.</li>
+<li>Interpret protocol messages.</li>
+<li>Read the system clock for scheduling purposes.</li>
+<li>Manage process state such as PID files or signals.</li>
+</ul>
+<p>These belong to the server that hosts the runtime.</p>
+<h2 id="env"><a class="header" href="#env">Env</a></h2>
+<p><code>Env</code> is the runtime’s only outward-facing capability surface. It provides:</p>
+<ul>
+<li><code>hook()</code> — the composite <code>Hook</code> that exposes tool schemas, dispatches tool calls, and participates in lifecycle events.</li>
+<li><code>on_agent_event(agent, conversation_id, event)</code> — hook point for side effects, such as event broadcasting or persistence of step traces.</li>
+<li><code>subscribe_events()</code> — optional subscription to a cross-conversation event stream, for servers that expose agent events to external clients.</li>
+<li><code>discover_instructions(cwd)</code> — collect instruction files applicable to a working directory.</li>
+<li><code>effective_cwd(conversation_id)</code> — resolve the working directory for a run, honoring any per-conversation override.</li>
+</ul>
+<p>Methods that the runtime does not need in a given context have default implementations. An <code>Env</code> implementation may leave event broadcasting, instruction discovery, or CWD management at their defaults.</p>
+<h2 id="hook"><a class="header" href="#hook">Hook</a></h2>
+<p><code>Hook</code> is the single point through which the runtime reaches node-specific tools. A hook:</p>
+<ul>
+<li>Advertises tool schemas for the LLM request.</li>
+<li>Dispatches tool calls by name, returning a future that yields the tool’s result.</li>
+<li>Participates in step lifecycle, observing starts, completions, and errors.</li>
+</ul>
+<p>A hook is composite: the daemon’s hook owns sub-hooks (OS tools, <code>ask_user</code>, delegation, event subscription, memory). Order of sub-hooks is fixed by the composite; the runtime sees a single <code>Hook</code>.</p>
+<h2 id="tool-dispatch"><a class="header" href="#tool-dispatch">Tool dispatch</a></h2>
+<p>A tool call from the agent carries the tool name, arguments, the originating agent and sender, and the conversation id. The runtime invokes <code>Env::hook().dispatch(name, call)</code>. If no sub-hook claims the name, the dispatch yields an error result; the agent receives the error as the tool’s output.</p>
+<p>Dispatch is asynchronous. The runtime awaits the tool future at the next step boundary and applies the result to the conversation before the following step.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="daemon"><a class="header" href="#daemon">Daemon</a></h1>
+<p>The daemon is the long-lived process that hosts the runtime, owns transports, and persists state. Clients are transient; the daemon is not. A single daemon process serves all configured agents, all active conversations, and all connected clients.</p>
+<h2 id="responsibilities-1"><a class="header" href="#responsibilities-1">Responsibilities</a></h2>
+<p>The daemon owns:</p>
+<ul>
+<li><strong>Transports</strong> — UDS and TCP listeners. Listening endpoints belong to the daemon, not to individual clients or agents.</li>
+<li><strong>Runtime</strong> — a single shared runtime instance behind <code>RwLock</code>. Agents share the runtime; the runtime is never cloned per conversation.</li>
+<li><strong>Hooks</strong> — the composite <code>Hook</code> assembled from sub-hooks (OS tools, <code>ask_user</code>, delegation, event subscription, memory).</li>
+<li><strong>Event bus</strong> — subscription table and fire callback. File-backed by <code>events/subscriptions.toml</code> under the config directory.</li>
+<li><strong>Cron</strong> — schedule store and per-entry timer tasks. File-backed by <code>cron/crons.toml</code>.</li>
+<li><strong>MCP handler</strong> — connections to external MCP servers and routing to the tools they advertise.</li>
+<li><strong>Configuration</strong> — current <code>NodeConfig</code>, reloaded in place on explicit reload.</li>
+</ul>
+<p>The daemon does not interpret tool semantics. Tool dispatch is the runtime’s responsibility, routed through the composite hook.</p>
+<h2 id="process-model"><a class="header" href="#process-model">Process model</a></h2>
+<p>The daemon runs as a single OS process. All work happens on a single Tokio runtime. There is one listener task per configured transport, one reply task per connected client, one task per in-flight dispatch, and one task per active cron timer. Shutdown is initiated by a broadcast channel; every long-lived task subscribes and exits when the channel fires.</p>
+<p>A daemon process owns at most one configuration directory and at most one set of transport endpoints.</p>
+<h2 id="config-directory"><a class="header" href="#config-directory">Config directory</a></h2>
+<p>The daemon is rooted at a configuration directory supplied at startup. The directory holds:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Path</th><th>Contents</th></tr>
+</thead>
+<tbody>
+<tr><td><code>config.toml</code></td><td>Node configuration.</td></tr>
+<tr><td><code>agents/</code></td><td>Agent definitions.</td></tr>
+<tr><td><code>sessions/</code></td><td>Conversation JSONL logs, one file per conversation.</td></tr>
+<tr><td><code>memory/</code></td><td>Per-agent memory databases, one file per agent.</td></tr>
+<tr><td><code>skills/</code></td><td>Skill bundles loadable by agents.</td></tr>
+<tr><td><code>cron/crons.toml</code></td><td>Cron schedule recovery file.</td></tr>
+<tr><td><code>events/subscriptions.toml</code></td><td>Event subscription recovery file.</td></tr>
+</tbody>
+</table>
+</div>
+<p>All paths are resolved relative to the configuration directory. The daemon writes nothing outside this directory.</p>
+<h2 id="lifecycle-1"><a class="header" href="#lifecycle-1">Lifecycle</a></h2>
+<p><strong>Startup.</strong> The daemon reads <code>config.toml</code>, constructs the provider, assembles hooks, opens storage, builds the shared runtime, loads cron and event subscriptions from disk, binds transports, and begins accepting client messages.</p>
+<p><strong>Runtime.</strong> The daemon serves the <code>Server</code> trait. Each client message is dispatched into a spawned task that produces a stream of server messages.</p>
+<p><strong>Reload.</strong> A <code>ReloadMsg</code> causes the daemon to re-read <code>config.toml</code> and rebuild the shared runtime in place. Existing in-flight dispatches complete against the previous runtime; new dispatches see the reloaded runtime. Transports are not re-bound.</p>
+<p><strong>Shutdown.</strong> The daemon broadcasts a shutdown signal. Transport listeners stop accepting new connections. Active dispatches complete or cancel at the next await point. The daemon writes no final state on shutdown; state is persisted on each mutating operation, not at exit.</p>
+<h2 id="persistence-boundary"><a class="header" href="#persistence-boundary">Persistence boundary</a></h2>
+<p>The daemon persists state through the <code>Storage</code> trait. Operations that mutate conversations, memory, or agent definitions write synchronously through storage before acknowledging the caller. Cron and event subscription files are written directly by the daemon.</p>
+<p>A daemon restart recovers all state from the config directory. No state is held only in the process.</p>
+<h2 id="client-addressing"><a class="header" href="#client-addressing">Client addressing</a></h2>
+<p>Clients do not address the daemon. Clients connect to a transport and send <code>ClientMessage</code> values. The transport’s reply channel delivers <code>ServerMessage</code> values back until the connection closes. A client that reconnects and addresses the same <code>(agent, sender)</code> pair resumes the same conversation; no client-side resume token is required.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="providers"><a class="header" href="#providers">Providers</a></h1>
+<p>Providers are the sole point of contact between the daemon and an LLM. The provider layer is external: its trait, types, and concrete implementations live upstream in <code>crabllm</code>. Crabtalk consumes providers but does not define them.</p>
+<h2 id="boundary-1"><a class="header" href="#boundary-1">Boundary</a></h2>
+<p>The <code>crabllm-core</code> crate defines the <code>Provider</code> trait and the shared types that flow across it: <code>ChatCompletionRequest</code>, <code>Message</code>, <code>Tool</code>, <code>ToolCall</code>, <code>Role</code>, <code>Usage</code>, <code>ApiError</code>. These types are the contract between crabtalk and any LLM backend.</p>
+<p>The <code>crabllm-provider</code> crate defines concrete provider implementations. <code>ProviderRegistry</code> assembles them and yields one <code>Provider</code> value constructed from the node configuration.</p>
+<p>Crabtalk depends on both crates as external dependencies. It does not vendor provider code. Changes to provider internals — authentication, request formatting, streaming, error decoding, retry policy — are made upstream.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<p>A runtime is parameterized by <code>Config::Provider</code>. The daemon’s default config resolves <code>Provider</code> by calling <code>ProviderRegistry::build</code> with the user’s configuration. The runtime holds a single provider instance for its lifetime and calls it once per agent step.</p>
+<p>The provider is asked to produce:</p>
+<ul>
+<li>A non-streaming completion for synchronous operations.</li>
+<li>A streaming completion for <code>StreamMsg</code> operations, yielding chunks that the runtime accumulates into a <code>Message</code>.</li>
+</ul>
+<p>The runtime does not interpret provider-specific errors. <code>ApiError</code> is surfaced to the client as a protocol error; the provider is responsible for mapping backend failures into <code>ApiError</code> values.</p>
+<h2 id="tools-across-the-boundary"><a class="header" href="#tools-across-the-boundary">Tools across the boundary</a></h2>
+<p>Tool schemas are declared in <code>crabllm-core::Tool</code>. The runtime collects schemas from the composite hook, attaches them to the request, and lets the provider format them for the backend. Tool calls returned by the provider arrive as <code>ToolCall</code> values; the runtime dispatches each call through <code>Env::hook().dispatch</code>.</p>
+<p>The shape of tool schemas is fixed by <code>crabllm-core</code>. A tool that cannot be expressed in that shape is not expressible to crabtalk.</p>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<p>Provider configuration is read from the node’s <code>config.toml</code> and passed to <code>ProviderRegistry</code>. The daemon does not inspect provider-specific configuration; it forwards the relevant sections to the registry and accepts the resulting <code>Provider</code>.</p>
+<p>Adding a new backend is a change to <code>crabllm-provider</code>. It is not a change to crabtalk.</p>
+<h2 id="upstream"><a class="header" href="#upstream">Upstream</a></h2>
+<p><code>crabllm</code> is maintained at <a href="https://github.com/crabtalk/crabllm"><code>crabtalk/crabllm</code></a>. Bug fixes, new backends, and trait changes are filed there. Crabtalk upgrades its crabllm dependency on release.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="0000---compaction"><a class="header" href="#0000---compaction">0000 - Compaction</a></h1>
 <ul>
 <li>Feature Name: Auto-Compaction</li>
@@ -286,7 +576,7 @@ token count of the current history. If it exceeds <code>compact_threshold</code>
 <p>Token estimation is a heuristic: ~4 characters per token, counting message
 content, reasoning content, and tool call arguments. It’s deliberately rough —
 the threshold is a safety margin, not a precise limit.</p>
-<h3 id="compaction"><a class="header" href="#compaction">Compaction</a></h3>
+<h3 id="compaction-1"><a class="header" href="#compaction-1">Compaction</a></h3>
 <p>The agent sends the full history to the LLM with a compaction system prompt
 that instructs it to:</p>
 <p><strong>Preserve:</strong></p>
@@ -332,7 +622,7 @@ threshold.</li>
 <li><strong>Session persistence</strong> — compact markers are append-only in the JSONL. The
 full history survives on disk even after in-memory replacement.</li>
 </ul>
-<h3 id="configuration"><a class="header" href="#configuration">Configuration</a></h3>
+<h3 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h3>
 <p>Per-agent configurable. <code>None</code> disables auto-compaction. The default of 100,000
 tokens leaves headroom below most model context limits (128K–200K) for the
 system prompt, tool schemas, and injected context.</p>
@@ -739,7 +1029,7 @@ directory order.</p>
 <p>A <code>Vec&lt;Skill&gt;</code> wrapped in <code>Mutex</code> inside <code>SkillHandler</code>. Linear scan — the
 registry is small enough that indexing is unnecessary. Supports <code>add</code>, <code>upsert</code>
 (replace by name), <code>contains</code>, and <code>skills</code> (list all).</p>
-<h3 id="dispatch"><a class="header" href="#dispatch">Dispatch</a></h3>
+<h3 id="dispatch-1"><a class="header" href="#dispatch-1">Dispatch</a></h3>
 <p>Exposed as a tool the agent can call. Input: <code>{ name: string }</code>.</p>
 <p>Resolution order:</p>
 <ol>
@@ -946,7 +1236,7 @@ Each file contains a port number. The daemon connects via
 Restart? New port file, the daemon picks it up on next reload. Update a
 component? Install the new version, restart the service — the daemon sees the
 new port on next scan.</p>
-<h3 id="entry-point"><a class="header" href="#entry-point">Entry point</a></h3>
+<h3 id="entry-point-1"><a class="header" href="#entry-point-1">Entry point</a></h3>
 <p>The <code>run()</code> function handles tracing init and tokio bootstrap for all component
 binaries.</p>
 <h2 id="alternatives-6"><a class="header" href="#alternatives-6">Alternatives</a></h2>
@@ -1030,7 +1320,7 @@ persisted, stripped before each run, and refreshed.</p>
 <p><strong><code>on_event</code></strong> — called after each agent step. Receives every <code>AgentEvent</code>
 (text deltas, tool calls, completions). <code>DaemonHost</code> uses this to broadcast
 events to console subscribers.</p>
-<h3 id="composition"><a class="header" href="#composition">Composition</a></h3>
+<h3 id="composition-1"><a class="header" href="#composition-1">Composition</a></h3>
 <p><code>Env&lt;H: Host&gt;</code> is the engine environment. It composes <code>SkillHandler</code>,
 <code>McpHandler</code>, <code>Memory</code>, and <code>AgentScope</code> maps. It implements <code>Hook</code> by
 orchestrating all subsystems.</p>
@@ -1038,7 +1328,7 @@ orchestrating all subsystems.</p>
 adds ask_user dispatch, delegate dispatch, session CWD, and event broadcasting.</p>
 <p>For embedded use, <code>Env&lt;NoHost&gt;</code> provides the full engine without
 daemon infrastructure.</p>
-<h3 id="tool-dispatch"><a class="header" href="#tool-dispatch">Tool dispatch</a></h3>
+<h3 id="tool-dispatch-1"><a class="header" href="#tool-dispatch-1">Tool dispatch</a></h3>
 <p><code>Env::dispatch_tool</code> is the central routing table — a match on tool
 name. It’s not part of the <code>Hook</code> trait itself (the trait only registers
 schemas). The runtime calls <code>dispatch_tool</code> when an agent produces a tool call.
@@ -1099,7 +1389,7 @@ If fire time falls inside, skip silently. No queuing, no catch-up. Both must
 be set; if only one is provided, quiet hours are ignored.</li>
 <li><code>once</code> — fire once then delete from memory and disk.</li>
 </ul>
-<h3 id="persistence"><a class="header" href="#persistence">Persistence</a></h3>
+<h3 id="persistence-1"><a class="header" href="#persistence-1">Persistence</a></h3>
 <p>Memory is authoritative at runtime. Disk (<code>crons.toml</code>) is recovery for
 restarts.</p>
 <ul>
@@ -1262,7 +1552,7 @@ re-sending. The daemon should own this.</p>
 background research or parallel work, this is a limitation. If the daemon can
 route agent completion events, non-blocking delegation falls out for free.</p>
 <h2 id="design-10"><a class="header" href="#design-10">Design</a></h2>
-<h3 id="event-bus"><a class="header" href="#event-bus">Event bus</a></h3>
+<h3 id="event-bus-1"><a class="header" href="#event-bus-1">Event bus</a></h3>
 <p>An in-memory subscription table that matches events by exact source string and
 fires target agents with the event payload as message content.</p>
 <pre><code class="language-toml"># events.toml
@@ -1475,7 +1765,7 @@ message CompactMsg {
   string agent = 1;  // no session field
 }
 </code></pre>
-<h3 id="guest-turns"><a class="header" href="#guest-turns">Guest turns</a></h3>
+<h3 id="guest-turns-1"><a class="header" href="#guest-turns-1">Guest turns</a></h3>
 <p>The <code>guest</code> field on <code>StreamMsg</code> enables multi-agent conversations. When set,
 the daemon runs the guest agent against the primary agent’s conversation
 history — text-only, no tool dispatch.</p>
@@ -1503,7 +1793,7 @@ Continue responding as yourself.”</li>
 </ul>
 <p>Both are <code>auto_injected</code> — stripped before each run, re-injected fresh. Zero
 accumulation.</p>
-<h3 id="message-attribution"><a class="header" href="#message-attribution">Message attribution</a></h3>
+<h3 id="message-attribution-1"><a class="header" href="#message-attribution-1">Message attribution</a></h3>
 <p>The <code>Message</code> struct gains an <code>agent</code> field:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1617,7 +1907,7 @@ the pluggable memory provider aligned with this model.</p>
 </code></pre>
 <p><code>kind</code> is u32 rather than u8 so the fixed entry prefix stays 4-byte aligned — cheap hygiene for any future on-disk index work. The inverted BM25 index is <strong>not</strong> persisted; it’s rebuilt from entries on load. Keeps the file small and the format boring.</p>
 <p><strong>Reader invariants:</strong> magic mismatch, wrong version, non-zero flags, truncated body, invalid UTF-8, or an unknown <code>kind</code> value all fail the open with <code>BadFormat</code>. A missing file opens an empty db (the file is created on the first successful write).</p>
-<h3 id="persistence-1"><a class="header" href="#persistence-1">Persistence</a></h3>
+<h3 id="persistence-2"><a class="header" href="#persistence-2">Persistence</a></h3>
 <p>Every <code>apply(Op)</code> mutates RAM then flushes atomically. The flush sequence is:</p>
 <ol>
 <li>Encode the entire db to an in-memory <code>Vec&lt;u8&gt;</code>.</li>
