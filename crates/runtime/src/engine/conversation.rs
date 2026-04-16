@@ -104,6 +104,24 @@ impl<C: Config> Runtime<C> {
         Ok(id)
     }
 
+    pub async fn active_conversation_infos(
+        &self,
+    ) -> Vec<wcore::protocol::message::ActiveConversationInfo> {
+        let conversations = self.conversations.read().await;
+        let mut infos = Vec::with_capacity(conversations.len());
+        for (_, conv_slot) in conversations.iter() {
+            let c = conv_slot.inner.lock().await;
+            infos.push(wcore::protocol::message::ActiveConversationInfo {
+                agent: conv_slot.agent.clone(),
+                sender: conv_slot.created_by.clone(),
+                message_count: c.history.len() as u64,
+                alive_secs: c.uptime_secs,
+                title: c.title.clone(),
+            });
+        }
+        infos
+    }
+
     pub async fn close_conversation(&self, id: u64) -> bool {
         self.steering.write().await.remove(&id);
         self.conversations.write().await.remove(&id).is_some()
