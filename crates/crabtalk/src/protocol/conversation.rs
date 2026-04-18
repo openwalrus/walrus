@@ -191,21 +191,9 @@ pub(super) async fn compact<P: Provider + 'static>(
 
 pub(super) async fn list_active<P: Provider + 'static>(
     node: &Daemon<P>,
-) -> Result<Vec<ActiveConversationInfo>> {
+) -> Result<Vec<wcore::protocol::message::ActiveConversationInfo>> {
     let rt = node.runtime.read().await.clone();
-    let conversations = rt.conversations().await;
-    let mut infos = Vec::with_capacity(conversations.len());
-    for c in conversations {
-        let c = c.lock().await;
-        infos.push(ActiveConversationInfo {
-            agent: c.agent.to_string(),
-            sender: c.created_by.to_string(),
-            message_count: c.history.len() as u64,
-            alive_secs: c.uptime_secs,
-            title: c.title.clone(),
-        });
-    }
-    Ok(infos)
+    Ok(rt.active_conversation_infos().await)
 }
 
 pub(super) async fn kill<P: Provider + 'static>(

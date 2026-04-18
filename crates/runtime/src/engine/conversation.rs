@@ -14,7 +14,7 @@ use wcore::{
     storage::{SessionHandle, Storage},
 };
 
-use super::Runtime;
+use super::{ConvSlot, Runtime};
 
 fn archive_base_name(session_slug: &str) -> String {
     let nanos = SystemTime::now()
@@ -25,56 +25,53 @@ fn archive_base_name(session_slug: &str) -> String {
 }
 
 impl<C: Config> Runtime<C> {
+    fn new_slot(id: u64, agent: &str, created_by: &str) -> ConvSlot {
+        ConvSlot {
+            agent: agent.to_owned(),
+            created_by: created_by.to_owned(),
+            inner: Arc::new(Mutex::new(Conversation::new(id))),
+        }
+    }
+
     /// Get or create a conversation for the given (agent, created_by) identity.
     pub async fn get_or_create_conversation(&self, agent: &str, created_by: &str) -> Result<u64> {
         if !self.has_agent(agent).await {
             bail!("agent '{agent}' not registered");
         }
 
-        // 1. In-memory lookup.
-        {
-            let conversations = self.conversations.read().await;
-            for (id, conversation_mutex) in conversations.iter() {
-                let c = conversation_mutex.lock().await;
-                if c.agent == agent && c.created_by == created_by {
-                    return Ok(*id);
-                }
+        // 1. Storage lookup outside lock to avoid holding runtime locks over I/O.
+        let storage = self.storage();
+        let loaded = storage
+            .find_latest_session(agent, created_by)
+            .ok()
+            .flatten()
+            .and_then(|handle| {
+                storage
+                    .load_session(&handle)
+                    .ok()
+                    .flatten()
+                    .map(|s| (handle, s))
+            });
+
+        // 2. Atomic scan + insert under one write lock.
+        let mut conversations = self.conversations.write().await;
+        for (id, slot) in conversations.iter() {
+            if slot.agent == agent && slot.created_by == created_by {
+                return Ok(*id);
             }
         }
 
-        // 2. Storage lookup — find latest persisted session for this identity.
-        let storage = self.storage();
-        if let Ok(Some(handle)) = storage.find_latest_session(agent, created_by)
-            && let Ok(Some(snapshot)) = storage.load_session(&handle)
-        {
-            let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
-            let mut conversation = Conversation::new(id, agent, created_by);
+        let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
+        let slot = Self::new_slot(id, agent, created_by);
+        if let Some((handle, snapshot)) = loaded {
+            let mut conversation = slot.inner.lock().await;
             conversation.history =
                 self.resumed_history(snapshot.archive.as_deref(), snapshot.history);
             conversation.title = snapshot.meta.title;
             conversation.uptime_secs = snapshot.meta.uptime_secs;
             conversation.handle = Some(handle);
-            self.conversations
-                .write()
-                .await
-                .insert(id, Arc::new(Mutex::new(conversation)));
-            return Ok(id);
         }
-
-        // 3. Create new.
-        self.create_conversation(agent, created_by).await
-    }
-
-    pub async fn create_conversation(&self, agent: &str, created_by: &str) -> Result<u64> {
-        if !self.has_agent(agent).await {
-            bail!("agent '{agent}' not registered");
-        }
-        let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
-        let conversation = Conversation::new(id, agent, created_by);
-        self.conversations
-            .write()
-            .await
-            .insert(id, Arc::new(Mutex::new(conversation)));
+        conversations.insert(id, slot);
         Ok(id)
     }
 
@@ -88,17 +85,33 @@ impl<C: Config> Runtime<C> {
             bail!("agent '{}' not registered", snapshot.meta.agent);
         }
         let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
-        let mut conversation =
-            Conversation::new(id, &snapshot.meta.agent, &snapshot.meta.created_by);
+        let slot = Self::new_slot(id, &snapshot.meta.agent, &snapshot.meta.created_by);
+        let mut conversation = slot.inner.lock().await;
         conversation.history = self.resumed_history(snapshot.archive.as_deref(), snapshot.history);
         conversation.title = snapshot.meta.title;
         conversation.uptime_secs = snapshot.meta.uptime_secs;
         conversation.handle = Some(handle);
-        self.conversations
-            .write()
-            .await
-            .insert(id, Arc::new(Mutex::new(conversation)));
+        drop(conversation);
+        self.conversations.write().await.insert(id, slot);
         Ok(id)
+    }
+
+    pub async fn active_conversation_infos(
+        &self,
+    ) -> Vec<wcore::protocol::message::ActiveConversationInfo> {
+        let conversations = self.conversations.read().await;
+        let mut infos = Vec::with_capacity(conversations.len());
+        for (_, conv_slot) in conversations.iter() {
+            let c = conv_slot.inner.lock().await;
+            infos.push(wcore::protocol::message::ActiveConversationInfo {
+                agent: conv_slot.agent.clone(),
+                sender: conv_slot.created_by.clone(),
+                message_count: c.history.len() as u64,
+                alive_secs: c.uptime_secs,
+                title: c.title.clone(),
+            });
+        }
+        infos
     }
 
     pub async fn close_conversation(&self, id: u64) -> bool {
@@ -117,11 +130,20 @@ impl<C: Config> Runtime<C> {
     }
 
     pub async fn conversation(&self, id: u64) -> Option<Arc<Mutex<Conversation>>> {
-        self.conversations.read().await.get(&id).cloned()
+        self.conversations
+            .read()
+            .await
+            .get(&id)
+            .map(|slot| slot.inner.clone())
     }
 
     pub async fn conversations(&self) -> Vec<Arc<Mutex<Conversation>>> {
-        self.conversations.read().await.values().cloned().collect()
+        self.conversations
+            .read()
+            .await
+            .values()
+            .map(|slot| slot.inner.clone())
+            .collect()
     }
 
     pub async fn conversation_count(&self) -> usize {
@@ -130,9 +152,8 @@ impl<C: Config> Runtime<C> {
 
     pub async fn find_conversation_id(&self, agent: &str, sender: &str) -> Option<u64> {
         let conversations = self.conversations.read().await;
-        for (id, conv_mutex) in conversations.iter() {
-            let conv = conv_mutex.lock().await;
-            if conv.agent == agent && conv.created_by == sender {
+        for (id, slot) in conversations.iter() {
+            if slot.agent == agent && slot.created_by == sender {
                 return Some(*id);
             }
         }
@@ -141,17 +162,16 @@ impl<C: Config> Runtime<C> {
 
     pub async fn compact_conversation(&self, conversation_id: u64) -> Option<String> {
         let (agent_name, history) = {
-            let conversation_mutex = self
-                .conversations
-                .read()
-                .await
-                .get(&conversation_id)?
-                .clone();
+            let conversations = self.conversations.read().await;
+            let slot = conversations.get(&conversation_id)?;
+            let agent_name = slot.agent.clone();
+            let conversation_mutex = slot.inner.clone();
+            drop(conversations);
             let conversation = conversation_mutex.lock().await;
             if conversation.history.is_empty() {
                 return None;
             }
-            (conversation.agent.clone(), conversation.history.clone())
+            (agent_name, conversation.history.clone())
         };
         let persistent = self.agents.read().get(&agent_name).cloned();
         if let Some(a) = persistent {
@@ -169,8 +189,8 @@ impl<C: Config> Runtime<C> {
     pub async fn transfer_conversations<C2: Config>(&self, dest: &mut Runtime<C2>) {
         let conversations = self.conversations.read().await;
         let dest_conversations = dest.conversations.get_mut();
-        for (id, conversation) in conversations.iter() {
-            dest_conversations.insert(*id, conversation.clone());
+        for (id, slot) in conversations.iter() {
+            dest_conversations.insert(*id, slot.clone());
         }
         let next = self.next_conversation_id.load(Ordering::Relaxed);
         dest.next_conversation_id.store(next, Ordering::Relaxed);
@@ -223,12 +243,12 @@ impl<C: Config> Runtime<C> {
 
     /// Ensure the conversation has a session handle, creating one via
     /// the repo if needed. Called before the first persist.
-    fn ensure_handle(&self, conversation: &mut Conversation) {
+    fn ensure_handle(&self, conversation: &mut Conversation, agent: &str, created_by: &str) {
         if conversation.handle.is_some() {
             return;
         }
         let storage = self.storage();
-        match storage.create_session(&conversation.agent, &conversation.created_by) {
+        match storage.create_session(agent, created_by) {
             Ok(handle) => conversation.handle = Some(handle),
             Err(e) => tracing::warn!("failed to create session: {e}"),
         }
@@ -239,11 +259,13 @@ impl<C: Config> Runtime<C> {
     pub(crate) fn persist_messages(
         &self,
         conversation: &mut Conversation,
+        agent: &str,
+        created_by: &str,
         pre_run_len: usize,
         compact_summary: Option<String>,
         event_trace: &[wcore::EventLine],
     ) {
-        self.ensure_handle(conversation);
+        self.ensure_handle(conversation, agent, created_by);
         let Some(ref handle) = conversation.handle else {
             return;
         };
@@ -274,21 +296,24 @@ impl<C: Config> Runtime<C> {
         if !event_trace.is_empty() {
             let _ = storage.append_session_events(handle, event_trace);
         }
-        let _ = storage.update_session_meta(handle, &conversation.meta());
+        let _ = storage.update_session_meta(handle, &conversation.meta(agent, created_by));
     }
 
     pub(crate) fn spawn_title_generation(
         &self,
         _conversation_id: u64,
         agent_name: &str,
+        created_by: &str,
         conversation_mutex: Arc<Mutex<Conversation>>,
     ) {
         let model = self.model.clone();
         let storage = self.storage().clone();
+        let agent_name = agent_name.to_owned();
+        let created_by = created_by.to_owned();
         let model_name = self
             .agents
             .read()
-            .get(agent_name)
+            .get(agent_name.as_str())
             .and_then(|a| a.config.model.clone())
             .unwrap_or_default();
         if model_name.is_empty() {
@@ -351,8 +376,10 @@ impl<C: Config> Runtime<C> {
                             if conversation.title.is_empty() {
                                 conversation.title = title;
                                 if let Some(ref handle) = conversation.handle {
-                                    let _ =
-                                        storage.update_session_meta(handle, &conversation.meta());
+                                    let _ = storage.update_session_meta(
+                                        handle,
+                                        &conversation.meta(&agent_name, &created_by),
+                                    );
                                 }
                             }
                         }
