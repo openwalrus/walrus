@@ -4,10 +4,7 @@ use crate::{Config, Conversation};
 use anyhow::{Result, bail};
 use crabllm_core::{ChatCompletionRequest, Message, Role};
 use memory::{EntryKind, Op};
-use std::{
-    sync::{Arc, atomic::Ordering},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::{Arc, atomic::Ordering};
 use tokio::sync::Mutex;
 use wcore::{
     model::HistoryEntry,
@@ -23,14 +20,6 @@ use super::{ConvSlot, Runtime};
 pub struct SwitchOutcome {
     pub conversation_id: u64,
     pub resumed: bool,
-}
-
-fn archive_base_name(session_slug: &str) -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("archive-{session_slug}-{nanos}")
 }
 
 impl<C: Config> Runtime<C> {
@@ -442,12 +431,34 @@ impl<C: Config> Runtime<C> {
         out
     }
 
-    /// Write a compaction summary to memory as an `Archive` entry and
-    /// return the generated entry name. `None` on failure — the caller
-    /// must skip the compact marker so a resume can't dangle.
-    fn write_archive(&self, session_slug: &str, summary: String) -> Option<String> {
-        let name = archive_base_name(session_slug);
+    /// Write a compaction summary to memory as an `Archive` entry,
+    /// named `{topic-slug}-{n}` where `n` is the next free sequence
+    /// number for this topic. Older archives stay searchable via
+    /// `recall`, so a long-running topic's phases don't get
+    /// overwritten. Returns the generated name, or `None` on failure
+    /// — the caller must skip the compact marker so a resume can't
+    /// dangle.
+    fn write_archive(&self, topic: &str, summary: String) -> Option<String> {
+        let slug = wcore::sender_slug(topic);
+        let prefix = format!("{slug}-");
         let mut mem = self.memory.write();
+        // Scan and insert under the same write lock — two concurrent
+        // compactions can't both pick `seq` and collide.
+        let next_seq = mem
+            .list()
+            .filter(|e| e.kind == EntryKind::Archive && e.name.starts_with(&prefix))
+            .filter_map(|e| {
+                let suffix = &e.name[prefix.len()..];
+                let n: u32 = suffix.parse().ok()?;
+                // Reject non-canonical forms ("02", "+1", etc.) so a
+                // future `{slug}-2` can't collide with a historic
+                // `{slug}-02`.
+                (n.to_string() == suffix).then_some(n)
+            })
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let name = format!("{slug}-{next_seq}");
         match mem.apply(Op::Add {
             name: name.clone(),
             content: summary,
@@ -494,9 +505,15 @@ impl<C: Config> Runtime<C> {
         let storage = self.storage();
 
         if let Some(summary) = compact_summary {
+            // A persisted conversation is always topic-bound —
+            // `ensure_handle` refuses to create a handle for tmp chats.
+            let topic = conversation
+                .topic
+                .clone()
+                .expect("persisted conversation without a topic");
             // Archive first — if this fails, don't write a dangling
             // marker that points at nothing.
-            if let Some(archive_name) = self.write_archive(handle.as_str(), summary) {
+            if let Some(archive_name) = self.write_archive(&topic, summary) {
                 let _ = storage.append_session_compact(handle, &archive_name);
                 if conversation.history.len() > 1 {
                     let tail: Vec<_> = conversation.history[1..]
