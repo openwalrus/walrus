@@ -18,6 +18,10 @@ mod switch;
 use search::SearchTopics;
 use switch::SwitchTopic;
 
+/// Behavioural guidance — when/how to use the topic tools. Tool
+/// *signatures* come from each struct's `///` doc comment via schemars.
+const TOPIC_PROMPT: &str = include_str!("../../../prompts/topic.md");
+
 pub struct TopicHook<P: Provider + 'static> {
     pub(super) runtime: Arc<OnceLock<SharedRuntime<P>>>,
     pub(super) memory: SharedMemory,
@@ -32,6 +36,10 @@ impl<P: Provider + 'static> TopicHook<P> {
 impl<P: Provider + 'static> Hook for TopicHook<P> {
     fn schema(&self) -> Vec<Tool> {
         vec![SearchTopics::as_tool(), SwitchTopic::as_tool()]
+    }
+
+    fn system_prompt(&self) -> Option<String> {
+        Some(format!("\n\n{TOPIC_PROMPT}"))
     }
 
     fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
