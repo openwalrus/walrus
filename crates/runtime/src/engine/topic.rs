@@ -4,11 +4,11 @@
 //! title, plus an active-topic pointer. Untopicked chats are tmp and
 //! live only in [`TopicRouter::tmp`]; they never reach storage.
 
-use crate::Config;
+use crate::{Config, ConversationHandle};
 use anyhow::{Result, bail};
 use memory::{EntryKind, Op};
 use std::{collections::HashMap, sync::atomic::Ordering};
-use wcore::storage::{SessionHandle, Storage};
+use wcore::storage::Storage;
 
 use super::Runtime;
 
@@ -176,10 +176,10 @@ impl<C: Config> Runtime<C> {
         agent: &str,
         sender: &str,
         title: &str,
-    ) -> Option<(SessionHandle, wcore::storage::SessionSnapshot)> {
+    ) -> Option<(ConversationHandle, wcore::storage::SessionSnapshot)> {
         let storage = self.storage();
         let summaries = storage.list_sessions().ok()?;
-        let mut match_: Option<(SessionHandle, wcore::storage::ConversationMeta)> = None;
+        let mut best: Option<(ConversationHandle, wcore::storage::ConversationMeta)> = None;
         for summary in summaries {
             if summary.meta.agent != agent || summary.meta.created_by != sender {
                 continue;
@@ -189,14 +189,14 @@ impl<C: Config> Runtime<C> {
             }
             // Later sessions win — `created_at` is an RFC3339 string so
             // lexicographic comparison is chronological.
-            if match_
+            if best
                 .as_ref()
                 .is_none_or(|(_, meta)| summary.meta.created_at > meta.created_at)
             {
-                match_ = Some((summary.handle, summary.meta));
+                best = Some((summary.handle, summary.meta));
             }
         }
-        let (handle, _) = match_?;
+        let (handle, _) = best?;
         let snapshot = storage.load_session(&handle).ok().flatten()?;
         Some((handle, snapshot))
     }

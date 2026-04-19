@@ -1,10 +1,8 @@
 //! Conversation — pure working-context container.
 
+use crate::ConversationHandle;
 use std::time::Instant;
-use wcore::{
-    model::HistoryEntry,
-    storage::{ConversationMeta, SessionHandle},
-};
+use wcore::{model::HistoryEntry, storage::ConversationMeta};
 
 /// A conversation tied to a specific agent.
 ///
@@ -22,10 +20,10 @@ pub struct Conversation {
     pub uptime_secs: u64,
     /// When this conversation was loaded/created in this process.
     pub created_at: Instant,
-    /// Persistent session identity, assigned by the repo. `None` until
-    /// the first persistence call — and remains `None` for tmp chats
-    /// that never enter a topic.
-    pub handle: Option<SessionHandle>,
+    /// Persistent conversation identity, assigned by the storage layer.
+    /// `None` until the first persistence call — and remains `None` for
+    /// tmp chats that never enter a topic.
+    pub handle: Option<ConversationHandle>,
     /// Topic this conversation belongs to, if any. `None` = tmp chat
     /// (no storage, no resume). Set by `switch_topic`.
     pub topic: Option<String>,

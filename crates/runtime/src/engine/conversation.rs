@@ -1,15 +1,12 @@
 //! Conversation management — lifecycle, persistence, and title generation.
 
-use crate::{Config, Conversation};
+use crate::{Config, Conversation, ConversationHandle};
 use anyhow::{Result, bail};
 use crabllm_core::{ChatCompletionRequest, Message, Role};
 use memory::{EntryKind, Op};
 use std::sync::{Arc, atomic::Ordering};
 use tokio::sync::Mutex;
-use wcore::{
-    model::HistoryEntry,
-    storage::{SessionHandle, Storage},
-};
+use wcore::{model::HistoryEntry, storage::Storage};
 
 use super::{ConvSlot, Runtime, TopicRouter};
 
@@ -50,49 +47,64 @@ impl<C: Config> Runtime<C> {
             return Ok(id);
         }
 
-        let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
+        // Reserve an id under the router write lock; release it before
+        // taking the conversations write lock to keep hold-times short.
+        let id = {
+            let mut topics = self.topics.write().await;
+            let router = topics.entry(key).or_default();
+            if let Some(existing) = router.active_conversation() {
+                return Ok(existing);
+            }
+            let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
+            router.tmp = Some(id);
+            id
+        };
         let slot = Self::new_slot(id, agent, created_by);
-        let mut topics = self.topics.write().await;
-        let router = topics.entry(key).or_default();
-        // Re-check under write lock in case another task raced us.
-        if let Some(existing) = router.active_conversation() {
-            return Ok(existing);
-        }
-        router.tmp = Some(id);
-        drop(topics);
         self.conversations.write().await.insert(id, slot);
         Ok(id)
     }
 
-    /// Load a specific conversation by session handle.
-    pub async fn load_session(&self, handle: SessionHandle) -> Result<u64> {
+    /// Load a specific conversation by persistent handle.
+    pub async fn load(&self, handle: ConversationHandle) -> Result<u64> {
         let storage = self.storage();
         let snapshot = storage
             .load_session(&handle)?
-            .ok_or_else(|| anyhow::anyhow!("session '{}' not found", handle.as_str()))?;
+            .ok_or_else(|| anyhow::anyhow!("conversation '{}' not found", handle.as_str()))?;
         if !self.has_agent(&snapshot.meta.agent).await {
             bail!("agent '{}' not registered", snapshot.meta.agent);
         }
         let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
         let slot = Self::new_slot(id, &snapshot.meta.agent, &snapshot.meta.created_by);
-        let mut conversation = slot.inner.lock().await;
-        conversation.history = self.resumed_history(snapshot.archive.as_deref(), snapshot.history);
-        conversation.title = snapshot.meta.title;
-        conversation.uptime_secs = snapshot.meta.uptime_secs;
-        conversation.handle = Some(handle);
-        drop(conversation);
+        {
+            let mut conversation = slot.inner.lock().await;
+            conversation.history =
+                self.resumed_history(snapshot.archive.as_deref(), snapshot.history);
+            conversation.title = snapshot.meta.title;
+            conversation.uptime_secs = snapshot.meta.uptime_secs;
+            conversation.handle = Some(handle);
+        }
         self.conversations.write().await.insert(id, slot);
         Ok(id)
     }
 
     pub async fn list_active(&self) -> Vec<wcore::protocol::message::ActiveConversationInfo> {
-        let conversations = self.conversations.read().await;
-        let mut infos = Vec::with_capacity(conversations.len());
-        for (_, conv_slot) in conversations.iter() {
-            let c = conv_slot.inner.lock().await;
+        // Snapshot the slot metadata and mutex handles first so the
+        // outer read guard isn't held across per-conversation locks —
+        // otherwise a slow conversation would block readers of the
+        // whole map.
+        let slots: Vec<_> = {
+            let conversations = self.conversations.read().await;
+            conversations
+                .values()
+                .map(|s| (s.agent.clone(), s.created_by.clone(), s.inner.clone()))
+                .collect()
+        };
+        let mut infos = Vec::with_capacity(slots.len());
+        for (agent, sender, mutex) in slots {
+            let c = mutex.lock().await;
             infos.push(wcore::protocol::message::ActiveConversationInfo {
-                agent: conv_slot.agent.clone(),
-                sender: conv_slot.created_by.clone(),
+                agent,
+                sender,
                 message_count: c.history.len() as u64,
                 alive_secs: c.uptime_secs,
                 title: c.title.clone(),
@@ -184,17 +196,20 @@ impl<C: Config> Runtime<C> {
     }
 
     pub async fn compact(&self, conversation_id: u64) -> Option<String> {
-        let (agent_name, history) = {
+        // Release the conversations read lock before the per-conversation
+        // mutex await — otherwise readers queue behind a potentially
+        // contended inner lock.
+        let (agent_name, conversation_mutex) = {
             let conversations = self.conversations.read().await;
             let slot = conversations.get(&conversation_id)?;
-            let agent_name = slot.agent.clone();
-            let conversation_mutex = slot.inner.clone();
-            drop(conversations);
+            (slot.agent.clone(), slot.inner.clone())
+        };
+        let history = {
             let conversation = conversation_mutex.lock().await;
             if conversation.history.is_empty() {
                 return None;
             }
-            (agent_name, conversation.history.clone())
+            conversation.history.clone()
         };
         self.resolve_agent(&agent_name)
             .await?

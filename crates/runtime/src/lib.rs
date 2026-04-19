@@ -9,6 +9,11 @@ pub use env::Env;
 pub use hook::Hook;
 pub use wcore::{MemoryConfig, SystemConfig, TasksConfig};
 
+/// Opaque persistent handle to a conversation. Re-exported from the
+/// storage trait so runtime callers don't need to speak the storage
+/// layer's "session" vocabulary.
+pub type ConversationHandle = wcore::storage::SessionHandle;
+
 use crabllm_core::Provider;
 use wcore::storage::Storage;
 
