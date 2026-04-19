@@ -13,17 +13,8 @@ use wcore::{
 
 use super::{ConvSlot, Runtime, TopicRouter};
 
-/// Outcome of `switch_active_topic`. `resumed = true` means the topic
-/// already existed (in the router or on disk); `false` means it was
-/// freshly created.
-#[derive(Debug, Clone, Copy)]
-pub struct SwitchOutcome {
-    pub conversation_id: u64,
-    pub resumed: bool,
-}
-
 impl<C: Config> Runtime<C> {
-    fn new_slot(id: u64, agent: &str, created_by: &str) -> ConvSlot {
+    pub(super) fn new_slot(id: u64, agent: &str, created_by: &str) -> ConvSlot {
         ConvSlot {
             agent: agent.to_owned(),
             created_by: created_by.to_owned(),
@@ -71,180 +62,6 @@ impl<C: Config> Runtime<C> {
         drop(topics);
         self.conversations.write().await.insert(id, slot);
         Ok(id)
-    }
-
-    /// Switch the active topic for `(agent, sender)`. Creates a new
-    /// topic conversation if the title doesn't exist yet; resumes the
-    /// existing one otherwise. When creating, writes an
-    /// `EntryKind::Topic` memory entry (unless one already exists for
-    /// the title) so the topic is searchable via `search_topics`.
-    ///
-    /// Returns the target `conversation_id` in the outcome. The caller
-    /// is responsible for telling the user which conversation to route
-    /// the next message to — this call only updates runtime state.
-    pub async fn switch_active_topic(
-        &self,
-        agent: &str,
-        sender: &str,
-        title: &str,
-        description: Option<&str>,
-    ) -> Result<SwitchOutcome> {
-        if !self.has_agent(agent).await {
-            bail!("agent '{agent}' not registered");
-        }
-        if title.is_empty() {
-            bail!("topic title cannot be empty");
-        }
-
-        let key = (agent.to_owned(), sender.to_owned());
-
-        // Reserve the slot under the router lock — any concurrent
-        // caller that races us observes the reservation on the next
-        // lookup and resumes to our conversation instead of creating a
-        // duplicate session.
-        let id = {
-            let mut topics = self.topics.write().await;
-            let router = topics.entry(key.clone()).or_default();
-            if let Some(id) = router.by_title.get(title).copied() {
-                router.active = Some(title.to_owned());
-                return Ok(SwitchOutcome {
-                    conversation_id: id,
-                    resumed: true,
-                });
-            }
-            let id = self.next_conversation_id.fetch_add(1, Ordering::Relaxed);
-            router.by_title.insert(title.to_owned(), id);
-            router.active = Some(title.to_owned());
-            id
-        };
-
-        match self
-            .finalize_topic_switch(agent, sender, title, description, id)
-            .await
-        {
-            Ok(outcome) => Ok(outcome),
-            Err(e) => {
-                self.rollback_topic_reservation(&key, title).await;
-                Err(e)
-            }
-        }
-    }
-
-    /// Cold-path body of `switch_active_topic`. Called after the slot
-    /// has been reserved; any error here triggers a router rollback.
-    async fn finalize_topic_switch(
-        &self,
-        agent: &str,
-        sender: &str,
-        title: &str,
-        description: Option<&str>,
-        id: u64,
-    ) -> Result<SwitchOutcome> {
-        let existing = self.find_topic_session(agent, sender, title);
-        let resumed = existing.is_some();
-
-        if !resumed {
-            let desc = description.ok_or_else(|| {
-                anyhow::anyhow!("description required when creating a new topic '{title}'")
-            })?;
-            self.ensure_topic_entry(title, desc);
-        }
-
-        let slot = Self::new_slot(id, agent, sender);
-        {
-            let mut conversation = slot.inner.lock().await;
-            conversation.topic = Some(title.to_owned());
-            match existing {
-                Some((handle, snapshot)) => {
-                    conversation.history =
-                        self.resumed_history(snapshot.archive.as_deref(), snapshot.history);
-                    conversation.title = snapshot.meta.title;
-                    conversation.uptime_secs = snapshot.meta.uptime_secs;
-                    conversation.handle = Some(handle);
-                }
-                None => {
-                    let storage = self.storage();
-                    let handle = storage.create_session(agent, sender)?;
-                    // Stamp meta so the new session carries its topic
-                    // from the first write — a missing `topic` here
-                    // would make the session invisible to future
-                    // `find_topic_session` scans. `conversation.meta`
-                    // already reflects the topic we set above.
-                    storage.update_session_meta(&handle, &conversation.meta(agent, sender))?;
-                    conversation.handle = Some(handle);
-                }
-            }
-        }
-
-        self.conversations.write().await.insert(id, slot);
-        Ok(SwitchOutcome {
-            conversation_id: id,
-            resumed,
-        })
-    }
-
-    async fn rollback_topic_reservation(&self, key: &(String, String), title: &str) {
-        let mut topics = self.topics.write().await;
-        let Some(router) = topics.get_mut(key) else {
-            return;
-        };
-        router.by_title.remove(title);
-        if router.active.as_deref() == Some(title) {
-            router.active = None;
-        }
-        if router.by_title.is_empty() && router.active.is_none() && router.tmp.is_none() {
-            topics.remove(key);
-        }
-    }
-
-    /// Scan storage for a session matching `(agent, sender, topic)`.
-    /// Blocking I/O; call from outside the runtime locks.
-    fn find_topic_session(
-        &self,
-        agent: &str,
-        sender: &str,
-        title: &str,
-    ) -> Option<(SessionHandle, wcore::storage::SessionSnapshot)> {
-        let storage = self.storage();
-        let summaries = storage.list_sessions().ok()?;
-        let mut match_: Option<(SessionHandle, wcore::storage::ConversationMeta)> = None;
-        for summary in summaries {
-            if summary.meta.agent != agent || summary.meta.created_by != sender {
-                continue;
-            }
-            if summary.meta.topic.as_deref() != Some(title) {
-                continue;
-            }
-            // Later sessions win — `created_at` is an RFC3339 string so
-            // lexicographic comparison is chronological.
-            if match_
-                .as_ref()
-                .is_none_or(|(_, meta)| summary.meta.created_at > meta.created_at)
-            {
-                match_ = Some((summary.handle, summary.meta));
-            }
-        }
-        let (handle, _) = match_?;
-        let snapshot = storage.load_session(&handle).ok().flatten()?;
-        Some((handle, snapshot))
-    }
-
-    /// Write the Topic memory entry if it doesn't already exist.
-    /// Duplicate-name errors are ignored — a prior process may have
-    /// created the same topic.
-    fn ensure_topic_entry(&self, title: &str, description: &str) {
-        let mut mem = self.memory.write();
-        if mem.get(title).is_some() {
-            return;
-        }
-        if let Err(e) = mem.apply(Op::Add {
-            name: title.to_owned(),
-            content: description.to_owned(),
-            aliases: vec![],
-            kind: EntryKind::Topic,
-        }) {
-            tracing::warn!("topic entry write failed: {e}");
-        }
     }
 
     /// Load a specific conversation by session handle.
@@ -402,7 +219,7 @@ impl<C: Config> Runtime<C> {
     /// (memory wiped, different machine, etc.) injects a visible placeholder
     /// so the model can acknowledge the gap instead of silently truncating
     /// the user's context.
-    fn resumed_history(
+    pub(super) fn resumed_history(
         &self,
         archive: Option<&str>,
         mut history: Vec<HistoryEntry>,
@@ -482,6 +299,7 @@ impl<C: Config> Runtime<C> {
     /// `guest_stream_to`: update uptime, persist, and kick off title
     /// generation if the conversation has a titleable exchange and no
     /// title yet.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn finalize_run(
         &self,
         conversation_id: u64,

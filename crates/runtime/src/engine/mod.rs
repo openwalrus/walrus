@@ -9,13 +9,15 @@
 mod agents;
 mod conversation;
 mod execution;
+mod topic;
 
-pub use conversation::SwitchOutcome;
+pub use topic::SwitchOutcome;
+pub(super) use topic::TopicRouter;
 
 use crate::{Config, Conversation};
 use memory::Memory;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     sync::{Arc, atomic::AtomicU64},
 };
 use tokio::sync::{Mutex, RwLock, watch};
@@ -40,28 +42,6 @@ impl ConvSlot {
             self.created_by.clone(),
             self.inner.clone(),
         )
-    }
-}
-
-/// Per-(agent, sender) topic routing. `active = None` means the caller
-/// is on a tmp chat (no topic). Tmp chats have their own `ConvSlot` but
-/// are not tracked here.
-#[derive(Default)]
-pub(super) struct TopicRouter {
-    pub(super) by_title: HashMap<String, u64>,
-    pub(super) active: Option<String>,
-    pub(super) tmp: Option<u64>,
-}
-
-impl TopicRouter {
-    /// Resolve the conversation this router currently routes to:
-    /// the active topic's conversation if one is set, otherwise the
-    /// tmp conversation if one exists.
-    pub(super) fn active_conversation(&self) -> Option<u64> {
-        self.active
-            .as_ref()
-            .and_then(|t| self.by_title.get(t).copied())
-            .or(self.tmp)
     }
 }
 
