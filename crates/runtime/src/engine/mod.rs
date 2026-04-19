@@ -6,14 +6,6 @@
 //! (`send_to`, `stream_to`) take a conversation ID, lock the conversation,
 //! clone the agent, and run with the conversation's history.
 
-mod agents;
-mod conversation;
-mod execution;
-mod topic;
-
-pub use topic::SwitchOutcome;
-pub(super) use topic::TopicRouter;
-
 use crate::{Config, Conversation};
 use memory::Memory;
 use std::{
@@ -21,7 +13,14 @@ use std::{
     sync::{Arc, atomic::AtomicU64},
 };
 use tokio::sync::{Mutex, RwLock, watch};
+pub use topic::SwitchOutcome;
+pub(super) use topic::TopicRouter;
 use wcore::{Agent, ToolRegistry, model::Model};
+
+mod agents;
+mod conversation;
+mod execution;
+mod topic;
 
 /// Shared handle to the standalone memory store. Used by compaction to
 /// write Archive entries and by session resume to pull their content

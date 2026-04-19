@@ -1,5 +1,6 @@
 //! Execution — message sending and streaming through agents.
 
+use super::Runtime;
 use crate::{Config, Conversation, Env, Hook};
 use anyhow::Result;
 use async_stream::stream;
@@ -8,8 +9,6 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
 use wcore::{AgentEvent, AgentResponse, AgentStopReason, model::HistoryEntry};
-
-use super::Runtime;
 
 impl<C: Config> Runtime<C> {
     fn prepare_history(

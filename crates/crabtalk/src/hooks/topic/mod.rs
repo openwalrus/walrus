@@ -5,18 +5,16 @@
 //! (to drive `switch_topic`) and a shared memory handle (to BM25
 //! over `EntryKind::Topic` entries).
 
+use crate::daemon::SharedRuntime;
 use crabllm_core::Provider;
 use runtime::{Hook, SharedMemory};
+use search::SearchTopics;
 use std::sync::{Arc, OnceLock};
+use switch::SwitchTopic;
 use wcore::{ToolDispatch, ToolFuture, agent::AsTool, model::Tool};
-
-use crate::daemon::SharedRuntime;
 
 mod search;
 mod switch;
-
-use search::SearchTopics;
-use switch::SwitchTopic;
 
 /// Behavioural guidance — when/how to use the topic tools. Tool
 /// *signatures* come from each struct's `///` doc comment via schemars.

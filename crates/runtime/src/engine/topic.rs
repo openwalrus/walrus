@@ -4,13 +4,12 @@
 //! title, plus an active-topic pointer. Untopicked chats are tmp and
 //! live only in [`TopicRouter::tmp`]; they never reach storage.
 
+use super::Runtime;
 use crate::{Config, ConversationHandle};
 use anyhow::{Result, bail};
 use memory::{EntryKind, Op};
 use std::{collections::HashMap, sync::atomic::Ordering};
 use wcore::storage::Storage;
-
-use super::Runtime;
 
 /// Per-(agent, sender) topic routing. `active = None` means the caller
 /// is on a tmp chat (no topic). Tmp chats have their own `ConvSlot` but

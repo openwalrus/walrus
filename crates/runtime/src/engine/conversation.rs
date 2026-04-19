@@ -1,5 +1,6 @@
 //! Conversation management — lifecycle, persistence, and title generation.
 
+use super::{ConvSlot, Runtime, TopicRouter};
 use crate::{Config, Conversation, ConversationHandle};
 use anyhow::{Result, bail};
 use crabllm_core::{ChatCompletionRequest, Message, Role};
@@ -7,8 +8,6 @@ use memory::{EntryKind, Op};
 use std::sync::{Arc, atomic::Ordering};
 use tokio::sync::Mutex;
 use wcore::{model::HistoryEntry, storage::Storage};
-
-use super::{ConvSlot, Runtime, TopicRouter};
 
 impl<C: Config> Runtime<C> {
     pub(super) fn new_slot(id: u64, agent: &str, created_by: &str) -> ConvSlot {
