@@ -1,7 +1,8 @@
 # Crabtalk daemon configuration.
 #
-# This file is the full configuration template for the crabtalk daemon.
-# Uncomment and modify sections as needed.
+# Holds immutable per-install settings. Mutable runtime records (MCPs,
+# agents) are managed by the daemon in `local/settings.toml` — edit
+# them via `crabtalk agent`/`crabtalk mcp` rather than by hand.
 
 # ---------------------------------------------------------------------------
 # Providers — LLM provider definitions.
@@ -26,51 +27,17 @@
 # models = ["llama3"]
 
 # ---------------------------------------------------------------------------
-# MCP servers — Model Context Protocol server configurations.
-#
-# Each [mcps.<name>] section defines an MCP server. Use either stdio
-# transport (command + args) or streamable HTTP transport (url).
+# Task executor pool — bounded workers for cron/skill execution.
 # ---------------------------------------------------------------------------
 
-# [mcps.example]
-# command = "npx"
-# args = ["-y", "@anthropic/mcp-server"]
-# auto_restart = true
-
-# [mcps.remote]
-# url = "http://localhost:8080/mcp"
-
-# ---------------------------------------------------------------------------
-# System — core agent, task executor, and memory settings.
-# ---------------------------------------------------------------------------
-
-[system.crab]
-# model = "gpt-4o"
-# description = ""
-# max_iterations = 16
-# thinking = false
-# compact_threshold = 100000
-
-[system.tasks]
+[tasks]
 max_concurrent = 4
 viewable_window = 16
 task_timeout = 300
 
-[system.memory]
-recall_limit = 5
-
 # ---------------------------------------------------------------------------
-# Agents — per-agent configurations.
-#
-# Each [agents.<name>] section configures a named agent. The agent's system
-# prompt is loaded from ~/.crabtalk/local/agents/<name>.md.
+# Env — environment variables passed to all MCP server processes.
 # ---------------------------------------------------------------------------
 
-# [agents.researcher]
-# description = "Research agent"
-# model = "gpt-4o"
-# max_iterations = 16
-# thinking = false
-# members = []
-# skills = []
-# mcps = []
+# [env]
+# SOME_TOKEN = "${SOME_TOKEN}"

@@ -12,7 +12,8 @@ impl OsHook {
         let input: Bash =
             serde_json::from_str(&call.args).map_err(|e| format!("invalid arguments: {e}"))?;
 
-        if let Some(reason) = super::config::check(&self.bash_config, &input.command) {
+        let deny = self.bash_deny(&call.agent);
+        if let Some(reason) = super::config::check_deny(&deny, &input.command) {
             return Err(reason);
         }
 

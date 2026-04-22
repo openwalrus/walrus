@@ -1,47 +1,33 @@
-//! Node configuration loaded from `config.toml`.
+//! Daemon configuration loaded from `config.toml`.
 
-use super::system::SystemConfig;
-use crate::{McpServerConfig, ProviderDef, config::DisabledItems};
+use crate::{ProviderDef, config::system::TasksConfig};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Top-level node configuration (`config.toml`).
+/// Top-level daemon configuration (`config.toml`).
 ///
-/// Providers, system settings, and env vars for MCP processes.
-/// MCPs and agent configs live in manifests (`local/CrabTalk.toml`
-/// and `plugins/*.toml`), loaded via `resolve_manifests`.
+/// Holds immutable per-install settings: providers, task executor pool,
+/// and env vars passed to MCP processes. Mutable runtime records (MCPs,
+/// agents) live in [`crate::storage::Storage`]. Per-agent customization
+/// (hooks, etc.) lives directly on each [`crate::AgentConfig`].
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NodeConfig {
+pub struct DaemonConfig {
     /// Provider definitions (`[provider.<name>]`).
     #[serde(default)]
     pub provider: BTreeMap<String, ProviderDef>,
-    /// **Deprecated**: MCP configs migrated to `local/CrabTalk.toml`.
+    /// Task executor pool configuration (`[tasks]`).
     #[serde(default)]
-    pub mcps: BTreeMap<String, McpServerConfig>,
-    /// System configuration (tasks + memory).
-    #[serde(default)]
-    pub system: SystemConfig,
+    pub tasks: TasksConfig,
     /// Environment variables passed to all MCP server processes.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
-    /// Disabled resources (providers, MCPs, skills).
-    #[serde(default)]
-    pub disabled: DisabledItems,
 }
 
-impl NodeConfig {
-    /// Parse a TOML string into a `NodeConfig`.
+impl DaemonConfig {
+    /// Parse a TOML string into a `DaemonConfig`.
     pub fn from_toml(toml_str: &str) -> Result<Self> {
-        let mut config: Self = toml::from_str(toml_str)?;
-        config.mcps.iter_mut().for_each(|(name, server)| {
-            if server.name.is_empty() {
-                server.name = name.clone();
-            }
-        });
-        if !config.mcps.is_empty() {
-            tracing::warn!("[mcps] in config.toml is deprecated — move to local/CrabTalk.toml");
-        }
+        let config: Self = toml::from_str(toml_str)?;
         validate_providers(&config.provider)?;
         Ok(config)
     }

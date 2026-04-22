@@ -33,8 +33,9 @@ impl Memory {
     }
 
     /// Auto-recall: BM25-search the last user message, inject any hits
-    /// as a synthetic user turn.
-    pub fn before_run(&self, history: &[HistoryEntry]) -> Vec<HistoryEntry> {
+    /// as a synthetic user turn. Caller passes the effective recall
+    /// limit so per-scope overrides resolved upstream apply.
+    pub fn before_run(&self, history: &[HistoryEntry], limit: usize) -> Vec<HistoryEntry> {
         let last_user = history
             .iter()
             .rev()
@@ -55,7 +56,7 @@ impl Memory {
             return Vec::new();
         }
 
-        let result = self.recall(&query, self.recall_limit);
+        let result = self.recall(&query, limit);
         if result == "no memories found" {
             return Vec::new();
         }
@@ -67,6 +68,9 @@ impl MemoryHook {
     pub(super) async fn handle_recall(&self, call: ToolDispatch) -> Result<String, String> {
         let input: Recall =
             serde_json::from_str(&call.args).map_err(|e| format!("invalid arguments: {e}"))?;
-        Ok(self.memory.recall(&input.query, input.limit.unwrap_or(5)))
+        let limit = input
+            .limit
+            .unwrap_or_else(|| self.recall_limit(&call.agent));
+        Ok(self.memory.recall(&input.query, limit))
     }
 }

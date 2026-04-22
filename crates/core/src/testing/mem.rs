@@ -1,15 +1,16 @@
 //! In-memory [`Storage`] implementation for tests.
 
 use crate::{
-    AgentConfig, AgentId, ManifestConfig, NodeConfig,
+    AgentConfig, AgentId, DaemonConfig, McpServerConfig,
     model::HistoryEntry,
     storage::{
-        ConversationMeta, EventLine, SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage,
+        ConversationMeta, EventLine, SessionHandle, SessionSnapshot, SessionSummary, Skill,
+        Storage, validate_table_name,
     },
 };
 use anyhow::Result;
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Per-session state in the in-memory backend.
 #[derive(Clone)]
@@ -26,8 +27,8 @@ pub struct InMemoryStorage {
     sessions: Mutex<HashMap<String, SessionState>>,
     next_session_seq: Mutex<u32>,
     agents: Mutex<HashMap<String, (AgentConfig, String)>>,
-    manifest: Mutex<ManifestConfig>,
-    config: Mutex<NodeConfig>,
+    config: Mutex<DaemonConfig>,
+    mcps: Mutex<BTreeMap<String, McpServerConfig>>,
 }
 
 impl Default for InMemoryStorage {
@@ -37,8 +38,8 @@ impl Default for InMemoryStorage {
             sessions: Mutex::new(HashMap::new()),
             next_session_seq: Mutex::new(0),
             agents: Mutex::new(HashMap::new()),
-            manifest: Mutex::new(ManifestConfig::default()),
-            config: Mutex::new(NodeConfig::default()),
+            config: Mutex::new(DaemonConfig::default()),
+            mcps: Mutex::new(BTreeMap::new()),
         }
     }
 }
@@ -206,6 +207,12 @@ impl Storage for InMemoryStorage {
     }
 
     fn upsert_agent(&self, config: &AgentConfig, prompt: &str) -> Result<()> {
+        if config.id.is_nil() {
+            anyhow::bail!("cannot upsert agent with nil ID");
+        }
+        if config.name.is_empty() {
+            anyhow::bail!("cannot upsert agent with empty name");
+        }
         self.agents
             .lock()
             .insert(config.name.clone(), (config.clone(), prompt.to_owned()));
@@ -242,27 +249,36 @@ impl Storage for InMemoryStorage {
         Ok(false)
     }
 
-    // ── Manifest ───────────────────────────────────────────────────
-
-    fn load_local_manifest(&self) -> Result<ManifestConfig> {
-        Ok(self.manifest.lock().clone())
-    }
-
-    fn save_local_manifest(&self, manifest: &ManifestConfig) -> Result<()> {
-        *self.manifest.lock() = manifest.clone();
-        Ok(())
-    }
-
-    fn load_config(&self) -> Result<NodeConfig> {
+    fn load_config(&self) -> Result<DaemonConfig> {
         Ok(self.config.lock().clone())
     }
 
-    fn save_config(&self, config: &NodeConfig) -> Result<()> {
+    fn save_config(&self, config: &DaemonConfig) -> Result<()> {
         *self.config.lock() = config.clone();
         Ok(())
     }
 
-    fn scaffold(&self) -> Result<()> {
+    fn scaffold(&self, _default_model: &str) -> Result<()> {
         Ok(())
+    }
+
+    // ── MCP servers ────────────────────────────────────────────────
+
+    fn list_mcps(&self) -> Result<BTreeMap<String, McpServerConfig>> {
+        Ok(self.mcps.lock().clone())
+    }
+
+    fn load_mcp(&self, name: &str) -> Result<Option<McpServerConfig>> {
+        Ok(self.mcps.lock().get(name).cloned())
+    }
+
+    fn upsert_mcp(&self, config: &McpServerConfig) -> Result<()> {
+        validate_table_name("mcp", &config.name)?;
+        self.mcps.lock().insert(config.name.clone(), config.clone());
+        Ok(())
+    }
+
+    fn delete_mcp(&self, name: &str) -> Result<bool> {
+        Ok(self.mcps.lock().remove(name).is_some())
     }
 }

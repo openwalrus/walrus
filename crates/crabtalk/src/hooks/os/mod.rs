@@ -12,7 +12,10 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use wcore::{BashConfig, ToolDispatch, ToolFuture, agent::AsTool, model::HistoryEntry};
+use wcore::{
+    AgentConfig, BashConfig, ToolDispatch, ToolFuture, agent::AsTool, model::HistoryEntry,
+    storage::Storage,
+};
 
 mod bash;
 mod edit;
@@ -42,8 +45,9 @@ pub struct OsHook {
     conversation_cwds: ConversationCwds,
     /// Files read per conversation — edit requires a prior read.
     read_files: ReadFiles,
-    /// Bash command policy.
-    bash_config: BashConfig,
+    /// Storage handle used to resolve the calling agent's bash policy
+    /// at dispatch time. Each agent owns its own [`BashConfig`].
+    storage: Arc<dyn Storage>,
 }
 
 impl OsHook {
@@ -51,14 +55,40 @@ impl OsHook {
         cwd: PathBuf,
         conversation_cwds: ConversationCwds,
         read_files: ReadFiles,
-        bash_config: BashConfig,
+        storage: Arc<dyn Storage>,
     ) -> Self {
         Self {
             cwd,
             conversation_cwds,
             read_files,
-            bash_config,
+            storage,
         }
+    }
+
+    /// Look up an agent's bash configuration. Falls back to [`BashConfig::default`]
+    /// when the agent is missing — the dispatcher will refuse to run an
+    /// unknown agent anyway, so the value only matters for `scoped_tools`.
+    /// Storage errors are logged loudly: a transient I/O failure here would
+    /// silently relax bash deny rules, which is a security regression.
+    fn bash_config(&self, agent: &str) -> BashConfig {
+        match self.storage.load_agent_by_name(agent) {
+            Ok(Some(cfg)) => cfg.hooks.bash,
+            Ok(None) => BashConfig::default(),
+            Err(e) => {
+                tracing::error!(%agent, error = %e, "failed to load bash config — falling back to defaults");
+                BashConfig::default()
+            }
+        }
+    }
+
+    /// Effective `disabled` flag for an agent.
+    pub fn bash_disabled(&self, agent: &str) -> bool {
+        self.bash_config(agent).disabled
+    }
+
+    /// Effective deny list for an agent.
+    pub fn bash_deny(&self, agent: &str) -> Vec<String> {
+        self.bash_config(agent).deny
     }
 
     /// Per-conversation CWD overrides.
@@ -101,19 +131,24 @@ impl OsHook {
 
 impl Hook for OsHook {
     fn schema(&self) -> Vec<wcore::model::Tool> {
-        let mut tools = vec![Read::as_tool(), Edit::as_tool()];
-        if !self.bash_config.disabled {
-            tools.insert(0, Bash::as_tool());
+        // Always advertise bash at the global level; per-agent gating
+        // happens in `scoped_tools`. Skipping the schema here would make
+        // the tool invisible to every agent regardless of overrides.
+        vec![Bash::as_tool(), Read::as_tool(), Edit::as_tool()]
+    }
+
+    fn scoped_tools(&self, config: &AgentConfig) -> (Vec<String>, Option<String>) {
+        let mut tools = vec![Read::as_tool().function.name, Edit::as_tool().function.name];
+        let bash = &config.hooks.bash;
+        if !bash.disabled {
+            tools.insert(0, Bash::as_tool().function.name);
         }
-        tools
+        let policy = bash::config::prompt_block(bash);
+        (tools, policy)
     }
 
     fn system_prompt(&self) -> Option<String> {
-        let mut prompt = environment_block();
-        if let Some(policy) = bash::config::prompt_block(&self.bash_config) {
-            prompt.push_str(&policy);
-        }
-        Some(prompt)
+        Some(environment_block())
     }
 
     fn on_before_run(
@@ -134,7 +169,7 @@ impl Hook for OsHook {
 
     fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
         match name {
-            "bash" if !self.bash_config.disabled => Some(Box::pin(self.handle_bash(call))),
+            "bash" if !self.bash_disabled(&call.agent) => Some(Box::pin(self.handle_bash(call))),
             "read" => Some(Box::pin(self.handle_read(call))),
             "edit" => Some(Box::pin(self.handle_edit(call))),
             _ => None,

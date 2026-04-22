@@ -7,7 +7,7 @@ pub use conversation::Conversation;
 pub use engine::{Runtime, SharedMemory, SwitchOutcome};
 pub use env::Env;
 pub use hook::Hook;
-pub use wcore::{MemoryConfig, SystemConfig, TasksConfig};
+pub use wcore::{MemoryConfig, TasksConfig};
 
 /// Opaque persistent handle to a conversation. Re-exported from the
 /// storage trait so runtime callers don't need to speak the storage

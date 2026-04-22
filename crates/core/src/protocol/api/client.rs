@@ -2,17 +2,17 @@
 
 use crate::protocol::message::{
     AgentInfo, AgentList, ClientMessage, ConversationHistory, ConversationInfo, ConversationList,
-    CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteProviderMsg,
-    ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats, InstallPluginMsg, ListAgentsMsg,
-    ListConversationsMsg, ListMcpsMsg, ListModelsMsg, ListPluginsMsg, ListProviderPresetsMsg,
-    ListProvidersMsg, ListSkillsMsg, ListSubscriptionsMsg, McpInfo, McpList, ModelInfo, ModelList,
-    Ping, PluginEvent, PluginInfo, PluginList, PluginSearchList, ProviderInfo, ProviderList,
-    ProviderPresetInfo, ProviderPresetList, PublishEventMsg, ResourceKind, SearchPluginsMsg,
-    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg,
-    SetEnabledMsg, SetLocalMcpsMsg, SetProviderMsg, SkillInfo, SkillList, StartServiceMsg,
-    StopServiceMsg, StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList,
-    UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg, client_message, plugin_event,
-    server_message, stream_event,
+    CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteMcpMsg,
+    DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats,
+    InstallPluginMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListModelsMsg,
+    ListPluginsMsg, ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, ListSubscriptionsMsg,
+    McpInfo, McpList, ModelInfo, ModelList, Ping, PluginEvent, PluginInfo, PluginList,
+    PluginSearchList, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList,
+    PublishEventMsg, RenameAgentMsg, SearchPluginsMsg, SendMsg, SendResponse, ServerMessage,
+    ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetProviderMsg, SkillInfo, SkillList,
+    StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo,
+    SubscriptionList, UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg, UpsertMcpMsg,
+    client_message, plugin_event, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -237,6 +237,35 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Pong(_)),
                 } => Ok(()),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => {
+                    anyhow::bail!("server error ({code}): {message}")
+                }
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Rename an agent. The agent's stored ULID stays stable.
+    fn rename_agent(
+        &mut self,
+        old_name: String,
+        new_name: String,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::RenameAgent(RenameAgentMsg {
+                        old_name,
+                        new_name,
+                    })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::AgentInfo(info)),
+                } => Ok(info),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => {
@@ -477,15 +506,35 @@ pub trait Client: Send {
         }
     }
 
-    /// Replace all local MCPs in CrabTalk.toml.
-    fn set_local_mcps(
+    /// Create or replace an MCP server (Storage-backed).
+    fn upsert_mcp(
         &mut self,
-        mcps: Vec<McpInfo>,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        config: String,
+    ) -> impl std::future::Future<Output = Result<McpInfo>> + Send {
         async move {
             match self
                 .request(ClientMessage {
-                    msg: Some(client_message::Msg::SetLocalMcps(SetLocalMcpsMsg { mcps })),
+                    msg: Some(client_message::Msg::UpsertMcp(UpsertMcpMsg { config })),
+                })
+                .await?
+            {
+                ServerMessage {
+                    msg: Some(server_message::Msg::McpInfo(info)),
+                } => Ok(info),
+                ServerMessage {
+                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
+                } => anyhow::bail!("server error ({code}): {message}"),
+                other => anyhow::bail!("unexpected response: {other:?}"),
+            }
+        }
+    }
+
+    /// Delete an MCP server by name.
+    fn delete_mcp(&mut self, name: String) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self
+                .request(ClientMessage {
+                    msg: Some(client_message::Msg::DeleteMcp(DeleteMcpMsg { name })),
                 })
                 .await?
             {
@@ -698,35 +747,6 @@ pub trait Client: Send {
                 } => {
                     anyhow::bail!("server error ({code}): {message}")
                 }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
-    /// Enable or disable a provider, MCP, or skill.
-    fn set_enabled(
-        &mut self,
-        kind: ResourceKind,
-        name: String,
-        enabled: bool,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::SetEnabled(SetEnabledMsg {
-                        kind: kind.into(),
-                        name,
-                        enabled,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => anyhow::bail!("server error ({code}): {message}"),
                 other => anyhow::bail!("unexpected response: {other:?}"),
             }
         }

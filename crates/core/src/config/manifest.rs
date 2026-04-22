@@ -1,12 +1,12 @@
-//! Package manifest loading and resolution.
+//! Plugin directory discovery and skill scanning.
 //!
-//! Provides [`ManifestConfig`] for parsing `CrabTalk.toml` / package manifests,
-//! and [`resolve_manifests`] for merging all installed manifests into a single
-//! [`ResolvedManifest`] at startup.
+//! Scans `plugins/*.toml` to find each plugin's cached repo (skills,
+//! agents, MCPs). User-added agents and MCPs live in Storage; this
+//! module only resolves filesystem locations for packaged content.
 
 use crate::{
     AgentConfig, McpServerConfig,
-    paths::{AGENTS_DIR, LOCAL_DIR, PLUGINS_DIR, SKILLS_DIR},
+    paths::{AGENTS_DIR, PLUGINS_DIR, SKILLS_DIR},
 };
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -15,41 +15,25 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// ── Manifest types ──────────────────────────────────────────────────
+// ── Plugin manifest types ───────────────────────────────────────────
 
-/// Package manifest format shared by `local/CrabTalk.toml` and
-/// `plugins/name.toml`. Same shape as plugin manifests.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ManifestConfig {
-    /// Package metadata (optional for local manifest).
+/// Subset of a plugin TOML this module reads at boot:
+///   - `[package]` for repo slug → cached repo dir
+///   - `[mcps.<name>]` and `[agents.<name>]` shipped by the plugin
+///
+/// Mutable per-user state lives in [`crate::storage::Storage`]; plugin
+/// manifests are read-only on-disk packaging that's re-read every boot.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct PluginManifest {
     #[serde(default)]
-    pub package: Option<PackageMeta>,
-    /// MCP server configurations.
+    package: Option<PackageMeta>,
     #[serde(default)]
-    pub mcps: BTreeMap<String, McpServerConfig>,
-    /// Per-agent configurations (name → config).
+    mcps: BTreeMap<String, McpServerConfig>,
     #[serde(default)]
-    pub agents: BTreeMap<String, AgentConfig>,
-    /// Disabled items — filtered out during runtime build.
-    #[serde(default)]
-    pub disabled: DisabledItems,
+    agents: BTreeMap<String, AgentConfig>,
 }
 
-/// Items disabled by the user.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct DisabledItems {
-    #[serde(default)]
-    pub providers: Vec<String>,
-    #[serde(default)]
-    pub mcps: Vec<String>,
-    #[serde(default)]
-    pub skills: Vec<String>,
-    /// External skill sources to skip entirely (e.g. `"claude"` skips `~/.claude/skills/`).
-    #[serde(default)]
-    pub external: Vec<String>,
-}
-
-/// Package metadata in a manifest.
+/// Package metadata in a plugin manifest.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PackageMeta {
     /// Package name.
@@ -73,53 +57,36 @@ pub struct Setup {
     pub script: String,
 }
 
-impl ManifestConfig {
-    /// Load a manifest from a TOML file. Returns `None` if file doesn't exist.
-    pub fn load(path: &Path) -> Result<Option<Self>> {
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content = std::fs::read_to_string(path)
-            .with_context(|| format!("cannot read manifest at {}", path.display()))?;
-        let manifest: Self = toml::from_str(&content)
-            .with_context(|| format!("invalid manifest at {}", path.display()))?;
-        Ok(Some(manifest))
-    }
-}
+// ── Resolved directories ────────────────────────────────────────────
 
-// ── Resolved manifest ───────────────────────────────────────────────
-
-/// Merged view of all manifests (local + packages). Built at daemon startup.
+/// Directories discovered at startup: local + plugin repos + external.
+/// Used to seed [`crate::storage::Storage`] with skill/agent roots and
+/// to surface MCPs/agents that ship inside a plugin TOML.
 #[derive(Debug, Default)]
-pub struct ResolvedManifest {
-    /// All MCP server configs (local wins over packages).
-    pub mcps: BTreeMap<String, McpServerConfig>,
-    /// All agent configs from manifests (local wins over packages).
-    pub agents: BTreeMap<String, AgentConfig>,
-    /// Skill directories to scan (local first, then packages).
+pub struct ResolvedDirs {
+    /// Skill directories to scan (local first, then plugins, then external).
     pub skill_dirs: Vec<PathBuf>,
-    /// Agent directories to scan (local first, then packages).
+    /// Agent directories to scan (local first, then plugins).
     pub agent_dirs: Vec<PathBuf>,
     /// Plugin name → skill directory for resolving qualified skill
     /// references (e.g. `"playwright"` → repo skill dir).
     pub plugin_skill_dirs: BTreeMap<String, PathBuf>,
-    /// Items disabled by the user (from local manifest).
-    pub disabled: DisabledItems,
+    /// MCP servers declared in `plugins/*.toml` `[mcps.<name>]` blocks.
+    /// Storage MCPs (user-defined) win on name conflict.
+    pub plugin_mcps: BTreeMap<String, McpServerConfig>,
+    /// Agents declared in `plugins/*.toml` `[agents.<name>]` blocks.
+    /// Storage agents (user-defined) win on name conflict.
+    pub plugin_agents: BTreeMap<String, AgentConfig>,
 }
 
-/// Resolve all manifests into a single merged view.
+/// Discover skill, agent, and plugin directories under `config_dir`.
 ///
-/// Loads `local/CrabTalk.toml` first (highest priority), then scans
-/// `plugins/*.toml`. For each plugin with a `repository` field, resolves
-/// skill and agent directories from `.cache/repos/{slug}/`. Local always wins
-/// on name conflicts; between plugins, first alphabetically wins.
-///
-/// Returns the resolved manifest and a list of conflict warnings (if any).
-pub fn resolve_manifests(config_dir: &Path) -> (ResolvedManifest, Vec<String>) {
-    let mut resolved = ResolvedManifest::default();
-    let mut warnings = Vec::new();
+/// Walks `local/skills`, `local/agents`, every `plugins/*.toml` (whose
+/// `[package].repository` resolves to a cached repo under `.cache/repos/`),
+/// and well-known external skill roots (`~/.claude/skills` etc.).
+pub fn resolve_dirs(config_dir: &Path) -> ResolvedDirs {
+    let mut resolved = ResolvedDirs::default();
 
-    // Local dirs always come first.
     let local_skills = config_dir.join(SKILLS_DIR);
     if local_skills.exists() {
         resolved.skill_dirs.push(local_skills);
@@ -129,14 +96,6 @@ pub fn resolve_manifests(config_dir: &Path) -> (ResolvedManifest, Vec<String>) {
         resolved.agent_dirs.push(local_agents);
     }
 
-    // Load local manifest.
-    let local_manifest_path = config_dir.join(LOCAL_DIR).join("CrabTalk.toml");
-    if let Ok(Some(manifest)) = ManifestConfig::load(&local_manifest_path) {
-        // NOTE: disabled items are read from config.toml, not from manifests.
-        merge_manifest(&mut resolved, &manifest, "local", &mut warnings);
-    }
-
-    // Scan plugins/*.toml (sorted for deterministic order).
     let plugins_dir = config_dir.join(PLUGINS_DIR);
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         let mut plugin_entries: Vec<_> = entries.flatten().collect();
@@ -145,13 +104,12 @@ pub fn resolve_manifests(config_dir: &Path) -> (ResolvedManifest, Vec<String>) {
         for entry in plugin_entries {
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "toml") {
-                load_plugin_manifest(config_dir, &path, &mut resolved, &mut warnings);
+                load_plugin_dirs(config_dir, &path, &mut resolved);
             }
         }
     }
 
-    // External tool skill directories (lowest priority).
-    if let Some(ref home) = dirs::home_dir() {
+    if let Some(home) = dirs::home_dir() {
         for dir in [".claude/skills", ".codex/skills", ".openclaw/skills"] {
             let path = home.join(dir);
             if path.exists() {
@@ -160,88 +118,61 @@ pub fn resolve_manifests(config_dir: &Path) -> (ResolvedManifest, Vec<String>) {
         }
     }
 
-    (resolved, warnings)
+    resolved
 }
 
-/// Load a single plugin manifest and merge it into the resolved state.
-fn load_plugin_manifest(
-    config_dir: &Path,
-    path: &Path,
-    resolved: &mut ResolvedManifest,
-    warnings: &mut Vec<String>,
-) {
+fn load_plugin_dirs(config_dir: &Path, path: &Path, resolved: &mut ResolvedDirs) {
     let source = path
         .strip_prefix(config_dir.join(PLUGINS_DIR))
         .unwrap_or(path)
         .to_string_lossy()
         .into_owned();
+    let plugin_id = source.strip_suffix(".toml").unwrap_or(&source).to_owned();
 
-    let manifest = match ManifestConfig::load(path) {
-        Ok(Some(m)) => m,
-        Ok(None) => return,
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
         Err(e) => {
-            tracing::warn!("failed to load plugin manifest {}: {e}", path.display());
+            tracing::warn!("failed to read plugin manifest {}: {e}", path.display());
+            return;
+        }
+    };
+    let manifest: PluginManifest = match toml::from_str(&content) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("failed to parse plugin manifest {}: {e}", path.display());
             return;
         }
     };
 
-    // Derive plugin identifier by stripping the .toml extension.
-    let plugin_id = source.strip_suffix(".toml").unwrap_or(&source).to_owned();
-
-    // Resolve cached repo dirs for skills/agents.
-    if let Some(ref pkg) = manifest.package
-        && !pkg.repository.is_empty()
-    {
-        let slug = repo_slug(&pkg.repository);
-        let repo_dir = config_dir.join(".cache").join("repos").join(&slug);
-        if repo_dir.exists() {
-            // Push repo root — skills are discovered recursively by SKILL.md.
-            resolved.skill_dirs.push(repo_dir.clone());
-            resolved
-                .plugin_skill_dirs
-                .insert(plugin_id, repo_dir.clone());
-            let agents = repo_dir.join("agents");
-            if agents.exists() && agents.is_dir() {
-                resolved.agent_dirs.push(agents);
-            }
+    for (name, mut mcp) in manifest.mcps {
+        if mcp.name.is_empty() {
+            mcp.name = name.clone();
         }
+        resolved.plugin_mcps.entry(name).or_insert(mcp);
+    }
+    for (name, mut agent) in manifest.agents {
+        agent.name = name.clone();
+        resolved.plugin_agents.entry(name).or_insert(agent);
     }
 
-    merge_manifest(resolved, &manifest, &source, warnings);
-}
-
-/// Merge a manifest's MCPs and agents into resolved, skipping duplicates.
-fn merge_manifest(
-    resolved: &mut ResolvedManifest,
-    manifest: &ManifestConfig,
-    source: &str,
-    warnings: &mut Vec<String>,
-) {
-    for (name, mcp) in &manifest.mcps {
-        if resolved.mcps.contains_key(name) {
-            let msg =
-                format!("MCP '{name}' from {source} conflicts with already-loaded MCP, skipping");
-            tracing::warn!("{msg}");
-            warnings.push(msg);
-        } else {
-            let mut cfg = mcp.clone();
-            if cfg.name.is_empty() {
-                cfg.name = name.clone();
-            }
-            resolved.mcps.insert(name.clone(), cfg);
-        }
+    let Some(pkg) = manifest.package else {
+        return;
+    };
+    if pkg.repository.is_empty() {
+        return;
     }
-
-    for (name, agent) in &manifest.agents {
-        if resolved.agents.contains_key(name) {
-            let msg = format!(
-                "agent '{name}' from {source} conflicts with already-loaded agent, skipping"
-            );
-            tracing::warn!("{msg}");
-            warnings.push(msg);
-        } else {
-            resolved.agents.insert(name.clone(), agent.clone());
-        }
+    let slug = repo_slug(&pkg.repository);
+    let repo_dir = config_dir.join(".cache").join("repos").join(&slug);
+    if !repo_dir.exists() {
+        return;
+    }
+    resolved.skill_dirs.push(repo_dir.clone());
+    resolved
+        .plugin_skill_dirs
+        .insert(plugin_id, repo_dir.clone());
+    let agents = repo_dir.join("agents");
+    if agents.exists() && agents.is_dir() {
+        resolved.agent_dirs.push(agents);
     }
 }
 
@@ -256,18 +187,6 @@ pub fn external_source_name(path: &Path) -> Option<&str> {
         .nth(1)
         .and_then(|c| c.as_os_str().to_str())
         .and_then(|s| s.strip_prefix('.'))
-}
-
-/// Remove external skill directories whose source name appears in `disabled`.
-pub fn filter_disabled_external(skill_dirs: &mut Vec<PathBuf>, disabled: &[String]) {
-    if disabled.is_empty() {
-        return;
-    }
-    skill_dirs.retain(|dir| {
-        external_source_name(dir)
-            .map(|name| !disabled.iter().any(|d| d == name))
-            .unwrap_or(true)
-    });
 }
 
 // ── Skill conflict detection ────────────────────────────────────────
@@ -341,7 +260,6 @@ fn scan_skill_names_inner(dir: &Path, results: &mut Vec<String>) {
 fn extract_skill_name(path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     let (frontmatter, _) = crate::utils::split_yaml_frontmatter(&content).ok()?;
-    // Simple line scan — avoids pulling in a YAML parser.
     for line in frontmatter.lines() {
         let line = line.trim();
         if let Some(value) = line.strip_prefix("name:") {
@@ -397,7 +315,8 @@ pub fn load_agents_dir(path: &Path) -> Result<Vec<(String, String)>> {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let content = std::fs::read_to_string(entry.path())?;
+        let content = std::fs::read_to_string(entry.path())
+            .with_context(|| format!("read {}", entry.path().display()))?;
         agents.push((stem, content));
     }
 

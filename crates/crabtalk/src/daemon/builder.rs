@@ -1,7 +1,7 @@
 //! Daemon construction and lifecycle methods.
 
 use crate::{
-    Daemon, NodeConfig,
+    Daemon, DaemonConfig,
     daemon::{SharedRuntime, hook::DaemonHook},
     daemon::{cron, event, host::DaemonEnv},
     hooks::{Memory, delegate},
@@ -18,73 +18,24 @@ use std::{
     sync::{Arc, OnceLock},
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
-use wcore::{AgentConfig, ResolvedManifest, model::Model, resolve_manifests, storage::Storage};
+use wcore::{ResolvedDirs, model::Model, resolve_dirs, storage::Storage};
 
 pub type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
 
 pub type BuildProvider<P> =
-    Arc<dyn Fn(&NodeConfig) -> Result<wcore::model::Model<P>> + Send + Sync>;
+    Arc<dyn Fn(&DaemonConfig) -> Result<wcore::model::Model<P>> + Send + Sync>;
 
-pub fn build_default_provider(config: &NodeConfig) -> Result<Model<DefaultProvider>> {
+pub fn build_default_provider(config: &DaemonConfig) -> Result<Model<DefaultProvider>> {
     build_providers(config)
-}
-
-pub(crate) const SYSTEM_AGENT: &str = crate::hooks::memory::DEFAULT_SOUL;
-
-/// Build the `AgentConfig` for a single named agent.
-pub(crate) fn build_single_agent_config(
-    name: &str,
-    config: &NodeConfig,
-    manifest: &ResolvedManifest,
-    storage: &impl Storage,
-) -> Result<AgentConfig> {
-    let default_model = config
-        .system
-        .crab
-        .model
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("system.crab.model is required in config.toml"))?;
-
-    if name == wcore::paths::DEFAULT_AGENT {
-        let mut crab = config.system.crab.clone();
-        crab.name = wcore::paths::DEFAULT_AGENT.to_owned();
-        crab.system_prompt = SYSTEM_AGENT.to_owned();
-        if crab.model.is_none() {
-            crab.model = Some(default_model);
-        }
-        return Ok(crab);
-    }
-
-    let agent_config = manifest
-        .agents
-        .get(name)
-        .ok_or_else(|| anyhow::anyhow!("agent '{name}' not found in manifest"))?;
-
-    let prompts = wcore::load_agents_dirs(&manifest.agent_dirs)?;
-    let prompt_map: BTreeMap<String, String> = prompts.into_iter().collect();
-    let prompt = resolve_agent_prompt(storage, agent_config, name, &prompt_map)
-        .ok_or_else(|| anyhow::anyhow!("agent '{name}' has no prompt"))?;
-
-    let mut agent = agent_config.clone();
-    agent.name = name.to_owned();
-    agent.system_prompt = prompt;
-    if agent.model.is_none() {
-        agent.model = Some(default_model);
-    }
-    Ok(agent)
 }
 
 impl<P: Provider + 'static> Daemon<P> {
     pub(crate) async fn build(
-        config: &NodeConfig,
+        config: &DaemonConfig,
         config_dir: &Path,
         shutdown_tx: broadcast::Sender<()>,
         build_provider: BuildProvider<P>,
     ) -> Result<Self> {
-        if let Err(e) = crate::storage::backfill_local_agent_ids(config_dir) {
-            tracing::warn!("agent id backfill failed: {e}");
-        }
-
         let runtime_once: Arc<OnceLock<SharedRuntime<P>>> = Arc::new(OnceLock::new());
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| config_dir.to_path_buf());
@@ -166,7 +117,7 @@ impl<P: Provider + 'static> Daemon<P> {
     }
 
     pub async fn reload(&self) -> Result<()> {
-        let config = NodeConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))?;
+        let config = DaemonConfig::load(&self.config_dir.join(wcore::paths::CONFIG_FILE))?;
         let runtime_once: Arc<OnceLock<SharedRuntime<P>>> = Arc::new(OnceLock::new());
         runtime_once
             .set(self.runtime.clone())
@@ -207,7 +158,7 @@ impl<P: Provider + 'static> Daemon<P> {
     /// Build DaemonHook, DaemonEnv, and Runtime in one shot.
     #[allow(clippy::too_many_arguments)]
     async fn build_all(
-        config: &NodeConfig,
+        config: &DaemonConfig,
         config_dir: &Path,
         build_provider: &BuildProvider<P>,
         runtime_once: Arc<OnceLock<SharedRuntime<P>>>,
@@ -222,18 +173,21 @@ impl<P: Provider + 'static> Daemon<P> {
         Arc<crate::hooks::os::OsHook>,
         Arc<crate::hooks::ask_user::AskUserHook>,
     )> {
-        let (mut manifest, _warnings) = resolve_manifests(config_dir);
-        manifest.disabled = config.disabled.clone();
-        wcore::filter_disabled_external(&mut manifest.skill_dirs, &manifest.disabled.external);
+        let dirs = resolve_dirs(config_dir);
+        let storage = Self::build_storage(config_dir, &dirs);
+        let default_model = first_provider_model(config).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no model configured — add at least one model under [provider.<name>] in config.toml"
+            )
+        })?;
+        storage.scaffold(&default_model)?;
 
         let model = build_provider(config)?;
-        let servers = mcp_servers(config, &manifest);
+        let servers = mcp_servers(config, storage.as_ref(), &dirs)?;
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
-        let storage = Self::build_storage(config_dir, &manifest);
         let (os_hook, ask_hook, shared_memory) = Self::register_tools(
             &mut node_hook,
             storage.clone(),
-            config,
             config_dir,
             mcp_handler.clone(),
             runtime_once,
@@ -243,7 +197,6 @@ impl<P: Provider + 'static> Daemon<P> {
         )?;
         let node_hook = Arc::new(node_hook);
 
-        // Build DaemonEnv.
         let (events_tx, _) = broadcast::channel(256);
         let env = Arc::new(DaemonEnv {
             events_tx,
@@ -252,18 +205,17 @@ impl<P: Provider + 'static> Daemon<P> {
             hook: node_hook.clone(),
         });
 
-        // Build tools and Runtime.
         let mut tools = wcore::ToolRegistry::new();
         for schema in Hook::schema(node_hook.as_ref()) {
             tools.insert(schema);
         }
         let mut runtime = Runtime::new(model, env, storage, shared_memory, tools);
-        Self::register_agents(&mut runtime, config, config_dir, &manifest)?;
+        Self::register_agents(&mut runtime, &dirs)?;
         Ok((runtime, mcp_handler, node_hook, os_hook, ask_hook))
     }
 
-    fn build_storage(config_dir: &Path, manifest: &ResolvedManifest) -> Arc<FsStorage> {
-        let skill_roots: Vec<PathBuf> = manifest
+    fn build_storage(config_dir: &Path, dirs: &ResolvedDirs) -> Arc<FsStorage> {
+        let skill_roots: Vec<PathBuf> = dirs
             .skill_dirs
             .iter()
             .filter(|dir| dir.exists())
@@ -274,8 +226,6 @@ impl<P: Provider + 'static> Daemon<P> {
             config_dir.to_path_buf(),
             config_dir.join("sessions"),
             skill_roots,
-            manifest.disabled.skills.clone(),
-            manifest.agent_dirs.clone(),
         ))
     }
 
@@ -283,7 +233,6 @@ impl<P: Provider + 'static> Daemon<P> {
     fn register_tools(
         node_hook: &mut DaemonHook,
         storage: Arc<FsStorage>,
-        config: &NodeConfig,
         config_dir: &Path,
         mcp_handler: Arc<McpHandler>,
         runtime_once: Arc<OnceLock<SharedRuntime<P>>>,
@@ -295,8 +244,7 @@ impl<P: Provider + 'static> Daemon<P> {
         Arc<crate::hooks::ask_user::AskUserHook>,
         runtime::SharedMemory,
     )> {
-        let memory_wrapper =
-            Memory::open(config.system.memory.clone(), config_dir.join("memory.db"))?;
+        let memory_wrapper = Memory::open(config_dir.join("memory.db"))?;
         let shared_memory = memory_wrapper.shared();
         let memory = Arc::new(memory_wrapper);
         let scopes = node_hook.scopes.clone();
@@ -307,13 +255,16 @@ impl<P: Provider + 'static> Daemon<P> {
             cwd,
             conversation_cwds.clone(),
             read_files.clone(),
-            config.system.bash.clone(),
+            storage.clone(),
         ));
         node_hook.register_hook("os", os_hook.clone());
 
         node_hook.register_hook(
             "memory",
-            Arc::new(crate::hooks::memory::MemoryHook::new(memory)),
+            Arc::new(crate::hooks::memory::MemoryHook::new(
+                memory,
+                storage.clone(),
+            )),
         );
 
         node_hook.register_hook(
@@ -364,95 +315,68 @@ impl<P: Provider + 'static> Daemon<P> {
         Ok((os_hook, ask_hook, shared_memory))
     }
 
+    /// Load agents from storage (canonical) and plugin manifests.
+    /// Storage is seeded with the default `crab` agent by
+    /// [`Storage::scaffold`] before this runs. Plugin agents only
+    /// register if storage doesn't already shadow them by name.
     fn register_agents(
         runtime: &mut Runtime<crate::daemon::DaemonCfg<P>>,
-        config: &NodeConfig,
-        config_dir: &Path,
-        manifest: &ResolvedManifest,
+        dirs: &ResolvedDirs,
     ) -> Result<()> {
-        if let Err(e) = crate::storage::migrate_local_agent_prompts(
-            config_dir,
-            manifest,
-            runtime.storage().as_ref(),
-        ) {
-            tracing::warn!("legacy prompt migration failed: {e}");
-        }
+        let stored_agents = runtime.storage().list_agents()?;
+        let stored_names: std::collections::BTreeSet<String> =
+            stored_agents.iter().map(|a| a.name.clone()).collect();
 
-        let default_model = config
-            .system
-            .crab
-            .model
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("system.crab.model is required in config.toml"))?;
-
-        {
-            let mut crab = config.system.crab.clone();
-            crab.name = wcore::paths::DEFAULT_AGENT.to_owned();
-            crab.system_prompt = SYSTEM_AGENT.to_owned();
-            if crab.model.is_none() {
-                crab.model = Some(default_model.clone());
-            }
-            runtime.add_agent(crab);
-        }
-
-        let prompts = wcore::load_agents_dirs(&manifest.agent_dirs)?;
-        let prompt_map: BTreeMap<String, String> = prompts.into_iter().collect();
-
-        for (name, agent_config) in &manifest.agents {
-            let Some(prompt) =
-                resolve_agent_prompt(runtime.storage().as_ref(), agent_config, name, &prompt_map)
-            else {
-                tracing::warn!(name, "agent has no prompt — skipping");
+        for agent in stored_agents {
+            if agent.system_prompt.is_empty() {
+                tracing::warn!(name = %agent.name, "stored agent has no prompt — skipping");
                 continue;
-            };
-            let mut agent = agent_config.clone();
-            agent.name = name.clone();
-            agent.system_prompt = prompt;
-            if agent.model.is_none() {
-                agent.model = Some(default_model.clone());
+            }
+            if agent.model.is_empty() {
+                tracing::warn!(name = %agent.name, "stored agent has no model — skipping");
+                continue;
             }
             runtime.add_agent(agent);
         }
 
-        for (name, prompt) in &prompt_map {
-            if name == wcore::paths::DEFAULT_AGENT || manifest.agents.contains_key(name) {
+        // Plugin agents are disk-only — never persisted into storage —
+        // so updates flow through `crabtalk pull`, not the daemon
+        // mutating settings.toml.
+        for (name, agent) in &dirs.plugin_agents {
+            if stored_names.contains(name) {
                 continue;
             }
-            let mut config = AgentConfig::new(name);
-            config.system_prompt = prompt.clone();
-            config.model = Some(default_model.clone());
-            runtime.add_agent(config);
+            let agent = agent.clone();
+            if agent.system_prompt.is_empty() {
+                tracing::warn!(name = %name, "plugin agent has no prompt — skipping");
+                continue;
+            }
+            if agent.model.is_empty() {
+                tracing::warn!(name = %name, "plugin agent has no model — skipping");
+                continue;
+            }
+            runtime.add_agent(agent);
         }
 
         Ok(())
     }
 }
 
-fn resolve_agent_prompt(
-    storage: &impl Storage,
-    config: &AgentConfig,
-    name: &str,
-    prompt_map: &BTreeMap<String, String>,
-) -> Option<String> {
-    if let Ok(Some(loaded)) = storage.load_agent_by_name(name)
-        && !loaded.system_prompt.is_empty()
-    {
-        return Some(loaded.system_prompt);
-    }
-    if !config.id.is_nil()
-        && let Ok(Some(loaded)) = storage.load_agent(&config.id)
-        && !loaded.system_prompt.is_empty()
-    {
-        return Some(loaded.system_prompt);
-    }
-    prompt_map.get(name).cloned()
+/// First model declared by any provider. Used to seed the default
+/// crab agent when no agent is stored yet.
+fn first_provider_model(config: &DaemonConfig) -> Option<String> {
+    config
+        .provider
+        .values()
+        .flat_map(|def| def.models.iter())
+        .next()
+        .cloned()
 }
 
-fn build_providers(config: &NodeConfig) -> Result<Model<DefaultProvider>> {
+fn build_providers(config: &DaemonConfig) -> Result<Model<DefaultProvider>> {
     let providers: std::collections::HashMap<String, _> = config
         .provider
         .iter()
-        .filter(|(name, _)| !config.disabled.providers.contains(name))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     let provider_count = providers.len();
@@ -471,17 +395,22 @@ fn build_providers(config: &NodeConfig) -> Result<Model<DefaultProvider>> {
     Ok(Model::new(retrying))
 }
 
-fn mcp_servers(config: &NodeConfig, manifest: &ResolvedManifest) -> Vec<wcore::McpServerConfig> {
-    manifest
-        .mcps
-        .iter()
-        .filter(|(name, _)| !manifest.disabled.mcps.contains(name))
-        .map(|(_, mcp)| {
-            let mut mcp = mcp.clone();
+fn mcp_servers(
+    config: &DaemonConfig,
+    storage: &dyn Storage,
+    dirs: &ResolvedDirs,
+) -> Result<Vec<wcore::McpServerConfig>> {
+    let mut merged: BTreeMap<String, wcore::McpServerConfig> = dirs.plugin_mcps.clone();
+    for (name, mcp) in storage.list_mcps()? {
+        merged.insert(name, mcp);
+    }
+    Ok(merged
+        .into_values()
+        .map(|mut mcp| {
             for (k, v) in &config.env {
                 mcp.env.entry(k.clone()).or_insert_with(|| v.clone());
             }
             mcp
         })
-        .collect()
+        .collect())
 }

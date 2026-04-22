@@ -1,22 +1,8 @@
-//! System subsystem — default agent, task executor, and memory configuration.
+//! Task executor pool configuration.
 
 use serde::{Deserialize, Serialize};
 
-/// Top-level `[system]` configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SystemConfig {
-    /// The default system agent config (model, thinking, etc.).
-    pub crab: crate::AgentConfig,
-    /// Task executor pool configuration (`[system.tasks]`).
-    pub tasks: TasksConfig,
-    /// Built-in memory configuration (`[system.memory]`).
-    pub memory: MemoryConfig,
-    /// Bash tool configuration (`[system.bash]`).
-    pub bash: BashConfig,
-}
-
-/// Task executor pool configuration.
+/// Task executor pool configuration (`[tasks]` in `config.toml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TasksConfig {
@@ -35,31 +21,5 @@ impl Default for TasksConfig {
             viewable_window: 16,
             task_timeout: 300,
         }
-    }
-}
-
-/// Bash tool configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct BashConfig {
-    /// Disable the bash tool entirely.
-    #[serde(default)]
-    pub disabled: bool,
-    /// Reject commands containing any of these strings (e.g. `".ssh"`).
-    #[serde(default)]
-    pub deny: Vec<String>,
-}
-
-/// Built-in memory configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MemoryConfig {
-    /// Maximum entries returned by auto-recall (default 5).
-    pub recall_limit: usize,
-}
-
-impl Default for MemoryConfig {
-    fn default() -> Self {
-        Self { recall_limit: 5 }
     }
 }

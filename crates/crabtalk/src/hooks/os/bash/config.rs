@@ -2,11 +2,11 @@
 
 use wcore::BashConfig;
 
-/// Check a command against the deny list. Returns the reason if blocked.
-pub fn check(config: &BashConfig, command: &str) -> Option<String> {
-    config
-        .deny
-        .iter()
+/// Check a command against an explicit deny list. Returns the reason
+/// if blocked. Used by `OsHook` after resolving the effective deny list
+/// for the calling agent.
+pub fn check_deny(deny: &[String], command: &str) -> Option<String> {
+    deny.iter()
         .find(|d| command.contains(d.as_str()))
         .map(|d| format!("blocked: command contains '{d}'"))
 }

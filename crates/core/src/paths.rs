@@ -28,6 +28,8 @@ pub static LOGS_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("logs"
 
 /// Configuration file name.
 pub const CONFIG_FILE: &str = "config.toml";
+/// Mutable settings file (daemon-owned, persisted under `local/`).
+pub const SETTINGS_FILE: &str = "local/settings.toml";
 /// Local package directory (user's own skills, agents, MCPs).
 pub const LOCAL_DIR: &str = "local";
 /// Installed plugin manifests directory.

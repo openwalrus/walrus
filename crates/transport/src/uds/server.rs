@@ -1,6 +1,7 @@
 //! Unix domain socket server — accept loop and per-connection message handler.
 
 use crate::REPLY_CHANNEL_CAPACITY;
+use std::time::Duration;
 use tokio::{
     net::UnixListener,
     sync::{mpsc, oneshot},
@@ -9,6 +10,10 @@ use wcore::protocol::{
     codec,
     message::{ClientMessage, ServerMessage},
 };
+
+/// Backoff after an `accept()` error so EMFILE / ENFILE / etc. don't
+/// hot-spin the loop and flood the logs.
+const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(100);
 
 /// Accept connections on the given `UnixListener` until shutdown is signalled.
 ///
@@ -49,11 +54,21 @@ pub async fn accept_loop<F>(
                                 cb(client_msg, tx.clone());
                             }
 
+                            // Client is gone — drop our tx and abort send_task so
+                            // the writer half releases the socket FD immediately.
+                            // Without abort, send_task would await rx.recv() until
+                            // every dispatch task drops its tx clone (which for
+                            // long-lived subscriptions never happens), leaking the
+                            // FD for the lifetime of the daemon.
                             drop(tx);
+                            send_task.abort();
                             let _ = send_task.await;
                         });
                     }
-                    Err(e) => tracing::error!("failed to accept connection: {e}"),
+                    Err(e) => {
+                        tracing::error!("failed to accept connection: {e}");
+                        tokio::time::sleep(ACCEPT_ERROR_BACKOFF).await;
+                    }
                 }
             }
             _ = &mut shutdown => {

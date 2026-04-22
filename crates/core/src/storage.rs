@@ -5,7 +5,7 @@
 //! crate and is not part of this trait.
 
 use crate::{
-    AgentConfig, AgentEvent, AgentId, AgentStep, ManifestConfig, NodeConfig, model::HistoryEntry,
+    AgentConfig, AgentEvent, AgentId, AgentStep, DaemonConfig, McpServerConfig, model::HistoryEntry,
 };
 use anyhow::Result;
 use crabllm_core::Usage;
@@ -76,7 +76,10 @@ pub trait Storage: Send + Sync + 'static {
     /// Load a single agent by name.
     fn load_agent_by_name(&self, name: &str) -> Result<Option<AgentConfig>>;
 
-    /// Create or replace an agent config and prompt.
+    /// Create or replace an agent config and prompt. `config.id` and
+    /// `config.name` must both be set — implementations bail otherwise
+    /// (otherwise the prompt becomes an orphan, unreachable by name or
+    /// by listing).
     fn upsert_agent(&self, config: &AgentConfig, prompt: &str) -> Result<()>;
 
     /// Delete an agent by ULID. Returns `true` if it existed.
@@ -85,25 +88,55 @@ pub trait Storage: Send + Sync + 'static {
     /// Rename an agent. The ULID stays stable.
     fn rename_agent(&self, id: &AgentId, new_name: &str) -> Result<bool>;
 
-    // ── Manifest ───────────────────────────────────────────────────
-
-    /// Load the local manifest (`local/CrabTalk.toml`).
-    /// Returns a default (empty) manifest if the file doesn't exist.
-    fn load_local_manifest(&self) -> Result<ManifestConfig>;
-
-    /// Overwrite the local manifest.
-    fn save_local_manifest(&self, manifest: &ManifestConfig) -> Result<()>;
-
     // ── Config ──────────────────────────────────────────────────────
 
-    /// Load the node configuration (`config.toml`).
-    fn load_config(&self) -> Result<NodeConfig>;
+    /// Load the daemon configuration (`config.toml`).
+    fn load_config(&self) -> Result<DaemonConfig>;
 
-    /// Overwrite the node configuration.
-    fn save_config(&self, config: &NodeConfig) -> Result<()>;
+    /// Overwrite the daemon configuration.
+    fn save_config(&self, config: &DaemonConfig) -> Result<()>;
 
-    /// Create the initial config directory structure if it doesn't exist.
-    fn scaffold(&self) -> Result<()>;
+    /// Create the initial config directory structure and seed the
+    /// default `crab` agent if no agent is stored yet.
+    ///
+    /// `default_model` is the model assigned to the seeded crab agent.
+    /// Callers pick it from the configured providers; an empty string
+    /// here would produce an unusable agent, so callers must ensure a
+    /// provider is configured first.
+    fn scaffold(&self, default_model: &str) -> Result<()>;
+
+    // ── MCP servers ────────────────────────────────────────────────
+
+    /// List all persisted MCP server configs, keyed by name.
+    fn list_mcps(&self) -> Result<BTreeMap<String, McpServerConfig>>;
+
+    /// Load a single MCP server by name.
+    fn load_mcp(&self, name: &str) -> Result<Option<McpServerConfig>>;
+
+    /// Create or replace an MCP server config. Keyed by `config.name`.
+    fn upsert_mcp(&self, config: &McpServerConfig) -> Result<()>;
+
+    /// Delete an MCP server by name. `true` if it existed.
+    fn delete_mcp(&self, name: &str) -> Result<bool>;
+}
+
+/// Reject names that won't survive serialization as a TOML table key.
+/// Used by MCP and agent CRUD to keep `local/settings.toml` from
+/// silently aliasing entries (e.g. `mcp."foo.bar"` round-trips today
+/// but a hand-edit dropping the quotes would corrupt the file).
+pub fn validate_table_name(kind: &str, name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("{kind}: name must not be empty");
+    }
+    if name
+        .chars()
+        .any(|c| matches!(c, '.' | '[' | ']' | '"') || c.is_control())
+    {
+        anyhow::bail!(
+            "{kind}: name '{name}' must not contain '.', '[', ']', '\"', or control chars"
+        );
+    }
+    Ok(())
 }
 
 // ── Sessions ────────────────────────────────────────────────────────
