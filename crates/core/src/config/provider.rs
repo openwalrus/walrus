@@ -59,4 +59,12 @@ pub const PROVIDER_PRESETS: &[ProviderPreset] = &[
         fixed_base_url: "",
         default_model: "gpt-4o",
     },
+    // Generic OpenAI-compatible endpoint. Everything is user-supplied.
+    ProviderPreset {
+        name: "custom",
+        kind: ApiStandard::Openai,
+        base_url: "",
+        fixed_base_url: "",
+        default_model: "",
+    },
 ];
