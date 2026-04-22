@@ -7,6 +7,13 @@ option swift_prefix = "CrabtalkProto_";
 // ── Client Messages ──────────────────────────────────────────────
 
 message ClientMessage {
+  // Tags 14 (SetLocalMcps), 35 (SetEnabled), and 47-50 (Setting RPCs)
+  // were removed. MCPs are managed via UpsertMcp/DeleteMcp; per-agent
+  // configuration lives directly on AgentConfig in storage.
+  reserved 14, 35, 47, 48, 49, 50;
+  reserved "set_local_mcps", "set_enabled", "get_setting", "set_setting",
+      "delete_setting", "list_settings";
+
   oneof msg {
     // Execution
     SendMsg send = 1;
@@ -25,21 +32,21 @@ message ClientMessage {
     ListProviderPresetsMsg list_provider_presets = 12;
     // MCP management
     ListMcpsMsg list_mcps = 13;
-    SetLocalMcpsMsg set_local_mcps = 14;
+    UpsertMcpMsg upsert_mcp = 45;
+    DeleteMcpMsg delete_mcp = 46;
     // Agent management
     ListAgentsMsg list_agents = 15;
     GetAgentMsg get_agent = 16;
     CreateAgentMsg create_agent = 17;
     UpdateAgentMsg update_agent = 18;
     DeleteAgentMsg delete_agent = 19;
+    RenameAgentMsg rename_agent = 51;
     // Plugins
     InstallPluginMsg install_plugin = 20;
     UninstallPluginMsg uninstall_plugin = 21;
     ListPluginsMsg list_plugins = 22;
     // Skills
     ListSkillsMsg list_skills = 23;
-    // Enable/disable
-    SetEnabledMsg set_enabled = 35;
     // Models
     ListModelsMsg list_models = 36;
     // Plugin search
@@ -182,6 +189,11 @@ message DeleteAgentMsg {
   string name = 1;
 }
 
+message RenameAgentMsg {
+  string old_name = 1;
+  string new_name = 2;
+}
+
 message ListProvidersMsg {}
 
 message InstallPluginMsg {
@@ -233,25 +245,11 @@ message PluginSearchList {
   repeated PluginInfo plugins = 1;
 }
 
-enum ResourceKind {
-  RESOURCE_KIND_UNKNOWN = 0;
-  PROVIDER = 1;
-  MCP = 2;
-  SKILL = 3;
-  EXTERNAL_SOURCE = 4;
-}
-
 enum SourceKind {
   SOURCE_KIND_UNKNOWN = 0;
   LOCAL = 1;
   PLUGIN = 2;
   EXTERNAL = 3;
-}
-
-message SetEnabledMsg {
-  ResourceKind kind = 1;
-  string name = 2;
-  bool enabled = 3;
 }
 
 message ListConversationsMsg {
@@ -261,8 +259,14 @@ message ListConversationsMsg {
 
 message ListMcpsMsg {}
 
-message SetLocalMcpsMsg {
-  repeated McpInfo mcps = 1;
+message UpsertMcpMsg {
+  // JSON-encoded `McpServerConfig`. The MCP name lives inside the
+  // payload — there is no separate identity field.
+  string config = 1;
+}
+
+message DeleteMcpMsg {
+  string name = 1;
 }
 
 message SetProviderMsg {
@@ -297,6 +301,11 @@ message ServiceLogsMsg {
 // ── Server Messages ──────────────────────────────────────────────
 
 message ServerMessage {
+  // Tags 27-28 (SettingValue, SettingList) were removed with the
+  // settings RPCs.
+  reserved 27, 28;
+  reserved "setting_value", "setting_list";
+
   oneof msg {
     // Common
     ErrorMsg error = 1;
@@ -339,6 +348,8 @@ message ServerMessage {
     // Event bus
     SubscriptionInfo subscription_info = 25;
     SubscriptionList subscription_list = 26;
+    // MCP CRUD response (single-item)
+    McpInfo mcp_info = 29;
     // Extension point for downstream products.
     bytes extension = 100;
   }
@@ -549,7 +560,7 @@ message CronList {
 message AgentInfo {
   string name = 1;
   string description = 2;
-  string config = 3; // deprecated: always empty, use typed fields below
+  string config = 3; // full AgentConfig as JSON — round-trip with CreateAgentMsg/UpdateAgentMsg
   optional string model = 4;
   uint32 max_iterations = 5;
   bool thinking = 6;
@@ -568,7 +579,8 @@ message ProviderInfo {
   string name = 1;
   bool active = 2;
   string config = 3;
-  bool enabled = 4;
+  reserved 4;
+  reserved "enabled";
 }
 
 message ProviderList {
@@ -585,7 +597,8 @@ message ServiceLogOutput {
 
 message SkillInfo {
   string name = 1;
-  bool enabled = 2;
+  reserved 2;
+  reserved "enabled";
   string source = 3;
   SourceKind source_kind = 4;
 }
@@ -598,7 +611,8 @@ message ModelInfo {
   string name = 1;
   string provider = 2;
   bool active = 3;
-  bool enabled = 4;
+  reserved 4;
+  reserved "enabled";
   ProviderKind kind = 5;
 }
 
@@ -641,7 +655,8 @@ message McpInfo {
   bool auth = 6;
   string source = 7;
   bool auto_restart = 8;
-  bool enabled = 9;
+  reserved 9;
+  reserved "enabled";
   SourceKind source_kind = 10;
   McpStatus status = 11;
   string error = 12;

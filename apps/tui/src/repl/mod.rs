@@ -79,7 +79,6 @@ impl ChatRepl {
             .await
             .unwrap_or_default()
             .into_iter()
-            .filter(|s| s.enabled)
             .map(|s| s.name)
             .collect();
         let history = std::mem::take(&mut self.history);

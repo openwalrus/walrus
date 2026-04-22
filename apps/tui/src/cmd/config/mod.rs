@@ -11,10 +11,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Tabs},
 };
 pub(crate) use wcore::config::{PROVIDER_PRESETS, ProviderPreset};
-use wcore::protocol::{
-    api::Client,
-    message::{McpInfo, SourceKind},
-};
+use wcore::protocol::{api::Client, message::McpInfo};
 
 use mcps::{handle_mcps_key, render_mcps};
 use providers::{handle_providers_key, render_providers};
@@ -36,7 +33,13 @@ impl Config {
         let provider_infos = runner.list_providers().await?;
         let stats = runner.get_stats().await?;
         let mcp_infos = runner.list_mcps().await?;
-        let initial_names: Vec<String> = provider_infos.iter().map(|p| p.name.clone()).collect();
+        let initial_provider_names: Vec<String> =
+            provider_infos.iter().map(|p| p.name.clone()).collect();
+        let initial_local_mcp_names: Vec<String> = mcp_infos
+            .iter()
+            .filter(|m| m.source.is_empty() || m.source == "local")
+            .map(|m| m.name.clone())
+            .collect();
         let active_model = stats.active_model;
 
         let state = tui::run_app_with_state(
@@ -53,9 +56,10 @@ impl Config {
         runner.set_active_model(state.active_model.clone()).await?;
 
         // Delete removed providers.
-        let final_names: Vec<String> = state.providers.iter().map(|p| p.name.clone()).collect();
-        for name in &initial_names {
-            if !final_names.contains(name) {
+        let final_provider_names: Vec<String> =
+            state.providers.iter().map(|p| p.name.clone()).collect();
+        for name in &initial_provider_names {
+            if !final_provider_names.contains(name) {
                 let _ = runner.delete_provider(name.clone()).await;
             }
         }
@@ -67,14 +71,24 @@ impl Config {
             runner.set_provider(p.name.clone(), json).await?;
         }
 
-        // Save local MCPs.
-        let local_mcps: Vec<McpInfo> = state
+        // Diff local MCPs: upsert what's still here, delete what's gone.
+        let final_local_mcps: Vec<&McpData> = state
             .mcps
             .iter()
             .filter(|m| m.source == McpSource::Local)
-            .map(McpData::to_mcp_info)
             .collect();
-        runner.set_local_mcps(local_mcps).await?;
+        let final_local_names: Vec<String> =
+            final_local_mcps.iter().map(|m| m.name.clone()).collect();
+        for name in &initial_local_mcp_names {
+            if !final_local_names.contains(name) {
+                let _ = runner.delete_mcp(name.clone()).await;
+            }
+        }
+        for m in final_local_mcps {
+            let cfg = m.to_server_config();
+            let json = serde_json::to_string(&cfg).context("failed to serialize mcp")?;
+            runner.upsert_mcp(json).await?;
+        }
 
         Ok(())
     }
@@ -166,21 +180,15 @@ pub(crate) struct McpData {
 }
 
 impl McpData {
-    pub(crate) fn to_mcp_info(&self) -> McpInfo {
-        McpInfo {
+    pub(crate) fn to_server_config(&self) -> wcore::McpServerConfig {
+        wcore::McpServerConfig {
             name: self.name.clone(),
             command: self.command.clone(),
             args: self.args.clone(),
             env: self.env.iter().cloned().collect(),
-            url: self.url.clone().unwrap_or_default(),
+            url: self.url.clone(),
             auth: self.auth,
             auto_restart: self.auto_restart,
-            source: String::new(), // always local when saving
-            enabled: true,
-            source_kind: SourceKind::Local.into(),
-            status: 0,
-            error: String::new(),
-            tool_count: 0,
         }
     }
 }

@@ -22,11 +22,7 @@ pub(super) async fn get_stats<P: Provider + 'static>(node: &Daemon<P>) -> Result
     let active = rt.conversation_count().await;
     let agents = rt.agents().len() as u32;
     let uptime = node.started_at.elapsed().as_secs();
-    let active_model = super::config::load_config(node)
-        .await
-        .ok()
-        .and_then(|c| c.system.crab.model)
-        .unwrap_or_default();
+    let active_model = super::config::active_model(node).await;
     Ok(DaemonStats {
         uptime_secs: uptime,
         active_conversations: active as u32,

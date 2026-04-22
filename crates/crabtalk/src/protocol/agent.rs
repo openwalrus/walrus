@@ -1,6 +1,6 @@
 //! Agent CRUD: list, get, create, update, delete.
 
-use crate::daemon::{self, Daemon};
+use crate::daemon::Daemon;
 use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use wcore::protocol::message::*;
@@ -36,11 +36,15 @@ pub(super) async fn create<P: Provider + 'static>(
     if config.id.is_nil() {
         config.id = wcore::AgentId::new();
     }
-    let id = config.id;
-    let normalized =
-        serde_json::to_string(&config).context("failed to re-serialize normalized agent config")?;
-    write_agent_to_manifest(node, &req.name, &normalized, true).await?;
-    write_agent_prompt_to_storage(node, &id, &req.prompt).await?;
+    config.name = req.name.clone();
+
+    let rt = node.runtime.read().await.clone();
+    let storage = rt.storage();
+    if storage.load_agent_by_name(&req.name)?.is_some() {
+        anyhow::bail!("agent '{}' already exists", req.name);
+    }
+    storage.upsert_agent(&config, &req.prompt)?;
+
     register_agent_from_disk(node, &req.name).await?;
     get(node, req.name).await
 }
@@ -50,51 +54,65 @@ pub(super) async fn update<P: Provider + 'static>(
     req: UpdateAgentMsg,
 ) -> Result<AgentInfo> {
     validate_agent_name(&req.name)?;
-    if req.name == wcore::paths::DEFAULT_AGENT {
-        write_system_crab_config(node, &req.config).await?;
-    } else {
-        let mut config: wcore::AgentConfig =
-            serde_json::from_str(&req.config).context("invalid AgentConfig JSON")?;
-        let existing = existing_agent_id(node, &req.name).await?;
-        config.id = existing.unwrap_or_else(|| {
-            if config.id.is_nil() {
-                wcore::AgentId::new()
-            } else {
-                config.id
-            }
-        });
-        let id = config.id;
-        let normalized = serde_json::to_string(&config)
-            .context("failed to re-serialize normalized agent config")?;
-        write_agent_to_manifest(node, &req.name, &normalized, false).await?;
-        if !req.prompt.is_empty() {
-            write_agent_prompt_to_storage(node, &id, &req.prompt).await?;
+    let mut config: wcore::AgentConfig =
+        serde_json::from_str(&req.config).context("invalid AgentConfig JSON")?;
+    let rt = node.runtime.read().await.clone();
+    let storage = rt.storage();
+    let existing = storage.load_agent_by_name(&req.name)?;
+    if let Some(prev) = &existing {
+        if config.id.is_nil() {
+            config.id = prev.id;
         }
+    } else if config.id.is_nil() {
+        config.id = wcore::AgentId::new();
     }
+    config.name = req.name.clone();
+    let prompt = if req.prompt.is_empty() {
+        existing.map(|a| a.system_prompt).unwrap_or_default()
+    } else {
+        req.prompt.clone()
+    };
+    storage.upsert_agent(&config, &prompt)?;
     register_agent_from_disk(node, &req.name).await?;
     get(node, req.name).await
+}
+
+pub(super) async fn rename<P: Provider + 'static>(
+    node: &Daemon<P>,
+    old_name: String,
+    new_name: String,
+) -> Result<AgentInfo> {
+    validate_agent_name(&new_name)?;
+    anyhow::ensure!(
+        old_name != wcore::paths::DEFAULT_AGENT,
+        "cannot rename the default agent '{old_name}'"
+    );
+    if old_name == new_name {
+        return get(node, old_name).await;
+    }
+
+    let rt = node.runtime.read().await.clone();
+    let storage = rt.storage();
+    let existing = storage
+        .load_agent_by_name(&old_name)?
+        .ok_or_else(|| anyhow::anyhow!("agent '{old_name}' not found"))?;
+    storage.rename_agent(&existing.id, &new_name)?;
+
+    rt.remove_agent(&old_name);
+    node.hook.unregister_scope(&old_name);
+
+    register_agent_from_disk(node, &new_name).await?;
+    get(node, new_name).await
 }
 
 pub(super) async fn delete<P: Provider + 'static>(node: &Daemon<P>, name: String) -> Result<bool> {
     let rt = node.runtime.read().await.clone();
     let storage = rt.storage();
-
-    let mut manifest = storage.load_local_manifest()?;
-    let existing_id = manifest
-        .agents
-        .get(&name)
-        .filter(|c| !c.id.is_nil())
-        .map(|c| c.id);
-    let removed = manifest.agents.remove(&name).is_some();
+    let Some(existing) = storage.load_agent_by_name(&name)? else {
+        return Ok(false);
+    };
+    let removed = storage.delete_agent(&existing.id)?;
     if removed {
-        storage.save_local_manifest(&manifest)?;
-
-        if let Some(id) = existing_id
-            && let Err(e) = storage.delete_agent(&id)
-        {
-            tracing::warn!("failed to delete agent prompt for {id}: {e}");
-        }
-
         rt.remove_agent(&name);
         node.hook.unregister_scope(&name);
     }
@@ -105,81 +123,14 @@ async fn register_agent_from_disk<P: Provider + 'static>(
     node: &Daemon<P>,
     name: &str,
 ) -> Result<()> {
-    let config = super::config::load_config(node).await?;
-    let (manifest, _warnings) = super::config::resolve_manifests(node).await?;
     let rt = node.runtime.read().await.clone();
-    let agent_config = daemon::builder::build_single_agent_config(
-        name,
-        &config,
-        &manifest,
-        rt.storage().as_ref(),
-    )?;
+    let agent_config = rt
+        .storage()
+        .load_agent_by_name(name)?
+        .ok_or_else(|| anyhow::anyhow!("agent '{name}' missing from storage after upsert"))?;
     let registered = rt.upsert_agent(agent_config);
     node.hook.register_scope(name.to_owned(), &registered);
     Ok(())
-}
-
-async fn existing_agent_id<P: Provider + 'static>(
-    node: &Daemon<P>,
-    name: &str,
-) -> Result<Option<wcore::AgentId>> {
-    let rt = node.runtime.read().await.clone();
-    let manifest = rt.storage().load_local_manifest()?;
-    Ok(manifest
-        .agents
-        .get(name)
-        .filter(|cfg| !cfg.id.is_nil())
-        .map(|cfg| cfg.id))
-}
-
-async fn write_agent_to_manifest<P: Provider + 'static>(
-    node: &Daemon<P>,
-    name: &str,
-    config_json: &str,
-    expect_new: bool,
-) -> Result<()> {
-    let config: wcore::AgentConfig =
-        serde_json::from_str(config_json).context("invalid AgentConfig JSON")?;
-
-    let rt = node.runtime.read().await.clone();
-    let storage = rt.storage();
-    let mut manifest = storage.load_local_manifest()?;
-
-    if expect_new && manifest.agents.contains_key(name) {
-        anyhow::bail!("agent '{name}' already exists in local manifest");
-    }
-
-    manifest.agents.insert(name.to_owned(), config);
-    storage.save_local_manifest(&manifest)?;
-    Ok(())
-}
-
-async fn write_agent_prompt_to_storage<P: Provider + 'static>(
-    node: &Daemon<P>,
-    id: &wcore::AgentId,
-    prompt: &str,
-) -> Result<()> {
-    let rt = node.runtime.read().await.clone();
-    let config = wcore::AgentConfig {
-        id: *id,
-        ..Default::default()
-    };
-    rt.storage()
-        .upsert_agent(&config, prompt)
-        .with_context(|| format!("failed to write agent prompt for {id}"))
-}
-
-async fn write_system_crab_config<P: Provider + 'static>(
-    node: &Daemon<P>,
-    config_json: &str,
-) -> Result<()> {
-    let crab: wcore::AgentConfig =
-        serde_json::from_str(config_json).context("invalid AgentConfig JSON")?;
-    let rt = node.runtime.read().await.clone();
-    let storage = rt.storage();
-    let mut config = storage.load_config()?;
-    config.system.crab = crab;
-    storage.save_config(&config)
 }
 
 fn validate_agent_name(name: &str) -> Result<()> {
@@ -192,10 +143,11 @@ fn validate_agent_name(name: &str) -> Result<()> {
 }
 
 fn agent_config_to_info(config: &wcore::AgentConfig) -> AgentInfo {
+    let json = serde_json::to_string(config).unwrap_or_default();
     AgentInfo {
         name: config.name.clone(),
         description: config.description.clone(),
-        config: String::new(),
+        config: json,
         model: config.model.clone(),
         max_iterations: config.max_iterations as u32,
         thinking: config.thinking,

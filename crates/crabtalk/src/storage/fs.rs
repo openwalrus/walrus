@@ -5,19 +5,36 @@
 
 use anyhow::Result;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::ErrorKind,
     path::PathBuf,
 };
 use wcore::{
-    AgentConfig, AgentId, ConversationMeta, DaemonConfig, EventLine, ManifestConfig,
+    AgentConfig, AgentId, ConversationMeta, DaemonConfig, EventLine, McpServerConfig,
     model::HistoryEntry,
-    storage::{SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage},
+    storage::{
+        SessionHandle, SessionSnapshot, SessionSummary, Skill, Storage, validate_table_name,
+    },
 };
 
-use super::atomic_write;
+use super::{atomic_write, default_crab};
+
+/// Header prepended to `local/settings.toml`. Tells humans not to edit
+/// the file while the daemon is running and signals the file is
+/// daemon-owned.
+const SETTINGS_HEADER: &str = "\
+# Managed by crabtalk daemon. Edits while the daemon is running are
+# overwritten on the next write. Edits while the daemon is stopped are
+# picked up on next reload.
+#
+# Source of truth for runtime-added MCPs and agents. Immutable
+# install-time configuration (providers, task pool) lives in
+# config.toml.
+
+";
 
 /// Filesystem persistence backend.
 pub struct FsStorage {
@@ -27,28 +44,16 @@ pub struct FsStorage {
     sessions_root: PathBuf,
     /// Ordered skill roots to scan (local first, then packages).
     skill_roots: Vec<PathBuf>,
-    /// Skill names to exclude.
-    disabled_skills: Vec<String>,
-    /// Directories containing `<name>.md` legacy agent prompt files.
-    agent_dirs: Vec<PathBuf>,
     /// Per-session step counters, recovered from disk on first access.
     session_counters: Mutex<HashMap<String, u64>>,
 }
 
 impl FsStorage {
-    pub fn new(
-        config_dir: PathBuf,
-        sessions_root: PathBuf,
-        skill_roots: Vec<PathBuf>,
-        disabled_skills: Vec<String>,
-        agent_dirs: Vec<PathBuf>,
-    ) -> Self {
+    pub fn new(config_dir: PathBuf, sessions_root: PathBuf, skill_roots: Vec<PathBuf>) -> Self {
         Self {
             config_dir,
             sessions_root,
             skill_roots,
-            disabled_skills,
-            agent_dirs,
             session_counters: Mutex::new(HashMap::new()),
         }
     }
@@ -95,11 +100,57 @@ impl FsStorage {
             .join(id.to_string())
             .join("prompt.md")
     }
+
+    fn read_agent_prompt(&self, id: &AgentId) -> Option<String> {
+        if id.is_nil() {
+            return None;
+        }
+        fs::read_to_string(self.agent_prompt_path(id)).ok()
+    }
+
+    // ── Settings helpers ───────────────────────────────────────────
+
+    fn settings_path(&self) -> PathBuf {
+        self.config_dir.join(wcore::paths::SETTINGS_FILE)
+    }
+
+    /// Read and parse the settings file. Re-parsed on every call —
+    /// settings are tiny and writes are rare, so a cache would be
+    /// premature. Don't add one without measuring.
+    fn read_settings(&self) -> Result<SettingsFile> {
+        let path = self.settings_path();
+        match fs::read_to_string(&path) {
+            Ok(content) => Ok(toml::from_str(&content)?),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(SettingsFile::default()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn write_settings(&self, file: &SettingsFile) -> Result<()> {
+        let path = self.settings_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let body = toml::to_string_pretty(file)?;
+        let mut content = String::with_capacity(SETTINGS_HEADER.len() + body.len());
+        content.push_str(SETTINGS_HEADER);
+        content.push_str(&body);
+        atomic_write(&path, content.as_bytes())
+    }
 }
 
-// ── Step serialization ─────────────────────────────────────────────
+// ── Private on-disk shape ──────────────────────────────────────────
 
-use serde::{Deserialize, Serialize};
+/// On-disk shape of `local/settings.toml`. Holds runtime-added records:
+///   - `[mcps.<name>]` — MCP server registrations
+///   - `[agents.<name>]` — full agent definitions (model, members, …)
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct SettingsFile {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    mcps: BTreeMap<String, McpServerConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    agents: BTreeMap<String, AgentConfig>,
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
@@ -161,7 +212,7 @@ impl Storage for FsStorage {
                     Some(n) if !n.starts_with('.') => n.to_owned(),
                     _ => continue,
                 };
-                if seen.contains(&name) || self.disabled_skills.contains(&name) {
+                if seen.contains(&name) {
                     continue;
                 }
                 let skill_path = path.join("SKILL.md");
@@ -381,41 +432,50 @@ impl Storage for FsStorage {
     // ── Agents ─────────────────────────────────────────────────────
 
     fn list_agents(&self) -> Result<Vec<AgentConfig>> {
-        Ok(Vec::new())
+        let file = self.read_settings()?;
+        let mut out = Vec::with_capacity(file.agents.len());
+        for (name, mut cfg) in file.agents {
+            cfg.name = name;
+            cfg.system_prompt = self.read_agent_prompt(&cfg.id).unwrap_or_default();
+            out.push(cfg);
+        }
+        Ok(out)
     }
 
     fn load_agent(&self, id: &AgentId) -> Result<Option<AgentConfig>> {
         if id.is_nil() {
             return Ok(None);
         }
-        let path = self.agent_prompt_path(id);
-        match fs::read_to_string(&path) {
-            Ok(prompt) => Ok(Some(AgentConfig {
-                id: *id,
-                system_prompt: prompt,
-                ..Default::default()
-            })),
-            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        let file = self.read_settings()?;
+        let Some((name, mut cfg)) = file.agents.into_iter().find(|(_, c)| c.id == *id) else {
+            return Ok(None);
+        };
+        cfg.name = name;
+        cfg.system_prompt = self.read_agent_prompt(id).unwrap_or_default();
+        Ok(Some(cfg))
     }
 
     fn load_agent_by_name(&self, name: &str) -> Result<Option<AgentConfig>> {
-        for dir in &self.agent_dirs {
-            let path = dir.join(format!("{name}.md"));
-            if let Ok(prompt) = fs::read_to_string(&path) {
-                let mut config = AgentConfig::new(name);
-                config.system_prompt = prompt;
-                return Ok(Some(config));
-            }
-        }
-        Ok(None)
+        let file = self.read_settings()?;
+        let Some(mut cfg) = file.agents.get(name).cloned() else {
+            return Ok(None);
+        };
+        cfg.name = name.to_owned();
+        cfg.system_prompt = self.read_agent_prompt(&cfg.id).unwrap_or_default();
+        Ok(Some(cfg))
     }
 
     fn upsert_agent(&self, config: &AgentConfig, prompt: &str) -> Result<()> {
         if config.id.is_nil() {
             anyhow::bail!("cannot upsert agent with nil ID");
         }
+        if config.name.is_empty() {
+            anyhow::bail!("cannot upsert agent with empty name");
+        }
+        validate_table_name("agent", &config.name)?;
+        let mut file = self.read_settings()?;
+        file.agents.insert(config.name.clone(), config.clone());
+        self.write_settings(&file)?;
         let path = self.agent_prompt_path(&config.id);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -424,38 +484,47 @@ impl Storage for FsStorage {
     }
 
     fn delete_agent(&self, id: &AgentId) -> Result<bool> {
+        let mut file = self.read_settings()?;
+        let removed_name = file
+            .agents
+            .iter()
+            .find(|(_, c)| c.id == *id)
+            .map(|(n, _)| n.clone());
+        let settings_removed = removed_name.is_some();
+        if let Some(name) = removed_name {
+            file.agents.remove(&name);
+            self.write_settings(&file)?;
+        }
         let dir = self.config_dir.join("agents").join(id.to_string());
-        match fs::remove_dir_all(&dir) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(e.into()),
-        }
+        let dir_removed = match fs::remove_dir_all(&dir) {
+            Ok(()) => true,
+            Err(e) if e.kind() == ErrorKind::NotFound => false,
+            Err(e) => return Err(e.into()),
+        };
+        Ok(dir_removed || settings_removed)
     }
 
-    fn rename_agent(&self, _id: &AgentId, _new_name: &str) -> Result<bool> {
-        // Rename is a manifest-level operation (change the TOML key).
-        // The ULID stays stable, so the prompt file doesn't move.
+    fn rename_agent(&self, id: &AgentId, new_name: &str) -> Result<bool> {
+        validate_table_name("agent", new_name)?;
+        let mut file = self.read_settings()?;
+        let old_name = file
+            .agents
+            .iter()
+            .find(|(_, c)| c.id == *id)
+            .map(|(n, _)| n.clone());
+        let Some(old_name) = old_name else {
+            return Ok(false);
+        };
+        if old_name == new_name {
+            return Ok(true);
+        }
+        if file.agents.contains_key(new_name) {
+            anyhow::bail!("agent '{new_name}' already exists");
+        }
+        let cfg = file.agents.remove(&old_name).expect("present above");
+        file.agents.insert(new_name.to_owned(), cfg);
+        self.write_settings(&file)?;
         Ok(true)
-    }
-
-    // ── Manifest ───────────────────────────────────────────────────
-
-    fn load_local_manifest(&self) -> Result<ManifestConfig> {
-        let path = self
-            .config_dir
-            .join(wcore::paths::LOCAL_DIR)
-            .join("CrabTalk.toml");
-        match ManifestConfig::load(&path)? {
-            Some(m) => Ok(m),
-            None => Ok(ManifestConfig::default()),
-        }
-    }
-
-    fn save_local_manifest(&self, manifest: &ManifestConfig) -> Result<()> {
-        let dir = self.config_dir.join(wcore::paths::LOCAL_DIR);
-        fs::create_dir_all(&dir)?;
-        let content = toml::to_string_pretty(manifest)?;
-        atomic_write(&dir.join("CrabTalk.toml"), content.as_bytes())
     }
 
     fn load_config(&self) -> Result<DaemonConfig> {
@@ -478,7 +547,54 @@ impl Storage for FsStorage {
         fs::create_dir_all(self.config_dir.join(wcore::paths::SKILLS_DIR))?;
         fs::create_dir_all(self.config_dir.join(wcore::paths::AGENTS_DIR))?;
         fs::create_dir_all(&self.sessions_root)?;
+
+        let file = self.read_settings()?;
+        if file.agents.is_empty() {
+            let crab = default_crab();
+            let prompt = crab.system_prompt.clone();
+            self.upsert_agent(&crab, &prompt)?;
+        }
         Ok(())
+    }
+
+    // ── MCP servers ────────────────────────────────────────────────
+
+    fn list_mcps(&self) -> Result<BTreeMap<String, McpServerConfig>> {
+        let mut file = self.read_settings()?;
+        // Fill in `name` from the key for entries hand-edited into the
+        // file without one. In-memory only — caller sees normalized
+        // values but the file on disk is left as-is.
+        for (name, cfg) in file.mcps.iter_mut() {
+            if cfg.name.is_empty() {
+                cfg.name = name.clone();
+            }
+        }
+        Ok(file.mcps)
+    }
+
+    fn load_mcp(&self, name: &str) -> Result<Option<McpServerConfig>> {
+        Ok(self.read_settings()?.mcps.remove(name).map(|mut cfg| {
+            if cfg.name.is_empty() {
+                cfg.name = name.to_owned();
+            }
+            cfg
+        }))
+    }
+
+    fn upsert_mcp(&self, config: &McpServerConfig) -> Result<()> {
+        validate_table_name("mcp", &config.name)?;
+        let mut file = self.read_settings()?;
+        file.mcps.insert(config.name.clone(), config.clone());
+        self.write_settings(&file)
+    }
+
+    fn delete_mcp(&self, name: &str) -> Result<bool> {
+        let mut file = self.read_settings()?;
+        let removed = file.mcps.remove(name).is_some();
+        if removed {
+            self.write_settings(&file)?;
+        }
+        Ok(removed)
     }
 }
 

@@ -6,9 +6,9 @@ use crate::protocol::message::{
     CreateAgentMsg, CreateCronMsg, CronInfo, CronList, DaemonStats, ErrorMsg, InstallPluginMsg,
     McpInfo, McpList, ModelInfo, ModelList, PluginEvent, PluginInfo, PluginList, PluginSearchList,
     Pong, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList, PublishEventMsg,
-    ResourceKind, SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList,
-    SteerSessionMsg, StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList,
-    UpdateAgentMsg, client_message, server_message,
+    SendMsg, SendResponse, ServerMessage, ServiceLogOutput, SkillInfo, SkillList, SteerSessionMsg,
+    StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo, SubscriptionList, UpdateAgentMsg,
+    UpsertMcpMsg, client_message, server_message,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -153,6 +153,13 @@ pub trait Server: Sync {
     /// Handle `DeleteAgent` — remove an agent by name.
     fn delete_agent(&self, name: String) -> impl std::future::Future<Output = Result<bool>> + Send;
 
+    /// Handle `RenameAgent` — rename an agent in place.
+    fn rename_agent(
+        &self,
+        old_name: String,
+        new_name: String,
+    ) -> impl std::future::Future<Output = Result<AgentInfo>> + Send;
+
     /// Handle `ListProviders` — return all registered LLM providers.
     fn list_providers(&self)
     -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send;
@@ -181,14 +188,6 @@ pub trait Server: Sync {
     /// Handle `ListModels` — return all resolved models with provider and active state.
     fn list_models(&self) -> impl std::future::Future<Output = Result<Vec<ModelInfo>>> + Send;
 
-    /// Handle `SetEnabled` — enable or disable a provider, MCP, or skill.
-    fn set_enabled(
-        &self,
-        kind: ResourceKind,
-        name: String,
-        enabled: bool,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
     /// Handle `ListConversations` — return historical conversations from disk.
     fn list_conversations(
         &self,
@@ -211,11 +210,14 @@ pub trait Server: Sync {
     /// Handle `ListMcps` — return all MCP server configs with source info.
     fn list_mcps(&self) -> impl std::future::Future<Output = Result<Vec<McpInfo>>> + Send;
 
-    /// Handle `SetLocalMcps` — replace local MCPs in CrabTalk.toml.
-    fn set_local_mcps(
+    /// Handle `UpsertMcp` — create or replace an MCP server in Storage.
+    fn upsert_mcp(
         &self,
-        mcps: Vec<McpInfo>,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+        req: UpsertMcpMsg,
+    ) -> impl std::future::Future<Output = Result<McpInfo>> + Send;
+
+    /// Handle `DeleteMcp` — remove an MCP server from Storage.
+    fn delete_mcp(&self, name: String) -> impl std::future::Future<Output = Result<bool>> + Send;
 
     /// Handle `SetProvider` — create or update a provider in config.toml.
     fn set_provider(
@@ -451,6 +453,14 @@ pub trait Server: Sync {
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
+                client_message::Msg::RenameAgent(req) => {
+                    yield match self.rename_agent(req.old_name, req.new_name).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::AgentInfo(info)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
                 client_message::Msg::ListProviders(_) => {
                     yield match self.list_providers().await {
                         Ok(providers) => ServerMessage {
@@ -533,14 +543,6 @@ pub trait Server: Sync {
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
-                client_message::Msg::SetEnabled(req) => {
-                    let kind = ResourceKind::try_from(req.kind)
-                        .unwrap_or(ResourceKind::Unknown);
-                    yield match self.set_enabled(kind, req.name, req.enabled).await {
-                        Ok(()) => server_pong(),
-                        Err(e) => server_error(500, e.to_string()),
-                    };
-                }
                 client_message::Msg::ListConversations(req) => {
                     yield match self.list_conversations(req.agent, req.sender).await {
                         Ok(conversations) => ServerMessage {
@@ -568,9 +570,18 @@ pub trait Server: Sync {
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }
-                client_message::Msg::SetLocalMcps(req) => {
-                    yield match self.set_local_mcps(req.mcps).await {
-                        Ok(()) => server_pong(),
+                client_message::Msg::UpsertMcp(req) => {
+                    yield match self.upsert_mcp(req).await {
+                        Ok(info) => ServerMessage {
+                            msg: Some(server_message::Msg::McpInfo(info)),
+                        },
+                        Err(e) => server_error(500, e.to_string()),
+                    };
+                }
+                client_message::Msg::DeleteMcp(req) => {
+                    yield match self.delete_mcp(req.name.clone()).await {
+                        Ok(true) => server_pong(),
+                        Ok(false) => server_error(404, format!("mcp '{}' not found", req.name)),
                         Err(e) => server_error(500, e.to_string()),
                     };
                 }

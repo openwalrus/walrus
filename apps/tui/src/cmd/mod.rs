@@ -6,8 +6,10 @@ use clap::{Parser, Subcommand};
 #[cfg(feature = "daemon")]
 use std::ffi::OsString;
 
+pub mod agent;
 pub mod config;
 pub mod console;
+pub mod mcp;
 
 /// Crabtalk TUI — interactive agent client.
 #[derive(Parser, Debug)]
@@ -60,6 +62,10 @@ pub struct Cli {
 pub enum Command {
     /// Configure providers, models, and MCP servers.
     Config(config::Config),
+    /// Manage agents (create, list, delete, rename).
+    Agent(agent::Agent),
+    /// Manage MCP servers (create, list, delete).
+    Mcp(mcp::Mcp),
     /// Resume a previous conversation.
     Resume {
         /// Conversation file to resume. If omitted, shows a conversation picker.
@@ -162,6 +168,8 @@ impl Cli {
                 }
             }
             Some(Command::Config(cmd)) => cmd.run().await,
+            Some(Command::Agent(cmd)) => cmd.run(self.tcp).await,
+            Some(Command::Mcp(cmd)) => cmd.run(self.tcp).await,
             #[cfg(feature = "daemon")]
             Some(Command::Pull { plugin, force }) => {
                 let daemon = crabtalkd::Cli {
@@ -260,6 +268,18 @@ pub(crate) async fn connect_default() -> Result<Runner> {
     #[cfg(not(unix))]
     {
         connect_tcp().await
+    }
+}
+
+/// Read the contents of a file path, or stdin if the path is `-`.
+pub(crate) fn read_path_or_stdin(path: &std::path::Path) -> Result<String> {
+    if path.as_os_str() == "-" {
+        let mut buf = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)
+            .context("failed to read stdin")?;
+        Ok(buf)
+    } else {
+        std::fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
     }
 }
 

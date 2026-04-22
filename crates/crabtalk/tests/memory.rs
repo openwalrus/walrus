@@ -2,11 +2,10 @@
 
 use crabtalk::hooks::Memory;
 use tempfile::tempdir;
-use wcore::MemoryConfig;
 
 fn test_memory() -> Memory {
     let dir = tempdir().unwrap();
-    Memory::open(MemoryConfig::default(), dir.path().join("memory.db")).unwrap()
+    Memory::open(dir.path().join("memory.db")).unwrap()
 }
 
 #[test]

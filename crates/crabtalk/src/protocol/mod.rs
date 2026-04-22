@@ -109,6 +109,10 @@ impl<P: Provider + 'static> Server for Daemon<P> {
         agent::delete(self, name).await
     }
 
+    async fn rename_agent(&self, old_name: String, new_name: String) -> Result<AgentInfo> {
+        agent::rename(self, old_name, new_name).await
+    }
+
     async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
         config::list_providers(self).await
     }
@@ -147,8 +151,12 @@ impl<P: Provider + 'static> Server for Daemon<P> {
         config::list_mcps(self).await
     }
 
-    async fn set_local_mcps(&self, mcps: Vec<McpInfo>) -> Result<()> {
-        config::set_local_mcps(self, mcps).await
+    async fn upsert_mcp(&self, req: UpsertMcpMsg) -> Result<McpInfo> {
+        config::upsert_mcp(self, req.config).await
+    }
+
+    async fn delete_mcp(&self, name: String) -> Result<bool> {
+        config::delete_mcp(self, name).await
     }
 
     async fn set_provider(&self, name: String, config: String) -> Result<ProviderInfo> {
@@ -173,10 +181,6 @@ impl<P: Provider + 'static> Server for Daemon<P> {
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         config::list_models(self).await
-    }
-
-    async fn set_enabled(&self, kind: ResourceKind, name: String, enabled: bool) -> Result<()> {
-        config::set_enabled(self, kind, name, enabled).await
     }
 
     async fn list_plugins(&self) -> Result<Vec<PluginInfo>> {

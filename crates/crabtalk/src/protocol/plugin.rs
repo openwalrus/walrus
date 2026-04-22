@@ -4,6 +4,7 @@ use crate::daemon::Daemon;
 use anyhow::{Context, Result};
 use crabllm_core::Provider;
 use wcore::protocol::message::*;
+use wcore::storage::Storage;
 
 pub(super) fn install<'a, P: Provider + 'static>(
     node: &'a Daemon<P>,
@@ -71,12 +72,16 @@ pub(super) fn install<'a, P: Provider + 'static>(
         yield plugin_step("reloading daemon…");
         node.reload().await?;
 
-        let (manifest, mut warnings) = super::config::resolve_manifests(node).await?;
-        warnings.extend(wcore::check_skill_conflicts(&manifest.skill_dirs));
+        let dirs = wcore::resolve_dirs(&node.config_dir);
+        let warnings = wcore::check_skill_conflicts(&dirs.skill_dirs);
         for w in &warnings {
             yield plugin_warning(w);
         }
-        for (name, mcp) in &manifest.mcps {
+        let storage_mcps = {
+            let rt = node.runtime.read().await.clone();
+            rt.storage().list_mcps()?
+        };
+        for (name, mcp) in &storage_mcps {
             if mcp.auth
                 && !wcore::paths::TOKENS_DIR.join(format!("{name}.json")).exists()
             {

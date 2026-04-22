@@ -15,6 +15,7 @@ use wcore::{
     MemoryConfig, ToolDispatch, ToolFuture,
     agent::AsTool,
     model::{HistoryEntry, Tool},
+    storage::Storage,
 };
 
 mod forget;
@@ -36,16 +37,14 @@ const MEMORY_PROMPT: &str = include_str!("../../../prompts/memory.md");
 
 pub struct Memory {
     pub(super) inner: SharedStore,
-    pub(super) recall_limit: usize,
 }
 
 impl Memory {
     /// Open (or create) the memory db at `db_path`.
-    pub fn open(config: MemoryConfig, db_path: PathBuf) -> Result<Self> {
+    pub fn open(db_path: PathBuf) -> Result<Self> {
         let store = Store::open(&db_path)?;
         Ok(Self {
             inner: Arc::new(RwLock::new(store)),
-            recall_limit: config.recall_limit,
         })
     }
 
@@ -66,11 +65,28 @@ impl Memory {
 
 pub struct MemoryHook {
     pub(super) memory: Arc<Memory>,
+    storage: Arc<dyn Storage>,
 }
 
 impl MemoryHook {
-    pub fn new(memory: Arc<Memory>) -> Self {
-        Self { memory }
+    pub fn new(memory: Arc<Memory>, storage: Arc<dyn Storage>) -> Self {
+        Self { memory, storage }
+    }
+
+    /// Effective recall limit for an agent. Reads
+    /// [`AgentConfig::hooks::memory`] from storage; falls back to the
+    /// [`MemoryConfig`] default when the agent is not yet persisted.
+    /// Storage errors are logged loudly so a transient I/O failure
+    /// doesn't silently degrade recall behavior.
+    pub fn recall_limit(&self, agent: &str) -> usize {
+        match self.storage.load_agent_by_name(agent) {
+            Ok(Some(cfg)) => cfg.hooks.memory.recall_limit,
+            Ok(None) => MemoryConfig::default().recall_limit,
+            Err(e) => {
+                tracing::error!(%agent, error = %e, "failed to load memory config — falling back to defaults");
+                MemoryConfig::default().recall_limit
+            }
+        }
     }
 }
 
@@ -85,11 +101,11 @@ impl Hook for MemoryHook {
 
     fn on_before_run(
         &self,
-        _agent: &str,
+        agent: &str,
         _conversation_id: u64,
         history: &[HistoryEntry],
     ) -> Vec<HistoryEntry> {
-        self.memory.before_run(history)
+        self.memory.before_run(history, self.recall_limit(agent))
     }
 
     fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {

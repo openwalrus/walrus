@@ -1,17 +1,16 @@
-//! Hook subsystem configuration — defaults for bash and memory hooks.
+//! Per-agent hook configuration — bash deny rules, memory recall
+//! tuning. Each agent owns its own `HooksConfig` directly on
+//! [`crate::AgentConfig`]; there is no global override.
 
 use serde::{Deserialize, Serialize};
 
-/// Top-level `[hooks]` configuration. Defaults for built-in hooks.
-///
-/// Per-scope overrides live in mutable Storage; these values are the
-/// fallback when no override is set.
+/// Per-agent hook configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct HooksConfig {
-    /// Bash tool defaults (`[hooks.bash]`).
+    /// Bash tool configuration (`hooks.bash` under an agent).
     pub bash: BashConfig,
-    /// Built-in memory defaults (`[hooks.memory]`).
+    /// Memory hook configuration (`hooks.memory` under an agent).
     pub memory: MemoryConfig,
 }
 
