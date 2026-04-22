@@ -126,7 +126,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::Reload,
+                    command: Some(crabtalkd::Command::Reload),
                 };
                 return daemon.run().await;
             }
@@ -135,7 +135,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::Events,
+                    command: Some(crabtalkd::Command::Events),
                 };
                 return daemon.run().await;
             }
@@ -176,7 +176,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::Pull { plugin, force },
+                    command: Some(crabtalkd::Command::Pull { plugin, force }),
                 };
                 daemon.run().await
             }
@@ -186,7 +186,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::Rm { plugin },
+                    command: Some(crabtalkd::Command::Rm { plugin }),
                 };
                 daemon.run().await
             }
@@ -196,7 +196,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::Ps,
+                    command: Some(crabtalkd::Command::Ps),
                 };
                 daemon.run().await
             }
@@ -206,7 +206,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::Logs { tail_args },
+                    command: Some(crabtalkd::Command::Logs { tail_args }),
                 };
                 daemon.run().await
             }
@@ -216,7 +216,7 @@ impl Cli {
                     foreground: false,
                     verbose: 0,
                     tcp: self.tcp,
-                    command: crabtalkd::Command::External(args),
+                    command: Some(crabtalkd::Command::External(args)),
                 };
                 daemon.run().await
             }

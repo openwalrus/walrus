@@ -1,7 +1,7 @@
 //! Crabtalk daemon — CLI dispatch and daemon lifecycle.
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use futures_util::StreamExt;
 use std::{collections::HashMap, ffi::OsString};
 use transport::Transport;
@@ -17,12 +17,7 @@ pub mod service;
 
 /// Crabtalk — AI agent platform.
 #[derive(Parser, Debug)]
-#[command(
-    name = "crabtalk",
-    about = "Crabtalk — AI agent daemon",
-    subcommand_required = true,
-    arg_required_else_help = true
-)]
+#[command(name = "crabtalk", about = "Crabtalk — AI agent daemon")]
 pub struct Cli {
     /// Run the daemon in the foreground.
     #[arg(long)]
@@ -33,9 +28,11 @@ pub struct Cli {
     /// Connect via TCP instead of Unix domain socket.
     #[arg(long)]
     pub tcp: bool,
-    /// Subcommand to execute.
+    /// Subcommand to execute. Optional so `--foreground` can run the
+    /// daemon without one (the launchd/systemd unit invokes us as
+    /// `crabtalkd --foreground -v`).
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 /// Top-level subcommands.
@@ -87,7 +84,12 @@ impl Cli {
             return foreground::start().await;
         }
 
-        match self.command {
+        let Some(command) = self.command else {
+            Self::command().print_help()?;
+            std::process::exit(2);
+        };
+
+        match command {
             Command::Start { force } => {
                 ensure_config()?;
                 service::install(self.verbose.max(1), force)
