@@ -648,7 +648,14 @@ name = "crabtalk-mcp"
 version = "0.0.21"
 dependencies = [
  "anyhow",
+ "bytes",
  "crabtalk-core",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-tls",
+ "hyper-util",
  "parking_lot",
  "reqwest 0.13.2",
  "serde",
