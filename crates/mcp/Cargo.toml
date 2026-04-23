@@ -30,7 +30,7 @@ hyper-tls = { workspace = true, optional = true }
 hyper-rustls = { workspace = true, optional = true }
 
 [features]
-default = ["reqwest", "native-tls"]
+default = ["hyper", "native-tls"]
 
 # Backends (mutually exclusive).
 reqwest = ["dep:reqwest"]

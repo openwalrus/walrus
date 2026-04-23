@@ -9,11 +9,11 @@
 //! # Features
 //!
 //! Pick exactly one HTTP backend and one TLS backend:
-//! - `reqwest` (default) / `hyper`
+//! - `hyper` (default) / `reqwest`
 //! - `native-tls` (default) / `rustls`
 //!
-//! The `hyper` backend is ~1.3 MB smaller on release builds because it
-//! skips reqwest's cookie store, redirect logic, and decoders.
+//! The `hyper` backend is more compact — it skips reqwest's cookie store,
+//! redirect logic, and decoders that MCP never uses.
 
 #[cfg(all(feature = "reqwest", feature = "hyper"))]
 compile_error!("features `reqwest` and `hyper` are mutually exclusive");
