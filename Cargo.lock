@@ -550,6 +550,7 @@ dependencies = [
  "crabllm-provider",
  "crabtalk-command",
  "crabtalk-core",
+ "crabtalk-mcp",
  "crabtalk-memory",
  "crabtalk-plugins",
  "crabtalk-runtime",
@@ -640,6 +641,20 @@ dependencies = [
  "toml",
  "tracing",
  "ulid",
+]
+
+[[package]]
+name = "crabtalk-mcp"
+version = "0.0.21"
+dependencies = [
+ "anyhow",
+ "crabtalk-core",
+ "parking_lot",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
