@@ -1,21 +1,22 @@
 //! Daemon configuration loaded from `config.toml`.
 
-use crate::{ProviderDef, config::system::TasksConfig};
+use crate::config::{LlmConfig, system::TasksConfig};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Top-level daemon configuration (`config.toml`).
 ///
-/// Holds immutable per-install settings: providers, task executor pool,
-/// and env vars passed to MCP processes. Mutable runtime records (MCPs,
-/// agents) live in [`crate::storage::Storage`]. Per-agent customization
-/// (hooks, etc.) lives directly on each [`crate::AgentConfig`].
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Holds immutable per-install settings: the LLM endpoint, task executor
+/// pool, and env vars passed to MCP processes. Mutable runtime records
+/// (MCPs, agents) live in [`crate::storage::Storage`]. Per-agent
+/// customization (hooks, etc.) lives directly on each
+/// [`crate::AgentConfig`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DaemonConfig {
-    /// Provider definitions (`[provider.<name>]`).
+    /// LLM endpoint (`[llm]`) — single OpenAI-compatible endpoint.
     #[serde(default)]
-    pub provider: BTreeMap<String, ProviderDef>,
+    pub llm: LlmConfig,
     /// Task executor pool configuration (`[tasks]`).
     #[serde(default)]
     pub tasks: TasksConfig,
@@ -27,9 +28,7 @@ pub struct DaemonConfig {
 impl DaemonConfig {
     /// Parse a TOML string into a `DaemonConfig`.
     pub fn from_toml(toml_str: &str) -> Result<Self> {
-        let config: Self = toml::from_str(toml_str)?;
-        validate_providers(&config.provider)?;
-        Ok(config)
+        Ok(toml::from_str(toml_str)?)
     }
 
     /// Load configuration from a file path.
@@ -37,18 +36,4 @@ impl DaemonConfig {
         let content = std::fs::read_to_string(path)?;
         Self::from_toml(&content)
     }
-}
-
-/// Validate provider definitions and reject duplicate model names.
-pub fn validate_providers(providers: &BTreeMap<String, ProviderDef>) -> Result<()> {
-    let mut seen = std::collections::HashSet::new();
-    for (name, def) in providers {
-        def.validate(name).map_err(|e| anyhow::anyhow!(e))?;
-        for model in &def.models {
-            if !seen.insert(model.clone()) {
-                anyhow::bail!("duplicate model name '{model}' across providers");
-            }
-        }
-    }
-    Ok(())
 }

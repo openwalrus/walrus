@@ -4,7 +4,7 @@
 //! with TOML configs, markdown prompts, and JSON session files.
 
 pub use self::fs::{FsStorage, default_crab};
-pub use loader::{DEFAULT_CONFIG, scaffold_config_dir};
+pub use loader::{DEFAULT_CONFIG, DEFAULT_SETTINGS, scaffold_config_dir};
 
 mod fs;
 mod loader;

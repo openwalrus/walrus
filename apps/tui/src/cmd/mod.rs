@@ -7,7 +7,6 @@ use clap::{Parser, Subcommand};
 use std::ffi::OsString;
 
 pub mod agent;
-pub mod config;
 pub mod console;
 pub mod mcp;
 
@@ -60,8 +59,6 @@ pub struct Cli {
 /// Top-level subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Configure providers, models, and MCP servers.
-    Config(config::Config),
     /// Manage agents (create, list, delete, rename).
     Agent(agent::Agent),
     /// Manage MCP servers (create, list, delete).
@@ -167,7 +164,6 @@ impl Cli {
                     }
                 }
             }
-            Some(Command::Config(cmd)) => cmd.run().await,
             Some(Command::Agent(cmd)) => cmd.run(self.tcp).await,
             Some(Command::Mcp(cmd)) => cmd.run(self.tcp).await,
             #[cfg(feature = "daemon")]

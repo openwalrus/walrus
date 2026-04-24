@@ -8,7 +8,8 @@ fn parse_default_config_template() {
 #[test]
 fn empty_config() {
     let config = DaemonConfig::from_toml("").unwrap();
-    assert!(config.provider.is_empty());
+    assert!(config.llm.base_url.is_empty());
+    assert!(config.llm.api_key.is_empty());
     assert!(config.env.is_empty());
 }
 
@@ -51,16 +52,15 @@ BAZ = "qux"
 }
 
 #[test]
-fn provider_section_parsed() {
+fn llm_section_parsed() {
     let toml = r#"
-[provider.openai]
-api_key = "test-key"
-models = ["gpt-4o"]
+[llm]
+base_url = "http://localhost:4000/v1"
+api_key = "sk-test"
 "#;
     let config = DaemonConfig::from_toml(toml).unwrap();
-    let p = &config.provider["openai"];
-    assert_eq!(p.api_key.as_deref(), Some("test-key"));
-    assert_eq!(p.models, vec!["gpt-4o"]);
+    assert_eq!(config.llm.base_url, "http://localhost:4000/v1");
+    assert_eq!(config.llm.api_key, "sk-test");
 }
 
 /// `[mcps.*]` and `[agents.*]` are mutable runtime records and live in

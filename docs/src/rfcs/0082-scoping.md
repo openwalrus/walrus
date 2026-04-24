@@ -8,16 +8,20 @@
 ## Summary
 
 A whitelist-based scoping system that restricts what an agent can access: tools,
-skills, MCP servers, and delegation targets. Enforced at dispatch time and
-advertised in the system prompt. This is a security boundary, not a hint.
+skills, and MCP servers. Enforced at dispatch time and advertised in the system
+prompt. This is a security boundary, not a hint.
+
+Delegation is **not** scoped: crabtalk is a single-user runtime, and any
+registered agent can delegate to any other. Multi-tenant identity-based access
+control, if ever needed, belongs in a wrapper above the runtime, not inside
+`AgentConfig`.
 
 ## Motivation
 
 In multi-agent setups, a delegated sub-agent should not have the same
-capabilities as the primary agent. A research agent doesn't need bash. A
-summarizer doesn't need to delegate to other agents. Without scoping, every
-agent has access to everything — which means a misbehaving or confused agent
-can call tools it was never intended to use.
+capabilities as the primary agent. A research agent doesn't need bash. Without
+scoping, every agent has access to everything — which means a misbehaving or
+confused agent can call tools it was never intended to use.
 
 Scoping solves this by letting agent configs declare exactly what resources are
 available. The runtime enforces it.
@@ -29,7 +33,6 @@ available. The runtime enforces it.
 ```rust
 pub struct AgentScope {
     pub tools: Vec<String>,     // empty = unrestricted
-    pub members: Vec<String>,   // empty = no delegation
     pub skills: Vec<String>,    // empty = all skills
     pub mcps: Vec<String>,      // empty = all MCP servers
 }
@@ -40,18 +43,18 @@ This is an inclusive whitelist, not a denylist.
 
 ### Whitelist computation
 
-When an agent has any scoping (non-empty skills, mcps, or members), the runtime
-computes a tool whitelist during `on_build_agent`:
+When an agent has any scoping (non-empty skills or mcps), the runtime computes
+a tool whitelist during `on_build_agent`:
 
 1. Start with `BASE_TOOLS`: `bash`, `ask_user`, `read`, `edit` — always
    available.
 2. If memory is enabled: add `recall`, `remember`, `memory`, `forget`.
 3. If skills list is non-empty: add `skill` tool.
 4. If mcps list is non-empty: add `mcp` tool.
-5. If members list is non-empty: add `delegate` tool.
 
 The computed whitelist replaces `config.tools`. Tools not on the list are
-invisible to the agent.
+invisible to the agent. The `delegate` tool is always available — delegation
+is not gated by scope.
 
 ### Prompt injection
 
@@ -62,7 +65,6 @@ resources:
 <scope>
 skills: check-feeds, summarize
 mcp servers: search
-members: researcher, writer
 </scope>
 ```
 
@@ -71,13 +73,11 @@ discover — its boundaries are stated upfront.
 
 ### Enforcement
 
-Scoping is enforced at four dispatch points:
+Scoping is enforced at three dispatch points:
 
 - **`dispatch_tool`** — rejects tool calls not in the agent's tool whitelist.
 - **`dispatch_skill`** — rejects skill names not in the agent's skill list.
 - **`dispatch_mcp`** — filters MCP server list to allowed servers.
-- **`dispatch_delegate`** — rejects delegation to agents not in the members
-  list.
 
 Enforcement happens at runtime, not just at prompt time. Even if the LLM
 ignores the `<scope>` block and tries to call a restricted tool, the dispatch
@@ -104,7 +104,7 @@ edit fails — optimistic concurrency without locks.
 ### Default agent
 
 The default agent (primary) has no scope restrictions — empty lists on all
-four dimensions. Scoping is for sub-agents that need constrained access.
+three dimensions. Scoping is for sub-agents that need constrained access.
 
 ## Alternatives
 

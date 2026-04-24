@@ -1,11 +1,28 @@
 //! Conversions between protocol message types.
 
-use crate::config::ApiStandard;
+use crate::agent::AgentConfig;
 use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, ConversationHistory, PluginEvent, ProviderKind, ReplyToAsk,
-    SendMsg, SendResponse, ServerMessage, StreamEvent, StreamMsg, client_message, plugin_event,
+    AgentEventMsg, AgentInfo, ClientMessage, ConversationHistory, PluginEvent, ReplyToAsk, SendMsg,
+    SendResponse, ServerMessage, StreamEvent, StreamMsg, client_message, plugin_event,
     server_message, stream_event,
 };
+
+impl From<&AgentConfig> for AgentInfo {
+    fn from(config: &AgentConfig) -> Self {
+        Self {
+            name: config.name.clone(),
+            description: config.description.clone(),
+            config: serde_json::to_string(config).unwrap_or_default(),
+            model: config.model.clone(),
+            max_iterations: config.max_iterations as u32,
+            thinking: config.thinking,
+            skills: config.skills.clone(),
+            mcps: config.mcps.clone(),
+            compact_threshold: config.compact_threshold.map(|t| t as u32),
+            compact_tool_max_len: config.compact_tool_max_len as u32,
+        }
+    }
+}
 
 // ── ClientMessage constructors ───────────────────────────────────
 
@@ -104,34 +121,6 @@ impl TryFrom<ServerMessage> for stream_event::Event {
                 e.event.ok_or_else(|| anyhow::anyhow!("empty stream event"))
             }
             _ => Err(error_or_unexpected(msg)),
-        }
-    }
-}
-
-impl From<&ApiStandard> for ProviderKind {
-    fn from(kind: &ApiStandard) -> Self {
-        match kind {
-            ApiStandard::Openai => Self::Openai,
-            ApiStandard::Anthropic => Self::Anthropic,
-            ApiStandard::Google => Self::Google,
-            ApiStandard::Bedrock => Self::Bedrock,
-            ApiStandard::Ollama => Self::Ollama,
-            ApiStandard::Azure => Self::Azure,
-            // Custom providers are dispatched through the OpenAI-compatible path.
-            ApiStandard::Custom(_) => Self::Openai,
-        }
-    }
-}
-
-impl From<ProviderKind> for ApiStandard {
-    fn from(kind: ProviderKind) -> Self {
-        match kind {
-            ProviderKind::Openai | ProviderKind::Unknown => Self::Openai,
-            ProviderKind::Anthropic => Self::Anthropic,
-            ProviderKind::Google => Self::Google,
-            ProviderKind::Bedrock => Self::Bedrock,
-            ProviderKind::Ollama => Self::Ollama,
-            ProviderKind::Azure => Self::Azure,
         }
     }
 }

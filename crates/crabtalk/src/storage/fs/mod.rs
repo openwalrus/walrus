@@ -31,19 +31,11 @@ mod skills;
 
 pub use scaffold::default_crab;
 
-/// Header prepended to `local/settings.toml`. Tells humans not to edit
-/// the file while the daemon is running and signals the file is
-/// daemon-owned.
-const SETTINGS_HEADER: &str = "\
-# Managed by crabtalk daemon. Edits while the daemon is running are
-# overwritten on the next write. Edits while the daemon is stopped are
-# picked up on next reload.
-#
-# Source of truth for runtime-added MCPs and agents. Immutable
-# install-time configuration (providers, task pool) lives in
-# config.toml.
-
-";
+/// Header prepended to `local/settings.toml` on every write — same
+/// template as the one scaffolded on first-run (`DEFAULT_SETTINGS`).
+/// Tells humans not to edit the file while the daemon is running and
+/// documents the allowed sections.
+const SETTINGS_HEADER: &str = crate::storage::DEFAULT_SETTINGS;
 
 /// Filesystem persistence backend.
 pub struct FsStorage {
@@ -117,7 +109,7 @@ pub(super) fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
 
 /// On-disk shape of `local/settings.toml`. Holds runtime-added records:
 ///   - `[mcps.<name>]` — MCP server registrations
-///   - `[agents.<name>]` — full agent definitions (model, members, …)
+///   - `[agents.<name>]` — full agent definitions (model, skills, …)
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(super) struct SettingsFile {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

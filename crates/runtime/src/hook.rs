@@ -27,6 +27,19 @@ pub trait Hook: Send + Sync {
         config
     }
 
+    /// Called just before an agent is inserted into the runtime registry
+    /// (via `upsert_agent`). Hooks that track per-agent state (e.g. scopes,
+    /// descriptions) should record it here; the ordering guarantees that by
+    /// the time the agent is visible via `Runtime::agent()`, hook state is
+    /// already in place.
+    fn on_register_agent(&self, _name: &str, _config: &AgentConfig) {}
+
+    /// Called after an agent is removed from the runtime registry. Hooks
+    /// should drop any per-agent state they own. Symmetric to
+    /// `on_register_agent`: once the agent is invisible, hook state is
+    /// cleaned up.
+    fn on_unregister_agent(&self, _name: &str) {}
+
     /// Inject context entries before each agent run.
     fn on_before_run(
         &self,

@@ -13,7 +13,6 @@ use wcore::{AgentConfig, AgentEvent, ToolDispatch, ToolFuture, model::HistoryEnt
 #[derive(Default)]
 pub struct AgentScope {
     pub tools: Vec<String>,
-    pub members: Vec<String>,
     pub skills: Vec<String>,
     pub mcps: Vec<String>,
 }
@@ -50,30 +49,6 @@ impl DaemonHook {
         self.hooks.insert(name.into(), hook);
     }
 
-    /// Register an agent's scope for dispatch enforcement.
-    pub fn register_scope(&self, name: String, config: &AgentConfig) {
-        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
-            self.agent_descriptions
-                .write()
-                .insert(name.clone(), config.description.clone());
-        }
-        self.scopes.write().insert(
-            name,
-            AgentScope {
-                tools: config.tools.clone(),
-                members: config.members.clone(),
-                skills: config.skills.clone(),
-                mcps: config.mcps.clone(),
-            },
-        );
-    }
-
-    /// Drop an agent's scope entry.
-    pub fn unregister_scope(&self, name: &str) {
-        self.scopes.write().remove(name);
-        self.agent_descriptions.write().remove(name);
-    }
-
     /// Install the late-bound event sink for `agent:{name}:done` events.
     pub fn set_event_sink(&self, sink: EventSink) {
         *self.event_sink.write() = Some(sink);
@@ -81,8 +56,7 @@ impl DaemonHook {
 
     /// Apply scoped tool whitelist and scope prompt for sub-agents.
     fn apply_scope(&self, config: &mut AgentConfig) {
-        let has_scoping =
-            !config.skills.is_empty() || !config.mcps.is_empty() || !config.members.is_empty();
+        let has_scoping = !config.skills.is_empty() || !config.mcps.is_empty();
         if !has_scoping {
             return;
         }
@@ -133,6 +107,27 @@ impl Hook for DaemonHook {
         config
     }
 
+    fn on_register_agent(&self, name: &str, config: &AgentConfig) {
+        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
+            self.agent_descriptions
+                .write()
+                .insert(name.to_owned(), config.description.clone());
+        }
+        self.scopes.write().insert(
+            name.to_owned(),
+            AgentScope {
+                tools: config.tools.clone(),
+                skills: config.skills.clone(),
+                mcps: config.mcps.clone(),
+            },
+        );
+    }
+
+    fn on_unregister_agent(&self, name: &str) {
+        self.scopes.write().remove(name);
+        self.agent_descriptions.write().remove(name);
+    }
+
     fn on_before_run(
         &self,
         agent: &str,
@@ -141,17 +136,19 @@ impl Hook for DaemonHook {
     ) -> Vec<HistoryEntry> {
         let mut injected = Vec::new();
 
-        // Agent member descriptions (delegate coordination).
-        let has_members = self
-            .scopes
-            .read()
-            .get(agent)
-            .is_some_and(|s| !s.members.is_empty());
-        if has_members {
+        // Agent descriptions (delegate coordination) — any agent can call any
+        // other. Injected every turn; mutations to the agent registry bust the
+        // prompt cache for every active conversation, which is fine for a
+        // single-user runtime with a handful of agents.
+        {
             let descriptions = self.agent_descriptions.read();
-            if !descriptions.is_empty() {
+            let peers: Vec<_> = descriptions
+                .iter()
+                .filter(|(name, _)| name.as_str() != agent)
+                .collect();
+            if !peers.is_empty() {
                 let mut block = String::from("<agents>\n");
-                for (name, desc) in descriptions.iter() {
+                for (name, desc) in peers {
                     block.push_str(&format!("- {name}: {desc}\n"));
                 }
                 block.push_str("</agents>");

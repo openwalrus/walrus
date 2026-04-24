@@ -48,9 +48,6 @@ pub struct AgentConfig {
     /// Whether to enable thinking/reasoning mode.
     #[serde(default)]
     pub thinking: bool,
-    /// Agents this agent can delegate to via spawn_task. Empty = no delegation.
-    #[serde(default)]
-    pub members: Vec<String>,
     /// Skill names this agent can access. Empty = all skills (crabtalk default).
     #[serde(default)]
     pub skills: Vec<String>,
@@ -99,7 +96,6 @@ impl Default for AgentConfig {
             max_iterations: DEFAULT_MAX_ITERATIONS,
             tool_choice: ToolChoice::Auto,
             thinking: false,
-            members: Vec::new(),
             skills: Vec::new(),
             mcps: Vec::new(),
             tools: Vec::new(),

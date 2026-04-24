@@ -17,6 +17,17 @@ pub struct EventSubscription {
     pub once: bool,
 }
 
+impl From<&EventSubscription> for wcore::protocol::message::SubscriptionInfo {
+    fn from(sub: &EventSubscription) -> Self {
+        Self {
+            id: sub.id,
+            source: sub.source.clone(),
+            target_agent: sub.target_agent.clone(),
+            once: sub.once,
+        }
+    }
+}
+
 /// TOML file wrapper — `[[subscription]]` array of tables.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct EventFile {

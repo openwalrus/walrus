@@ -194,6 +194,37 @@ impl<C: Config> Runtime<C> {
         None
     }
 
+    /// Look up a conversation id by (agent, sender) or return a
+    /// user-visible error. Shared error-text for endpoints that dispatch
+    /// by conversation identity.
+    pub async fn require_conversation_id(&self, agent: &str, sender: &str) -> Result<u64> {
+        self.conversation_id(agent, sender).await.ok_or_else(|| {
+            anyhow::anyhow!("conversation not found for agent='{agent}' sender='{sender}'")
+        })
+    }
+
+    /// Compact the conversation identified by (agent, sender). Errors if
+    /// no conversation exists for that pair or if compaction fails (empty
+    /// history, agent gone, etc.).
+    pub async fn compact_conversation(&self, agent: &str, sender: &str) -> Result<String> {
+        let id = self.require_conversation_id(agent, sender).await?;
+        self.compact(id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("compact failed for agent='{agent}' sender='{sender}'"))
+    }
+
+    /// Steer the conversation identified by (agent, sender) with the given
+    /// content. Errors if no conversation exists for that pair.
+    pub async fn steer_conversation(
+        &self,
+        agent: &str,
+        sender: &str,
+        content: String,
+    ) -> Result<()> {
+        let id = self.require_conversation_id(agent, sender).await?;
+        self.steer(id, content).await
+    }
+
     pub async fn compact(&self, conversation_id: u64) -> Option<String> {
         // Release the conversations read lock before the per-conversation
         // mutex await — otherwise readers queue behind a potentially
