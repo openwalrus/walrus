@@ -2,13 +2,24 @@
 
 The Crabtalk daemon binary.
 
-Wraps `crabtalk` (the daemon library) with CLI dispatch, system service
-installation (`launchd` on macOS, `systemd` on Linux, `schtasks` on Windows),
-foreground execution, plugin install/uninstall, log tailing, and dispatch to
-external `crabtalk-<name>` binaries.
+Wraps `crabtalk` (the daemon library) with a minimal CLI: run the event loop
+(what the service unit invokes), scaffold first-run config interactively,
+hot-reload, stream events, and install/uninstall runtime plugins over the
+socket. The daemon no longer manages its own service lifecycle — that's
+[crabup](../crabup).
 
-First-time setup walks the user through provider configuration interactively
-so the daemon can come up against a working LLM endpoint.
+## Usage
+
+```bash
+crabtalkd setup              # one-time interactive LLM endpoint config
+crabtalkd run                # run in the foreground (launchd/systemd invokes this)
+crabtalkd reload             # hot-reload config over the socket
+crabtalkd events             # stream agent/tool events
+crabtalkd pull <plugin>      # install a runtime plugin into a running daemon
+crabtalkd rm <plugin>        # uninstall a runtime plugin
+```
+
+Install/start as a service via `crabup daemon start`.
 
 ## Features
 
