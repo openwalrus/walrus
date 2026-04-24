@@ -1,8 +1,8 @@
-//! TOML-backed schedule store — load, save, mutate `CronEntry` rows.
+//! TOML-backed schedule store — load and mutate `CronEntry` rows.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use wcore::trigger::cron::{CronEntry, validate_schedule};
 
 /// TOML wrapper: `[[cron]]` array of tables.
@@ -15,7 +15,6 @@ struct CronFile {
 pub struct Store {
     path: PathBuf,
     entries: Vec<CronEntry>,
-    next_id: u64,
 }
 
 impl Store {
@@ -33,30 +32,11 @@ impl Store {
                 entries.push(entry);
             }
         }
-        let next_id = entries.iter().map(|e| e.id).max().unwrap_or(0) + 1;
-        Ok(Self {
-            path,
-            entries,
-            next_id,
-        })
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
+        Ok(Self { path, entries })
     }
 
     pub fn list(&self) -> &[CronEntry] {
         &self.entries
-    }
-
-    /// Insert a new entry, assigning an id. Validates the schedule.
-    pub fn create(&mut self, mut entry: CronEntry) -> Result<&CronEntry> {
-        validate_schedule(&entry.schedule).map_err(|e| anyhow::anyhow!("{e}"))?;
-        entry.id = self.next_id;
-        self.next_id += 1;
-        self.entries.push(entry);
-        self.save()?;
-        Ok(self.entries.last().unwrap())
     }
 
     /// Remove by id. Returns true if an entry was removed.
