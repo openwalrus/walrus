@@ -7,11 +7,6 @@ use anyhow::{Context, Result};
 pub use jsonrpc::{CallToolResult, ContentItem, McpTool};
 use jsonrpc::{ClientInfo, InitializeParams, ListToolsResult};
 
-#[cfg(feature = "reqwest")]
-#[path = "http_reqwest.rs"]
-mod http;
-#[cfg(feature = "hyper")]
-#[path = "http_hyper.rs"]
 mod http;
 mod jsonrpc;
 mod sse;
