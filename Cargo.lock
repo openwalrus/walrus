@@ -880,6 +880,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "crabup"
+version = "0.0.21"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dirs",
+ "toml",
+]
+
+[[package]]
 name = "criterion"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
