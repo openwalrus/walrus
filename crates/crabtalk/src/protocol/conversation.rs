@@ -32,11 +32,9 @@ impl<P: Provider + 'static> Daemon<P> {
         let response = rt
             .send_to(conversation_id, &req.content, sender, tool_choice)
             .await?;
-        let provider = rt.provider_name_for_model(&response.model);
         Ok(SendResponse {
             agent: req.agent,
             content: response.final_response.unwrap_or_default(),
-            provider,
             model: response.model,
             usage: Some(sum_usage(&response.steps)),
         })
@@ -150,11 +148,9 @@ impl<P: Provider + 'static> Daemon<P> {
                         } else {
                             String::new()
                         };
-                        let provider = rt.provider_name_for_model(&resp.model);
                         yield StreamEvent { event: Some(stream_event::Event::End(StreamEnd {
                             agent: responding_agent.clone(),
                             error,
-                            provider,
                             model: resp.model,
                             usage: Some(sum_usage(&resp.steps)),
                         })) };
@@ -165,7 +161,6 @@ impl<P: Provider + 'static> Daemon<P> {
             yield StreamEvent { event: Some(stream_event::Event::End(StreamEnd {
                 agent: responding_agent.clone(),
                 error: String::new(),
-                provider: String::new(),
                 model: String::new(),
                 usage: None,
             })) };

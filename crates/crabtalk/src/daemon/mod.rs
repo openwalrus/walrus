@@ -87,7 +87,9 @@ impl Daemon<DefaultProvider> {
 
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
         let build_provider: BuildProvider<DefaultProvider> =
-            Arc::new(|config: &DaemonConfig| build_default_provider(config));
+            Arc::new(|config: &DaemonConfig, models: &[String]| {
+                build_default_provider(config, models)
+            });
 
         let daemon =
             Daemon::build(&config, config_dir, shutdown_tx.clone(), build_provider).await?;

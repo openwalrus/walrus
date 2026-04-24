@@ -156,11 +156,6 @@ impl<P: Provider + 'static> Server for Daemon<P> {
         Ok(AgentInfo::from(&registered))
     }
 
-    async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
-        let rt = self.runtime.read().await.clone();
-        rt.list_providers()
-    }
-
     fn install_plugin(
         &self,
         req: InstallPluginMsg,
@@ -213,20 +208,8 @@ impl<P: Provider + 'static> Server for Daemon<P> {
         self.delete_mcp(&name).await
     }
 
-    async fn set_provider(&self, name: String, config: String) -> Result<ProviderInfo> {
-        self.set_provider(name, config).await
-    }
-
-    async fn delete_provider(&self, name: String) -> Result<()> {
-        self.delete_provider(&name).await
-    }
-
     async fn set_active_model(&self, model: String) -> Result<()> {
         self.set_active_model(model).await
-    }
-
-    async fn list_provider_presets(&self) -> Result<Vec<ProviderPresetInfo>> {
-        Ok(config::provider_presets())
     }
 
     async fn list_skills(&self) -> Result<Vec<SkillInfo>> {
@@ -235,7 +218,7 @@ impl<P: Provider + 'static> Server for Daemon<P> {
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         let rt = self.runtime.read().await.clone();
-        rt.list_models()
+        Ok(rt.list_models())
     }
 
     async fn list_plugins(&self) -> Result<Vec<PluginInfo>> {

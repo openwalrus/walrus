@@ -18,15 +18,20 @@ use std::{
     sync::{Arc, OnceLock},
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
-use wcore::{ResolvedDirs, model::Model, resolve_dirs, storage::Storage};
+use wcore::{LlmConfig, ResolvedDirs, model::Model, resolve_dirs, storage::Storage};
 
 pub type DefaultProvider = crate::provider::Retrying<ProviderRegistry<RemoteProvider>>;
 
+/// Build the LLM `Model<P>` given the daemon config and the list of models
+/// advertised by the endpoint (fetched from `/v1/models` at startup).
 pub type BuildProvider<P> =
-    Arc<dyn Fn(&DaemonConfig) -> Result<wcore::model::Model<P>> + Send + Sync>;
+    Arc<dyn Fn(&DaemonConfig, &[String]) -> Result<wcore::model::Model<P>> + Send + Sync>;
 
-pub fn build_default_provider(config: &DaemonConfig) -> Result<Model<DefaultProvider>> {
-    build_providers(config)
+pub fn build_default_provider(
+    config: &DaemonConfig,
+    models: &[String],
+) -> Result<Model<DefaultProvider>> {
+    build_providers(config, models)
 }
 
 impl<P: Provider + 'static> Daemon<P> {
@@ -175,14 +180,11 @@ impl<P: Provider + 'static> Daemon<P> {
     )> {
         let dirs = resolve_dirs(config_dir);
         let storage = Self::build_storage(config_dir, &dirs);
-        let default_model = first_provider_model(config).ok_or_else(|| {
-            anyhow::anyhow!(
-                "no model configured — add at least one model under [provider.<name>] in config.toml"
-            )
-        })?;
+        let models = fetch_models(&config.llm).await;
+        let default_model = models.first().cloned().unwrap_or_default();
         storage.scaffold(&default_model)?;
 
-        let model = build_provider(config)?;
+        let model = build_provider(config, &models)?;
         let servers = mcp_servers(config, storage.as_ref(), &dirs)?;
         let mcp_handler: Arc<McpHandler> = Arc::new(McpHandler::load(&servers).await);
         let (os_hook, ask_hook, shared_memory) = Self::register_tools(
@@ -209,7 +211,9 @@ impl<P: Provider + 'static> Daemon<P> {
         for schema in Hook::schema(node_hook.as_ref()) {
             tools.insert(schema);
         }
-        let mut runtime = Runtime::new(model, env, storage, shared_memory, tools);
+        let runtime = Runtime::new(model, env, storage, shared_memory, tools);
+        runtime.set_models(models);
+        let mut runtime = runtime;
         Self::register_agents(&mut runtime, &dirs)?;
         Ok((runtime, mcp_handler, node_hook, os_hook, ask_hook))
     }
@@ -361,25 +365,18 @@ impl<P: Provider + 'static> Daemon<P> {
     }
 }
 
-/// First model declared by any provider. Used to seed the default
-/// crab agent when no agent is stored yet.
-fn first_provider_model(config: &DaemonConfig) -> Option<String> {
-    config
-        .provider
-        .values()
-        .flat_map(|def| def.models.iter())
-        .next()
-        .cloned()
-}
+fn build_providers(config: &DaemonConfig, models: &[String]) -> Result<Model<DefaultProvider>> {
+    let llm = &config.llm;
+    let provider_cfg = crabllm_core::ProviderConfig {
+        kind: crabllm_core::ProviderKind::Openai,
+        base_url: (!llm.base_url.is_empty()).then(|| llm.base_url.clone()),
+        api_key: (!llm.api_key.is_empty()).then(|| llm.api_key.clone()),
+        models: models.to_vec(),
+        ..Default::default()
+    };
 
-fn build_providers(config: &DaemonConfig) -> Result<Model<DefaultProvider>> {
-    let providers: std::collections::HashMap<String, _> = config
-        .provider
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-    let provider_count = providers.len();
-    let model_count: usize = providers.values().map(|def| def.models.len()).sum();
+    let mut providers = std::collections::HashMap::new();
+    providers.insert("llm".to_owned(), provider_cfg);
 
     let registry = ProviderRegistry::from_provider_configs(
         &providers,
@@ -389,9 +386,46 @@ fn build_providers(config: &DaemonConfig) -> Result<Model<DefaultProvider>> {
     let retrying = crate::provider::Retrying::new(registry);
 
     tracing::info!(
-        "provider registry initialized — {model_count} models across {provider_count} providers"
+        "llm endpoint registered — {} models from {}",
+        models.len(),
+        llm.base_url
     );
     Ok(Model::new(retrying))
+}
+
+/// Fetch `/v1/models` from the configured LLM endpoint. Returns an empty
+/// list on failure (logged as a warning) so the daemon still starts — the
+/// next reload will retry.
+async fn fetch_models(llm: &LlmConfig) -> Vec<String> {
+    if llm.base_url.is_empty() {
+        tracing::warn!("no llm.base_url configured in config.toml — model list is empty");
+        return Vec::new();
+    }
+    let url = format!("{}/models", llm.base_url.trim_end_matches('/'));
+    let mut req = reqwest::Client::new().get(&url);
+    if !llm.api_key.is_empty() {
+        req = req.bearer_auth(&llm.api_key);
+    }
+    match fetch_models_inner(req).await {
+        Ok(models) => models,
+        Err(e) => {
+            tracing::warn!("failed to fetch {url}: {e}");
+            Vec::new()
+        }
+    }
+}
+
+async fn fetch_models_inner(req: reqwest::RequestBuilder) -> Result<Vec<String>> {
+    let body: serde_json::Value = req.send().await?.error_for_status()?.json().await?;
+    Ok(body
+        .get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.get("id").and_then(|i| i.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 fn mcp_servers(

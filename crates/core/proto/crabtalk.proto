@@ -10,9 +10,16 @@ message ClientMessage {
   // Tags 14 (SetLocalMcps), 35 (SetEnabled), and 47-50 (Setting RPCs)
   // were removed. MCPs are managed via UpsertMcp/DeleteMcp; per-agent
   // configuration lives directly on AgentConfig in storage.
+  // Tags 8, 9, 10, 12 were the provider management RPCs
+  // (ListProviders/SetProvider/DeleteProvider/ListProviderPresets).
+  // Removed — crabtalk now talks to a single OpenAI-compatible endpoint;
+  // model routing is the LLM gateway's concern.
   reserved 14, 35, 47, 48, 49, 50;
   reserved "set_local_mcps", "set_enabled", "get_setting", "set_setting",
       "delete_setting", "list_settings";
+  reserved 8, 9, 10, 12;
+  reserved "list_providers", "set_provider", "delete_provider",
+      "list_provider_presets";
 
   oneof msg {
     // Execution
@@ -24,12 +31,8 @@ message ClientMessage {
     KillMsg kill = 5;
     CompactMsg compact = 6;
     ListConversationsMsg list_conversations = 7;
-    // Provider management
-    ListProvidersMsg list_providers = 8;
-    SetProviderMsg set_provider = 9;
-    DeleteProviderMsg delete_provider = 10;
+    // Active model
     SetActiveModelMsg set_active_model = 11;
-    ListProviderPresetsMsg list_provider_presets = 12;
     // MCP management
     ListMcpsMsg list_mcps = 13;
     UpsertMcpMsg upsert_mcp = 45;
@@ -194,8 +197,6 @@ message RenameAgentMsg {
   string new_name = 2;
 }
 
-message ListProvidersMsg {}
-
 message InstallPluginMsg {
   string plugin = 1;
   string branch = 2;
@@ -269,20 +270,9 @@ message DeleteMcpMsg {
   string name = 1;
 }
 
-message SetProviderMsg {
-  string name = 1;
-  string config = 2;
-}
-
-message DeleteProviderMsg {
-  string name = 1;
-}
-
 message SetActiveModelMsg {
   string model = 1;
 }
-
-message ListProviderPresetsMsg {}
 
 message StartServiceMsg {
   string name = 1;
@@ -303,8 +293,12 @@ message ServiceLogsMsg {
 message ServerMessage {
   // Tags 27-28 (SettingValue, SettingList) were removed with the
   // settings RPCs.
+  // Tags 8, 9 were ProviderList / ProviderPresetList — removed with the
+  // provider management RPCs.
   reserved 27, 28;
   reserved "setting_value", "setting_list";
+  reserved 8, 9;
+  reserved "provider_list", "provider_preset_list";
 
   oneof msg {
     // Common
@@ -317,9 +311,6 @@ message ServerMessage {
     ActiveConversationList active_conversations = 5;
     CompactResponse compact = 6;
     ConversationList conversation_list = 7;
-    // Provider
-    ProviderList provider_list = 8;
-    ProviderPresetList provider_preset_list = 9;
     // MCP
     McpList mcp_list = 10;
     // Agent
@@ -380,9 +371,10 @@ message TokenUsage {
 message SendResponse {
   string agent = 1;
   string content = 2;
-  string provider = 4;
   string model = 5;
   optional TokenUsage usage = 6;
+  reserved 3, 4;
+  reserved "provider";
 }
 
 message ToolCallInfo {
@@ -452,9 +444,10 @@ message ToolsCompleteEvent {}
 message StreamEnd {
   string agent = 1;
   string error = 2;
-  string provider = 3;
   string model = 4;
   optional TokenUsage usage = 5;
+  reserved 3;
+  reserved "provider";
 }
 
 message AskUserEvent {
@@ -576,18 +569,6 @@ message AgentList {
   repeated AgentInfo agents = 1;
 }
 
-message ProviderInfo {
-  string name = 1;
-  bool active = 2;
-  string config = 3;
-  reserved 4;
-  reserved "enabled";
-}
-
-message ProviderList {
-  repeated ProviderInfo providers = 1;
-}
-
 message PluginList {
   repeated PluginInfo plugins = 1;
 }
@@ -610,11 +591,9 @@ message SkillList {
 
 message ModelInfo {
   string name = 1;
-  string provider = 2;
   bool active = 3;
-  reserved 4;
-  reserved "enabled";
-  ProviderKind kind = 5;
+  reserved 2, 4, 5;
+  reserved "provider", "enabled", "kind";
 }
 
 message ModelList {
@@ -666,28 +645,6 @@ message McpInfo {
 
 message McpList {
   repeated McpInfo mcps = 1;
-}
-
-enum ProviderKind {
-  PROVIDER_KIND_UNKNOWN = 0;
-  OPENAI = 1;
-  ANTHROPIC = 2;
-  GOOGLE = 3;
-  BEDROCK = 4;
-  OLLAMA = 5;
-  AZURE = 6;
-}
-
-message ProviderPresetInfo {
-  string name = 1;
-  ProviderKind kind = 2;
-  string base_url = 3;
-  string fixed_base_url = 4;
-  string default_model = 5;
-}
-
-message ProviderPresetList {
-  repeated ProviderPresetInfo presets = 1;
 }
 
 // ── Plugin Events ───────────────────────────────────────────────

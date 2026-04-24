@@ -2,17 +2,15 @@
 
 use crate::protocol::message::{
     AgentInfo, AgentList, ClientMessage, ConversationHistory, ConversationInfo, ConversationList,
-    CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteMcpMsg,
-    DeleteProviderMsg, ErrorMsg, GetAgentMsg, GetConversationHistoryMsg, GetStats,
-    InstallPluginMsg, ListAgentsMsg, ListConversationsMsg, ListMcpsMsg, ListModelsMsg,
-    ListPluginsMsg, ListProviderPresetsMsg, ListProvidersMsg, ListSkillsMsg, ListSubscriptionsMsg,
-    McpInfo, McpList, ModelInfo, ModelList, Ping, PluginEvent, PluginInfo, PluginList,
-    PluginSearchList, ProviderInfo, ProviderList, ProviderPresetInfo, ProviderPresetList,
-    PublishEventMsg, RenameAgentMsg, SearchPluginsMsg, SendMsg, SendResponse, ServerMessage,
-    ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SetProviderMsg, SkillInfo, SkillList,
-    StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg, SubscribeEventMsg, SubscriptionInfo,
-    SubscriptionList, UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg, UpsertMcpMsg,
-    client_message, plugin_event, server_message, stream_event,
+    CreateAgentMsg, DaemonStats, DeleteAgentMsg, DeleteConversationMsg, DeleteMcpMsg, ErrorMsg,
+    GetAgentMsg, GetConversationHistoryMsg, GetStats, InstallPluginMsg, ListAgentsMsg,
+    ListConversationsMsg, ListMcpsMsg, ListModelsMsg, ListPluginsMsg, ListSkillsMsg,
+    ListSubscriptionsMsg, McpInfo, McpList, ModelInfo, ModelList, Ping, PluginEvent, PluginInfo,
+    PluginList, PluginSearchList, PublishEventMsg, RenameAgentMsg, SearchPluginsMsg, SendMsg,
+    SendResponse, ServerMessage, ServiceLogOutput, ServiceLogsMsg, SetActiveModelMsg, SkillInfo,
+    SkillList, StartServiceMsg, StopServiceMsg, StreamEvent, StreamMsg, SubscribeEventMsg,
+    SubscriptionInfo, SubscriptionList, UninstallPluginMsg, UnsubscribeEventMsg, UpdateAgentMsg,
+    UpsertMcpMsg, client_message, plugin_event, server_message, stream_event,
 };
 use anyhow::Result;
 use futures_core::Stream;
@@ -276,30 +274,6 @@ pub trait Client: Send {
         }
     }
 
-    /// List all registered LLM providers.
-    fn list_providers(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<Vec<ProviderInfo>>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::ListProviders(ListProvidersMsg {})),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::ProviderList(ProviderList { providers })),
-                } => Ok(providers),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => {
-                    anyhow::bail!("server error ({code}): {message}")
-                }
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
     /// Install a plugin, streaming progress events.
     fn install_plugin(
         &mut self,
@@ -549,61 +523,6 @@ pub trait Client: Send {
         }
     }
 
-    /// Create or update a provider.
-    fn set_provider(
-        &mut self,
-        name: String,
-        config: String,
-    ) -> impl std::future::Future<Output = Result<ProviderInfo>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::SetProvider(SetProviderMsg {
-                        name,
-                        config,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::ProviderList(ProviderList { providers })),
-                } => providers
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("empty provider list in response")),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => anyhow::bail!("server error ({code}): {message}"),
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
-    /// Delete a provider by name.
-    fn delete_provider(
-        &mut self,
-        name: String,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::DeleteProvider(DeleteProviderMsg {
-                        name,
-                    })),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg: Some(server_message::Msg::Pong(_)),
-                } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => anyhow::bail!("server error ({code}): {message}"),
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
     /// Set the active model.
     fn set_active_model(
         &mut self,
@@ -621,31 +540,6 @@ pub trait Client: Send {
                 ServerMessage {
                     msg: Some(server_message::Msg::Pong(_)),
                 } => Ok(()),
-                ServerMessage {
-                    msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
-                } => anyhow::bail!("server error ({code}): {message}"),
-                other => anyhow::bail!("unexpected response: {other:?}"),
-            }
-        }
-    }
-
-    /// List provider presets.
-    fn list_provider_presets(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<Vec<ProviderPresetInfo>>> + Send {
-        async move {
-            match self
-                .request(ClientMessage {
-                    msg: Some(client_message::Msg::ListProviderPresets(
-                        ListProviderPresetsMsg {},
-                    )),
-                })
-                .await?
-            {
-                ServerMessage {
-                    msg:
-                        Some(server_message::Msg::ProviderPresetList(ProviderPresetList { presets })),
-                } => Ok(presets),
                 ServerMessage {
                     msg: Some(server_message::Msg::Error(ErrorMsg { code, message })),
                 } => anyhow::bail!("server error ({code}): {message}"),

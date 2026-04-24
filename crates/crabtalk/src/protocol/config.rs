@@ -1,5 +1,4 @@
-//! Daemon-level configuration mutations: provider / model / MCP / skill.
-//! Pure storage-backed queries live on `Runtime<C>` directly.
+//! Daemon-level configuration mutations: active model, MCP, skills.
 
 use crate::daemon::Daemon;
 use anyhow::{Context, Result};
@@ -8,46 +7,15 @@ use wcore::protocol::message::*;
 use wcore::storage::Storage;
 
 impl<P: Provider + 'static> Daemon<P> {
-    pub(crate) async fn set_provider(&self, name: String, config: String) -> Result<ProviderInfo> {
-        let def: wcore::ProviderDef =
-            serde_json::from_str(&config).context("invalid ProviderDef JSON")?;
-        let rt = self.runtime.read().await.clone();
-        let storage = rt.storage();
-        let mut node_config = storage.load_config()?;
-        node_config.provider.insert(name.clone(), def);
-        wcore::validate_providers(&node_config.provider)?;
-        storage.save_config(&node_config)?;
-        self.reload().await?;
-
-        let rt = self.runtime.read().await.clone();
-        rt.list_providers()?
-            .into_iter()
-            .find(|p| p.name == name)
-            .ok_or_else(|| anyhow::anyhow!("provider '{name}' missing after configure"))
-    }
-
-    pub(crate) async fn delete_provider(&self, name: &str) -> Result<()> {
-        let rt = self.runtime.read().await.clone();
-        let storage = rt.storage();
-        let mut config = storage.load_config()?;
-        if config.provider.remove(name).is_none() {
-            anyhow::bail!("provider '{name}' not found");
-        }
-        storage.save_config(&config)?;
-        self.reload().await
-    }
-
     pub(crate) async fn set_active_model(&self, model: String) -> Result<()> {
         let rt = self.runtime.read().await.clone();
         let storage = rt.storage();
 
-        let config = storage.load_config()?;
-        let model_exists = config
-            .provider
-            .values()
-            .any(|def| def.models.iter().any(|m| m == &model));
-        if !model_exists {
-            anyhow::bail!("model '{model}' not found in any provider");
+        // Validate against the cached model list when non-empty; if the
+        // /v1/models fetch at startup failed, trust the caller.
+        let known = rt.list_models();
+        if !known.is_empty() && !known.iter().any(|m| m.name == model) {
+            anyhow::bail!("model '{model}' not advertised by the LLM endpoint");
         }
 
         let mut crab = storage
@@ -162,19 +130,6 @@ impl<P: Provider + 'static> Daemon<P> {
         }
         skills
     }
-}
-
-pub(super) fn provider_presets() -> Vec<ProviderPresetInfo> {
-    wcore::config::PROVIDER_PRESETS
-        .iter()
-        .map(|p| ProviderPresetInfo {
-            name: p.name.to_string(),
-            kind: ProviderKind::from(&p.kind).into(),
-            base_url: p.base_url.to_string(),
-            fixed_base_url: p.fixed_base_url.to_string(),
-            default_model: p.default_model.to_string(),
-        })
-        .collect()
 }
 
 fn mcp_info(

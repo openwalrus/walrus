@@ -18,10 +18,9 @@ pub use agent::{
     },
 };
 pub use config::{
-    ApiStandard, BashConfig, DaemonConfig, HooksConfig, McpServerConfig, MemoryConfig, PackageMeta,
-    ProviderDef, ResolvedDirs, Setup, TasksConfig, check_skill_conflicts, external_source_name,
-    load_agents_dir, load_agents_dirs, repo_slug, resolve_dirs, scan_skill_names,
-    validate_providers,
+    BashConfig, DaemonConfig, HooksConfig, LlmConfig, McpServerConfig, MemoryConfig, PackageMeta,
+    ResolvedDirs, Setup, TasksConfig, check_skill_conflicts, external_source_name, load_agents_dir,
+    load_agents_dirs, repo_slug, resolve_dirs, scan_skill_names,
 };
 pub use storage::{ConversationMeta, EventLine, sender_slug};
 

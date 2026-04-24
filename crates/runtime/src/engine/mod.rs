@@ -59,6 +59,9 @@ pub struct Runtime<C: Config> {
     next_conversation_id: AtomicU64,
     pub tools: ToolRegistry,
     steering: RwLock<BTreeMap<u64, watch::Sender<Option<String>>>>,
+    /// Model names advertised by the LLM endpoint — populated by the
+    /// daemon builder from a `/v1/models` fetch at startup / reload.
+    pub(super) models: parking_lot::RwLock<Vec<String>>,
 }
 
 impl<C: Config> Runtime<C> {
@@ -82,6 +85,7 @@ impl<C: Config> Runtime<C> {
             next_conversation_id: AtomicU64::new(1),
             tools,
             steering: RwLock::new(BTreeMap::new()),
+            models: parking_lot::RwLock::new(Vec::new()),
         }
     }
 

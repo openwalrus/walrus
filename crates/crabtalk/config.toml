@@ -5,26 +5,16 @@
 # them via `crabtalk agent`/`crabtalk mcp` rather than by hand.
 
 # ---------------------------------------------------------------------------
-# Providers — LLM provider definitions.
+# LLM — a single OpenAI-compatible endpoint.
 #
-# Each [provider.<name>] section registers a provider. The `kind` field
-# selects the API format: openai (default), anthropic, google,
-# bedrock, ollama, azure.
+# Model routing is the endpoint's concern (crabllm, openrouter, etc.).
+# The daemon queries GET {base_url}/models at startup to discover what's
+# available.
 # ---------------------------------------------------------------------------
 
-# [provider.openai]
+# [llm]
+# base_url = "http://localhost:4000/v1"
 # api_key = "${OPENAI_API_KEY}"
-# models = ["gpt-4o", "gpt-4o-mini"]
-
-# [provider.anthropic]
-# kind = "anthropic"
-# api_key = "${ANTHROPIC_API_KEY}"
-# models = ["claude-sonnet-4-20250514"]
-
-# [provider.ollama]
-# kind = "ollama"
-# base_url = "http://localhost:11434/v1"
-# models = ["llama3"]
 
 # ---------------------------------------------------------------------------
 # Task executor pool — bounded workers for cron/skill execution.
