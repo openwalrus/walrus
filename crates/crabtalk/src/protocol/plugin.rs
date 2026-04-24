@@ -1,4 +1,4 @@
-//! Plugin lifecycle: install, uninstall, list, search.
+//! Daemon-level plugin lifecycle: install, uninstall, list.
 
 use crate::daemon::Daemon;
 use anyhow::{Context, Result};
@@ -6,155 +6,157 @@ use crabllm_core::Provider;
 use wcore::protocol::message::*;
 use wcore::storage::Storage;
 
-pub(super) fn install<'a, P: Provider + 'static>(
-    node: &'a Daemon<P>,
-    req: InstallPluginMsg,
-) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send + 'a {
-    async_stream::try_stream! {
-        let plugin = req.plugin;
-        let branch = req.branch;
-        let path = req.path;
-        let force = req.force;
+impl<P: Provider + 'static> Daemon<P> {
+    pub(crate) fn install_plugin<'a>(
+        &'a self,
+        req: InstallPluginMsg,
+    ) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send + 'a {
+        async_stream::try_stream! {
+            let plugin = req.plugin;
+            let branch = req.branch;
+            let path = req.path;
+            let force = req.force;
 
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(bool, String)>();
-        let handle = tokio::spawn({
-            let branch = branch.clone();
-            let path = path.clone();
-            let plugin = plugin.clone();
-            let tx2 = tx.clone();
-            async move {
-                let branch = if branch.is_empty() { None } else { Some(branch.as_str()) };
-                let path = if path.is_empty() { None } else { Some(std::path::Path::new(&path)) };
-                plugin::plugin::install(
-                    &plugin, branch, path, force,
-                    |msg| { let _ = tx.send((false, msg.to_string())); },
-                    |msg| { let _ = tx2.send((true, msg.to_string())); },
-                )
-                .await
-            }
-        });
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(bool, String)>();
+            let handle = tokio::spawn({
+                let branch = branch.clone();
+                let path = path.clone();
+                let plugin = plugin.clone();
+                let tx2 = tx.clone();
+                async move {
+                    let branch = if branch.is_empty() { None } else { Some(branch.as_str()) };
+                    let path = if path.is_empty() { None } else { Some(std::path::Path::new(&path)) };
+                    plugin::plugin::install(
+                        &plugin, branch, path, force,
+                        |msg| { let _ = tx.send((false, msg.to_string())); },
+                        |msg| { let _ = tx2.send((true, msg.to_string())); },
+                    )
+                    .await
+                }
+            });
 
-        tokio::pin!(handle);
-        let task_result;
-        loop {
-            tokio::select! {
-                msg = rx.recv() => {
-                    match msg {
-                        Some((is_output, m)) => {
+            tokio::pin!(handle);
+            let task_result;
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some((is_output, m)) => {
+                                if is_output {
+                                    yield plugin_output(&m);
+                                } else {
+                                    yield plugin_step(&m);
+                                }
+                            }
+                            None => {
+                                task_result = handle.await;
+                                break;
+                            }
+                        }
+                    }
+                    result = &mut handle => {
+                        rx.close();
+                        while let Some((is_output, m)) = rx.recv().await {
                             if is_output {
                                 yield plugin_output(&m);
                             } else {
                                 yield plugin_step(&m);
                             }
                         }
-                        None => {
-                            task_result = handle.await;
-                            break;
-                        }
+                        task_result = result;
+                        break;
                     }
                 }
-                result = &mut handle => {
-                    rx.close();
-                    while let Some((is_output, m)) = rx.recv().await {
-                        if is_output {
-                            yield plugin_output(&m);
-                        } else {
+            }
+            task_result.context("install task panicked")??;
+
+            yield plugin_step("reloading daemon…");
+            self.reload().await?;
+
+            let dirs = wcore::resolve_dirs(&self.config_dir);
+            let warnings = wcore::check_skill_conflicts(&dirs.skill_dirs);
+            for w in &warnings {
+                yield plugin_warning(w);
+            }
+            let storage_mcps = {
+                let rt = self.runtime.read().await.clone();
+                rt.storage().list_mcps()?
+            };
+            for (name, mcp) in &storage_mcps {
+                if mcp.auth
+                    && !wcore::paths::TOKENS_DIR.join(format!("{name}.json")).exists()
+                {
+                    yield plugin_warning(&format!("MCP '{name}' requires authentication"));
+                }
+            }
+
+            yield plugin_step("configure env vars in config.toml [env] section if needed");
+            yield plugin_done("");
+        }
+    }
+
+    pub(crate) fn uninstall_plugin<'a>(
+        &'a self,
+        plugin: String,
+    ) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send + 'a {
+        async_stream::try_stream! {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let name = plugin.clone();
+            let handle = tokio::spawn(async move {
+                plugin::plugin::uninstall(&name, |msg| {
+                    let _ = tx.send(msg.to_string());
+                })
+                .await
+            });
+
+            tokio::pin!(handle);
+            let task_result;
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => yield plugin_step(&m),
+                            None => {
+                                task_result = handle.await;
+                                break;
+                            }
+                        }
+                    }
+                    result = &mut handle => {
+                        rx.close();
+                        while let Some(m) = rx.recv().await {
                             yield plugin_step(&m);
                         }
+                        task_result = result;
+                        break;
                     }
-                    task_result = result;
-                    break;
                 }
             }
-        }
-        task_result.context("install task panicked")??;
+            task_result.context("uninstall task panicked")??;
 
-        yield plugin_step("reloading daemon…");
-        node.reload().await?;
-
-        let dirs = wcore::resolve_dirs(&node.config_dir);
-        let warnings = wcore::check_skill_conflicts(&dirs.skill_dirs);
-        for w in &warnings {
-            yield plugin_warning(w);
+            yield plugin_step("reloading daemon…");
+            self.reload().await?;
+            yield plugin_done("");
         }
-        let storage_mcps = {
-            let rt = node.runtime.read().await.clone();
-            rt.storage().list_mcps()?
-        };
-        for (name, mcp) in &storage_mcps {
-            if mcp.auth
-                && !wcore::paths::TOKENS_DIR.join(format!("{name}.json")).exists()
-            {
-                yield plugin_warning(&format!("MCP '{name}' requires authentication"));
-            }
-        }
-
-        yield plugin_step("configure env vars in config.toml [env] section if needed");
-        yield plugin_done("");
     }
-}
 
-pub(super) fn uninstall<'a, P: Provider + 'static>(
-    node: &'a Daemon<P>,
-    plugin: String,
-) -> impl futures_core::Stream<Item = Result<PluginEvent>> + Send + 'a {
-    async_stream::try_stream! {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        let name = plugin.clone();
-        let handle = tokio::spawn(async move {
-            plugin::plugin::uninstall(&name, |msg| {
-                let _ = tx.send(msg.to_string());
+    pub(crate) fn list_plugins(&self) -> Vec<PluginInfo> {
+        let mut result: Vec<PluginInfo> = scan_plugin_manifests(&self.config_dir)
+            .into_iter()
+            .map(|(name, manifest)| PluginInfo {
+                name,
+                description: manifest.package.description,
+                installed: true,
+                ..Default::default()
             })
-            .await
-        });
-
-        tokio::pin!(handle);
-        let task_result;
-        loop {
-            tokio::select! {
-                msg = rx.recv() => {
-                    match msg {
-                        Some(m) => yield plugin_step(&m),
-                        None => {
-                            task_result = handle.await;
-                            break;
-                        }
-                    }
-                }
-                result = &mut handle => {
-                    rx.close();
-                    while let Some(m) = rx.recv().await {
-                        yield plugin_step(&m);
-                    }
-                    task_result = result;
-                    break;
-                }
-            }
-        }
-        task_result.context("uninstall task panicked")??;
-
-        yield plugin_step("reloading daemon…");
-        node.reload().await?;
-        yield plugin_done("");
+            .collect();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+        result
     }
 }
 
-pub(super) async fn list<P: Provider + 'static>(node: &Daemon<P>) -> Result<Vec<PluginInfo>> {
-    let mut result: Vec<PluginInfo> = scan_plugin_manifests(&node.config_dir)
-        .into_iter()
-        .map(|(name, manifest)| PluginInfo {
-            name,
-            description: manifest.package.description,
-            installed: true,
-            ..Default::default()
-        })
-        .collect();
-    result.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(result)
-}
-
-pub(super) async fn search(query: String) -> Result<Vec<PluginInfo>> {
-    let entries = plugin::plugin::search(&query).await?;
+pub(super) async fn search(query: &str) -> Result<Vec<PluginInfo>> {
+    let entries = plugin::plugin::search(query).await?;
     Ok(entries
         .into_iter()
         .map(|e| PluginInfo {

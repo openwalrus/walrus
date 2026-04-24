@@ -49,29 +49,6 @@ impl DaemonHook {
         self.hooks.insert(name.into(), hook);
     }
 
-    /// Register an agent's scope for dispatch enforcement.
-    pub fn register_scope(&self, name: String, config: &AgentConfig) {
-        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
-            self.agent_descriptions
-                .write()
-                .insert(name.clone(), config.description.clone());
-        }
-        self.scopes.write().insert(
-            name,
-            AgentScope {
-                tools: config.tools.clone(),
-                skills: config.skills.clone(),
-                mcps: config.mcps.clone(),
-            },
-        );
-    }
-
-    /// Drop an agent's scope entry.
-    pub fn unregister_scope(&self, name: &str) {
-        self.scopes.write().remove(name);
-        self.agent_descriptions.write().remove(name);
-    }
-
     /// Install the late-bound event sink for `agent:{name}:done` events.
     pub fn set_event_sink(&self, sink: EventSink) {
         *self.event_sink.write() = Some(sink);
@@ -128,6 +105,27 @@ impl Hook for DaemonHook {
         }
         self.apply_scope(&mut config);
         config
+    }
+
+    fn on_register_agent(&self, name: &str, config: &AgentConfig) {
+        if name != wcore::paths::DEFAULT_AGENT && !config.description.is_empty() {
+            self.agent_descriptions
+                .write()
+                .insert(name.to_owned(), config.description.clone());
+        }
+        self.scopes.write().insert(
+            name.to_owned(),
+            AgentScope {
+                tools: config.tools.clone(),
+                skills: config.skills.clone(),
+                mcps: config.mcps.clone(),
+            },
+        );
+    }
+
+    fn on_unregister_agent(&self, name: &str) {
+        self.scopes.write().remove(name);
+        self.agent_descriptions.write().remove(name);
     }
 
     fn on_before_run(

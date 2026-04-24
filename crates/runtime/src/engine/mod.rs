@@ -18,8 +18,10 @@ pub(super) use topic::TopicRouter;
 use wcore::{Agent, ToolRegistry, model::Model};
 
 mod agents;
+mod config;
 mod conversation;
 mod execution;
+mod history;
 mod topic;
 
 /// Shared handle to the standalone memory store. Used by compaction to

@@ -1,11 +1,29 @@
 //! Conversions between protocol message types.
 
+use crate::agent::AgentConfig;
 use crate::config::ApiStandard;
 use crate::protocol::proto::{
-    AgentEventMsg, ClientMessage, ConversationHistory, PluginEvent, ProviderKind, ReplyToAsk,
-    SendMsg, SendResponse, ServerMessage, StreamEvent, StreamMsg, client_message, plugin_event,
-    server_message, stream_event,
+    AgentEventMsg, AgentInfo, ClientMessage, ConversationHistory, PluginEvent, ProviderKind,
+    ReplyToAsk, SendMsg, SendResponse, ServerMessage, StreamEvent, StreamMsg, client_message,
+    plugin_event, server_message, stream_event,
 };
+
+impl From<&AgentConfig> for AgentInfo {
+    fn from(config: &AgentConfig) -> Self {
+        Self {
+            name: config.name.clone(),
+            description: config.description.clone(),
+            config: serde_json::to_string(config).unwrap_or_default(),
+            model: config.model.clone(),
+            max_iterations: config.max_iterations as u32,
+            thinking: config.thinking,
+            skills: config.skills.clone(),
+            mcps: config.mcps.clone(),
+            compact_threshold: config.compact_threshold.map(|t| t as u32),
+            compact_tool_max_len: config.compact_tool_max_len as u32,
+        }
+    }
+}
 
 // ── ClientMessage constructors ───────────────────────────────────
 

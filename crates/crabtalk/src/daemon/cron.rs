@@ -29,6 +29,21 @@ pub struct CronEntry {
     pub once: bool,
 }
 
+impl From<&CronEntry> for wcore::protocol::message::CronInfo {
+    fn from(e: &CronEntry) -> Self {
+        Self {
+            id: e.id,
+            schedule: e.schedule.clone(),
+            skill: e.skill.clone(),
+            agent: e.agent.clone(),
+            quiet_start: e.quiet_start.clone().unwrap_or_default(),
+            quiet_end: e.quiet_end.clone().unwrap_or_default(),
+            once: e.once,
+            sender: e.sender.clone(),
+        }
+    }
+}
+
 /// TOML file wrapper — `[[cron]]` array of tables.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CronFile {
