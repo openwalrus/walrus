@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-06a03477.js";
+            window.path_to_searchindex_js = "../searchindex-1aa98a70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ad84ca15.js"></script>
@@ -189,13 +189,12 @@
 <li><strong>Runtime</strong> — a single shared runtime instance behind <code>RwLock</code>. Agents share the runtime; the runtime is never cloned per conversation.</li>
 <li><strong>Hooks</strong> — the composite <code>Hook</code> assembled from sub-hooks (OS tools, <code>ask_user</code>, delegation, event subscription, memory).</li>
 <li><strong>Event bus</strong> — subscription table and fire callback. File-backed by <code>events/subscriptions.toml</code> under the config directory.</li>
-<li><strong>Cron</strong> — schedule store and per-entry timer tasks. File-backed by <code>cron/crons.toml</code>.</li>
 <li><strong>MCP handler</strong> — connections to external MCP servers and routing to the tools they advertise.</li>
 <li><strong>Configuration</strong> — current <code>DaemonConfig</code>, reloaded in place on explicit reload.</li>
 </ul>
 <p>The daemon does not interpret tool semantics. Tool dispatch is the runtime’s responsibility, routed through the composite hook.</p>
 <h2 id="process-model"><a class="header" href="#process-model">Process model</a></h2>
-<p>The daemon runs as a single OS process. All work happens on a single Tokio runtime. There is one listener task per configured transport, one reply task per connected client, one task per in-flight dispatch, and one task per active cron timer. Shutdown is initiated by a broadcast channel; every long-lived task subscribes and exits when the channel fires.</p>
+<p>The daemon runs as a single OS process. All work happens on a single Tokio runtime. There is one listener task per configured transport, one reply task per connected client, and one task per in-flight dispatch. Shutdown is initiated by a broadcast channel; every long-lived task subscribes and exits when the channel fires.</p>
 <p>A daemon process owns at most one configuration directory and at most one set of transport endpoints.</p>
 <h2 id="config-directory"><a class="header" href="#config-directory">Config directory</a></h2>
 <p>The daemon is rooted at a configuration directory supplied at startup. The directory holds:</p>
@@ -210,14 +209,13 @@
 <tr><td><code>sessions/</code></td><td>Conversation JSONL logs, one file per conversation.</td></tr>
 <tr><td><code>memory/</code></td><td>Per-agent memory databases, one file per agent.</td></tr>
 <tr><td><code>skills/</code></td><td>Skill bundles loadable by agents.</td></tr>
-<tr><td><code>cron/crons.toml</code></td><td>Cron schedule recovery file.</td></tr>
 <tr><td><code>events/subscriptions.toml</code></td><td>Event subscription recovery file.</td></tr>
 </tbody>
 </table>
 </div>
 <p>All paths are resolved relative to the configuration directory. The daemon writes nothing outside this directory.</p>
 <h2 id="lifecycle"><a class="header" href="#lifecycle">Lifecycle</a></h2>
-<p><strong>Startup.</strong> The daemon reads <code>config.toml</code>, constructs the provider, assembles hooks, opens storage, builds the shared runtime, loads cron and event subscriptions from disk, binds transports, and begins accepting client messages.</p>
+<p><strong>Startup.</strong> The daemon reads <code>config.toml</code>, constructs the provider, assembles hooks, opens storage, builds the shared runtime, loads event subscriptions from disk, binds transports, and begins accepting client messages.</p>
 <p><strong>Runtime.</strong> The daemon serves the <code>Server</code> trait. Each client message is dispatched into a spawned task that produces a stream of server messages.</p>
 <p><strong>Reload.</strong> A <code>ReloadMsg</code> causes the daemon to re-read <code>config.toml</code> and rebuild the shared runtime in place. Existing in-flight dispatches complete against the previous runtime; new dispatches see the reloaded runtime. Transports are not re-bound.</p>
 <p><strong>Shutdown.</strong> The daemon broadcasts a shutdown signal. Transport listeners stop accepting new connections. Active dispatches complete or cancel at the next await point. The daemon writes no final state on shutdown; state is persisted on each mutating operation, not at exit.</p>

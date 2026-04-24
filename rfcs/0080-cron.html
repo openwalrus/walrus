@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-06a03477.js";
+            window.path_to_searchindex_js = "../searchindex-1aa98a70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ad84ca15.js"></script>
@@ -182,29 +182,24 @@
                     <main>
                         <h1 id="0080---cron"><a class="header" href="#0080---cron">0080 - Cron</a></h1>
 <ul>
-<li>Feature Name: Daemon-Level Cron Scheduler</li>
+<li>Feature Name: Cron Scheduler</li>
 <li>Start Date: 2026-03-20</li>
-<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/80">#80</a></li>
-<li>Crates: daemon</li>
+<li>Discussion: <a href="https://github.com/crabtalk/crabtalk/issues/80">#80</a>, <a href="https://github.com/crabtalk/crabtalk/issues/183">#183</a></li>
+<li>Crates: <code>services/cron</code></li>
 </ul>
 <h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
-<p>A daemon-level cron system that triggers skills into sessions on a schedule,
-replacing the previous per-agent heartbeat mechanism.</p>
+<p>Cron triggers skills into agents on a schedule. The scheduler runs as a standalone service outside the daemon and speaks the existing <code>StreamMsg</code> protocol — no cron-specific daemon knowledge, no cron-specific wire messages. The <code>services/cron</code> crate is desktop-oriented; alternate consumers (e.g. multi-tenant cloud schedulers) model their own entry shape, storage, and time-zone semantics — the shared surface between them is just the daemon’s <code>StreamMsg</code> protocol.</p>
 <h2 id="motivation"><a class="header" href="#motivation">Motivation</a></h2>
-<p>Agents need periodic behavior — checking feeds, running maintenance, sending
-reminders. The original approach was a per-agent heartbeat config, but this was
-dead code and wrong-shaped: heartbeats are uniform intervals, while scheduled
-tasks need cron-style flexibility (every Monday at 9am, every 2 hours, etc.).</p>
-<p>The session already carries the agent and sender. A cron entry only needs to
-know which skill to fire and which session to fire it into.</p>
+<p>Agents need periodic behavior — checking feeds, running maintenance, sending reminders. Time-based triggering is one form of <em>trigger</em>; chat messages, webhooks, and file-watch events are others. All of them produce the same shape: something happens → an agent runs with a payload. Cron is the first concrete implementation of this trigger role and deliberately uses the same <code>StreamMsg</code> path that chat gateways use.</p>
+<p>The session already carries the agent and sender. A cron entry needs the skill to fire, the agent to run, the sender to attribute it to, and the schedule expression — nothing else.</p>
 <h2 id="design"><a class="header" href="#design">Design</a></h2>
-<p>A cron entry triggers a skill into a session on a schedule.</p>
 <h3 id="data-model"><a class="header" href="#data-model">Data model</a></h3>
 <pre><code class="language-toml">[[cron]]
 id = 1
-schedule = "0 */2 * * *"
+schedule = "0 */2 * * * *"
 skill = "check-feeds"
-session = 12345
+agent = "crab"
+sender = "cron"
 quiet_start = "23:00"
 quiet_end = "07:00"
 once = false
@@ -212,49 +207,40 @@ once = false
 <ul>
 <li><code>id</code> — auto-incremented on create.</li>
 <li><code>schedule</code> — standard cron expression, validated on create and load.</li>
-<li><code>skill</code> — fired as <code>/{skill}</code> slash command into the session.</li>
-<li><code>session</code> — target session ID. The session determines the agent.</li>
-<li><code>quiet_start</code>/<code>quiet_end</code> — optional HH:MM window in the daemon’s local time.
-If fire time falls inside, skip silently. No queuing, no catch-up. Both must
-be set; if only one is provided, quiet hours are ignored.</li>
-<li><code>once</code> — fire once then delete from memory and disk.</li>
+<li><code>skill</code> — fired as <code>/{skill}</code> content into the target conversation.</li>
+<li><code>agent</code> — agent running the conversation.</li>
+<li><code>sender</code> — sender attribution (default <code>"cron"</code>).</li>
+<li><code>quiet_start</code> / <code>quiet_end</code> — optional <code>HH:MM</code> window in local time. If the fire time falls inside, the tick is skipped silently. No queuing, no catch-up. Both must be set; otherwise quiet hours are ignored.</li>
+<li><code>once</code> — fire once then delete.</li>
 </ul>
+<h3 id="architecture"><a class="header" href="#architecture">Architecture</a></h3>
+<p>Cron is a separate binary (<code>crabtalk-cron</code>). It runs as a system service managed by crabup / launchd / systemd. The daemon has no cron code — no field, no handlers, no protocol messages.</p>
+<p>The binary uses the standard <code>#[command::command]</code> macro — <code>start</code>, <code>stop</code>, <code>run</code>, <code>logs</code>, same as every other service. No admin subcommands; schedule edits are direct file edits.</p>
 <h3 id="persistence"><a class="header" href="#persistence">Persistence</a></h3>
-<p>Memory is authoritative at runtime. Disk (<code>crons.toml</code>) is recovery for
-restarts.</p>
-<ul>
-<li><strong>Startup</strong>: load from disk, start timers. Invalid schedules are skipped with
-a warning.</li>
-<li><strong>Create/Delete</strong>: mutate memory, start/stop timer, atomic write to disk
-(tmp + rename).</li>
-<li><strong>Runtime reload</strong>: crons stay in memory — they survive runtime swaps.</li>
-<li><strong>Daemon restart</strong>: reload from disk.</li>
-</ul>
+<p>The scheduler reads <code>$CRABTALK_HOME/config/crons.toml</code>. To add, remove, or change a schedule, edit this file in place. The running service polls the mtime every 2 seconds and reconciles timers on change — abort removed schedules, start new ones. Atomic write (tmp + rename) keeps readers consistent.</p>
+<p>For <code>once</code> schedules the service deletes the entry after firing — the only mutation the service itself makes.</p>
 <h3 id="firing"><a class="header" href="#firing">Firing</a></h3>
-<p>Fire-and-forget via the daemon event channel. The cron sends a <code>ClientMessage</code>
-with content <code>/{skill}</code> and sender <code>"cron"</code>. The reply channel is dropped —
-output goes to session history only.</p>
-<h3 id="protocol"><a class="header" href="#protocol">Protocol</a></h3>
-<p>Three protocol operations on the <code>Server</code> trait:</p>
-<ul>
-<li><code>CreateCron { schedule, skill, session, quiet_start?, quiet_end? }</code> → <code>CronInfo</code></li>
-<li><code>DeleteCron { id }</code> → success/not found</li>
-<li><code>ListCrons</code> → <code>CronList</code></li>
-</ul>
-<p>Crons are process-lifetime, not session-lifetime. They survive runtime reloads,
-fire via the daemon event channel, and the runtime has no notion of time-based
-scheduling. This is a daemon concern.</p>
+<p>On a scheduled tick the service opens a <code>NodeClient</code> to the daemon and sends:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>StreamMsg {
+    agent: "&lt;from entry&gt;",
+    content: "/&lt;skill&gt;",
+    sender: Some("&lt;from entry&gt;"),
+    ..Default::default()
+}
+<span class="boring">}</span></code></pre>
+<p>The reply stream is drained and discarded — output goes to conversation history through the daemon’s normal path. Failures surface as <code>ErrorMsg</code> frames; the schedule continues on the next tick.</p>
 <h2 id="alternatives"><a class="header" href="#alternatives">Alternatives</a></h2>
-<p><strong>Per-agent heartbeat config.</strong> The original approach. Rejected because it
-coupled scheduling to agent definition, couldn’t express cron-style schedules,
-and was dead code.</p>
-<p><strong>Client-side polling.</strong> A client can send messages on its own timer. This works
-but requires the client to be running. Daemon crons fire regardless of client
-state.</p>
+<p><strong>Keep cron inside the daemon.</strong> Rejected. Cron forced a <code>P: Provider</code> bound on the daemon struct for no reason other than that <code>CronStore</code> called <code>runtime.send_to</code>. Embedding also prevented alternate schedulers (e.g. multi-tenant cloud schedulers) from reusing the daemon without running cron.</p>
+<p><strong>Introduce an <code>InvokeSkill</code> protocol variant.</strong> Rejected. Cron already has everything it needs from <code>SendMsg</code> / <code>StreamMsg</code> — the content <code>/{skill}</code> pattern is what chat-driven slash commands use too. Adding a variant would fragment the trigger contract across consumers and force every downstream scheduler (e.g. external ones) to learn a new wire format.</p>
+<p><strong>Cron as a peer protocol endpoint with its own socket for admin.</strong> Rejected. The admin surface is thin and routing it through a dedicated socket multiplies client complexity (TUI would need to discover and connect to cron too). Instead, admin is direct file editing — the running service picks up changes via mtime polling.</p>
+<p><strong>Put <code>CronEntry</code> + validators in <code>wcore</code> for downstream consumers to reuse.</strong> Rejected. Multi-tenant cloud schedulers need different entry fields (tenant id, different trigger payload), different storage (database rows, not TOML), and different time-zone semantics (UTC, not local). The <code>cron::Schedule::from_str</code> “validator” is one line; reimplementing <code>is_quiet</code> for UTC is trivial. Sharing a struct would force alignment on details that shouldn’t align.</p>
+<p><strong>Introduce a <code>Trigger</code> trait / <code>crates/trigger</code> library.</strong> Premature. Cron is the only trigger today (chat gateways are structurally similar but each has its own domain-specific code — Telegram auth, WeChat sync, etc.). A common trait only becomes clear once a second non-chat trigger lands (webhook, file-watch).</p>
 <h2 id="unresolved-questions"><a class="header" href="#unresolved-questions">Unresolved Questions</a></h2>
 <ul>
-<li>Should crons support arguments beyond the skill name?</li>
-<li>Should there be a max cron count to prevent resource exhaustion?</li>
+<li>Should cron support a time-zone override per entry (instead of local time for everything)?</li>
+<li>Should there be a max-concurrent-fires limit so a quiet window ending doesn’t burst?</li>
 </ul>
 
                     </main>
