@@ -6,10 +6,11 @@ and Wikipedia with consensus-based ranking. No API keys required.
 ## Install
 
 ```bash
-crabtalk hub install crabtalk/search
+crabup pull search           # fetch the binary from crates.io
+crabup search start          # install and load the service unit
 ```
 
-Or build from source:
+Or drive cargo directly if you don't want crabup:
 
 ```bash
 cargo install crabtalk-search
@@ -17,7 +18,7 @@ cargo install crabtalk-search
 
 ## Configuration
 
-Installed automatically by `crabtalk hub install`. Default config in `crab.toml`:
+Default config in `crab.toml`:
 
 ```toml
 [services.search]

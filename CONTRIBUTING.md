@@ -21,7 +21,8 @@ Layer 3 ─ Server
   └─ crabtalk             Daemon core: event loop, transport setup, cron, config, hot reload
 
 Layer 4 ─ Adapters
-  ├─ crabtalkd            Daemon CLI: start/stop/foreground, admin commands
+  ├─ crabtalkd            Daemon CLI: run, setup, reload, events, plugin ops
+  ├─ crabup               Package + service manager for the ecosystem
   ├─ sdk                  NodeClient, message types for platform adapters
   ├─ tui                  REPL, config TUI (optional daemon feature for all-in-one)
   ├─ apps/                telegram, wechat (gateway clients)
@@ -38,7 +39,8 @@ Layer 4 ─ Adapters
 | Does it add a tool the agent can call, a skill, or memory? | runtime |
 | Does it need network I/O, scheduling, or process lifecycle? | crabtalk |
 | Does it adapt a platform or parse bot commands? | sdk |
-| Does it add a daemon admin command? | crabtalkd |
+| Does it add a daemon admin command (over the socket)? | crabtalkd |
+| Does it install, update, or service-manage a crabtalk binary? | crabup |
 | Does it add a TUI feature or interactive UI? | tui |
 | **If none of these fit, challenge whether the feature should exist.** | |
 

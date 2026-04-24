@@ -15,7 +15,6 @@ name = "crabtalkd"
 path = "src/bin/main.rs"
 
 [dependencies]
-command.workspace = true
 crabtalk.workspace = true
 transport.workspace = true
 wcore.workspace = true
@@ -25,7 +24,6 @@ anyhow.workspace = true
 async-stream.workspace = true
 clap.workspace = true
 dialoguer.workspace = true
-dirs.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 

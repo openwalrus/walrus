@@ -1,0 +1,22 @@
+[package]
+name = "crabup"
+description = "Package and service manager for the Crabtalk ecosystem"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[[bin]]
+name = "crabup"
+path = "src/bin/main.rs"
+
+[dependencies]
+command.workspace = true
+wcore.workspace = true
+
+anyhow.workspace = true
+clap.workspace = true
+dirs.workspace = true
+toml.workspace = true

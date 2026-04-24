@@ -11,13 +11,17 @@ Start it, talk to it, extend it with plugins.
 curl -fsSL https://crabtalk.ai/install.sh | sh
 ```
 
-Or `cargo install crabtalk-tui`. See the [installation guide][install] for details.
+Or `cargo install crabup` and use it to pull the rest. See the [installation guide][install] for details.
 
 ## Quick Start
 
 ```bash
-# Start chatting (daemon starts automatically)
-crabtalk
+cargo install crabup         # one-time: install the package manager
+crabup pull daemon           # fetch the daemon binary
+crabup pull tui              # fetch the TUI client
+crabtalkd setup              # one-time interactive LLM endpoint config
+crabup daemon start          # install the service unit and start it
+crabtalk-tui                 # chat
 ```
 
 Full config reference: [`crates/crabtalk/config.toml`](crates/crabtalk/config.toml).
