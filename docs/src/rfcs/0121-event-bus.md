@@ -133,7 +133,7 @@ Always available as a delegate target without pre-configuration:
 - Inherits the system agent's thinking setting
 - Gets the full tool registry (no explicit filter)
 - Ephemeral — sessions are killed after task completion (existing behavior)
-- No `members` list gate — `worker` is always a valid delegate target
+- Always a valid delegate target (delegation is not scoped)
 
 This eliminates the friction of configuring named agents for ad-hoc tasks like
 "read these files and summarize" or "search for X in the codebase."

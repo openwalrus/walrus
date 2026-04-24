@@ -117,7 +117,7 @@ pub(super) fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
 
 /// On-disk shape of `local/settings.toml`. Holds runtime-added records:
 ///   - `[mcps.<name>]` — MCP server registrations
-///   - `[agents.<name>]` — full agent definitions (model, members, …)
+///   - `[agents.<name>]` — full agent definitions (model, skills, …)
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(super) struct SettingsFile {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

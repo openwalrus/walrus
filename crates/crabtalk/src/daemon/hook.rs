@@ -13,7 +13,6 @@ use wcore::{AgentConfig, AgentEvent, ToolDispatch, ToolFuture, model::HistoryEnt
 #[derive(Default)]
 pub struct AgentScope {
     pub tools: Vec<String>,
-    pub members: Vec<String>,
     pub skills: Vec<String>,
     pub mcps: Vec<String>,
 }
@@ -61,7 +60,6 @@ impl DaemonHook {
             name,
             AgentScope {
                 tools: config.tools.clone(),
-                members: config.members.clone(),
                 skills: config.skills.clone(),
                 mcps: config.mcps.clone(),
             },
@@ -81,8 +79,7 @@ impl DaemonHook {
 
     /// Apply scoped tool whitelist and scope prompt for sub-agents.
     fn apply_scope(&self, config: &mut AgentConfig) {
-        let has_scoping =
-            !config.skills.is_empty() || !config.mcps.is_empty() || !config.members.is_empty();
+        let has_scoping = !config.skills.is_empty() || !config.mcps.is_empty();
         if !has_scoping {
             return;
         }
@@ -141,17 +138,19 @@ impl Hook for DaemonHook {
     ) -> Vec<HistoryEntry> {
         let mut injected = Vec::new();
 
-        // Agent member descriptions (delegate coordination).
-        let has_members = self
-            .scopes
-            .read()
-            .get(agent)
-            .is_some_and(|s| !s.members.is_empty());
-        if has_members {
+        // Agent descriptions (delegate coordination) — any agent can call any
+        // other. Injected every turn; mutations to the agent registry bust the
+        // prompt cache for every active conversation, which is fine for a
+        // single-user runtime with a handful of agents.
+        {
             let descriptions = self.agent_descriptions.read();
-            if !descriptions.is_empty() {
+            let peers: Vec<_> = descriptions
+                .iter()
+                .filter(|(name, _)| name.as_str() != agent)
+                .collect();
+            if !peers.is_empty() {
                 let mut block = String::from("<agents>\n");
-                for (name, desc) in descriptions.iter() {
+                for (name, desc) in peers {
                     block.push_str(&format!("- {name}: {desc}\n"));
                 }
                 block.push_str("</agents>");

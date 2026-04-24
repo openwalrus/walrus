@@ -564,11 +564,12 @@ message AgentInfo {
   string model = 4;
   uint32 max_iterations = 5;
   bool thinking = 6;
-  repeated string members = 7;
   repeated string skills = 8;
   repeated string mcps = 9;
   optional uint32 compact_threshold = 10;
   uint32 compact_tool_max_len = 11;
+  reserved 7;
+  reserved "members";
 }
 
 message AgentList {

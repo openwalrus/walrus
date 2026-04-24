@@ -1,14 +1,11 @@
 //! Delegate tool — as a Hook implementation.
 
 use crate::daemon::ConversationCwds;
-use crate::daemon::hook::AgentScope;
 use crate::{daemon::SharedRuntime, hooks::os::ReadFiles};
 use crabllm_core::Provider;
-use parking_lot::RwLock;
 use runtime::Hook;
 use serde::Deserialize;
 use std::{
-    collections::BTreeMap,
     path::PathBuf,
     sync::{
         Arc, OnceLock,
@@ -47,10 +44,9 @@ pub struct DelegateTask {
 
 /// Delegate subsystem: dispatch tasks to other agents.
 ///
-/// Owns scopes for member enforcement, a late-bind runtime handle, and
-/// the shared conversation CWD map for child task CWD overrides.
+/// Holds a late-bind runtime handle and the shared conversation CWD map
+/// for child task CWD overrides.
 pub struct DelegateHook<P: Provider + 'static> {
-    scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
     runtime: Arc<OnceLock<SharedRuntime<P>>>,
     conversation_cwds: ConversationCwds,
     read_files: ReadFiles,
@@ -58,13 +54,11 @@ pub struct DelegateHook<P: Provider + 'static> {
 
 impl<P: Provider + 'static> DelegateHook<P> {
     pub fn new(
-        scopes: Arc<RwLock<BTreeMap<String, AgentScope>>>,
         runtime: Arc<OnceLock<SharedRuntime<P>>>,
         conversation_cwds: ConversationCwds,
         read_files: ReadFiles,
     ) -> Self {
         Self {
-            scopes,
             runtime,
             conversation_cwds,
             read_files,
@@ -77,19 +71,6 @@ impl<P: Provider + 'static> Hook for DelegateHook<P> {
         vec![Delegate::as_tool()]
     }
 
-    fn scoped_tools(&self, config: &wcore::AgentConfig) -> (Vec<String>, Option<String>) {
-        if config.members.is_empty() {
-            return (vec![], None);
-        }
-        let tools = self
-            .schema()
-            .iter()
-            .map(|t| t.function.name.clone())
-            .collect();
-        let line = format!("members: {}", config.members.join(", "));
-        (tools, Some(line))
-    }
-
     fn dispatch<'a>(&'a self, name: &'a str, call: ToolDispatch) -> Option<ToolFuture<'a>> {
         if name != "delegate" {
             return None;
@@ -99,21 +80,6 @@ impl<P: Provider + 'static> Hook for DelegateHook<P> {
                 serde_json::from_str(&call.args).map_err(|e| format!("invalid arguments: {e}"))?;
             if input.tasks.is_empty() {
                 return Err("no tasks provided".to_owned());
-            }
-            {
-                let scopes = self.scopes.read();
-                if let Some(scope) = scopes.get(&call.agent)
-                    && !scope.members.is_empty()
-                {
-                    for task in &input.tasks {
-                        if !scope.members.iter().any(|m| m == &task.agent) {
-                            return Err(format!(
-                                "agent '{}' is not in your members list",
-                                task.agent
-                            ));
-                        }
-                    }
-                }
             }
             let shared = self
                 .runtime

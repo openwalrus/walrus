@@ -151,7 +151,6 @@ fn agent_config_to_info(config: &wcore::AgentConfig) -> AgentInfo {
         model: config.model.clone(),
         max_iterations: config.max_iterations as u32,
         thinking: config.thinking,
-        members: config.members.clone(),
         skills: config.skills.clone(),
         mcps: config.mcps.clone(),
         compact_threshold: config.compact_threshold.map(|t| t as u32),

@@ -285,7 +285,6 @@ impl<P: Provider + 'static> Daemon<P> {
         node_hook.register_hook(
             "delegate",
             Arc::new(delegate::DelegateHook::<P>::new(
-                scopes.clone(),
                 runtime_once,
                 conversation_cwds,
                 read_files,
