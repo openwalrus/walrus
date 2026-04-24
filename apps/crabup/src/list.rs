@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 
-use crate::registry;
+use crate::registry::Entry;
 
 /// Return the set of installed crabtalk-owned crates, sorted.
 pub fn installed() -> Result<Vec<String>> {
@@ -24,7 +24,7 @@ pub fn installed() -> Result<Vec<String>> {
         .keys()
         .filter_map(|k| {
             let krate = k.split_whitespace().next()?;
-            registry::is_crabtalk(krate).then(|| krate.to_string())
+            Entry::is_crabtalk(krate).then(|| krate.to_string())
         })
         .collect();
     names.sort();

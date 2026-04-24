@@ -3,9 +3,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::registry::Entry;
+
 pub mod cargo;
 pub mod list;
+pub mod ps;
 pub mod registry;
+pub mod service;
 
 #[derive(Parser, Debug)]
 #[command(name = "crabup", about = "Crabtalk package and service manager")]
@@ -23,6 +27,12 @@ pub enum Command {
         /// Pin to a specific version.
         #[arg(long)]
         version: Option<String>,
+        /// Comma-separated cargo features to enable.
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
+        /// Disable default cargo features.
+        #[arg(long)]
+        no_default_features: bool,
     },
     /// Uninstall a crabtalk binary.
     Rm {
@@ -33,19 +43,88 @@ pub enum Command {
     Update,
     /// List installed crabtalk-* crates.
     List,
+    /// List running crabtalk services.
+    Ps,
+
+    /// Daemon service commands.
+    Daemon {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+    /// Telegram gateway service commands.
+    Telegram {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+    /// WeChat gateway service commands.
+    Wechat {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+    /// Search service commands.
+    Search {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+    /// Outlook service commands.
+    Outlook {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ServiceAction {
+    /// Install and start the service.
+    Start {
+        /// Re-install even if already running.
+        #[arg(short, long)]
+        force: bool,
+    },
+    /// Stop and uninstall the service.
+    Stop,
+    /// Restart the service.
+    Restart,
+    /// View service logs.
+    Logs {
+        /// Arguments passed through to `tail` (e.g. `-f`, `-n 100`).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        tail_args: Vec<String>,
+    },
+}
+
+impl ServiceAction {
+    fn run(self, entry: &Entry) -> Result<()> {
+        match self {
+            Self::Start { force } => entry.start(force),
+            Self::Stop => entry.stop(),
+            Self::Restart => entry.restart(),
+            Self::Logs { tail_args } => entry.logs(&tail_args),
+        }
+    }
 }
 
 impl Cli {
     pub fn run(self) -> Result<()> {
         match self.command {
-            Command::Pull { name, version } => {
-                cargo::install(registry::resolve(&name), version.as_deref())
-            }
-            Command::Rm { name } => cargo::uninstall(registry::resolve(&name)),
+            Command::Pull {
+                name,
+                version,
+                features,
+                no_default_features,
+            } => cargo::install(
+                Entry::resolve(&name),
+                cargo::InstallOpts {
+                    version: version.as_deref(),
+                    features: &features,
+                    no_default_features,
+                },
+            ),
+            Command::Rm { name } => cargo::uninstall(Entry::resolve(&name)),
             Command::Update => {
                 for krate in list::installed()? {
                     println!("==> {krate}");
-                    cargo::install(&krate, None)?;
+                    cargo::install(&krate, cargo::InstallOpts::default())?;
                 }
                 Ok(())
             }
@@ -55,6 +134,12 @@ impl Cli {
                 }
                 Ok(())
             }
+            Command::Ps => ps::run(),
+            Command::Daemon { action } => action.run(&registry::DAEMON),
+            Command::Telegram { action } => action.run(&registry::TELEGRAM),
+            Command::Wechat { action } => action.run(&registry::WECHAT),
+            Command::Search { action } => action.run(&registry::SEARCH),
+            Command::Outlook { action } => action.run(&registry::OUTLOOK),
         }
     }
 }

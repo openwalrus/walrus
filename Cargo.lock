@@ -885,6 +885,8 @@ version = "0.0.21"
 dependencies = [
  "anyhow",
  "clap",
+ "crabtalk-command",
+ "crabtalk-core",
  "dirs",
  "toml",
 ]

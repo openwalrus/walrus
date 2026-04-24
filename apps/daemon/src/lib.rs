@@ -37,6 +37,8 @@ pub struct Cli {
 /// Top-level subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Run the daemon in the foreground (what launchd/systemd invokes).
+    Run,
     /// Install and start the daemon service.
     Start {
         /// Re-install even if already running.
@@ -86,6 +88,7 @@ impl Cli {
         };
 
         match command {
+            Command::Run => foreground::start().await,
             Command::Start { force } => {
                 ensure_config()?;
                 service::install(self.verbose.max(1), force)

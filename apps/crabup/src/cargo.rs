@@ -3,11 +3,33 @@
 use anyhow::{Context, Result, bail};
 use std::process::Command;
 
-pub fn install(krate: &str, version: Option<&str>) -> Result<()> {
+pub struct InstallOpts<'a> {
+    pub version: Option<&'a str>,
+    pub features: &'a [String],
+    pub no_default_features: bool,
+}
+
+impl Default for InstallOpts<'_> {
+    fn default() -> Self {
+        Self {
+            version: None,
+            features: &[],
+            no_default_features: false,
+        }
+    }
+}
+
+pub fn install(krate: &str, opts: InstallOpts<'_>) -> Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.args(["install", krate]);
-    if let Some(v) = version {
+    if let Some(v) = opts.version {
         cmd.args(["--version", v]);
+    }
+    if !opts.features.is_empty() {
+        cmd.args(["--features", &opts.features.join(",")]);
+    }
+    if opts.no_default_features {
+        cmd.arg("--no-default-features");
     }
     let status = cmd
         .status()
