@@ -28,6 +28,7 @@ command = { path = "plugins/command", package = "crabtalk-command", version = "0
 command-codegen = { path = "plugins/command-codegen", package = "crabtalk-command-codegen", version = "0.0.21" }
 outlook = { path = "plugins/outlook", package = "crabtalk-outlook", version = "0.0.21", default-features = false }
 search = { path = "plugins/search", package = "crabtalk-search", version = "0.0.21", default-features = false }
+crabtalk-cron = { path = "plugins/cron", version = "0.0.21" }
 
 # crabllm
 crabllm-core = "0.0.18"

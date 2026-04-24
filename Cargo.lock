@@ -634,6 +634,7 @@ dependencies = [
  "chrono",
  "crabllm-core",
  "crabtalk-core",
+ "cron",
  "dirs",
  "futures-core",
  "futures-util",
@@ -649,6 +650,23 @@ dependencies = [
  "toml",
  "tracing",
  "ulid",
+]
+
+[[package]]
+name = "crabtalk-cron"
+version = "0.0.21"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "crabtalk-command",
+ "crabtalk-core",
+ "crabtalk-sdk",
+ "cron",
+ "serde",
+ "tokio",
+ "toml",
+ "tracing",
 ]
 
 [[package]]
