@@ -3,20 +3,11 @@
 use anyhow::{Context, Result, bail};
 use std::process::Command;
 
+#[derive(Default)]
 pub struct InstallOpts<'a> {
     pub version: Option<&'a str>,
     pub features: &'a [String],
     pub no_default_features: bool,
-}
-
-impl Default for InstallOpts<'_> {
-    fn default() -> Self {
-        Self {
-            version: None,
-            features: &[],
-            no_default_features: false,
-        }
-    }
 }
 
 pub fn install(krate: &str, opts: InstallOpts<'_>) -> Result<()> {

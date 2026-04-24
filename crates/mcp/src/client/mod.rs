@@ -14,7 +14,7 @@ mod stdio;
 
 pub enum McpPeer {
     Stdio(Box<stdio::StdioTransport>),
-    Http(http::HttpTransport),
+    Http(Box<http::HttpTransport>),
 }
 
 impl McpPeer {
@@ -23,7 +23,7 @@ impl McpPeer {
     }
 
     pub fn http(url: &str) -> Self {
-        Self::Http(http::HttpTransport::new(url))
+        Self::Http(Box::new(http::HttpTransport::new(url)))
     }
 
     async fn request(&mut self, msg: serde_json::Value) -> Result<serde_json::Value> {
