@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f7baf788.js";
+            window.path_to_searchindex_js = "../searchindex-fa8bbddb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-65cc29f9.js"></script>
@@ -189,14 +189,17 @@
 </ul>
 <h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
 <p>A whitelist-based scoping system that restricts what an agent can access: tools,
-skills, MCP servers, and delegation targets. Enforced at dispatch time and
-advertised in the system prompt. This is a security boundary, not a hint.</p>
+skills, and MCP servers. Enforced at dispatch time and advertised in the system
+prompt. This is a security boundary, not a hint.</p>
+<p>Delegation is <strong>not</strong> scoped: crabtalk is a single-user runtime, and any
+registered agent can delegate to any other. Multi-tenant identity-based access
+control, if ever needed, belongs in a wrapper above the runtime, not inside
+<code>AgentConfig</code>.</p>
 <h2 id="motivation"><a class="header" href="#motivation">Motivation</a></h2>
 <p>In multi-agent setups, a delegated sub-agent should not have the same
-capabilities as the primary agent. A research agent doesn’t need bash. A
-summarizer doesn’t need to delegate to other agents. Without scoping, every
-agent has access to everything — which means a misbehaving or confused agent
-can call tools it was never intended to use.</p>
+capabilities as the primary agent. A research agent doesn’t need bash. Without
+scoping, every agent has access to everything — which means a misbehaving or
+confused agent can call tools it was never intended to use.</p>
 <p>Scoping solves this by letting agent configs declare exactly what resources are
 available. The runtime enforces it.</p>
 <h2 id="design"><a class="header" href="#design">Design</a></h2>
@@ -205,7 +208,6 @@ available. The runtime enforces it.</p>
 </span><span class="boring">fn main() {
 </span>pub struct AgentScope {
     pub tools: Vec&lt;String&gt;,     // empty = unrestricted
-    pub members: Vec&lt;String&gt;,   // empty = no delegation
     pub skills: Vec&lt;String&gt;,    // empty = all skills
     pub mcps: Vec&lt;String&gt;,      // empty = all MCP servers
 }
@@ -213,37 +215,34 @@ available. The runtime enforces it.</p>
 <p>Empty list means unrestricted. Non-empty means only listed items are allowed.
 This is an inclusive whitelist, not a denylist.</p>
 <h3 id="whitelist-computation"><a class="header" href="#whitelist-computation">Whitelist computation</a></h3>
-<p>When an agent has any scoping (non-empty skills, mcps, or members), the runtime
-computes a tool whitelist during <code>on_build_agent</code>:</p>
+<p>When an agent has any scoping (non-empty skills or mcps), the runtime computes
+a tool whitelist during <code>on_build_agent</code>:</p>
 <ol>
 <li>Start with <code>BASE_TOOLS</code>: <code>bash</code>, <code>ask_user</code>, <code>read</code>, <code>edit</code> — always
 available.</li>
 <li>If memory is enabled: add <code>recall</code>, <code>remember</code>, <code>memory</code>, <code>forget</code>.</li>
 <li>If skills list is non-empty: add <code>skill</code> tool.</li>
 <li>If mcps list is non-empty: add <code>mcp</code> tool.</li>
-<li>If members list is non-empty: add <code>delegate</code> tool.</li>
 </ol>
 <p>The computed whitelist replaces <code>config.tools</code>. Tools not on the list are
-invisible to the agent.</p>
+invisible to the agent. The <code>delegate</code> tool is always available — delegation
+is not gated by scope.</p>
 <h3 id="prompt-injection"><a class="header" href="#prompt-injection">Prompt injection</a></h3>
 <p>A <code>&lt;scope&gt;</code> block is appended to the system prompt listing the agent’s allowed
 resources:</p>
 <pre><code class="language-xml">&lt;scope&gt;
 skills: check-feeds, summarize
 mcp servers: search
-members: researcher, writer
 &lt;/scope&gt;
 </code></pre>
 <p>This tells the agent what it can use. The agent doesn’t need to guess or
 discover — its boundaries are stated upfront.</p>
 <h3 id="enforcement"><a class="header" href="#enforcement">Enforcement</a></h3>
-<p>Scoping is enforced at four dispatch points:</p>
+<p>Scoping is enforced at three dispatch points:</p>
 <ul>
 <li><strong><code>dispatch_tool</code></strong> — rejects tool calls not in the agent’s tool whitelist.</li>
 <li><strong><code>dispatch_skill</code></strong> — rejects skill names not in the agent’s skill list.</li>
 <li><strong><code>dispatch_mcp</code></strong> — filters MCP server list to allowed servers.</li>
-<li><strong><code>dispatch_delegate</code></strong> — rejects delegation to agents not in the members
-list.</li>
 </ul>
 <p>Enforcement happens at runtime, not just at prompt time. Even if the LLM
 ignores the <code>&lt;scope&gt;</code> block and tries to call a restricted tool, the dispatch
@@ -264,7 +263,7 @@ changed the file between read and edit, <code>old_string</code> won’t match an
 edit fails — optimistic concurrency without locks.</p>
 <h3 id="default-agent"><a class="header" href="#default-agent">Default agent</a></h3>
 <p>The default agent (primary) has no scope restrictions — empty lists on all
-four dimensions. Scoping is for sub-agents that need constrained access.</p>
+three dimensions. Scoping is for sub-agents that need constrained access.</p>
 <h2 id="alternatives"><a class="header" href="#alternatives">Alternatives</a></h2>
 <p><strong>Denylist instead of whitelist.</strong> List what’s forbidden instead of what’s
 allowed. Rejected because allowlists are safer by default — a new tool or

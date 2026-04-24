@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f7baf788.js";
+            window.path_to_searchindex_js = "../searchindex-fa8bbddb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-65cc29f9.js"></script>
@@ -288,7 +288,7 @@ Always available as a delegate target without pre-configuration:</p>
 <li>Inherits the system agent’s thinking setting</li>
 <li>Gets the full tool registry (no explicit filter)</li>
 <li>Ephemeral — sessions are killed after task completion (existing behavior)</li>
-<li>No <code>members</code> list gate — <code>worker</code> is always a valid delegate target</li>
+<li>Always a valid delegate target (delegation is not scoped)</li>
 </ul>
 <p>This eliminates the friction of configuring named agents for ad-hoc tasks like
 “read these files and summarize” or “search for X in the codebase.”</p>

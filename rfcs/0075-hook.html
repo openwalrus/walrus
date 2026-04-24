@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f7baf788.js";
+            window.path_to_searchindex_js = "../searchindex-fa8bbddb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-65cc29f9.js"></script>
@@ -222,7 +222,7 @@ prompt is composed. The <code>Env</code> implementation chains:</p>
 <li>Environment block (OS, shell, platform).</li>
 <li>Memory prompt — behavioural guidance for the memory tools (see <a href="0150-memory-store.html">0150</a>).</li>
 <li>Resource hints (available MCP servers, available skills).</li>
-<li>Scope block (if agent has restricted skills/MCPs/members, appends a <code>&lt;scope&gt;</code>
+<li>Scope block (if agent has restricted skills/MCPs, appends a <code>&lt;scope&gt;</code>
 XML block listing allowed resources).</li>
 <li>Tool whitelist computation (restricts <code>config.tools</code> based on scope).</li>
 </ol>
@@ -236,7 +236,8 @@ body wrapped in a <code>&lt;skill&gt;</code> tag. Happens before tool dispatch.<
 <p><strong><code>on_before_run</code></strong> — called before each agent execution (send/stream). Returns
 messages to inject into the conversation. <code>Env</code> injects:</p>
 <ol>
-<li>Agent descriptions (if the agent has delegation members).</li>
+<li>Agent descriptions (every registered agent’s name + description, so any
+agent can delegate to any other).</li>
 <li>Memory auto-recall (BM25 search on last user message, as <code>&lt;recall&gt;</code> block).</li>
 <li>Working directory announcement (as <code>&lt;environment&gt;</code> block).</li>
 </ol>
