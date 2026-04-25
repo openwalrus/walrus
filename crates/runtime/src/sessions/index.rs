@@ -45,6 +45,13 @@ struct SessionMeta {
     updated_at: String,
 }
 
+/// Per-field boost factor applied to the title's BM25 contribution
+/// when scoring a session hit. Defaults from RFC 0185.
+const TITLE_BOOST: f64 = 2.0;
+
+/// Per-field boost factor applied to the summary's BM25 contribution.
+const SUMMARY_BOOST: f64 = 3.0;
+
 pub struct SessionIndex {
     bm25: bm25::Index<MessageRef>,
     docs: HashMap<MessageRef, DocMeta>,
@@ -52,6 +59,10 @@ pub struct SessionIndex {
     sessions: HashMap<u64, SessionMeta>,
     handle_to_id: HashMap<String, u64>,
     next_id: u64,
+    /// Per-session title BM25, doc-keyed by session_id.
+    title_index: bm25::Index<u64>,
+    /// Per-session summary BM25, doc-keyed by session_id.
+    summary_index: bm25::Index<u64>,
 }
 
 impl Default for SessionIndex {
@@ -69,6 +80,8 @@ impl SessionIndex {
             sessions: HashMap::new(),
             handle_to_id: HashMap::new(),
             next_id: 1,
+            title_index: bm25::Index::new(),
+            summary_index: bm25::Index::new(),
         }
     }
 
@@ -88,14 +101,16 @@ impl SessionIndex {
 
     /// Register or look up a session by its storage handle. Idempotent
     /// — repeat calls return the same `session_id`. Mutable fields
-    /// (`title`, `updated_at`) are refreshed on every call so the
-    /// index stays in step with the meta line.
+    /// (`title`, `updated_at`, `summary`) are refreshed on every call
+    /// so the index stays in step with the meta line.
+    #[allow(clippy::too_many_arguments)]
     pub fn ensure_session(
         &mut self,
         handle: &SessionHandle,
         agent: &str,
         sender: &str,
         title: &str,
+        summary: Option<&str>,
         created_at: &str,
         updated_at: &str,
     ) -> u64 {
@@ -108,6 +123,8 @@ impl SessionIndex {
                     meta.updated_at = updated_at.to_owned();
                 }
             }
+            self.reindex_title(id, title);
+            self.reindex_summary(id, summary);
             return id;
         }
         let id = self.next_id;
@@ -124,7 +141,30 @@ impl SessionIndex {
                 updated_at: updated_at.to_owned(),
             },
         );
+        self.reindex_title(id, title);
+        self.reindex_summary(id, summary);
         id
+    }
+
+    fn reindex_title(&mut self, id: u64, title: &str) {
+        if title.is_empty() {
+            self.title_index.remove(id);
+            return;
+        }
+        let terms = bm25::tokenize(title);
+        self.title_index.insert(id, &terms);
+    }
+
+    fn reindex_summary(&mut self, id: u64, summary: Option<&str>) {
+        match summary.filter(|s| !s.is_empty()) {
+            Some(s) => {
+                let terms = bm25::tokenize(s);
+                self.summary_index.insert(id, &terms);
+            }
+            None => {
+                self.summary_index.remove(id);
+            }
+        }
     }
 
     /// Drop a session from the index. Used when a session is deleted
@@ -143,6 +183,8 @@ impl SessionIndex {
         if let Some(meta) = self.sessions.remove(&session_id) {
             self.handle_to_id.remove(meta.handle.as_str());
         }
+        self.title_index.remove(session_id);
+        self.summary_index.remove(session_id);
     }
 
     /// Index one message. Auto-injected entries are skipped — they
@@ -178,16 +220,34 @@ impl SessionIndex {
     }
 
     /// Run a search and shape hits with windowed context. Limits clamp
-    /// to `MAX_HITS_PER_QUERY` and `MAX_WINDOW_ITEMS`.
+    /// to `MAX_HITS_PER_QUERY` and `MAX_WINDOW_ITEMS`. Per-session
+    /// title and summary contributions are added to the best message
+    /// hit's score with their respective boost factors.
     pub fn search(&self, query: &str, opts: &SearchOptions) -> Vec<SessionHit> {
         let limit = opts.limit.clamp(1, MAX_HITS_PER_QUERY);
         let context_before = opts.context_before;
         let context_after = opts.context_after;
 
-        // Pull more raw hits than we'll keep — role-weighting can
-        // reshuffle top-K, and filters drop arbitrary candidates.
+        // Pull more raw hits than we'll keep — role-weighting and
+        // session-level boosts can reshuffle top-K, and filters drop
+        // arbitrary candidates.
         let raw_limit = (limit * 4).clamp(limit, MAX_HITS_PER_QUERY * 4);
         let raw = self.bm25.search(query, raw_limit);
+
+        // Pre-compute session-level boosts for any session that has
+        // a non-zero title or summary contribution to this query.
+        let title_boost: HashMap<u64, f64> = self
+            .title_index
+            .search(query, MAX_HITS_PER_QUERY * 4)
+            .into_iter()
+            .map(|(id, score)| (id, score * TITLE_BOOST))
+            .collect();
+        let summary_boost: HashMap<u64, f64> = self
+            .summary_index
+            .search(query, MAX_HITS_PER_QUERY * 4)
+            .into_iter()
+            .map(|(id, score)| (id, score * SUMMARY_BOOST))
+            .collect();
 
         let mut hits: Vec<SessionHit> = Vec::with_capacity(raw.len());
         let mut seen: HashMap<u64, ()> = HashMap::new();
@@ -214,7 +274,9 @@ impl SessionIndex {
             let Some(meta) = self.docs.get(&mref) else {
                 continue;
             };
-            let weighted = score * role_weight(&meta.role, meta.tool_name.is_some());
+            let mut weighted = score * role_weight(&meta.role, meta.tool_name.is_some());
+            weighted += title_boost.get(&mref.session_id).copied().unwrap_or(0.0);
+            weighted += summary_boost.get(&mref.session_id).copied().unwrap_or(0.0);
             let window = self.build_window(mref, context_before, context_after);
             hits.push(SessionHit {
                 session_id: mref.session_id,

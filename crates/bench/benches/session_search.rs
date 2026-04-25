@@ -24,7 +24,7 @@ fn build_index(messages: usize) -> SessionIndex {
     let mut session_ids = Vec::with_capacity(session_count);
     for s in 0..session_count {
         let handle = SessionHandle::new(format!("crab_tester_{s}"));
-        let id = idx.ensure_session(&handle, "crab", "tester", "", now, now);
+        let id = idx.ensure_session(&handle, "crab", "tester", "", None, now, now);
         session_ids.push(id);
     }
     for (i, (_doc_idx, text)) in corpus.into_iter().enumerate() {
@@ -59,7 +59,7 @@ fn bench_insert(c: &mut Criterion) {
                 let mut idx = build_index(prepop);
                 let handle = SessionHandle::new("crab_tester_live");
                 let now = "2026-04-25T00:00:00Z";
-                let session_id = idx.ensure_session(&handle, "crab", "tester", "", now, now);
+                let session_id = idx.ensure_session(&handle, "crab", "tester", "", None, now, now);
                 let entry = HistoryEntry::user("a fresh message arrives with words to index");
                 b.iter(|| {
                     idx.insert_message(session_id, &entry);
@@ -89,7 +89,7 @@ fn bench_rebuild(c: &mut Criterion) {
                     let mut session_ids = Vec::with_capacity(session_count);
                     for s in 0..session_count {
                         let handle = SessionHandle::new(format!("crab_tester_{s}"));
-                        let id = idx.ensure_session(&handle, "crab", "tester", "", now, now);
+                        let id = idx.ensure_session(&handle, "crab", "tester", "", None, now, now);
                         session_ids.push(id);
                     }
                     for (i, (_, text)) in corpus.iter().enumerate() {

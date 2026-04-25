@@ -101,6 +101,7 @@ pub(super) fn create_session(
         title: String::new(),
         updated_at: now,
         message_count: 0,
+        summary: None,
     };
     let meta_bytes = serde_json::to_vec(&meta)?;
     atomic_write(&session_meta_path(storage, &slug), &meta_bytes)?;

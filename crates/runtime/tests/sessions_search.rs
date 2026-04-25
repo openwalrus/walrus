@@ -19,6 +19,7 @@ fn ensure(index: &mut SessionIndex, handle: &SessionHandle) -> u64 {
         "crab",
         "tester",
         handle.as_str(),
+        None,
         "2026-04-25T00:00:00Z",
         "2026-04-25T00:00:00Z",
     )
@@ -69,6 +70,7 @@ fn agent_filter_excludes_other_agents() {
         "crab",
         "other",
         "",
+        None,
         "2026-04-25T00:00:00Z",
         "2026-04-25T00:00:00Z",
     );
@@ -80,6 +82,7 @@ fn agent_filter_excludes_other_agents() {
         "crab",
         "tester",
         "",
+        None,
         "2026-04-25T00:00:00Z",
         "2026-04-25T00:00:00Z",
     );
@@ -155,6 +158,7 @@ fn ensure_session_is_idempotent_and_refreshes_meta() {
         "crab",
         "tester",
         "old-title",
+        None,
         "2026-04-25T00:00:00Z",
         "2026-04-25T00:00:00Z",
     );
@@ -163,6 +167,7 @@ fn ensure_session_is_idempotent_and_refreshes_meta() {
         "crab",
         "tester",
         "new-title",
+        None,
         "2026-04-25T00:00:00Z",
         "2026-04-25T00:00:01Z",
     );
@@ -172,6 +177,80 @@ fn ensure_session_is_idempotent_and_refreshes_meta() {
     let hits = idx.search("anchor", &SearchOptions::default());
     assert_eq!(hits[0].title, "new-title");
     assert_eq!(hits[0].updated_at, "2026-04-25T00:00:01Z");
+}
+
+#[test]
+fn summary_boost_outranks_message_only_match() {
+    let mut idx = SessionIndex::new();
+    // Both sessions contain a single user message that mentions
+    // "rollback" once. One additionally has a compaction summary
+    // that mentions rollback — the summary boost should win.
+    let plain = h("crab_a_1");
+    let plain_id = idx.ensure_session(
+        &plain,
+        "crab",
+        "a",
+        "",
+        None,
+        "2026-04-25T00:00:00Z",
+        "2026-04-25T00:00:00Z",
+    );
+    idx.insert_message(plain_id, &HistoryEntry::user("we tried rollback"));
+
+    let boosted = h("crab_b_1");
+    let boosted_id = idx.ensure_session(
+        &boosted,
+        "crab",
+        "b",
+        "",
+        Some("the rollback recovered the deploy"),
+        "2026-04-25T00:00:00Z",
+        "2026-04-25T00:00:00Z",
+    );
+    idx.insert_message(boosted_id, &HistoryEntry::user("we tried rollback"));
+
+    let hits = idx.search("rollback", &SearchOptions::default());
+    assert_eq!(hits.len(), 2);
+    assert_eq!(
+        hits[0].session_handle.as_ref().unwrap(),
+        &boosted,
+        "session with a summary that contains the query should outrank one without"
+    );
+    assert!(hits[0].score > hits[1].score);
+}
+
+#[test]
+fn title_boost_outranks_title_only_message() {
+    let mut idx = SessionIndex::new();
+    // Two equivalent message hits; one session also has a matching
+    // title. Title boost should pull it ahead.
+    let plain = h("crab_c_1");
+    let plain_id = idx.ensure_session(
+        &plain,
+        "crab",
+        "c",
+        "",
+        None,
+        "2026-04-25T00:00:00Z",
+        "2026-04-25T00:00:00Z",
+    );
+    idx.insert_message(plain_id, &HistoryEntry::user("ranking sanity"));
+
+    let titled = h("crab_d_1");
+    let titled_id = idx.ensure_session(
+        &titled,
+        "crab",
+        "d",
+        "ranking",
+        None,
+        "2026-04-25T00:00:00Z",
+        "2026-04-25T00:00:00Z",
+    );
+    idx.insert_message(titled_id, &HistoryEntry::user("ranking sanity"));
+
+    let hits = idx.search("ranking", &SearchOptions::default());
+    assert_eq!(hits.len(), 2);
+    assert_eq!(hits[0].session_handle.as_ref().unwrap(), &titled);
 }
 
 #[test]

@@ -84,6 +84,7 @@ impl Storage for InMemoryStorage {
                     title: String::new(),
                     updated_at: now,
                     message_count: 0,
+                    summary: None,
                 }
             },
             messages: Vec::new(),

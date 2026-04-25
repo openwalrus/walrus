@@ -58,6 +58,7 @@ impl<C: Config> Runtime<C> {
             if !snapshot.meta.created_at.is_empty() {
                 conversation.created_at_iso = snapshot.meta.created_at;
             }
+            conversation.summary = snapshot.meta.summary;
             conversation.handle = Some(handle);
         }
         self.conversations.write().await.insert(id, slot);
@@ -346,6 +347,9 @@ impl<C: Config> Runtime<C> {
         let mut compacted = false;
         let indexable_entries: Vec<wcore::model::HistoryEntry>;
         if let Some(summary) = compact_summary {
+            // Stash the summary on the conversation so the next
+            // `meta()` call surfaces it to disk and to the index.
+            conversation.summary = Some(summary.clone());
             // Archive first — if this fails, don't write a dangling
             // marker that points at nothing. Archives are keyed by the
             // session's storage slug so each session's phases stay
@@ -395,6 +399,7 @@ impl<C: Config> Runtime<C> {
             agent,
             created_by,
             &meta.title,
+            meta.summary.as_deref(),
             &meta.created_at,
             &meta.updated_at,
         );

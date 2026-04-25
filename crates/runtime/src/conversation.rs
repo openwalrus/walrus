@@ -23,6 +23,10 @@ pub struct Conversation {
     /// and overwritten on resume from `ConversationMeta.created_at`;
     /// never bumped after that.
     pub created_at_iso: String,
+    /// Latest compaction summary, written by overflow compaction and
+    /// contributed to session search ranking (3× boost). `None` until
+    /// the first compaction.
+    pub summary: Option<String>,
     /// Persistent conversation identity, assigned by the storage layer.
     /// `None` until the first persistence call.
     pub handle: Option<ConversationHandle>,
@@ -37,6 +41,7 @@ impl Conversation {
             title: String::new(),
             created_at: Instant::now(),
             created_at_iso: chrono::Utc::now().to_rfc3339(),
+            summary: None,
             handle: None,
         }
     }
@@ -53,6 +58,7 @@ impl Conversation {
             title: self.title.clone(),
             updated_at: chrono::Utc::now().to_rfc3339(),
             message_count: self.history.len() as u64,
+            summary: self.summary.clone(),
         }
     }
 }

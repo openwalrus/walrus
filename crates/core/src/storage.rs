@@ -182,7 +182,9 @@ pub struct SessionSummary {
 ///
 /// `created_at` is immutable — written once when the session is
 /// created. `updated_at` and `message_count` are bumped on every
-/// `append_session_messages` / `update_session_meta`.
+/// `append_session_messages` / `update_session_meta`. `summary` is
+/// emitted by overflow compaction and contributes to session search
+/// ranking (3× boost).
 ///
 /// Old session files (pre-0185) may carry a `topic` or `uptime_secs`
 /// field. Serde silently ignores unknown keys (no
@@ -200,6 +202,8 @@ pub struct ConversationMeta {
     pub updated_at: String,
     #[serde(default)]
     pub message_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 /// A trace entry persisted alongside messages.

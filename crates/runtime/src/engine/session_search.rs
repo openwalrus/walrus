@@ -43,6 +43,7 @@ impl<C: Config> Runtime<C> {
                 &snapshot.meta.agent,
                 &snapshot.meta.created_by,
                 &snapshot.meta.title,
+                snapshot.meta.summary.as_deref(),
                 &snapshot.meta.created_at,
                 &snapshot.meta.updated_at,
             );
