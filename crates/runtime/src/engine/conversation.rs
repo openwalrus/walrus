@@ -325,7 +325,9 @@ impl<C: Config> Runtime<C> {
     }
 
     /// Persist messages to the session repo. Handles ensure_handle,
-    /// compact markers, and meta updates.
+    /// compact markers, and meta updates. Also threads each newly
+    /// persisted entry into the session search index so `search_sessions`
+    /// finds live work without waiting for a process restart.
     pub(crate) fn persist_messages(
         &self,
         conversation: &mut Conversation,
@@ -341,6 +343,8 @@ impl<C: Config> Runtime<C> {
         };
         let storage = self.storage();
 
+        let mut compacted = false;
+        let indexable_entries: Vec<wcore::model::HistoryEntry>;
         if let Some(summary) = compact_summary {
             // Archive first — if this fails, don't write a dangling
             // marker that points at nothing. Archives are keyed by the
@@ -348,6 +352,7 @@ impl<C: Config> Runtime<C> {
             // grouped under one prefix in memory.
             if let Some(archive_name) = self.write_archive(handle.as_str(), summary) {
                 let _ = storage.append_session_compact(handle, &archive_name);
+                compacted = true;
                 if conversation.history.len() > 1 {
                     let tail: Vec<_> = conversation.history[1..]
                         .iter()
@@ -355,7 +360,12 @@ impl<C: Config> Runtime<C> {
                         .cloned()
                         .collect();
                     let _ = storage.append_session_messages(handle, &tail);
+                    indexable_entries = tail;
+                } else {
+                    indexable_entries = Vec::new();
                 }
+            } else {
+                indexable_entries = Vec::new();
             }
         } else {
             let new_entries: Vec<_> = conversation.history[pre_run_len..]
@@ -364,11 +374,33 @@ impl<C: Config> Runtime<C> {
                 .cloned()
                 .collect();
             let _ = storage.append_session_messages(handle, &new_entries);
+            indexable_entries = new_entries;
         }
         if !event_trace.is_empty() {
             let _ = storage.append_session_events(handle, event_trace);
         }
-        let _ = storage.update_session_meta(handle, &conversation.meta(agent, created_by));
+        let meta = conversation.meta(agent, created_by);
+        let _ = storage.update_session_meta(handle, &meta);
+
+        // After storage is updated, reflect the same change into the
+        // search index. Compaction flushes the session's prior
+        // postings before re-indexing so old (pre-compact) hits don't
+        // shadow the new working context.
+        let mut index = self.session_index.write();
+        if compacted && let Some(&id) = index.handle_to_session_id(handle.as_str()) {
+            index.forget_session(id);
+        }
+        let session_id = index.ensure_session(
+            handle,
+            agent,
+            created_by,
+            &meta.title,
+            &meta.created_at,
+            &meta.updated_at,
+        );
+        for entry in &indexable_entries {
+            index.insert_message(session_id, entry);
+        }
     }
 
     pub(crate) fn spawn_title_generation(

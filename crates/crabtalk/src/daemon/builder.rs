@@ -206,6 +206,9 @@ impl<P: Provider + 'static> Daemon<P> {
         runtime.set_models(models);
         let mut runtime = runtime;
         Self::register_agents(&mut runtime, &dirs)?;
+        if let Err(e) = runtime.rebuild_session_index() {
+            tracing::warn!("session index rebuild failed: {e}");
+        }
         Ok((runtime, mcp_handler, node_hook, os_hook, ask_hook))
     }
 
@@ -259,6 +262,13 @@ impl<P: Provider + 'static> Daemon<P> {
             Arc::new(crate::hooks::memory::MemoryHook::new(
                 memory,
                 storage.clone(),
+            )),
+        );
+
+        node_hook.register_hook(
+            "sessions",
+            Arc::new(crate::hooks::sessions::SessionsHook::<P>::new(
+                runtime_once.clone(),
             )),
         );
 
