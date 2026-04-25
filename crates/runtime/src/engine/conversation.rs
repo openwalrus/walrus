@@ -55,7 +55,9 @@ impl<C: Config> Runtime<C> {
             conversation.history =
                 self.resumed_history(snapshot.archive.as_deref(), snapshot.history);
             conversation.title = snapshot.meta.title;
-            conversation.uptime_secs = snapshot.meta.uptime_secs;
+            if !snapshot.meta.created_at.is_empty() {
+                conversation.created_at_iso = snapshot.meta.created_at;
+            }
             conversation.handle = Some(handle);
         }
         self.conversations.write().await.insert(id, slot);
@@ -81,7 +83,7 @@ impl<C: Config> Runtime<C> {
                 agent,
                 sender,
                 message_count: c.history.len() as u64,
-                alive_secs: c.uptime_secs,
+                alive_secs: c.created_at.elapsed().as_secs(),
                 title: c.title.clone(),
             });
         }
@@ -305,12 +307,10 @@ impl<C: Config> Runtime<C> {
         conversation_mutex: Arc<Mutex<Conversation>>,
         agent: &str,
         created_by: &str,
-        run_start: std::time::Instant,
         pre_run_len: usize,
         compact_summary: Option<String>,
         event_trace: &[wcore::EventLine],
     ) {
-        conversation.uptime_secs += run_start.elapsed().as_secs();
         self.persist_messages(
             conversation,
             agent,
