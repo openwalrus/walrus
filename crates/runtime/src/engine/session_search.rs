@@ -26,19 +26,19 @@ impl<C: Config> Runtime<C> {
         self.session_index.read().search(query, opts)
     }
 
-    /// Rebuild the session search index from storage. Called on
-    /// startup; idempotent — safe to re-run, though it does discard
-    /// in-flight live edits to the index.
+    /// Rebuild the session search index from storage. Builds the new
+    /// index off-lock and atomically swaps it in, so concurrent
+    /// `search_sessions` callers see either the old index or the new
+    /// one — never an empty in-between. Safe to re-run at any time.
     pub fn rebuild_session_index(&self) -> anyhow::Result<()> {
         let storage = self.storage();
         let summaries = storage.list_sessions()?;
-        let mut index = self.session_index.write();
-        *index = crate::sessions::SessionIndex::new();
+        let mut fresh = crate::sessions::SessionIndex::new();
         for summary in summaries {
             let Some(snapshot) = storage.load_session(&summary.handle)? else {
                 continue;
             };
-            let session_id = index.ensure_session(
+            let session_id = fresh.ensure_session(
                 &summary.handle,
                 &snapshot.meta.agent,
                 &snapshot.meta.created_by,
@@ -48,9 +48,10 @@ impl<C: Config> Runtime<C> {
                 &snapshot.meta.updated_at,
             );
             for entry in &snapshot.history {
-                index.insert_message(session_id, entry);
+                fresh.insert_message(session_id, entry);
             }
         }
+        *self.session_index.write() = fresh;
         Ok(())
     }
 }

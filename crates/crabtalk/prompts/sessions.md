@@ -34,3 +34,9 @@ Limits:
 - Snippets are truncated at 1024 bytes.
 - Auto-injected entries (recall blocks, env blocks) are not
   indexed — you won't see them in results.
+- Tool-result content and tool-call arguments are excluded from
+  the search index — they often contain credentials or other
+  sensitive output. Tool **names** are still searchable, so
+  "find sessions where I ran `shell`" works. Window context
+  still shows tool output for matched conversations, which is
+  the same boundary as resuming the session.

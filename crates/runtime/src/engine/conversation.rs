@@ -391,7 +391,7 @@ impl<C: Config> Runtime<C> {
         // postings before re-indexing so old (pre-compact) hits don't
         // shadow the new working context.
         let mut index = self.session_index.write();
-        if compacted && let Some(&id) = index.handle_to_session_id(handle.as_str()) {
+        if compacted && let Some(id) = index.handle_to_session_id(handle.as_str()) {
             index.forget_session(id);
         }
         let session_id = index.ensure_session(

@@ -63,11 +63,7 @@ fn format_hits(hits: &[SessionHit]) -> String {
 }
 
 fn format_hit(hit: &SessionHit) -> String {
-    let handle = hit
-        .session_handle
-        .as_ref()
-        .map(|h| h.as_str().to_owned())
-        .unwrap_or_default();
+    let handle = hit.session_handle.as_str();
     let title = if hit.title.is_empty() {
         "(untitled)".to_owned()
     } else {

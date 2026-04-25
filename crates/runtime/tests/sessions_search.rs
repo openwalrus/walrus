@@ -39,7 +39,7 @@ fn search_returns_hit_with_handle_and_window() {
     let hits = idx.search("cron", &SearchOptions::default());
     assert_eq!(hits.len(), 1);
     let hit = &hits[0];
-    assert_eq!(hit.session_handle.as_ref().unwrap(), &handle);
+    assert_eq!(&hit.session_handle, &handle);
     assert!(!hit.window.is_empty());
     assert!(hit.window.iter().any(|w| w.snippet.contains("cron")));
 }
@@ -95,7 +95,7 @@ fn agent_filter_excludes_other_agents() {
 
     let hits = idx.search("foobar", &opts);
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].session_handle.as_ref().unwrap(), &mine);
+    assert_eq!(&hits[0].session_handle, &mine);
 }
 
 #[test]
@@ -114,8 +114,7 @@ fn user_messages_outweigh_assistant_for_same_match() {
     let hits = idx.search("deploy pipeline", &SearchOptions::default());
     assert!(hits.len() >= 2);
     assert_eq!(
-        hits[0].session_handle.as_ref().unwrap(),
-        &user_session,
+        &hits[0].session_handle, &user_session,
         "user role weight should rank above assistant for identical content"
     );
 }
@@ -212,8 +211,7 @@ fn summary_boost_outranks_message_only_match() {
     let hits = idx.search("rollback", &SearchOptions::default());
     assert_eq!(hits.len(), 2);
     assert_eq!(
-        hits[0].session_handle.as_ref().unwrap(),
-        &boosted,
+        &hits[0].session_handle, &boosted,
         "session with a summary that contains the query should outrank one without"
     );
     assert!(hits[0].score > hits[1].score);
@@ -250,13 +248,57 @@ fn title_boost_outranks_title_only_message() {
 
     let hits = idx.search("ranking", &SearchOptions::default());
     assert_eq!(hits.len(), 2);
-    assert_eq!(hits[0].session_handle.as_ref().unwrap(), &titled);
+    assert_eq!(&hits[0].session_handle, &titled);
 }
 
 #[test]
-fn role_filtering_via_helpers() {
+fn tool_result_content_is_not_searchable() {
+    let mut idx = SessionIndex::new();
+    let handle = h("crab_tester_priv");
+    let sid = ensure(&mut idx, &handle);
+    // A tool result containing what looks like a credential. Indexing
+    // its content would let any future search query surface it as a
+    // free-text hit — secrets must not appear via keyword recall.
+    idx.insert_message(
+        sid,
+        &HistoryEntry::tool(
+            "Authorization: Bearer sk-very-secret-token",
+            "call-1",
+            "shell",
+        ),
+    );
+    let hits = idx.search("Bearer", &SearchOptions::default());
+    assert!(
+        hits.is_empty(),
+        "tool-result content must not be indexed for search"
+    );
+
+    // But the function name on a sibling tool-call assistant message
+    // is still searchable so "find conversations where shell ran"
+    // works.
     use wcore::model::ToolCall;
-    // Tool-call assistant indexes the function name + args.
+    let call = ToolCall {
+        index: None,
+        id: "call-1".into(),
+        kind: wcore::model::ToolType::Function,
+        function: wcore::model::FunctionCall {
+            name: "shell".into(),
+            arguments: "Authorization: Bearer sk-very-secret-token".into(),
+        },
+    };
+    idx.insert_message(sid, &HistoryEntry::assistant("", None, Some(&[call])));
+    let by_name = idx.search("shell", &SearchOptions::default());
+    assert_eq!(by_name.len(), 1, "tool name must still be searchable");
+    let by_args = idx.search("Bearer", &SearchOptions::default());
+    assert!(
+        by_args.is_empty(),
+        "tool-call arguments must not be indexed for search"
+    );
+}
+
+#[test]
+fn tool_call_assistant_indexes_function_name_only() {
+    use wcore::model::ToolCall;
     let mut idx = SessionIndex::new();
     let handle = h("crab_tester_7");
     let sid = ensure(&mut idx, &handle);
@@ -271,9 +313,21 @@ fn role_filtering_via_helpers() {
     };
     idx.insert_message(sid, &HistoryEntry::assistant("", None, Some(&[call])));
 
-    let hits = idx.search("rebuild_index", &SearchOptions::default());
-    assert_eq!(hits.len(), 1, "tool-call args should be searchable");
-    let item = &hits[0].window[0];
+    // Function name is indexed — finding "I ran shell" is the
+    // primary use case for searching tool-call activity.
+    let by_name = idx.search("shell", &SearchOptions::default());
+    assert_eq!(by_name.len(), 1);
+    let item = &by_name[0].window[0];
     assert!(matches!(item.role, Role::Assistant));
     assert_eq!(item.tool_name.as_deref(), Some("shell"));
+    // The display snippet still includes the args so window context
+    // is informative — just not searchable.
+    assert!(item.snippet.contains("rebuild_index"));
+
+    // Arguments are deliberately not in the BM25 index.
+    let by_args = idx.search("rebuild_index", &SearchOptions::default());
+    assert!(
+        by_args.is_empty(),
+        "tool-call arguments must not be indexed for search"
+    );
 }

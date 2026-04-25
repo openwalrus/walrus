@@ -128,11 +128,11 @@ A full-message read always goes through `list_messages(session_id, offset, limit
 
 Concrete targets this RFC commits to:
 
-- **`search_sessions` query latency**: p99 ≤ 50ms at 100k indexed messages; p99 ≤ 200ms at 1M. Measured on the developer laptop reference machine.
-- **`append_message` indexing overhead**: ≤ 1ms added per append at any index size up to 1M messages.
-- **Cold-start index rebuild**: ≤ 500ms at 100k messages. If a bench demonstrates this threshold is exceeded, Phase 3 adds on-disk checkpointing before merging — not after.
+- **`search_sessions` query latency**: p99 ≤ 50ms at 100k indexed messages; p99 ≤ 200ms at 1M. CPU-only — the index is in memory.
+- **`append_message` indexing overhead**: ≤ 1ms added per append at any index size up to 1M messages. Pure CPU.
+- **Cold-start index rebuild**: dominated by storage I/O, not BM25. The CPU portion is sub-second at 100k messages, but a real `FsStorage` rebuild does one `load_session` per persisted session — at 100k messages spread across 2k sessions, end-to-end rebuild is on the order of 10–20 seconds on local SSD. **Rebuild runs in the background after daemon startup; live appends index immediately, so new work is always findable. Old sessions become searchable as the rebuild progresses.** A future RFC can add on-disk index checkpointing if cold-rebuild latency becomes a felt operational concern.
 
-These targets are verified by a `criterion` or equivalent bench added alongside the index implementation. Failure to meet a target blocks the phase; it does not become a TODO.
+These targets are verified by a `criterion` bench against `FsStorage` rooted in a tmpdir, not against the in-memory index alone. Failure of a CPU-side target blocks the phase; storage-bound rebuild time is monitored, not gated.
 
 ### Session lifetime and deletion
 

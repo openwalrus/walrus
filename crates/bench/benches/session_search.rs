@@ -1,19 +1,39 @@
 //! Session search benchmark — verifies the RFC 0185 performance budget.
 //!
-//! Targets:
-//! - `search` p99 ≤ 50ms at 100k indexed messages (p99 ≤ 200ms at 1M).
-//! - `insert_message` ≤ 1ms at any scale up to 1M messages.
-//! - Cold-start `rebuild` ≤ 500ms at 100k messages.
+//! Targets at 100k indexed messages:
+//! - `search` p99 ≤ 50ms
+//! - `insert_message` ≤ 1ms (CPU only — storage I/O not on this path)
+//! - Cold-start `rebuild` ≤ 500ms end-to-end (includes `list_sessions`
+//!   + `load_session` reads against `FsStorage` on a tmpdir)
 //!
 //! `criterion` reports mean times by default; we run a few sizes so a
 //! regression sticks out as a step change.
 
+use crabtalk::storage::FsStorage;
 use crabtalk_bench::generate_corpus;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use runtime::sessions::{SearchOptions, SessionIndex};
-use wcore::{model::HistoryEntry, storage::SessionHandle};
+use runtime::{
+    Config, Runtime,
+    sessions::{SearchOptions, SessionIndex},
+};
+use std::sync::Arc;
+use tempfile::TempDir;
+use wcore::{
+    AgentConfig,
+    model::{HistoryEntry, Model},
+    storage::{SessionHandle, Storage},
+    testing::provider::TestProvider,
+};
 
 const SESSION_SIZE: usize = 50; // messages per synthetic session
+
+struct BenchCfg;
+
+impl Config for BenchCfg {
+    type Storage = FsStorage;
+    type Provider = TestProvider;
+    type Env = ();
+}
 
 fn build_index(messages: usize) -> SessionIndex {
     let mut idx = SessionIndex::new();
@@ -32,6 +52,48 @@ fn build_index(messages: usize) -> SessionIndex {
         idx.insert_message(session_id, &HistoryEntry::user(text));
     }
     idx
+}
+
+/// Populate a real `FsStorage` rooted in a tempdir with `messages`
+/// synthetic messages spread across `messages / SESSION_SIZE`
+/// sessions. Returns the dir guard plus a Runtime that points at it,
+/// so a benchmark iteration can call `rebuild_session_index`
+/// end-to-end including I/O.
+fn build_runtime_with_storage(messages: usize) -> (TempDir, Runtime<BenchCfg>) {
+    let dir = TempDir::new().expect("tempdir");
+    let storage = Arc::new(FsStorage::new(
+        dir.path().to_path_buf(),
+        dir.path().join("sessions"),
+        Vec::new(),
+    ));
+    let session_count = (messages / SESSION_SIZE).max(1);
+    let corpus = generate_corpus(messages);
+
+    let mut handles = Vec::with_capacity(session_count);
+    for s in 0..session_count {
+        let h = storage
+            .create_session("crab", &format!("tester_{s}"))
+            .expect("create_session");
+        handles.push(h);
+    }
+    for (i, (_, text)) in corpus.into_iter().enumerate() {
+        let session_idx = i % session_count;
+        let entry = HistoryEntry::user(text);
+        storage
+            .append_session_messages(&handles[session_idx], &[entry])
+            .expect("append_session_messages");
+    }
+
+    let memory = Arc::new(parking_lot::RwLock::new(memory::Memory::new()));
+    let runtime = Runtime::<BenchCfg>::new(
+        Model::new(TestProvider::with_chunks(vec![])),
+        Arc::new(()),
+        storage,
+        memory,
+        wcore::ToolRegistry::new(),
+    );
+    runtime.add_agent(AgentConfig::new("crab"));
+    (dir, runtime)
 }
 
 fn bench_search(c: &mut Criterion) {
@@ -72,31 +134,19 @@ fn bench_insert(c: &mut Criterion) {
 
 fn bench_rebuild(c: &mut Criterion) {
     let mut group = c.benchmark_group("session_search/rebuild");
+    // End-to-end cold-start: list_sessions + load_session per session
+    // against a real `FsStorage` rooted in a tempdir, then rebuild
+    // the BM25 index. Storage setup is done once outside the timer.
     for messages in [10_000usize, 100_000] {
-        // The "rebuild" we benchmark is reconstructing the index from
-        // pre-tokenized messages — i.e., the CPU work that happens
-        // after `Storage::list_sessions` returns. Storage I/O is
-        // measured separately if it ever becomes interesting.
         group.bench_with_input(
             BenchmarkId::from_parameter(messages),
             &messages,
             |b, &messages| {
-                let corpus = generate_corpus(messages);
-                let session_count = (messages / SESSION_SIZE).max(1);
-                let now = "2026-04-25T00:00:00Z";
+                let (_dir, runtime) = build_runtime_with_storage(messages);
                 b.iter(|| {
-                    let mut idx = SessionIndex::new();
-                    let mut session_ids = Vec::with_capacity(session_count);
-                    for s in 0..session_count {
-                        let handle = SessionHandle::new(format!("crab_tester_{s}"));
-                        let id = idx.ensure_session(&handle, "crab", "tester", "", None, now, now);
-                        session_ids.push(id);
-                    }
-                    for (i, (_, text)) in corpus.iter().enumerate() {
-                        let session_id = session_ids[i % session_count];
-                        idx.insert_message(session_id, &HistoryEntry::user(text.clone()));
-                    }
-                    idx
+                    runtime
+                        .rebuild_session_index()
+                        .expect("rebuild_session_index");
                 });
             },
         );

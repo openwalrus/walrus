@@ -3,7 +3,7 @@
 //! Uses `Env<()>` with InMemoryStorage. Every test gets its own
 //! in-memory storage — no shared global state, no filesystem I/O, no node.
 
-use crabtalk_runtime::{Config, Runtime};
+use crabtalk_runtime::{Config, Runtime, sessions::SearchOptions};
 use futures_util::StreamExt;
 use std::sync::Arc;
 use wcore::{
@@ -305,4 +305,31 @@ async fn stream_to_nonexistent_conversation_yields_error() {
     } else {
         panic!("expected Done event");
     }
+}
+
+#[tokio::test]
+async fn send_to_indexes_messages_for_search() {
+    // Wires the full pipeline: Runtime::send_to → persist_messages →
+    // SessionIndex live insert → search_sessions returns the hit.
+    let provider = TestProvider::with_chunks(vec![text_chunks("deploys are wedged")]);
+    let runtime = runtime(provider);
+    runtime.add_agent(AgentConfig::new("crab"));
+
+    let conversation_id = runtime
+        .get_or_create_conversation("crab", "test-search")
+        .await
+        .unwrap();
+    runtime
+        .send_to(conversation_id, "why is the deploy stuck", "", None)
+        .await
+        .unwrap();
+
+    let hits = runtime.search_sessions("deploy", &SearchOptions::default());
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].agent, "crab");
+    assert_eq!(hits[0].sender, "test-search");
+    assert!(
+        hits[0].window.iter().any(|w| w.snippet.contains("deploy")),
+        "window must surface the matched message snippet"
+    );
 }

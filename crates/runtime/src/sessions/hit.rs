@@ -40,11 +40,12 @@ impl Default for SearchOptions {
 }
 
 /// One result of a session search — points at the matching message
-/// and carries a bounded window of surrounding context.
+/// and carries a bounded window of surrounding context. Sessions are
+/// addressed by `session_handle` (the storage slug, stable across
+/// process restarts); the index's internal session id is not exposed.
 #[derive(Debug, Clone)]
 pub struct SessionHit {
-    pub session_id: u64,
-    pub session_handle: Option<SessionHandle>,
+    pub session_handle: SessionHandle,
     pub msg_idx: u32,
     pub score: f64,
     pub title: String,
