@@ -23,10 +23,25 @@ berm_lang::harnesses! {
         fn run(command: &str, cwd: &str, env: &[(&str, &str)]) -> Vec<u8>;
     }
 
-    /// The runtime, as a harness sees it.
-    mod protocol {
-        /// Send one encoded `ClientMessage`; the reply is an encoded `ServerMessage`.
-        fn call(message: &[u8]) -> Vec<u8>;
+    /// The other agents in this runtime.
+    mod peers {
+        /// Name them. The reply is an encoded `AgentList` carrying no configs.
+        fn list() -> Vec<u8>;
+    }
+
+    /// The declaring agent's own past conversations.
+    mod sessions {
+        /// Search them. `request` is an encoded `SearchSessionsMsg`, the reply
+        /// an encoded `SessionHitList`.
+        fn search(request: &[u8]) -> Vec<u8>;
+    }
+
+    /// The skills the declaring agent named.
+    mod skills {
+        /// Name them. The reply is an encoded `SkillList`.
+        fn list() -> Vec<u8>;
+        /// One skill's instructions. The reply is an encoded `SkillBody`.
+        fn get(name: &str) -> Vec<u8>;
     }
 
     /// Requests to the hosts a declaration named.

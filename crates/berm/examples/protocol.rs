@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     let linked = Berm::load(
         &engine,
         &elf,
-        &[crabtalk_berm::Protocol::new(
+        &crabtalk_berm::Protocol::new(
             protocol.clone(),
             tokio::runtime::Handle::current(),
             crabtalk_berm::Scope {
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
                 agent: store::AgentId::default(),
             },
         )
-        .harness()],
+        .harnesses(),
     )?;
     let unlinked = Berm::load(&engine, &elf, &[])?;
 

@@ -22,7 +22,7 @@ extern crate alloc;
 mod tools {
     use alloc::string::String;
     use berm_crabtalk::{
-        proto::{ClientMessage, SearchSessionsMsg, SessionHit, client_message, server_message},
+        proto::{SearchSessionsMsg, SessionHit},
         protocol,
     };
     use berm_lang::{Failed, Out, tool::parse};
@@ -36,30 +36,23 @@ mod tools {
     pub fn search_sessions(args: &[u8], out: &mut Out) -> Result<(), Failed> {
         let input: SearchSessions = parse(args, out)?;
 
-        let request = ClientMessage {
-            msg: Some(client_message::Msg::SearchSessions(SearchSessionsMsg {
-                query: input.query,
-                limit: input.limit,
-                context_before: input.context_before,
-                context_after: input.context_after,
-                // Whatever goes here is replaced by the host with the agent
-                // that declared this harness.
-                agent: String::new(),
-                sender: input.sender,
-            })),
+        let request = SearchSessionsMsg {
+            query: input.query,
+            limit: input.limit,
+            context_before: input.context_before,
+            context_after: input.context_after,
+            // Whatever goes here is replaced by the host with the agent that
+            // declared this harness.
+            agent: String::new(),
+            sender: input.sender,
         };
 
-        let reply = match protocol::call(request) {
-            Ok(reply) => reply,
+        let list = match protocol::sessions(&request) {
+            Ok(list) => list,
             Err(error) => {
                 out.write(error.as_bytes());
                 return Err(Failed);
             }
-        };
-
-        let Some(server_message::Msg::SessionHits(list)) = reply.msg else {
-            out.write(b"the runtime did not return session hits");
-            return Err(Failed);
         };
 
         if list.hits.is_empty() {

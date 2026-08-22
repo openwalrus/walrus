@@ -21,10 +21,7 @@ extern crate alloc;
 #[berm_lang::harness(buffer = 262144)]
 mod tools {
     use alloc::{string::String, vec::Vec};
-    use berm_crabtalk::{
-        proto::{ClientMessage, GetSkillMsg, ListSkillsMsg, client_message, server_message},
-        protocol,
-    };
+    use berm_crabtalk::protocol;
     use berm_lang::{Failed, Out, tool::parse};
     use core::fmt::Write;
 
@@ -112,34 +109,17 @@ mod tools {
 
     /// One skill's instructions, or `None` if the runtime has no such skill.
     fn load(name: &str) -> Option<String> {
-        let request = ClientMessage {
-            msg: Some(client_message::Msg::GetSkill(GetSkillMsg {
-                name: String::from(name),
-            })),
-        };
-        match protocol::call(request).ok()?.msg {
-            Some(server_message::Msg::SkillBody(skill)) => Some(skill.body),
-            _ => None,
-        }
+        protocol::skill(name).ok().map(|skill| skill.body)
     }
 
     /// Every skill the runtime knows, as `(name, description)`.
     fn list(out: &mut Out) -> Result<Vec<(String, String)>, Failed> {
-        let request = ClientMessage {
-            msg: Some(client_message::Msg::ListSkills(ListSkillsMsg {})),
-        };
-
-        let reply = match protocol::call(request) {
-            Ok(reply) => reply,
+        let list = match protocol::skills() {
+            Ok(list) => list,
             Err(error) => {
                 out.write(error.as_bytes());
                 return Err(Failed);
             }
-        };
-
-        let Some(server_message::Msg::SkillList(list)) = reply.msg else {
-            out.write(b"the runtime did not return a skill list");
-            return Err(Failed);
         };
 
         Ok(list

@@ -30,7 +30,14 @@ so an under-specified declaration reaches **nothing** rather than everything.
 | `fs` | Files | `root` |
 | `exec` | Commands | `root` |
 | `http` | The network | `hosts` |
-| `protocol` | The daemon's own API | the declaring agent |
+| `peers` | The other agents' names | — |
+| `sessions` | The agent's own past conversations | the declaring agent |
+| `skills` | The skills the agent named | `skills` |
+
+The runtime is reached through one door per operation rather than one door
+carrying every message. A door narrows by existing: `sessions::search` cannot
+name an agent, because it takes a search and returns hits and there is no field
+in it to mean anything else.
 
 That is also why the daemon's own port is not a side door: `http` can only
 reach a name written in `hosts`, so `localhost` is unreachable unless somebody

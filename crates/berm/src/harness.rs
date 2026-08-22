@@ -4,9 +4,9 @@
 //! manifest at load — the per-agent declaration is already the gate, so there
 //! is no meta-tool to go through (RFC 0205).
 //!
-//! An image is keyed by what determines it — the ELF, the grants it runs
-//! under, and the scope a granted system harness closes over — not by the agent
-//! that declared it. The grant still decides: two agents installing the same
+//! An image is keyed by what determines it — the ELF, the arguments bounding
+//! it, and the scope its runtime doors close over — not by the agent that
+//! declared it. The argument still decides: two agents installing the same
 //! ELF against different roots hash differently and get two linkers. But two
 //! that declare it identically share one image, and a rename changes nothing
 //! about the key, because the agent's name was never part of it.
@@ -219,7 +219,8 @@ impl BermHarness {
         if !declaration.hosts.is_empty() {
             system.push(Http::new(declaration.hosts.clone(), self.reactor.clone()).harness());
         }
-        system.push(Protocol::new(self.protocol.clone(), self.reactor.clone(), scope).harness());
+        system
+            .extend(Protocol::new(self.protocol.clone(), self.reactor.clone(), scope).harnesses());
 
         let harness = Berm::load(&self.engine, &elf, &system)?;
         registry.images.insert(digest, Arc::new(harness));
