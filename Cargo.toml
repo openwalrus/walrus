@@ -28,8 +28,8 @@ skill = { path = "lib/skill", package = "crabtalk-skill", version = "0.0.24" }
 berm-crabtalk = { path = "lib/berm", version = "0.0.24" }
 
 # berm — https://github.com/crabtalk/berm
-berm = "0.0.3"
-berm-lang = "0.0.3"
+berm = "0.0.4"
+berm-lang = "0.0.4"
 
 # crabllm
 crabllm-core = { git = "https://github.com/crabtalk/crabllm", branch = "dev" }
