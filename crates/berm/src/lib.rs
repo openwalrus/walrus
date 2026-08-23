@@ -11,6 +11,10 @@
 //! - [`fs`], [`exec`], [`Http`] and [`Protocol`], the implementations behind the
 //!   `crabtalk` namespace — [`berm::Harness`] values, which is all an embedder
 //!   ever hands over
+//! - `call`, which answers berm's own `berm.call` so one harness can reach
+//!   another. berm names it and serves it for nobody: a [`berm::Berm`] is a
+//!   single harness with nothing to dispatch to, so a host running more than
+//!   one is what registers it
 //!
 //! The split is what makes "berm is embeddable without crabtalk" a fact the
 //! compiler checks rather than a promise: berm's dependency list has no
@@ -23,6 +27,7 @@ pub use protocol::{Dispatch, Protocol, Scope};
 pub mod exec;
 pub mod fs;
 
+mod call;
 mod harness;
 mod http;
 mod protocol;

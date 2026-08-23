@@ -15,7 +15,7 @@
 //! the length of a command, so dispatch hands the invocation to the blocking
 //! pool rather than running it on an async worker.
 
-use crate::{Dispatch, Http, Protocol, Scope, exec, fs};
+use crate::{Dispatch, Http, Protocol, Scope, call, exec, fs};
 use anyhow::Context as _;
 use berm::{Berm, Config, Engine, Manifest};
 use crabllm_core::{FunctionDef, Tool, ToolType};
@@ -33,6 +33,14 @@ use tokio::runtime::Handle;
 /// built with.
 type Digest = [u8; 32];
 
+/// One agent's declarations against one session root — the key an image's
+/// `berm.call` resolves sibling names in.
+type Resolution = (AgentId, Option<PathBuf>);
+
+/// What a [`Resolution`] resolved to, in declaration order: the name each
+/// harness was declared under, and the image it named.
+type Resolved = Vec<(String, Digest)>;
+
 /// What an agent declared, kept because a `Root::Session` declaration cannot
 /// be built until a session names its root — which is after the agent
 /// resolved, and every time a new root turns up.
@@ -46,7 +54,7 @@ struct Declared {
 /// One lock over all three maps: they are only ever read or written together,
 /// and a single guard is one fewer ordering rule to get wrong.
 #[derive(Default)]
-struct Registry {
+pub struct Registry {
     /// Digest to the image it names.
     images: BTreeMap<Digest, Arc<Berm>>,
     /// What each agent asked for, as written.
@@ -55,7 +63,12 @@ struct Registry {
     /// under one session root. `None` is the resolution a session that named
     /// no root gets, and the one `scoped_tools` reads — tool *names* do not
     /// vary with the root, only the subtree they reach.
-    agents: BTreeMap<(AgentId, Option<PathBuf>), Vec<Digest>>,
+    ///
+    /// Each carries the name it was declared under, which is what `berm.call`
+    /// resolves. Carried rather than recovered by zipping this against
+    /// [`Declared::harnesses`]: a declaration that fails to load is absent
+    /// here, so position stops meaning the same thing in both.
+    agents: BTreeMap<Resolution, Resolved>,
 }
 
 impl Registry {
@@ -64,16 +77,31 @@ impl Registry {
     /// the registry holds what is declared now, not what once was.
     fn sweep(&mut self) {
         let Self { images, agents, .. } = self;
-        images.retain(|digest, _| agents.values().flatten().any(|d| d == digest));
+        images.retain(|digest, _| agents.values().flatten().any(|(_, d)| d == digest));
     }
 
     /// The images `agent` resolved to under `root`, in order.
     fn of(&self, agent: &AgentId, root: Option<&Path>) -> impl Iterator<Item = &Arc<Berm>> {
+        self.resolved(agent, root)
+            .filter_map(|(_, digest)| self.images.get(digest))
+    }
+
+    /// The image `agent` declared as `name` under `root`.
+    pub fn named(&self, agent: &AgentId, root: Option<&Path>, name: &str) -> Option<&Arc<Berm>> {
+        self.resolved(agent, root)
+            .find(|(declared, _)| declared == name)
+            .and_then(|(_, digest)| self.images.get(digest))
+    }
+
+    fn resolved(
+        &self,
+        agent: &AgentId,
+        root: Option<&Path>,
+    ) -> impl Iterator<Item = &(String, Digest)> {
         self.agents
             .get(&(*agent, root.map(Path::to_path_buf)))
             .into_iter()
             .flatten()
-            .filter_map(|digest| self.images.get(digest))
     }
 
     /// Forget every resolution of `agent`, whatever root it was against.
@@ -84,7 +112,12 @@ impl Registry {
 
 pub struct BermHarness {
     engine: Engine,
-    registry: RwLock<Registry>,
+    /// Shared rather than owned because `berm.call` holds it too: a harness
+    /// reaching a sibling resolves the name when it calls, against whatever is
+    /// registered then. Closing each image over a table built at load instead
+    /// could not express a cycle, and would rebuild on every declaration
+    /// change.
+    registry: Arc<RwLock<Registry>>,
     /// Where images live, one `{name}.elf` each.
     images: PathBuf,
     /// The runtime's own door, connected once the daemon that implements it
@@ -115,7 +148,7 @@ impl BermHarness {
         config.cache_dir(cache);
         Ok(Self {
             engine: Engine::new(&config)?,
-            registry: RwLock::new(Registry::default()),
+            registry: Arc::new(RwLock::new(Registry::default())),
             images,
             protocol,
             reactor: Handle::try_current()
@@ -160,7 +193,7 @@ impl BermHarness {
         let mut digests = Vec::new();
         for declaration in &harnesses {
             match self.image(registry, agent, declaration, &skills, root) {
-                Ok(digest) => digests.push(digest),
+                Ok(digest) => digests.push((declaration.name.clone(), digest)),
                 Err(error) => tracing::warn!(
                     %agent,
                     harness = declaration.name,
@@ -203,7 +236,7 @@ impl BermHarness {
         };
         let root = bind(declaration.root.as_ref(), session_root)?;
 
-        let digest = digest(&elf, declaration, root.as_deref(), &scope);
+        let digest = digest(&elf, declaration, root.as_deref(), session_root, &scope);
         if registry.images.contains_key(&digest) {
             return Ok(digest);
         }
@@ -221,6 +254,11 @@ impl BermHarness {
         }
         system
             .extend(Protocol::new(self.protocol.clone(), self.reactor.clone(), scope).harnesses());
+        system.push(call::harness(
+            self.registry.clone(),
+            *agent,
+            session_root.map(Path::to_path_buf),
+        ));
 
         let harness = Berm::load(&self.engine, &elf, &system)?;
         registry.images.insert(digest, Arc::new(harness));
@@ -296,12 +334,28 @@ pub fn bind(declared: Option<&Root>, session: Option<&Path>) -> anyhow::Result<O
 /// two sessions in one project share and two in different projects do not.
 /// `scope` adds what only the agent knows, and narrowing is per-agent, so two
 /// agents declaring the same session harness are deliberately two images.
-fn digest(elf: &[u8], declaration: &HarnessConfig, root: Option<&Path>, scope: &Scope) -> Digest {
+///
+/// `session` is here for `berm.call`, which closes over the resolution key
+/// rather than over a path. Only a [`Root::Session`] declaration reaches the
+/// bound `root` above, so without this a rootless or fixed-root image would be
+/// shared across sessions while resolving its siblings against whichever one
+/// compiled it first.
+fn digest(
+    elf: &[u8],
+    declaration: &HarnessConfig,
+    root: Option<&Path>,
+    session: Option<&Path>,
+    scope: &Scope,
+) -> Digest {
     let mut hasher = Sha256::new();
     hasher.update(elf);
     hasher.update([0]);
     if let Some(root) = root {
         hasher.update(root.as_os_str().as_encoded_bytes());
+    }
+    hasher.update([0]);
+    if let Some(session) = session {
+        hasher.update(session.as_os_str().as_encoded_bytes());
     }
     hasher.update([0]);
     for host in &declaration.hosts {

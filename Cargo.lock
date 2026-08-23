@@ -225,6 +225,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-fixture"
+version = "0.0.24"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
 name = "berm-lang"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

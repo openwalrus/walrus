@@ -1,0 +1,16 @@
+[package]
+name = "berm-fixture"
+description = "A harness that calls a harness — what `cargo run --example call` drives"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "fixture"
+path = "src/bin/main.rs"
+
+[dependencies]
+berm-lang.workspace = true
