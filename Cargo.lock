@@ -593,8 +593,9 @@ dependencies = [
 
 [[package]]
 name = "crabllm-core"
-version = "0.0.24"
-source = "git+https://github.com/crabtalk/crabllm?branch=dev#4dc92947a81c2296e04b412c710d8a7b4fb8e167"
+version = "0.0.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0396d81bc16d43898bd73195ecf149b08f21d911d812c1c10cf1ed645ef004ef"
 dependencies = [
  "bytes",
  "futures",
@@ -608,8 +609,9 @@ dependencies = [
 
 [[package]]
 name = "crabllm-http"
-version = "0.0.24"
-source = "git+https://github.com/crabtalk/crabllm?branch=dev#4dc92947a81c2296e04b412c710d8a7b4fb8e167"
+version = "0.0.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eb5266598be9bac9b0f2b307497c66ea0b76ea146c38bade4462de5ae244669"
 dependencies = [
  "bytes",
  "crabllm-core",
@@ -629,8 +631,9 @@ dependencies = [
 
 [[package]]
 name = "crabllm-provider"
-version = "0.0.24"
-source = "git+https://github.com/crabtalk/crabllm?branch=dev#4dc92947a81c2296e04b412c710d8a7b4fb8e167"
+version = "0.0.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3aa1f237e69e2a10f5a331b7c40d11c1beac85063e559ba01789991e935423d"
 dependencies = [
  "bytes",
  "crabllm-core",
@@ -643,13 +646,15 @@ dependencies = [
 
 [[package]]
 name = "crabllm-sdk"
-version = "0.0.24"
-source = "git+https://github.com/crabtalk/crabllm?branch=dev#4dc92947a81c2296e04b412c710d8a7b4fb8e167"
+version = "0.0.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "701f21f41dbda17339b06c68fb797e66b1b0343d77d0f77e3192f9a7cf267a3a"
 dependencies = [
  "bytes",
  "crabllm-core",
  "crabllm-http",
  "futures",
+ "parking_lot",
  "tracing",
 ]
 

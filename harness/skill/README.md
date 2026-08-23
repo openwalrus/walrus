@@ -1,6 +1,7 @@
 # berm-skill
 
-Skill discovery and loading as a harness. Grants `protocol:read`; the format
+Skill discovery and loading as a harness, through `skills::list` and
+`skills::get`. Both are narrowed to what the declaring agent named; the format
 itself is [`crabtalk-skill`](../../lib/skill).
 
 ```sh

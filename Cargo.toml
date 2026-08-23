@@ -31,10 +31,10 @@ berm-crabtalk = { path = "lib/berm", version = "0.0.24" }
 berm = "0.0.4"
 berm-lang = "0.0.4"
 
-# crabllm
-crabllm-core = { git = "https://github.com/crabtalk/crabllm", branch = "dev" }
-crabllm-sdk = { git = "https://github.com/crabtalk/crabllm", branch = "dev", default-features = false }
-crabllm-provider = { git = "https://github.com/crabtalk/crabllm", branch = "dev", default-features = false }
+# crabllm — https://github.com/crabtalk/crabllm
+crabllm-core = "0.0.25"
+crabllm-sdk = { version = "0.0.25", default-features = false }
+crabllm-provider = { version = "0.0.25", default-features = false }
 
 # bench
 criterion = { version = "0.5", features = ["html_reports"] }
