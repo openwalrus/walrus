@@ -1,6 +1,6 @@
 # Protocol
 
-The protocol is the daemon's surface for everything outside its process. Clients speak it over a socket; a harness holding a `protocol:*` capability speaks the same one from inside a sandbox. There is no second vocabulary for harnesses.
+The protocol is the daemon's surface for everything outside its process. Clients speak it over a socket. A harness does not: it reaches the runtime through one capability per operation, and the host builds the `ClientMessage` on its behalf.
 
 ## Addressing
 
@@ -25,14 +25,15 @@ There is no working directory on the wire. `StreamMsg.cwd` was removed: the daem
 
 A client declares no tools either. `SendMsg.tools` and `StreamMsg.tools` carried schemas the daemon advertised to the model and invoked back over the stream; both are reserved field numbers now, along with the forward event and its reply. A tool runs where the runtime does, which is what a harness is for.
 
-## Capability groups
+## One capability per operation
 
-A harness reaches this surface through `crabtalk.protocol.call`, and what it may send is checked on decode against the group its declaration granted. The check is **default-deny**: a message type in no group reaches nothing, and a group the harness was not granted is the same.
+A harness reaches the runtime through a capability per operation — `peers::list`, `sessions::search`, `skills::list`, `skills::get` — rather than through one that carries any message. Each narrows by existing: `sessions::search` takes a search and returns hits, and there is no field in it that could name an agent or spend a token. Nothing is checked on decode, because there is nothing to decode a policy out of.
 
-- `protocol:read` — the catalogue, and nothing that spends tokens.
-- `protocol:sessions` — ranked excerpts of the declaring agent's own past conversations.
+Each also owns its reply, which is where narrowing lives. `peers::list` returns agents with `AgentInfo.config` cleared, because a config carries its MCPs by value — `env` and a literal `Authorization` header among them.
 
-Anything destructive, anything that answers on someone else's behalf, and anything whose payload is substantially a credential belongs to no group a third party can hold. Where a request carries a scope the harness should not choose — `SearchSessions.agent` — the host **overwrites** it rather than validating it. Refusing a wrong value would only teach the harness to send the right one.
+Where a request carries a scope the harness should not choose — `SearchSessions.agent` — the host **overwrites** it rather than validating it. Refusing a wrong value would only teach the harness to send the right one.
+
+Anything destructive, and anything that answers on someone else's behalf, is behind no capability at all. Reaching another agent is a turn spent on its behalf, so `peers` names them and stops there.
 
 ## Transports
 
@@ -48,7 +49,7 @@ Concurrency is unbounded at this layer: nothing throttles or serializes incoming
 
 `Server::dispatch(ClientMessage) -> Stream<ServerMessage>` is the single entry into the daemon's operations. It inspects the `ClientMessage` variant and routes to the corresponding method on the `Server` trait.
 
-It is also the door a harness comes back through. A harness granted a `protocol:*` capability sends the same `ClientMessage` a client would and receives the same reply — one vocabulary, not two. What it is *allowed* to send is checked on decode against the group its declaration granted, and default-deny: a message named in no group reaches nothing.
+It is also what a harness comes back through, one remove away: a runtime capability builds the `ClientMessage` its operation means and takes the one reply, so the daemon answers a harness exactly as it answers a client. The harness supplies a search, not a message.
 
 - Request-response operations (`ping`, `kill_conversation`, `compact_conversation`, administrative calls) yield exactly one `ServerMessage`.
 - Streaming operations (`stream`, `subscribe_events`) yield many `ServerMessage` values over time.

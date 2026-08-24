@@ -120,7 +120,7 @@ These belong to the server that hosts the runtime.
 - `subscribe_events()` — optional subscription to a cross-conversation event stream, for servers that expose agent events to external clients.
 Methods that the runtime does not need in a given context have default implementations. An `Env` implementation may leave event broadcasting at its default.
 
-Instruction discovery and working-directory resolution are not here. The daemon does not read the user's filesystem — a client renders local instructions into the message it sends, and a harness reaches files through the root its declaration grants.
+Instruction discovery and working-directory resolution are not here. The daemon does not read the user's filesystem — a client renders local instructions into the message it sends, and a harness reaches files through the root its declaration names.
 
 ## Harness
 

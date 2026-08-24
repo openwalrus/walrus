@@ -1,7 +1,7 @@
 # berm-os
 
-`bash`, `read`, `edit`, `glob` and `grep` as a harness. Grants `fs` and `exec`,
-both bounded by `root`. Searching honours `.gitignore`.
+`bash`, `read`, `edit`, `glob` and `grep` as a harness. Reaches the machine
+through `fs` and `exec`, both bounded by `root`. Searching honours `.gitignore`.
 
 ```sh
 cargo test -p berm-os    # tools run natively, no RISC-V toolchain
