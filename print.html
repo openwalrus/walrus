@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36c66832.js";
+            window.path_to_searchindex_js = "searchindex-a626fde2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-fe74260f.js"></script>
@@ -248,13 +248,13 @@ them — agents, sessions, memory, skills, harnesses, search — comes for free.
 <h2 id="one-source-two-builds"><a class="header" href="#one-source-two-builds">One source, two builds</a></h2>
 <p>A harness is one crate compiled two ways. Built <code>no_std</code> for RV64 it is a
 sandboxed ELF the daemon schedules, reaching the world only through
-capabilities its agent declared — the absence of a capability from its linker
-<em>is</em> the enforcement. Built with <code>std</code> it is compiled into the host and reaches
-those things directly.</p>
+capabilities its declaration bounded — the absence of a capability from its
+linker <em>is</em> the enforcement. Built with <code>std</code> it is compiled into the host and
+reaches those things directly.</p>
 <p>So compiled-in versus sandboxed is a build target, not an architecture, and
 <code>Harness</code> is the one name for both. What differs is confinement: as an ELF the
-declaration’s grants bound it; compiled in there is no linker to omit from, and
-the same grants are documentation. That follows from compiling something in
+declaration’s arguments bound it; compiled in there is no linker to omit from,
+and the same arguments are documentation. That follows from compiling something in
 being total trust — but it is one source under two security models, which is
 worth knowing before choosing a build.</p>
 <p><code>no_std</code> is the shared denominator rather than a floor. The compiled-in build
@@ -278,20 +278,20 @@ capability, granted and bounded by its argument.</p>
 compiled in, because the sandboxed build gets a fresh heap per invocation.
 Persisting through <code>fs</code> does not count — a file outlives the call. A live
 connection does not.</p>
-<h2 id="declarations-not-inference"><a class="header" href="#declarations-not-inference">Declarations, not inference</a></h2>
+<h2 id="arguments-not-lists"><a class="header" href="#arguments-not-lists">Arguments, not lists</a></h2>
 <p>The recurring rule, and the one worth defending hardest:</p>
 <blockquote>
-<p><strong>The declaration is the grant. The daemon never infers one from the other.</strong></p>
+<p><strong>The argument is the grant. A capability without one is never registered.</strong></p>
 </blockquote>
-<p>A harness’s manifest says what it <em>wants</em>; the agent’s <code>HarnessConfig</code> says
-what it <em>gets</em>. A manifest that could grant itself anything would make “what
-can this agent reach?” a question you answer by reading every image instead of
-one config file.</p>
-<p>The same rule explains why grants take arguments rather than booleans. <code>root</code>
-is the argument to <code>fs</code> and <code>exec</code>; <code>hosts</code> is the argument to <code>http</code>. Without
-the argument the capability is not registered at all, so an under-specified
-declaration reaches <em>nothing</em> rather than everything.</p>
-<p>And it is why a harness never chooses its own scope: <code>SearchSessions</code> carries
+<p><code>root</code> is the argument to <code>fs</code> and <code>exec</code>; <code>hosts</code> is the argument to <code>http</code>.
+An under-specified declaration reaches <em>nothing</em> rather than everything, and
+there is no separate list of permitted names to keep in step with it — a list
+could only ever restate what the arguments already decided, or contradict them.</p>
+<p>What a published image calls is the image’s business. One that never calls a
+capability needs no stopping; one that does is an image for exactly that, and
+choosing to install it is the decision. A shell-less environment is an image
+with no shell tool, not a shell tool with its host call withheld.</p>
+<p>And a harness never chooses its own scope: <code>SearchSessions</code> carries
 an <code>agent</code> filter, and the host <strong>overwrites</strong> it with whoever declared the
 harness. Refusing a wrong value would only teach the harness to send the right
 one.</p>
@@ -577,13 +577,14 @@ to everybody.</p>
 <p>This chapter describes the sandboxed build. The same source compiled with <code>std</code>
 is the same harness reaching the host directly; see
 <a href="#architecture">Architecture</a>.</p>
-<h2 id="the-grant-is-the-linker"><a class="header" href="#the-grant-is-the-linker">The grant is the linker</a></h2>
+<h2 id="the-argument-is-the-grant"><a class="header" href="#the-argument-is-the-grant">The argument is the grant</a></h2>
 <p>Host functions are keyed by number, and a number with nothing registered traps.
-So a capability the declaration did not grant is not <em>checked for</em> — it is
+So a capability the declaration did not bound is not <em>checked for</em> — it is
 absent from the linker the harness was instantiated with. <strong>Enforcement is the
 absence of code.</strong> There is no check to write and none to forget.</p>
-<p>Two capabilities ship with the sandbox because they are about the machine,
-which every host has:</p>
+<p>Every capability takes an argument, and the argument is not optional decoration
+— it <em>is</em> the grant. Without the argument the capability is never registered,
+so an under-specified declaration reaches <strong>nothing</strong> rather than everything.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -592,49 +593,41 @@ which every host has:</p>
 <tbody>
 <tr><td><code>fs</code></td><td>Files</td><td><code>root</code></td></tr>
 <tr><td><code>exec</code></td><td>Commands</td><td><code>root</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Anything about the <em>host</em> arrives as an embedder-supplied capability. Crabtalk
-supplies two:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Capability</th><th>Reaches</th><th>Bounded by</th></tr>
-</thead>
-<tbody>
-<tr><td><code>protocol:*</code></td><td>The daemon’s own API</td><td>the granted group, and the declaring agent</td></tr>
 <tr><td><code>http</code></td><td>The network</td><td><code>hosts</code></td></tr>
+<tr><td><code>peers</code></td><td>The other agents’ names</td><td>—</td></tr>
+<tr><td><code>sessions</code></td><td>The agent’s own past conversations</td><td>the declaring agent</td></tr>
+<tr><td><code>skills</code></td><td>The skills the agent named</td><td><code>skills</code></td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="the-argument-is-the-grant"><a class="header" href="#the-argument-is-the-grant">The argument is the grant</a></h2>
-<p>Every capability takes an argument, and the argument is not optional decoration
-— it <em>is</em> the grant. <code>root</code> bounds <code>fs</code> and <code>exec</code>; <code>hosts</code> bounds <code>http</code>.
-Without the argument the capability is never registered, so an under-specified
-declaration reaches <strong>nothing</strong> rather than everything.</p>
+<p>The runtime is reached through one door per operation rather than one door
+carrying every message. A door narrows by existing: <code>sessions::search</code> cannot
+name an agent, because it takes a search and returns hits and there is no field
+in it to mean anything else.</p>
 <p>That is also why the daemon’s own port is not a side door: <code>http</code> can only
 reach a name written in <code>hosts</code>, so <code>localhost</code> is unreachable unless somebody
 put it there.</p>
+<h2 id="the-image-is-the-grant"><a class="header" href="#the-image-is-the-grant">The image is the grant</a></h2>
+<p>There is no list of permitted capabilities beside those arguments. A published
+harness is a fixed ELF: one that never calls a capability does not need to be
+stopped from calling it, and one that does is a harness for exactly that. To
+run a shell-less environment, install an image with no shell tool — a tool that
+is absent cannot be called, where a tool present but starved of its host call
+is only a broken tool.</p>
 <h2 id="manifest-not-inference"><a class="header" href="#manifest-not-inference">Manifest, not inference</a></h2>
 <p>A harness carries <code>.berm.abi</code>, an ELF section holding its ABI version, tools,
-requested capabilities, and <code>usage</code>. A section rather than an export, because
-<strong>learning what a harness claims to be must not mean running it</strong> — the daemon
-reads a tool list, a schema, and usage text out of the file without compiling
-anything.</p>
-<p>What the manifest asks for is documentation. What the agent’s <code>HarnessConfig</code>
-grants is what it gets, and the daemon never infers one from the other. If a
-manifest could grant itself anything, “what can this agent reach?” would be a
-question you answer by reading every image instead of one config.</p>
+and <code>usage</code>. A section rather than an export, because <strong>learning what a harness
+claims to be must not mean running it</strong> — the daemon reads a tool list, a
+schema, and usage text out of the file without compiling anything.</p>
 <h2 id="images-are-content-addressed"><a class="header" href="#images-are-content-addressed">Images are content-addressed</a></h2>
-<p>An image is keyed by a digest of what determines it: the ELF, its <code>Grants</code>, the
-<code>Scope</code> its capabilities close over, and the granted hosts. Not by the agent
-that declared it.</p>
+<p>An image is keyed by a digest of what determines it: the ELF, the <code>root</code> and
+<code>hosts</code> bounding it, and the <code>Scope</code> its protocol door closes over. Not by the
+agent that declared it.</p>
 <p>Two agents that declare the same ELF against different roots hash differently
 and get two linkers. Two that declare it identically share one image. A rename
 changes nothing, because the agent’s name was never part of the key — but a
-per-agent narrowing <em>is</em> part of it, so two agents holding <code>protocol:sessions</code>
-deliberately get two images rather than sharing one narrowing.</p>
+per-agent narrowing <em>is</em> part of it, so two agents holding the same session
+harness deliberately get two images rather than sharing one narrowing.</p>
 <h2 id="invocation"><a class="header" href="#invocation">Invocation</a></h2>
 <p>Memory is per-invocation: a fresh store each call, nothing surviving between
 them. Anything a harness needs to persist belongs in a capability, not in its
