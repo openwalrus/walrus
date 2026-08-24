@@ -11,6 +11,10 @@
 //! - [`fs`], [`exec`], [`Http`] and [`Protocol`], the implementations behind the
 //!   `crabtalk` namespace — [`berm::Harness`] values, which is all an embedder
 //!   ever hands over
+//! - `call`, which answers berm's own `berm.call` so one harness can reach
+//!   another. berm names it and serves it for nobody: a [`berm::Berm`] is a
+//!   single harness with nothing to dispatch to, so a host running more than
+//!   one is what registers it
 //!
 //! The split is what makes "berm is embeddable without crabtalk" a fact the
 //! compiler checks rather than a promise: berm's dependency list has no
@@ -19,21 +23,13 @@
 pub use harness::{BermHarness, bind};
 pub use http::Http;
 pub use protocol::{Dispatch, Protocol, Scope};
-use std::{path::PathBuf, sync::LazyLock};
 
 pub mod exec;
 pub mod fs;
 
+mod call;
 mod harness;
 mod http;
 mod protocol;
 mod root;
 mod sys;
-
-/// Harness images (`~/.crabtalk/harnesses/`), one `{name}.elf` each.
-///
-/// Lives here rather than with the rest of the install layout because this
-/// crate is the only thing that loads an image — and the installer that will
-/// write them reaches crabtalk's side of berm, not the other way round.
-pub static HARNESSES_DIR: LazyLock<PathBuf> =
-    LazyLock::new(|| crabup::CONFIG_DIR.join("harnesses"));

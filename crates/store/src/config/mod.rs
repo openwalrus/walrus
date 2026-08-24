@@ -2,6 +2,7 @@
 
 pub mod cache;
 pub mod crabtalk;
+mod env;
 pub mod harness;
 pub mod hooks;
 pub mod llm;
@@ -9,7 +10,7 @@ pub mod mcp;
 pub mod system;
 
 pub use cache::CacheConfig;
-pub use crabtalk::{CONFIG_FILE, Config};
+pub use crabtalk::Config;
 pub use harness::{HarnessConfig, Root};
 pub use hooks::{HooksConfig, MemoryConfig};
 pub use llm::LlmConfig;

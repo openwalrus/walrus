@@ -8,12 +8,13 @@
 //! commands, HTTP, and the runtime itself, all under the `crabtalk` namespace.
 //!
 //! ```ignore
-//! use berm_crabtalk::{protocol, proto::{ClientMessage, ListAgentsMsg, client_message}};
+//! use berm_crabtalk::protocol;
 //!
-//! let reply = protocol::call(ClientMessage {
-//!     msg: Some(client_message::Msg::ListAgents(ListAgentsMsg {})),
-//! })?;
+//! let agents = protocol::peers()?;
 //! ```
+//!
+//! One door per operation, so a caller matches on nothing: what it asked for is
+//! what it gets back, or an error.
 
 #![no_std]
 

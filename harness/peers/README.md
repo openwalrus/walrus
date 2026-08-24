@@ -1,6 +1,7 @@
 # berm-peers
 
-Names the other agents in the runtime. One tool, one grant: `protocol:read`.
+Names the other agents in the runtime. One tool, one door: `peers::list`, which
+answers without the configs that carry their credentials.
 
 ```sh
 cargo test -p berm-peers
@@ -9,4 +10,4 @@ make harness
 
 ## License
 
-MIT
+Apache-2.0

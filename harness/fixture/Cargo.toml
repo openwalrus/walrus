@@ -1,6 +1,6 @@
 [package]
-name = "berm-os"
-description = "OS tools — bash, read, edit, glob, grep — as a Crabtalk harness"
+name = "berm-fixture"
+description = "A harness that calls a harness — what `cargo run --example call` drives"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,9 +9,8 @@ repository.workspace = true
 publish = false
 
 [[bin]]
-name = "os"
+name = "fixture"
 path = "src/bin/main.rs"
 
 [dependencies]
-berm-crabtalk.workspace = true
 berm-lang.workspace = true

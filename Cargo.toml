@@ -6,7 +6,7 @@ members = ["apps/*", "crates/*", "harness/*", "lib/*"]
 version = "0.0.24"
 edition = "2024"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/crabtalk/crabtalk"
 keywords = ["llm", "agent", "ai"]
 
@@ -28,13 +28,13 @@ skill = { path = "lib/skill", package = "crabtalk-skill", version = "0.0.24" }
 berm-crabtalk = { path = "lib/berm", version = "0.0.24" }
 
 # berm — https://github.com/crabtalk/berm
-berm = "0.0.3"
-berm-lang = "0.0.3"
+berm = "0.0.4"
+berm-lang = "0.0.4"
 
-# crabllm
-crabllm-core = { git = "https://github.com/crabtalk/crabllm", branch = "dev" }
-crabllm-sdk = { git = "https://github.com/crabtalk/crabllm", branch = "dev", default-features = false }
-crabllm-provider = { git = "https://github.com/crabtalk/crabllm", branch = "dev", default-features = false }
+# crabllm — https://github.com/crabtalk/crabllm
+crabllm-core = "0.0.25"
+crabllm-sdk = { version = "0.0.25", default-features = false }
+crabllm-provider = { version = "0.0.25", default-features = false }
 
 # bench
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -61,7 +61,11 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 dialoguer = "0.11"
 dirs = "6"
 flate2 = "1"
+globset = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
 heck = "0.5"
+ignore = "0.4"
 indicatif = "0.18"
 futures-core = "0.3"
 futures-util = "0.3"

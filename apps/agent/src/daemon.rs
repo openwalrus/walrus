@@ -1,24 +1,35 @@
 //! The daemon: a store, the runtime over it, and the sockets it answers on.
 
-use crate::backend::{Backend, STORE_PATH};
+use crate::backend::Backend;
 use crate::serve;
 use anyhow::Result;
-use crabtalk::CrabTalk;
+use crabtalk::{Config, CrabTalk};
 use std::{sync::Arc, time::Duration};
 
 /// How long a listener gets to drain after shutdown is broadcast.
 const DRAIN: Duration = Duration::from_secs(5);
 
-pub async fn start() -> Result<()> {
-    let store = Arc::new(Backend::open(&*STORE_PATH)?);
-    tracing::info!("store at {}", STORE_PATH.display());
+/// What this install starts the daemon with: the settings as written, and
+/// the two directories only an installed process can name.
+fn config() -> Result<Config> {
+    Ok(Config {
+        settings: store::Config::load(&crabup::dirs::CONFIG_FILE)?,
+        harnesses: crabup::dirs::HARNESSES_DIR.clone(),
+        cache: crabup::dirs::CACHE_DIR.join("berm"),
+    })
+}
 
-    let handle = CrabTalk::start(&crabup::CONFIG_DIR, store.clone()).await?;
+pub async fn start() -> Result<()> {
+    let config = config()?;
+    let store = Arc::new(Backend::open(&*crabup::dirs::STORE_FILE)?);
+    tracing::info!("store at {}", crabup::dirs::STORE_FILE.display());
+
+    let handle = CrabTalk::start(config, store.clone()).await?;
 
     #[cfg(unix)]
     let (socket, socket_join) = serve::socket(handle.inner.clone(), &handle.shutdown_tx)?;
     let (tcp_join, port) = serve::tcp(handle.inner.clone(), &handle.shutdown_tx)?;
-    std::fs::write(&*transport::TCP_PORT_FILE, port.to_string())?;
+    std::fs::write(&*crabup::dirs::PORT_FILE, port.to_string())?;
 
     handle.wait_until_ready().await?;
     tracing::info!("daemon ready");
@@ -33,7 +44,7 @@ pub async fn start() -> Result<()> {
         let _ = std::fs::remove_file(socket);
     }
     let _ = tokio::time::timeout(DRAIN, tcp_join).await;
-    let _ = std::fs::remove_file(&*transport::TCP_PORT_FILE);
+    let _ = std::fs::remove_file(&*crabup::dirs::PORT_FILE);
 
     store.checkpoint()
 }

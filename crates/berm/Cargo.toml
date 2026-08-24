@@ -6,7 +6,6 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
 
 [dependencies]
 berm.workspace = true
@@ -15,11 +14,14 @@ runtime.workspace = true
 store = { workspace = true, default-features = false }
 proto.workspace = true
 
-crabup = { workspace = true, default-features = false }
-
 anyhow.workspace = true
 bytes.workspace = true
+dirs.workspace = true
+globset.workspace = true
+grep-regex.workspace = true
+grep-searcher.workspace = true
 http.workspace = true
+ignore.workspace = true
 http-body-util.workspace = true
 hyper-tls.workspace = true
 hyper-util.workspace = true

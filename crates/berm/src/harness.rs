@@ -4,9 +4,9 @@
 //! manifest at load — the per-agent declaration is already the gate, so there
 //! is no meta-tool to go through (RFC 0205).
 //!
-//! An image is keyed by what determines it — the ELF, the grants it runs
-//! under, and the scope a granted system harness closes over — not by the agent
-//! that declared it. The grant still decides: two agents installing the same
+//! An image is keyed by what determines it — the ELF, the arguments bounding
+//! it, and the scope its runtime doors close over — not by the agent that
+//! declared it. The argument still decides: two agents installing the same
 //! ELF against different roots hash differently and get two linkers. But two
 //! that declare it identically share one image, and a rename changes nothing
 //! about the key, because the agent's name was never part of it.
@@ -15,7 +15,7 @@
 //! the length of a command, so dispatch hands the invocation to the blocking
 //! pool rather than running it on an async worker.
 
-use crate::{Dispatch, Http, Protocol, Scope, exec, fs};
+use crate::{Dispatch, Http, Protocol, Scope, call, exec, fs};
 use anyhow::Context as _;
 use berm::{Berm, Config, Engine, Manifest};
 use crabllm_core::{FunctionDef, Tool, ToolType};
@@ -33,6 +33,14 @@ use tokio::runtime::Handle;
 /// built with.
 type Digest = [u8; 32];
 
+/// One agent's declarations against one session root — the key an image's
+/// `berm.call` resolves sibling names in.
+type Resolution = (AgentId, Option<PathBuf>);
+
+/// What a [`Resolution`] resolved to, in declaration order: the name each
+/// harness was declared under, and the image it named.
+type Resolved = Vec<(String, Digest)>;
+
 /// What an agent declared, kept because a `Root::Session` declaration cannot
 /// be built until a session names its root — which is after the agent
 /// resolved, and every time a new root turns up.
@@ -46,7 +54,7 @@ struct Declared {
 /// One lock over all three maps: they are only ever read or written together,
 /// and a single guard is one fewer ordering rule to get wrong.
 #[derive(Default)]
-struct Registry {
+pub struct Registry {
     /// Digest to the image it names.
     images: BTreeMap<Digest, Arc<Berm>>,
     /// What each agent asked for, as written.
@@ -55,7 +63,12 @@ struct Registry {
     /// under one session root. `None` is the resolution a session that named
     /// no root gets, and the one `scoped_tools` reads — tool *names* do not
     /// vary with the root, only the subtree they reach.
-    agents: BTreeMap<(AgentId, Option<PathBuf>), Vec<Digest>>,
+    ///
+    /// Each carries the name it was declared under, which is what `berm.call`
+    /// resolves. Carried rather than recovered by zipping this against
+    /// [`Declared::harnesses`]: a declaration that fails to load is absent
+    /// here, so position stops meaning the same thing in both.
+    agents: BTreeMap<Resolution, Resolved>,
 }
 
 impl Registry {
@@ -64,16 +77,31 @@ impl Registry {
     /// the registry holds what is declared now, not what once was.
     fn sweep(&mut self) {
         let Self { images, agents, .. } = self;
-        images.retain(|digest, _| agents.values().flatten().any(|d| d == digest));
+        images.retain(|digest, _| agents.values().flatten().any(|(_, d)| d == digest));
     }
 
     /// The images `agent` resolved to under `root`, in order.
     fn of(&self, agent: &AgentId, root: Option<&Path>) -> impl Iterator<Item = &Arc<Berm>> {
+        self.resolved(agent, root)
+            .filter_map(|(_, digest)| self.images.get(digest))
+    }
+
+    /// The image `agent` declared as `name` under `root`.
+    pub fn named(&self, agent: &AgentId, root: Option<&Path>, name: &str) -> Option<&Arc<Berm>> {
+        self.resolved(agent, root)
+            .find(|(declared, _)| declared == name)
+            .and_then(|(_, digest)| self.images.get(digest))
+    }
+
+    fn resolved(
+        &self,
+        agent: &AgentId,
+        root: Option<&Path>,
+    ) -> impl Iterator<Item = &(String, Digest)> {
         self.agents
             .get(&(*agent, root.map(Path::to_path_buf)))
             .into_iter()
             .flatten()
-            .filter_map(|digest| self.images.get(digest))
     }
 
     /// Forget every resolution of `agent`, whatever root it was against.
@@ -84,7 +112,14 @@ impl Registry {
 
 pub struct BermHarness {
     engine: Engine,
-    registry: RwLock<Registry>,
+    /// Shared rather than owned because `berm.call` holds it too: a harness
+    /// reaching a sibling resolves the name when it calls, against whatever is
+    /// registered then. Closing each image over a table built at load instead
+    /// could not express a cycle, and would rebuild on every declaration
+    /// change.
+    registry: Arc<RwLock<Registry>>,
+    /// Where images live, one `{name}.elf` each.
+    images: PathBuf,
     /// The runtime's own door, connected once the daemon that implements it
     /// exists — which is after these images load, since it is built on them.
     protocol: Arc<OnceLock<Dispatch>>,
@@ -96,17 +131,25 @@ pub struct BermHarness {
 }
 
 impl BermHarness {
-    /// An engine whose generated code is cached under the config directory, so
-    /// a restart pays ~3ms per image instead of ~15ms.
-    /// `protocol` is filled by the daemon once it exists. Until then a granted
-    /// protocol harness is present but answers that it is not connected,
-    /// which is a clearer failure than a call that waits for one.
-    pub fn new(protocol: Arc<OnceLock<Dispatch>>) -> anyhow::Result<Self> {
+    /// Both directories come from the embedder, which is the only thing that
+    /// knows its own install: `images` is read from, and `cache` holds the
+    /// engine's generated code so a restart pays ~3ms per image instead of
+    /// ~15ms.
+    ///
+    /// `protocol` is filled by the daemon once it exists. Until then the door
+    /// is present but answers that it is not connected, which is a clearer
+    /// failure than a call that waits for one.
+    pub fn new(
+        protocol: Arc<OnceLock<Dispatch>>,
+        images: PathBuf,
+        cache: PathBuf,
+    ) -> anyhow::Result<Self> {
         let mut config = Config::new();
-        config.cache_dir(crabup::CONFIG_DIR.join("cache/berm"));
+        config.cache_dir(cache);
         Ok(Self {
             engine: Engine::new(&config)?,
-            registry: RwLock::new(Registry::default()),
+            registry: Arc::new(RwLock::new(Registry::default())),
+            images,
             protocol,
             reactor: Handle::try_current()
                 .context("crabtalk's system harnesses need a reactor to reach the runtime")?,
@@ -150,7 +193,7 @@ impl BermHarness {
         let mut digests = Vec::new();
         for declaration in &harnesses {
             match self.image(registry, agent, declaration, &skills, root) {
-                Ok(digest) => digests.push(digest),
+                Ok(digest) => digests.push((declaration.name.clone(), digest)),
                 Err(error) => tracing::warn!(
                     %agent,
                     harness = declaration.name,
@@ -176,7 +219,7 @@ impl BermHarness {
         skills: &[String],
         session_root: Option<&Path>,
     ) -> anyhow::Result<Digest> {
-        let path = crate::HARNESSES_DIR.join(format!("{}.elf", declaration.name));
+        let path = self.images.join(format!("{}.elf", declaration.name));
         let elf = std::fs::read(&path).map_err(|e| {
             anyhow::anyhow!(
                 "{}: {e} — `make harness` installs images here",
@@ -184,44 +227,38 @@ impl BermHarness {
             )
         })?;
 
-        // The declaration names system harnesses in crabtalk's vocabulary; berm
-        // takes values. Translating between them is what this function does,
-        // and the argument each value is built with is the grant — without a
-        // root, `fs` and `exec` are never constructed.
-        let granted = |name: &str| declaration.system.iter().any(|c| c == name);
-        let read = granted("protocol:read");
-        let sessions = granted("protocol:sessions");
-        let scope = (read || sessions).then(|| Scope {
-            read,
-            sessions,
+        // Every value here is built from the argument that bounds it, and that
+        // argument is the whole of the grant: no root, no `fs` and no `exec`;
+        // no hosts, no `http`.
+        let scope = Scope {
             skills: skills.to_vec(),
             agent: *agent,
-        });
-
+        };
         let root = bind(declaration.root.as_ref(), session_root)?;
 
-        let digest = digest(&elf, declaration, root.as_deref(), scope.as_ref());
+        let digest = digest(&elf, declaration, root.as_deref(), session_root, &scope);
         if registry.images.contains_key(&digest) {
             return Ok(digest);
         }
 
         let mut system = Vec::new();
         if let Some(root) = &root {
-            if granted("fs") {
-                system.push(fs::read(root.clone()));
-                system.push(fs::write(root.clone()));
-            }
-            if granted("exec") {
-                system.push(exec::run(root.clone()));
-            }
+            system.push(fs::read(root.clone()));
+            system.push(fs::write(root.clone()));
+            system.push(fs::glob(root.clone()));
+            system.push(fs::grep(root.clone()));
+            system.push(exec::run(root.clone()));
         }
-        if let Some(scope) = scope {
-            system
-                .push(Protocol::new(self.protocol.clone(), self.reactor.clone(), scope).harness());
-        }
-        if granted("http") && !declaration.hosts.is_empty() {
+        if !declaration.hosts.is_empty() {
             system.push(Http::new(declaration.hosts.clone(), self.reactor.clone()).harness());
         }
+        system
+            .extend(Protocol::new(self.protocol.clone(), self.reactor.clone(), scope).harnesses());
+        system.push(call::harness(
+            self.registry.clone(),
+            *agent,
+            session_root.map(Path::to_path_buf),
+        ));
 
         let harness = Berm::load(&self.engine, &elf, &system)?;
         registry.images.insert(digest, Arc::new(harness));
@@ -267,14 +304,24 @@ impl BermHarness {
 /// inside it, so a session cannot widen its own reach — and one that named no
 /// root gets the bound itself, which is what every declaration meant before a
 /// session could narrow at all.
+///
+/// This is where [`Root::Home`] becomes a path, because it is the last moment
+/// before one is needed and the first at which the running machine is the one
+/// answering.
 pub fn bind(declared: Option<&Root>, session: Option<&Path>) -> anyhow::Result<Option<PathBuf>> {
-    let (Some(Root::Session(bound)), Some(session)) = (declared, session) else {
-        return Ok(declared.map(|root| root.bound().to_path_buf()));
+    let bound = match declared {
+        None => return Ok(None),
+        Some(Root::Fixed(path)) => return Ok(Some(path.clone())),
+        Some(Root::Session(path)) => path.clone(),
+        Some(Root::Home) => dirs::home_dir().context("no home directory to bind a harness to")?,
+    };
+    let Some(session) = session else {
+        return Ok(Some(bound));
     };
     let session = session
         .to_str()
         .with_context(|| format!("session root {} is not utf-8", session.display()))?;
-    crate::root::resolve(bound, session).map(Some)
+    crate::root::resolve(&bound, session).map(Some)
 }
 
 /// The digest that names an image: the ELF, and everything that determines the
@@ -285,25 +332,30 @@ pub fn bind(declared: Option<&Root>, session: Option<&Path>) -> anyhow::Result<O
 /// The declaration covers which are constructed and what bounds them — `hosts`
 /// for `http`, and for `fs` and `exec` the already-bound `root`, which is what
 /// two sessions in one project share and two in different projects do not.
-/// `scope` adds what only the agent knows: `read` and `sessions` are already in
-/// the declaration, but the skills and the agent itself are not, and narrowing
-/// is per-agent, so two agents declaring the same session harness are
-/// deliberately two images.
+/// `scope` adds what only the agent knows, and narrowing is per-agent, so two
+/// agents declaring the same session harness are deliberately two images.
+///
+/// `session` is here for `berm.call`, which closes over the resolution key
+/// rather than over a path. Only a [`Root::Session`] declaration reaches the
+/// bound `root` above, so without this a rootless or fixed-root image would be
+/// shared across sessions while resolving its siblings against whichever one
+/// compiled it first.
 fn digest(
     elf: &[u8],
     declaration: &HarnessConfig,
     root: Option<&Path>,
-    scope: Option<&Scope>,
+    session: Option<&Path>,
+    scope: &Scope,
 ) -> Digest {
     let mut hasher = Sha256::new();
     hasher.update(elf);
-    for name in &declaration.system {
-        hasher.update(name.as_bytes());
-        hasher.update([0]);
-    }
     hasher.update([0]);
     if let Some(root) = root {
         hasher.update(root.as_os_str().as_encoded_bytes());
+    }
+    hasher.update([0]);
+    if let Some(session) = session {
+        hasher.update(session.as_os_str().as_encoded_bytes());
     }
     hasher.update([0]);
     for host in &declaration.hosts {
@@ -311,13 +363,11 @@ fn digest(
         hasher.update([0]);
     }
     hasher.update([0]);
-    if let Some(scope) = scope {
-        hasher.update(scope.agent.to_string().as_bytes());
+    hasher.update(scope.agent.to_string().as_bytes());
+    hasher.update([0]);
+    for skill in &scope.skills {
+        hasher.update(skill.as_bytes());
         hasher.update([0]);
-        for skill in &scope.skills {
-            hasher.update(skill.as_bytes());
-            hasher.update([0]);
-        }
     }
     hasher.finalize().into()
 }
@@ -357,7 +407,7 @@ impl runtime::Harness for BermHarness {
     /// available without instantiating anything.
     fn on_build_agent(&self, mut config: AgentConfig) -> AgentConfig {
         for declaration in &config.harnesses {
-            let path = crate::HARNESSES_DIR.join(format!("{}.elf", declaration.name));
+            let path = self.images.join(format!("{}.elf", declaration.name));
             let usage = std::fs::read(&path)
                 .ok()
                 .and_then(|elf| Manifest::from_elf(&elf).ok())
