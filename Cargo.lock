@@ -768,6 +768,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "crabtalk-code"
+version = "0.0.24"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crabtalk",
+ "crabtalk-proto",
+ "crabtalk-store",
+ "crabup",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "crabtalk-crabdb"
 version = "0.0.24"
 dependencies = [

@@ -14,7 +14,7 @@
 
 pub use agent::{Agents, validate_table_name};
 pub use event::{EventSubscription, Subscriptions};
-pub use harness::Harnesses;
+pub use harness::{Harnesses, digest};
 pub use memory::{Memory, MemoryEntry};
 pub use session::{Sessions, Weights};
 pub use skill::{Skill, SkillSummary, Skills};
