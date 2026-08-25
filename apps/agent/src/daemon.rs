@@ -21,6 +21,7 @@ fn config() -> Result<Config> {
 
 pub async fn start() -> Result<()> {
     let config = config()?;
+    relocate()?;
     let store = Arc::new(Backend::open(&*crabup::dirs::STORE_FILE)?);
     tracing::info!("store at {}", crabup::dirs::STORE_FILE.display());
 
@@ -47,6 +48,26 @@ pub async fn start() -> Result<()> {
     let _ = std::fs::remove_file(&*crabup::dirs::PORT_FILE);
 
     store.checkpoint()
+}
+
+/// Move a store written before there was a directory to share.
+///
+/// The daemon is no longer the only thing here that keeps one, so its own
+/// went from the install root into `store/`. An install that predates
+/// that has agents and sessions in the old place, and leaving them there
+/// would read as having lost them.
+fn relocate() -> Result<()> {
+    let (from, to) = (
+        &*crabup::dirs::LEGACY_STORE_FILE,
+        &*crabup::dirs::STORE_FILE,
+    );
+    if !from.exists() || to.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(&*crabup::dirs::STORE_DIR)?;
+    std::fs::rename(from, to)?;
+    tracing::info!("moved the store to {}", to.display());
+    Ok(())
 }
 
 /// SIGTERM is how whatever spawned this kills it; ctrl-c is the terminal case.

@@ -16,6 +16,7 @@ pub mod list;
 pub const CRATES: &[(&str, &str)] = &[
     ("crabtalk-agent", "crabtalkd"),
     ("crabtalk-cli", "crabtalk"),
+    ("crabtalk-code", "crab"),
 ];
 
 #[derive(clap::Parser, Debug)]

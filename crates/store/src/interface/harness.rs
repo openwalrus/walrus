@@ -60,7 +60,11 @@ impl<T: KVStorage> Harnesses for T {
 }
 
 /// Content address for a harness image.
-fn digest(bytes: &[u8]) -> String {
+///
+/// Public because it is part of the contract rather than of this
+/// implementation: two backends that key the same bytes differently
+/// would each be right and still disagree.
+pub fn digest(bytes: &[u8]) -> String {
     // FNV-1a: berm keys images by digest only to tell "same image" from
     // "different image", and this store never sees an adversary that
     // picks the bytes — the daemon does not download code.

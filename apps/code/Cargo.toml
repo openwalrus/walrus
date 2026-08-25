@@ -1,0 +1,39 @@
+[package]
+name = "crabtalk-code"
+description = "The Crabtalk coding agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[[bin]]
+name = "crab"
+path = "src/bin/main.rs"
+
+[features]
+default = ["native-tls"]
+native-tls = ["crabtalk/native-tls"]
+rustls = ["crabtalk/rustls"]
+
+[dependencies]
+crabtalk.workspace = true
+crabup.workspace = true
+proto = { workspace = true, features = ["server"] }
+store.workspace = true
+
+anyhow.workspace = true
+chrono.workspace = true
+crabllm-core.workspace = true
+crossterm.workspace = true
+futures-util.workspace = true
+heck.workspace = true
+ratatui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "fs"] }
+toml.workspace = true
+termimad.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

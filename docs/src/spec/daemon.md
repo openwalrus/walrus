@@ -8,10 +8,10 @@ The daemon owns:
 
 - **Transports** — UDS and TCP listeners. Listening endpoints belong to the daemon, not to individual clients or agents.
 - **Runtime** — a single shared runtime instance behind `RwLock`. Agents share the runtime; the runtime is never cloned per conversation.
-- **Harnesses** — the composite `Harness`. Two ship today: the one surfacing the tools of each agent's declared harnesses, and MCP. `Harness` is public API at the runtime layer, so an embedder registers their own.
+- **Harnesses** — the composite `Harness`. Three ship today: the one surfacing the tools of each agent's declared harness images, MCP, and memory. `Harness` is public API at the runtime layer, so an embedder registers their own.
 - **Event bus** — subscription table and fire callback. File-backed by `events/subscriptions.toml` under the config directory.
 - **MCP handler** — connections to external MCP servers and routing to the tools they advertise.
-- **Harness images** — compiled RV64 ELFs, keyed by a content digest of the ELF, its grants, and the scope its capabilities close over.
+- **Harness images** — compiled RV64 ELFs, keyed by a content digest of the ELF, the arguments bounding its capabilities, the session it resolved under, and the scope those capabilities close over.
 - **Configuration** — current `DaemonConfig`, reloaded in place on explicit reload.
 
 The daemon does not interpret tool semantics. Tool dispatch is the runtime's responsibility, routed through the composite.

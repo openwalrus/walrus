@@ -8,7 +8,7 @@ turn out to be arguments about which one someone means.
 
 ```
 protocol     clients, over a socket    any language, untrusted
-harness      what shapes an agent      declared per agent, one source, two builds
+harness      what shapes an agent      declared per agent, sandboxed or compiled in
 capability   what an agent reaches     bounded by its argument
 runtime      lifetime orchestration    turns, conversations, the agent loop
 store        data                      one key-value primitive, everything above it free
@@ -23,40 +23,38 @@ agent — an agent *is* its harnesses.
 
 A **capability** is a mechanism for reaching something that is not the agent:
 `fs` and `exec` for the machine, `http` for the network, MCP for other
-software. Calling another program is not shaping an agent, which is why MCP is
-a capability and never a harness.
+software, and `berm.call` for another harness.
 
-The **protocol** has capability groups because clients are outside the process
-entirely, and a harness reaching back through `crabtalk.protocol.call` is
-holding a client's surface. It stays exported whether or not anything shipped
-here uses it — who *may* write a harness justifies it, not who does.
+The **protocol** is what clients speak over the socket. A harness reaches the
+runtime through one capability per operation instead — `peers`, `sessions`,
+`skills` — each narrowing by existing rather than by a check run over a decoded
+message. `sessions::search` cannot name an agent because it takes a search and
+returns hits, and there is no field in it to mean anything else.
 
 `runtime` owns the *architecture of lifetime* — turns, conversations, the
 agent loop — and nothing else. `store` owns the data, and owns it behind a
 single primitive: implement five key-value methods and every interface above
 them — agents, sessions, memory, skills, harnesses, search — comes for free.
 
-## One source, two builds
+## Sandboxed and compiled in
 
-A harness is one crate compiled two ways. Built `no_std` for RV64 it is a
-sandboxed ELF the daemon schedules, reaching the world only through
-capabilities its declaration bounded — the absence of a capability from its
-linker *is* the enforcement. Built with `std` it is compiled into the host and
-reaches those things directly.
+A harness **image** is `no_std` for RV64 and nothing else: a sandboxed ELF the
+daemon schedules, reaching the world only through capabilities its declaration
+bounded — the absence of a capability from its linker *is* the enforcement.
+There is no `std` build of one. Off its target the crate still compiles, so
+`cargo test` can run the tools natively, but the capabilities there are
+`berm-lang` stubs a test arranges rather than anything that reaches out.
 
-So compiled-in versus sandboxed is a build target, not an architecture, and
-`Harness` is the one name for both. What differs is confinement: as an ELF the
-declaration's arguments bound it; compiled in there is no linker to omit from,
-and the same arguments are documentation. That follows from compiling something in
-being total trust — but it is one source under two security models, which is
-worth knowing before choosing a build.
+A **compiled-in** harness is native Rust inside the daemon, with the whole of
+`std`. MCP and memory are the two. It shares the `Harness` trait with an image
+and nothing else — not the source, not the confinement: there is no linker to
+omit from, so what bounds it is what it was written to do.
 
-`no_std` is the shared denominator rather than a floor. The compiled-in build
-inherits the sandbox's constraints instead of escaping them: sync, allocating
-through `alloc`. Anything that must keep state alive between invocations cannot
-make the trip, because a harness gets a fresh heap every call and persists
-through `fs` like anything else. MCP holds live connections, so MCP is compiled
-in and only compiled in — the same test, not a second one.
+So the two are different kinds rather than two builds of one thing, and what
+decides which a feature can be is state. An image gets a fresh heap every
+invocation and persists through `fs` like anything else, so anything holding
+something alive between calls cannot be one. MCP holds live connections; MCP is
+compiled in and only compiled in.
 
 ## Where does a thing go?
 
@@ -71,18 +69,18 @@ it is a harness and never a message.
 **2. Does it shape the agent, or reach past it?** What an agent remembers,
 loads, and knows of its own history shapes it — that is a harness, declared by
 the agents that want it. A mechanism for touching something outside is a
-capability, granted and bounded by its argument.
+capability, bounded by its argument.
 
 **3. Does it hold anything alive between calls?** If yes it can only be
-compiled in, because the sandboxed build gets a fresh heap per invocation.
-Persisting through `fs` does not count — a file outlives the call. A live
-connection does not.
+compiled in, because an image gets a fresh heap per invocation. Persisting
+through `fs` does not count — a file outlives the call. A live connection does
+not.
 
 ## Arguments, not lists
 
 The recurring rule, and the one worth defending hardest:
 
-> **The argument is the grant. A capability without one is never registered.**
+> **The argument is the capability. Without one it is never registered.**
 
 `root` is the argument to `fs` and `exec`; `hosts` is the argument to `http`.
 An under-specified declaration reaches *nothing* rather than everything, and

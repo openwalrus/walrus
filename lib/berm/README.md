@@ -1,14 +1,14 @@
 # berm-crabtalk
 
-The guest half of the `crabtalk` namespace: `fs`, `exec`, `http`, and one door
-per runtime operation — `peers`, `sessions`, `skills`. A harness links this to
-reach a Crabtalk daemon; [`crabtalk-berm`](../../crates/berm) serves the other
-end of every name in it.
+The guest half of the `crabtalk` namespace: `fs`, `exec`, `http`, and one
+capability per runtime operation — `peers`, `sessions`, `skills`. A harness
+links this to reach a Crabtalk daemon; [`crabtalk-berm`](../../crates/berm)
+serves the other end of every name in it.
 
 ```rust
 let agents = protocol::peers()?;              // the other agents
 let body = protocol::skill("review")?;        // one skill's instructions
-let bytes = fs::read("src/lib.rs")?;          // inside the granted root
+let bytes = fs::read("src/lib.rs")?;          // inside the root it was given
 ```
 
 [`berm-lang`](https://crates.io/crates/berm-lang) owns the ABI and declares no
