@@ -72,6 +72,29 @@ impl Default for Bm25 {
     }
 }
 
+impl Bm25 {
+    /// What a term appearing in `df` of `docs` documents is worth.
+    ///
+    /// A term in everything says nothing about which document is meant,
+    /// so it tends to zero; a rare one carries the query.
+    pub fn idf(&self, df: usize, docs: usize) -> f64 {
+        let (df, docs) = (df as f64, docs as f64);
+        ((docs - df + 0.5) / (df + 0.5) + 1.0).ln()
+    }
+
+    /// A term's contribution to the document holding it `tf` times,
+    /// against a document of `len` tokens where the average is `avgdl`.
+    ///
+    /// Public because a backend that keeps no inverted index still has to
+    /// rank the documents it scanned, and two implementations of the same
+    /// formula would rank the same query differently the first time one
+    /// of them was edited.
+    pub fn weigh(&self, tf: u32, len: u32, avgdl: f64) -> f64 {
+        let (tf, len) = (tf as f64, len as f64);
+        (tf * (self.k1 + 1.0)) / (tf + self.k1 * (1.0 - self.b + self.b * len / avgdl))
+    }
+}
+
 /// What is known about one indexed document.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Doc {
@@ -223,14 +246,13 @@ impl<T: KVStorage> TextSearch for T {
         if stats.docs == 0 {
             return Ok(Vec::new());
         }
-        let n = stats.docs as f64;
-        let avgdl = stats.total_len as f64 / n;
-        let Bm25 { k1, b } = Bm25::default();
+        let avgdl = stats.total_len as f64 / stats.docs as f64;
+        let bm25 = Bm25::default();
 
         // term → postings, then postings → scores. Documents are
         // read once each, after the terms have named them all.
         let mut scores: HashMap<Vec<u8>, f64> = HashMap::new();
-        let mut lens: HashMap<Vec<u8>, (f64, f64)> = HashMap::new();
+        let mut lens: HashMap<Vec<u8>, (u32, f64)> = HashMap::new();
         for term in &terms {
             let postings = self.postings(index, term).await?;
             if postings.is_empty() {
@@ -238,8 +260,7 @@ impl<T: KVStorage> TextSearch for T {
             }
             // A prefix's document frequency is the union it matches,
             // which is what makes a broad prefix weigh less.
-            let df = postings.len() as f64;
-            let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
+            let idf = bm25.idf(postings.len(), stats.docs as usize);
             for (key, tf) in postings {
                 let (dl, weight) = match lens.get(&key) {
                     Some(known) => *known,
@@ -248,14 +269,12 @@ impl<T: KVStorage> TextSearch for T {
                             .get_json::<Doc>(Column::Text, &self.doc_key(index, &key))
                             .await?
                             .unwrap_or_default();
-                        let known = (doc.len as f64, doc.weight);
+                        let known = (doc.len, doc.weight);
                         lens.insert(key.clone(), known);
                         known
                     }
                 };
-                let tf = tf as f64;
-                let norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * dl / avgdl));
-                *scores.entry(key).or_insert(0.0) += idf * norm * weight;
+                *scores.entry(key).or_insert(0.0) += idf * bm25.weigh(tf, dl, avgdl) * weight;
             }
         }
 
