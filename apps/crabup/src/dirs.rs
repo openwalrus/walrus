@@ -42,5 +42,11 @@ pub static HARNESSES_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("
 /// Cache root (`~/.crabtalk/cache/`), one subdirectory per thing that caches.
 pub static CACHE_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("cache"));
 
-/// The store file (`~/.crabtalk/store.crmem`).
-pub static STORE_FILE: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("store.crmem"));
+/// Where stores live (`~/.crabtalk/store/`), one file per product.
+pub static STORE_DIR: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("store"));
+
+/// The daemon's store (`~/.crabtalk/store/crabtalk.crmem`).
+pub static STORE_FILE: LazyLock<PathBuf> = LazyLock::new(|| STORE_DIR.join("crabtalk.crmem"));
+
+/// Where the daemon's store was before it had a directory to share.
+pub static LEGACY_STORE_FILE: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_DIR.join("store.crmem"));

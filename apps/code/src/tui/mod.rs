@@ -178,9 +178,18 @@ impl App {
                 self.turn = Some(self.crab.spawn_turn(&line));
             }
             Action::Submit(_) => {}
-            // A turn walks away; an idle Ctrl+C only clears the line.
+            // A turn is stopped where it runs; an idle Ctrl+C only clears
+            // the line.
             Action::Interrupt => match self.turn.take() {
-                Some(_) => self.transcript.finish(),
+                Some(_) => {
+                    if let Err(e) = self.crab.cancel().await {
+                        self.transcript.push(Item::Error {
+                            text: e.to_string(),
+                        });
+                    }
+                    self.transcript.finish();
+                    self.transcript.push(Item::Blank);
+                }
                 None => self.input.clear(),
             },
             Action::Eof => return Ok(true),

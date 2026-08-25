@@ -8,7 +8,7 @@ use crate::{backend::Backend, prompt};
 use anyhow::{Result, bail};
 use crabtalk::{Config, CrabTalk, CrabTalkHandle, system::provider::DefaultProvider};
 use futures_util::StreamExt;
-use proto::{CreateSessionMsg, StreamMsg, server::Server, stream_event::Event};
+use proto::{CancelStreamMsg, CreateSessionMsg, StreamMsg, server::Server, stream_event::Event};
 use std::{path::PathBuf, sync::Arc};
 use store::{
     AgentConfig, AgentId, HistoryEntry, SessionHandle,
@@ -52,8 +52,19 @@ impl Crab {
         let Some(mut config) = store.load_agent(&agent).await? else {
             bail!("the default agent names no record");
         };
-        if config.description != prompt::SYSTEM {
-            config.description = prompt::SYSTEM.to_owned();
+        // An agent scaffolded while the endpoint was unreachable named no
+        // model, and scaffolding does not run twice. Filling it here is
+        // the same rule the daemon uses — the first model the endpoint
+        // advertises — applied on a later run that can reach one.
+        let mut edited = config.description != prompt::SYSTEM;
+        config.description = prompt::SYSTEM.to_owned();
+        if config.model.is_empty()
+            && let Some(model) = handle.inner.list_models().await?.first()
+        {
+            config.model = model.name.clone();
+            edited = true;
+        }
+        if edited {
             store.upsert_agent(&config).await?;
         }
 
@@ -91,6 +102,20 @@ impl Crab {
         let fresh = Self::open(self.root.clone()).await?;
         let stale = std::mem::replace(self, fresh);
         stale.handle.shutdown().await
+    }
+
+    /// Stop the turn in flight, if there is one.
+    ///
+    /// Dropping the receiver only stops the reading: the tools keep
+    /// running against the developer's files, which is the half of a
+    /// cancel that matters.
+    pub async fn cancel(&self) -> Result<()> {
+        self.handle
+            .inner
+            .cancel_stream(CancelStreamMsg {
+                session_handle: self.session.as_str().to_owned(),
+            })
+            .await
     }
 
     /// Whether a call carrying `prompt_tokens` plus this agent's output
@@ -164,22 +189,20 @@ impl Crab {
         rx
     }
 
-    /// Run one turn, writing the stream to stdout as it arrives.
+    /// Run one turn, writing the answer to stdout as it arrives.
+    ///
+    /// The answer and nothing else — no markers, no tool activity. This
+    /// is the end of a pipe, and what reads it is a file or another
+    /// program rather than a person watching work happen.
     pub async fn turn(&self, prompt: &str) -> Result<()> {
         use std::io::Write;
 
         let mut events = self.spawn_turn(prompt);
         while let Some(event) = events.recv().await {
-            let event = event?;
-            match event {
+            match event? {
                 Event::Chunk(chunk) => {
                     print!("{}", chunk.content);
                     std::io::stdout().flush()?;
-                }
-                Event::ToolStart(start) => {
-                    for call in &start.calls {
-                        println!("\n⏺ {}", call.name);
-                    }
                 }
                 Event::End(end) if !end.error.is_empty() => bail!("{}", end.error),
                 Event::End(_) => println!(),
