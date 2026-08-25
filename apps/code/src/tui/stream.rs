@@ -25,7 +25,7 @@ enum State {
 }
 
 pub struct Transcript {
-    pub items: Vec<Item>,
+    items: Vec<Item>,
     /// True while a turn is in flight with nothing shown for it yet.
     pub waiting: bool,
     /// How many items have reached scrollback.

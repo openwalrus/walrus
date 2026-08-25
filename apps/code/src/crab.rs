@@ -20,11 +20,11 @@ use tokio::sync::mpsc;
 const STORE_DIR: &str = "store/code";
 
 pub struct Crab {
-    pub handle: CrabTalkHandle<DefaultProvider, Backend>,
-    pub store: Arc<Backend>,
+    handle: CrabTalkHandle<DefaultProvider, Backend>,
+    store: Arc<Backend>,
     pub config: AgentConfig,
-    pub agent: AgentId,
-    pub session: SessionHandle,
+    agent: AgentId,
+    session: SessionHandle,
     pub root: PathBuf,
 }
 

@@ -8,6 +8,7 @@
 
 use crate::{
     crab::Crab,
+    term,
     tui::{
         command::{Command, HELP},
         input::{Action, History, Input},
@@ -16,14 +17,11 @@ use crate::{
     },
 };
 use anyhow::Result;
-use crossterm::{
-    event::{Event as TermEvent, EventStream, KeyEvent, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode},
-};
+use crossterm::event::{Event as TermEvent, EventStream, KeyEvent, KeyEventKind};
 use futures_util::StreamExt;
 use proto::stream_event::Event as Chunk;
 use ratatui::{
-    Frame, Terminal, TerminalOptions, Viewport,
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
@@ -52,35 +50,9 @@ const TICK: Duration = Duration::from_millis(80);
 type Screen = Terminal<CrosstermBackend<Stdout>>;
 
 pub async fn run(crab: Crab) -> Result<()> {
-    enable_raw_mode()?;
-    // A panic past this point would otherwise leave the terminal raw and
-    // the shell unusable, so put it back before the message is printed.
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = disable_raw_mode();
-        hook(info);
-    }));
-
-    let terminal = Terminal::with_options(
-        CrosstermBackend::new(std::io::stdout()),
-        TerminalOptions {
-            viewport: Viewport::Inline(VIEWPORT),
-        },
-    );
-    let mut terminal = match terminal {
-        Ok(terminal) => terminal,
-        Err(e) => {
-            let _ = disable_raw_mode();
-            return Err(e.into());
-        }
-    };
-
+    let mut terminal = term::Inline::open(VIEWPORT)?;
     let mut app = App::new(crab, terminal.size()?.width as usize);
     let result = app.run(&mut terminal).await;
-
-    disable_raw_mode()?;
-    // Leave the viewport behind rather than on top of the prompt.
-    terminal.clear()?;
     app.input.history.save(&history_path());
     result
 }

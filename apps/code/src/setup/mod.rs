@@ -4,14 +4,12 @@
 //! the daemon reads too — there is one endpoint per install, not one per
 //! product.
 
+use crate::term;
 use anyhow::Result;
-use crossterm::{
-    event::{Event, EventStream, KeyCode, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode},
-};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
 use futures_util::StreamExt;
 use ratatui::{
-    Frame, Terminal, TerminalOptions, Viewport,
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
     style::{Modifier, Style},
@@ -41,24 +39,8 @@ pub fn needed(config: &store::Config) -> bool {
 ///
 /// `Ok(false)` if the person walked away without choosing.
 pub async fn run() -> Result<bool> {
-    enable_raw_mode()?;
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = disable_raw_mode();
-        hook(info);
-    }));
-
-    let mut terminal = Terminal::with_options(
-        CrosstermBackend::new(std::io::stdout()),
-        TerminalOptions {
-            viewport: Viewport::Inline(VIEWPORT),
-        },
-    )?;
-    let result = ask(&mut terminal).await;
-
-    disable_raw_mode()?;
-    terminal.clear()?;
-    result
+    let mut terminal = term::Inline::open(VIEWPORT)?;
+    ask(&mut terminal).await
 }
 
 /// Which screen the flow is on.
