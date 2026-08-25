@@ -13,6 +13,16 @@ async fn main() -> Result<()> {
         .with_max_level(tracing::Level::WARN)
         .init();
 
+    // An endpoint has to exist before the runtime is built over it, and
+    // asking for one is a conversation — which `-p` is not in.
+    if crabtalk_code::setup::needed(&store::Config::load(&crabup::dirs::CONFIG_FILE)?) {
+        match run {
+            Run::Print(_) => bail!("no model configured — run `crab` to set one up"),
+            Run::Chat if !crabtalk_code::setup::run().await? => return Ok(()),
+            Run::Chat => {}
+        }
+    }
+
     let crab = crabtalk_code::Crab::open(std::env::current_dir()?).await?;
     match run {
         Run::Print(prompt) => crab.turn(&prompt).await,

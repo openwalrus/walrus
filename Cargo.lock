@@ -823,6 +823,7 @@ dependencies = [
  "serde_json",
  "termimad",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]
