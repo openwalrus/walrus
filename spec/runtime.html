@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a626fde2.js";
+            window.path_to_searchindex_js = "../searchindex-bd2b005e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-fe74260f.js"></script>
@@ -274,7 +274,7 @@ live conversations; the protocol addresses them by <code>(agent, sender)</code>.
 <li><code>subscribe_events()</code> — optional subscription to a cross-conversation event stream, for servers that expose agent events to external clients.
 Methods that the runtime does not need in a given context have default implementations. An <code>Env</code> implementation may leave event broadcasting at its default.</li>
 </ul>
-<p>Instruction discovery and working-directory resolution are not here. The daemon does not read the user’s filesystem — a client renders local instructions into the message it sends, and a harness reaches files through the root its declaration grants.</p>
+<p>Instruction discovery and working-directory resolution are not here. The daemon does not read the user’s filesystem — a client renders local instructions into the message it sends, and a harness reaches files through the root its declaration names.</p>
 <h2 id="harness"><a class="header" href="#harness">Harness</a></h2>
 <p>A harness is a way to serve a tool call the daemon does not implement itself.</p>
 <p><code>Harness</code> is public API at the runtime layer, and that is the point: an embedder

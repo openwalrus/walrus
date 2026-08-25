@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a626fde2.js";
+            window.path_to_searchindex_js = "searchindex-bd2b005e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-fe74260f.js"></script>
@@ -186,7 +186,7 @@ using decides what you can extend and how — and most design arguments here
 turn out to be arguments about which one someone means.</p>
 <h2 id="the-layers"><a class="header" href="#the-layers">The layers</a></h2>
 <pre><code>protocol     clients, over a socket    any language, untrusted
-harness      what shapes an agent      declared per agent, one source, two builds
+harness      what shapes an agent      declared per agent, sandboxed or compiled in
 capability   what an agent reaches     bounded by its argument
 runtime      lifetime orchestration    turns, conversations, the agent loop
 store        data                      one key-value primitive, everything above it free
@@ -198,34 +198,32 @@ Change them and it is a different agent. That is why they are declared per
 agent — an agent <em>is</em> its harnesses.</p>
 <p>A <strong>capability</strong> is a mechanism for reaching something that is not the agent:
 <code>fs</code> and <code>exec</code> for the machine, <code>http</code> for the network, MCP for other
-software. Calling another program is not shaping an agent, which is why MCP is
-a capability and never a harness.</p>
-<p>The <strong>protocol</strong> has capability groups because clients are outside the process
-entirely, and a harness reaching back through <code>crabtalk.protocol.call</code> is
-holding a client’s surface. It stays exported whether or not anything shipped
-here uses it — who <em>may</em> write a harness justifies it, not who does.</p>
+software, and <code>berm.call</code> for another harness.</p>
+<p>The <strong>protocol</strong> is what clients speak over the socket. A harness reaches the
+runtime through one capability per operation instead — <code>peers</code>, <code>sessions</code>,
+<code>skills</code> — each narrowing by existing rather than by a check run over a decoded
+message. <code>sessions::search</code> cannot name an agent because it takes a search and
+returns hits, and there is no field in it to mean anything else.</p>
 <p><code>runtime</code> owns the <em>architecture of lifetime</em> — turns, conversations, the
 agent loop — and nothing else. <code>store</code> owns the data, and owns it behind a
 single primitive: implement five key-value methods and every interface above
 them — agents, sessions, memory, skills, harnesses, search — comes for free.</p>
-<h2 id="one-source-two-builds"><a class="header" href="#one-source-two-builds">One source, two builds</a></h2>
-<p>A harness is one crate compiled two ways. Built <code>no_std</code> for RV64 it is a
-sandboxed ELF the daemon schedules, reaching the world only through
-capabilities its declaration bounded — the absence of a capability from its
-linker <em>is</em> the enforcement. Built with <code>std</code> it is compiled into the host and
-reaches those things directly.</p>
-<p>So compiled-in versus sandboxed is a build target, not an architecture, and
-<code>Harness</code> is the one name for both. What differs is confinement: as an ELF the
-declaration’s arguments bound it; compiled in there is no linker to omit from,
-and the same arguments are documentation. That follows from compiling something in
-being total trust — but it is one source under two security models, which is
-worth knowing before choosing a build.</p>
-<p><code>no_std</code> is the shared denominator rather than a floor. The compiled-in build
-inherits the sandbox’s constraints instead of escaping them: sync, allocating
-through <code>alloc</code>. Anything that must keep state alive between invocations cannot
-make the trip, because a harness gets a fresh heap every call and persists
-through <code>fs</code> like anything else. MCP holds live connections, so MCP is compiled
-in and only compiled in — the same test, not a second one.</p>
+<h2 id="sandboxed-and-compiled-in"><a class="header" href="#sandboxed-and-compiled-in">Sandboxed and compiled in</a></h2>
+<p>A harness <strong>image</strong> is <code>no_std</code> for RV64 and nothing else: a sandboxed ELF the
+daemon schedules, reaching the world only through capabilities its declaration
+bounded — the absence of a capability from its linker <em>is</em> the enforcement.
+There is no <code>std</code> build of one. Off its target the crate still compiles, so
+<code>cargo test</code> can run the tools natively, but the capabilities there are
+<code>berm-lang</code> stubs a test arranges rather than anything that reaches out.</p>
+<p>A <strong>compiled-in</strong> harness is native Rust inside the daemon, with the whole of
+<code>std</code>. MCP and memory are the two. It shares the <code>Harness</code> trait with an image
+and nothing else — not the source, not the confinement: there is no linker to
+omit from, so what bounds it is what it was written to do.</p>
+<p>So the two are different kinds rather than two builds of one thing, and what
+decides which a feature can be is state. An image gets a fresh heap every
+invocation and persists through <code>fs</code> like anything else, so anything holding
+something alive between calls cannot be one. MCP holds live connections; MCP is
+compiled in and only compiled in.</p>
 <h2 id="where-does-a-thing-go"><a class="header" href="#where-does-a-thing-go">Where does a thing go?</a></h2>
 <p>Three questions, in order. They are independent, and a feature can want more
 than one answer.</p>
@@ -236,15 +234,15 @@ it is a harness and never a message.</p>
 <p><strong>2. Does it shape the agent, or reach past it?</strong> What an agent remembers,
 loads, and knows of its own history shapes it — that is a harness, declared by
 the agents that want it. A mechanism for touching something outside is a
-capability, granted and bounded by its argument.</p>
+capability, bounded by its argument.</p>
 <p><strong>3. Does it hold anything alive between calls?</strong> If yes it can only be
-compiled in, because the sandboxed build gets a fresh heap per invocation.
-Persisting through <code>fs</code> does not count — a file outlives the call. A live
-connection does not.</p>
+compiled in, because an image gets a fresh heap per invocation. Persisting
+through <code>fs</code> does not count — a file outlives the call. A live connection does
+not.</p>
 <h2 id="arguments-not-lists"><a class="header" href="#arguments-not-lists">Arguments, not lists</a></h2>
 <p>The recurring rule, and the one worth defending hardest:</p>
 <blockquote>
-<p><strong>The argument is the grant. A capability without one is never registered.</strong></p>
+<p><strong>The argument is the capability. Without one it is never registered.</strong></p>
 </blockquote>
 <p><code>root</code> is the argument to <code>fs</code> and <code>exec</code>; <code>hosts</code> is the argument to <code>http</code>.
 An under-specified declaration reaches <em>nothing</em> rather than everything, and

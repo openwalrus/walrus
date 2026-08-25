@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a626fde2.js";
+            window.path_to_searchindex_js = "../searchindex-bd2b005e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-fe74260f.js"></script>
@@ -181,7 +181,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="protocol"><a class="header" href="#protocol">Protocol</a></h1>
-<p>The protocol is the daemon’s surface for everything outside its process. Clients speak it over a socket; a harness holding a <code>protocol:*</code> capability speaks the same one from inside a sandbox. There is no second vocabulary for harnesses.</p>
+<p>The protocol is the daemon’s surface for everything outside its process. Clients speak it over a socket. A harness does not: it reaches the runtime through one capability per operation, and the host builds the <code>ClientMessage</code> on its behalf.</p>
 <h2 id="addressing"><a class="header" href="#addressing">Addressing</a></h2>
 <p>A conversation is addressed by the pair <code>(agent, sender)</code>.</p>
 <ul>
@@ -206,13 +206,11 @@
 <p><code>StreamMsg.sender</code> is optional; when omitted the daemon resolves a default determined by the transport. <code>StreamMsg.guest</code> selects who speaks on this turn without changing whose conversation it is.</p>
 <p>There is no working directory on the wire. <code>StreamMsg.cwd</code> was removed: the daemon does not read the user’s filesystem, and a client that wants local context renders it into <code>content</code> itself.</p>
 <p>A client declares no tools either. <code>SendMsg.tools</code> and <code>StreamMsg.tools</code> carried schemas the daemon advertised to the model and invoked back over the stream; both are reserved field numbers now, along with the forward event and its reply. A tool runs where the runtime does, which is what a harness is for.</p>
-<h2 id="capability-groups"><a class="header" href="#capability-groups">Capability groups</a></h2>
-<p>A harness reaches this surface through <code>crabtalk.protocol.call</code>, and what it may send is checked on decode against the group its declaration granted. The check is <strong>default-deny</strong>: a message type in no group reaches nothing, and a group the harness was not granted is the same.</p>
-<ul>
-<li><code>protocol:read</code> — the catalogue, and nothing that spends tokens.</li>
-<li><code>protocol:sessions</code> — ranked excerpts of the declaring agent’s own past conversations.</li>
-</ul>
-<p>Anything destructive, anything that answers on someone else’s behalf, and anything whose payload is substantially a credential belongs to no group a third party can hold. Where a request carries a scope the harness should not choose — <code>SearchSessions.agent</code> — the host <strong>overwrites</strong> it rather than validating it. Refusing a wrong value would only teach the harness to send the right one.</p>
+<h2 id="one-capability-per-operation"><a class="header" href="#one-capability-per-operation">One capability per operation</a></h2>
+<p>A harness reaches the runtime through a capability per operation — <code>peers::list</code>, <code>sessions::search</code>, <code>skills::list</code>, <code>skills::get</code> — rather than through one that carries any message. Each narrows by existing: <code>sessions::search</code> takes a search and returns hits, and there is no field in it that could name an agent or spend a token. Nothing is checked on decode, because there is nothing to decode a policy out of.</p>
+<p>Each also owns its reply, which is where narrowing lives. <code>peers::list</code> returns agents with <code>AgentInfo.config</code> cleared, because a config carries its MCPs by value — <code>env</code> and a literal <code>Authorization</code> header among them.</p>
+<p>Where a request carries a scope the harness should not choose — <code>SearchSessions.agent</code> — the host <strong>overwrites</strong> it rather than validating it. Refusing a wrong value would only teach the harness to send the right one.</p>
+<p>Anything destructive, and anything that answers on someone else’s behalf, is behind no capability at all. Reaching another agent is a turn spent on its behalf, so <code>peers</code> names them and stops there.</p>
 <h2 id="transports"><a class="header" href="#transports">Transports</a></h2>
 <p>The daemon accepts client messages on its transports and produces a stream of server messages in response. Each message is handled independently, with no central event loop mediating between the transport and the operations.</p>
 <h2 id="entry-point"><a class="header" href="#entry-point">Entry point</a></h2>
@@ -220,7 +218,7 @@
 <p>Concurrency is unbounded at this layer: nothing throttles or serializes incoming messages before they reach their handler.</p>
 <h2 id="dispatch-function"><a class="header" href="#dispatch-function">Dispatch function</a></h2>
 <p><code>Server::dispatch(ClientMessage) -&gt; Stream&lt;ServerMessage&gt;</code> is the single entry into the daemon’s operations. It inspects the <code>ClientMessage</code> variant and routes to the corresponding method on the <code>Server</code> trait.</p>
-<p>It is also the door a harness comes back through. A harness granted a <code>protocol:*</code> capability sends the same <code>ClientMessage</code> a client would and receives the same reply — one vocabulary, not two. What it is <em>allowed</em> to send is checked on decode against the group its declaration granted, and default-deny: a message named in no group reaches nothing.</p>
+<p>It is also what a harness comes back through, one remove away: a runtime capability builds the <code>ClientMessage</code> its operation means and takes the one reply, so the daemon answers a harness exactly as it answers a client. The harness supplies a search, not a message.</p>
 <ul>
 <li>Request-response operations (<code>ping</code>, <code>kill_conversation</code>, <code>compact_conversation</code>, administrative calls) yield exactly one <code>ServerMessage</code>.</li>
 <li>Streaming operations (<code>stream</code>, <code>subscribe_events</code>) yield many <code>ServerMessage</code> values over time.</li>

@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a626fde2.js";
+            window.path_to_searchindex_js = "searchindex-bd2b005e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-fe74260f.js"></script>
@@ -223,7 +223,7 @@ using decides what you can extend and how — and most design arguments here
 turn out to be arguments about which one someone means.</p>
 <h2 id="the-layers"><a class="header" href="#the-layers">The layers</a></h2>
 <pre><code>protocol     clients, over a socket    any language, untrusted
-harness      what shapes an agent      declared per agent, one source, two builds
+harness      what shapes an agent      declared per agent, sandboxed or compiled in
 capability   what an agent reaches     bounded by its argument
 runtime      lifetime orchestration    turns, conversations, the agent loop
 store        data                      one key-value primitive, everything above it free
@@ -235,34 +235,32 @@ Change them and it is a different agent. That is why they are declared per
 agent — an agent <em>is</em> its harnesses.</p>
 <p>A <strong>capability</strong> is a mechanism for reaching something that is not the agent:
 <code>fs</code> and <code>exec</code> for the machine, <code>http</code> for the network, MCP for other
-software. Calling another program is not shaping an agent, which is why MCP is
-a capability and never a harness.</p>
-<p>The <strong>protocol</strong> has capability groups because clients are outside the process
-entirely, and a harness reaching back through <code>crabtalk.protocol.call</code> is
-holding a client’s surface. It stays exported whether or not anything shipped
-here uses it — who <em>may</em> write a harness justifies it, not who does.</p>
+software, and <code>berm.call</code> for another harness.</p>
+<p>The <strong>protocol</strong> is what clients speak over the socket. A harness reaches the
+runtime through one capability per operation instead — <code>peers</code>, <code>sessions</code>,
+<code>skills</code> — each narrowing by existing rather than by a check run over a decoded
+message. <code>sessions::search</code> cannot name an agent because it takes a search and
+returns hits, and there is no field in it to mean anything else.</p>
 <p><code>runtime</code> owns the <em>architecture of lifetime</em> — turns, conversations, the
 agent loop — and nothing else. <code>store</code> owns the data, and owns it behind a
 single primitive: implement five key-value methods and every interface above
 them — agents, sessions, memory, skills, harnesses, search — comes for free.</p>
-<h2 id="one-source-two-builds"><a class="header" href="#one-source-two-builds">One source, two builds</a></h2>
-<p>A harness is one crate compiled two ways. Built <code>no_std</code> for RV64 it is a
-sandboxed ELF the daemon schedules, reaching the world only through
-capabilities its declaration bounded — the absence of a capability from its
-linker <em>is</em> the enforcement. Built with <code>std</code> it is compiled into the host and
-reaches those things directly.</p>
-<p>So compiled-in versus sandboxed is a build target, not an architecture, and
-<code>Harness</code> is the one name for both. What differs is confinement: as an ELF the
-declaration’s arguments bound it; compiled in there is no linker to omit from,
-and the same arguments are documentation. That follows from compiling something in
-being total trust — but it is one source under two security models, which is
-worth knowing before choosing a build.</p>
-<p><code>no_std</code> is the shared denominator rather than a floor. The compiled-in build
-inherits the sandbox’s constraints instead of escaping them: sync, allocating
-through <code>alloc</code>. Anything that must keep state alive between invocations cannot
-make the trip, because a harness gets a fresh heap every call and persists
-through <code>fs</code> like anything else. MCP holds live connections, so MCP is compiled
-in and only compiled in — the same test, not a second one.</p>
+<h2 id="sandboxed-and-compiled-in"><a class="header" href="#sandboxed-and-compiled-in">Sandboxed and compiled in</a></h2>
+<p>A harness <strong>image</strong> is <code>no_std</code> for RV64 and nothing else: a sandboxed ELF the
+daemon schedules, reaching the world only through capabilities its declaration
+bounded — the absence of a capability from its linker <em>is</em> the enforcement.
+There is no <code>std</code> build of one. Off its target the crate still compiles, so
+<code>cargo test</code> can run the tools natively, but the capabilities there are
+<code>berm-lang</code> stubs a test arranges rather than anything that reaches out.</p>
+<p>A <strong>compiled-in</strong> harness is native Rust inside the daemon, with the whole of
+<code>std</code>. MCP and memory are the two. It shares the <code>Harness</code> trait with an image
+and nothing else — not the source, not the confinement: there is no linker to
+omit from, so what bounds it is what it was written to do.</p>
+<p>So the two are different kinds rather than two builds of one thing, and what
+decides which a feature can be is state. An image gets a fresh heap every
+invocation and persists through <code>fs</code> like anything else, so anything holding
+something alive between calls cannot be one. MCP holds live connections; MCP is
+compiled in and only compiled in.</p>
 <h2 id="where-does-a-thing-go"><a class="header" href="#where-does-a-thing-go">Where does a thing go?</a></h2>
 <p>Three questions, in order. They are independent, and a feature can want more
 than one answer.</p>
@@ -273,15 +271,15 @@ it is a harness and never a message.</p>
 <p><strong>2. Does it shape the agent, or reach past it?</strong> What an agent remembers,
 loads, and knows of its own history shapes it — that is a harness, declared by
 the agents that want it. A mechanism for touching something outside is a
-capability, granted and bounded by its argument.</p>
+capability, bounded by its argument.</p>
 <p><strong>3. Does it hold anything alive between calls?</strong> If yes it can only be
-compiled in, because the sandboxed build gets a fresh heap per invocation.
-Persisting through <code>fs</code> does not count — a file outlives the call. A live
-connection does not.</p>
+compiled in, because an image gets a fresh heap per invocation. Persisting
+through <code>fs</code> does not count — a file outlives the call. A live connection does
+not.</p>
 <h2 id="arguments-not-lists"><a class="header" href="#arguments-not-lists">Arguments, not lists</a></h2>
 <p>The recurring rule, and the one worth defending hardest:</p>
 <blockquote>
-<p><strong>The argument is the grant. A capability without one is never registered.</strong></p>
+<p><strong>The argument is the capability. Without one it is never registered.</strong></p>
 </blockquote>
 <p><code>root</code> is the argument to <code>fs</code> and <code>exec</code>; <code>hosts</code> is the argument to <code>http</code>.
 An under-specified declaration reaches <em>nothing</em> rather than everything, and
@@ -315,7 +313,7 @@ declared in <code>.berm.abi</code> and injected only into agents that declared t
 harness. Anything longer than a few lines is a skill, not usage.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="protocol"><a class="header" href="#protocol">Protocol</a></h1>
-<p>The protocol is the daemon’s surface for everything outside its process. Clients speak it over a socket; a harness holding a <code>protocol:*</code> capability speaks the same one from inside a sandbox. There is no second vocabulary for harnesses.</p>
+<p>The protocol is the daemon’s surface for everything outside its process. Clients speak it over a socket. A harness does not: it reaches the runtime through one capability per operation, and the host builds the <code>ClientMessage</code> on its behalf.</p>
 <h2 id="addressing"><a class="header" href="#addressing">Addressing</a></h2>
 <p>A conversation is addressed by the pair <code>(agent, sender)</code>.</p>
 <ul>
@@ -340,13 +338,11 @@ harness. Anything longer than a few lines is a skill, not usage.</p>
 <p><code>StreamMsg.sender</code> is optional; when omitted the daemon resolves a default determined by the transport. <code>StreamMsg.guest</code> selects who speaks on this turn without changing whose conversation it is.</p>
 <p>There is no working directory on the wire. <code>StreamMsg.cwd</code> was removed: the daemon does not read the user’s filesystem, and a client that wants local context renders it into <code>content</code> itself.</p>
 <p>A client declares no tools either. <code>SendMsg.tools</code> and <code>StreamMsg.tools</code> carried schemas the daemon advertised to the model and invoked back over the stream; both are reserved field numbers now, along with the forward event and its reply. A tool runs where the runtime does, which is what a harness is for.</p>
-<h2 id="capability-groups"><a class="header" href="#capability-groups">Capability groups</a></h2>
-<p>A harness reaches this surface through <code>crabtalk.protocol.call</code>, and what it may send is checked on decode against the group its declaration granted. The check is <strong>default-deny</strong>: a message type in no group reaches nothing, and a group the harness was not granted is the same.</p>
-<ul>
-<li><code>protocol:read</code> — the catalogue, and nothing that spends tokens.</li>
-<li><code>protocol:sessions</code> — ranked excerpts of the declaring agent’s own past conversations.</li>
-</ul>
-<p>Anything destructive, anything that answers on someone else’s behalf, and anything whose payload is substantially a credential belongs to no group a third party can hold. Where a request carries a scope the harness should not choose — <code>SearchSessions.agent</code> — the host <strong>overwrites</strong> it rather than validating it. Refusing a wrong value would only teach the harness to send the right one.</p>
+<h2 id="one-capability-per-operation"><a class="header" href="#one-capability-per-operation">One capability per operation</a></h2>
+<p>A harness reaches the runtime through a capability per operation — <code>peers::list</code>, <code>sessions::search</code>, <code>skills::list</code>, <code>skills::get</code> — rather than through one that carries any message. Each narrows by existing: <code>sessions::search</code> takes a search and returns hits, and there is no field in it that could name an agent or spend a token. Nothing is checked on decode, because there is nothing to decode a policy out of.</p>
+<p>Each also owns its reply, which is where narrowing lives. <code>peers::list</code> returns agents with <code>AgentInfo.config</code> cleared, because a config carries its MCPs by value — <code>env</code> and a literal <code>Authorization</code> header among them.</p>
+<p>Where a request carries a scope the harness should not choose — <code>SearchSessions.agent</code> — the host <strong>overwrites</strong> it rather than validating it. Refusing a wrong value would only teach the harness to send the right one.</p>
+<p>Anything destructive, and anything that answers on someone else’s behalf, is behind no capability at all. Reaching another agent is a turn spent on its behalf, so <code>peers</code> names them and stops there.</p>
 <h2 id="transports"><a class="header" href="#transports">Transports</a></h2>
 <p>The daemon accepts client messages on its transports and produces a stream of server messages in response. Each message is handled independently, with no central event loop mediating between the transport and the operations.</p>
 <h2 id="entry-point"><a class="header" href="#entry-point">Entry point</a></h2>
@@ -354,7 +350,7 @@ harness. Anything longer than a few lines is a skill, not usage.</p>
 <p>Concurrency is unbounded at this layer: nothing throttles or serializes incoming messages before they reach their handler.</p>
 <h2 id="dispatch-function"><a class="header" href="#dispatch-function">Dispatch function</a></h2>
 <p><code>Server::dispatch(ClientMessage) -&gt; Stream&lt;ServerMessage&gt;</code> is the single entry into the daemon’s operations. It inspects the <code>ClientMessage</code> variant and routes to the corresponding method on the <code>Server</code> trait.</p>
-<p>It is also the door a harness comes back through. A harness granted a <code>protocol:*</code> capability sends the same <code>ClientMessage</code> a client would and receives the same reply — one vocabulary, not two. What it is <em>allowed</em> to send is checked on decode against the group its declaration granted, and default-deny: a message named in no group reaches nothing.</p>
+<p>It is also what a harness comes back through, one remove away: a runtime capability builds the <code>ClientMessage</code> its operation means and takes the one reply, so the daemon answers a harness exactly as it answers a client. The harness supplies a search, not a message.</p>
 <ul>
 <li>Request-response operations (<code>ping</code>, <code>kill_conversation</code>, <code>compact_conversation</code>, administrative calls) yield exactly one <code>ServerMessage</code>.</li>
 <li>Streaming operations (<code>stream</code>, <code>subscribe_events</code>) yield many <code>ServerMessage</code> values over time.</li>
@@ -536,7 +532,7 @@ live conversations; the protocol addresses them by <code>(agent, sender)</code>.
 <li><code>subscribe_events()</code> — optional subscription to a cross-conversation event stream, for servers that expose agent events to external clients.
 Methods that the runtime does not need in a given context have default implementations. An <code>Env</code> implementation may leave event broadcasting at its default.</li>
 </ul>
-<p>Instruction discovery and working-directory resolution are not here. The daemon does not read the user’s filesystem — a client renders local instructions into the message it sends, and a harness reaches files through the root its declaration grants.</p>
+<p>Instruction discovery and working-directory resolution are not here. The daemon does not read the user’s filesystem — a client renders local instructions into the message it sends, and a harness reaches files through the root its declaration names.</p>
 <h2 id="harness"><a class="header" href="#harness">Harness</a></h2>
 <p>A harness is a way to serve a tool call the daemon does not implement itself.</p>
 <p><code>Harness</code> is public API at the runtime layer, and that is the point: an embedder
@@ -568,23 +564,23 @@ working.</p>
 <h1 id="harnesses"><a class="header" href="#harnesses">Harnesses</a></h1>
 <p>A harness is code the daemon schedules: one hash-pinned RV64IMAC ELF, compiled
 and run in-process, confined to its own address space, reaching the world only
-through host calls it was granted. It never runs of its own accord — the daemon
+through host calls it was given. It never runs of its own accord — the daemon
 decides when, and while running it may call back in.</p>
 <p>A harness is what shapes an agent — what it remembers, what it can load, what
 it knows of its own past, the tools it habitually reaches for. An agent <em>is</em>
 its harnesses, which is why each one is declared per agent rather than shipped
 to everybody.</p>
-<p>This chapter describes the sandboxed build. The same source compiled with <code>std</code>
-is the same harness reaching the host directly; see
-<a href="#architecture">Architecture</a>.</p>
-<h2 id="the-argument-is-the-grant"><a class="header" href="#the-argument-is-the-grant">The argument is the grant</a></h2>
-<p>Host functions are keyed by number, and a number with nothing registered traps.
-So a capability the declaration did not bound is not <em>checked for</em> — it is
-absent from the linker the harness was instantiated with. <strong>Enforcement is the
-absence of code.</strong> There is no check to write and none to forget.</p>
+<p>This chapter describes harness images. The daemon also carries compiled-in
+harnesses — MCP and memory — which share the trait and none of the
+confinement; see <a href="#architecture">Architecture</a>.</p>
+<h2 id="the-argument-is-the-capability"><a class="header" href="#the-argument-is-the-capability">The argument is the capability</a></h2>
+<p>Host calls are keyed by number, and a number with nothing registered traps. So
+a capability the declaration did not bound is not <em>checked for</em> — it is absent
+from the linker the harness was instantiated with. <strong>Enforcement is the absence
+of code.</strong> There is no check to write and none to forget.</p>
 <p>Every capability takes an argument, and the argument is not optional decoration
-— it <em>is</em> the grant. Without the argument the capability is never registered,
-so an under-specified declaration reaches <strong>nothing</strong> rather than everything.</p>
+— it <em>is</em> the capability. Without the argument it is never registered, so an
+under-specified declaration reaches <strong>nothing</strong> rather than everything.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -597,17 +593,27 @@ so an under-specified declaration reaches <strong>nothing</strong> rather than e
 <tr><td><code>peers</code></td><td>The other agents’ names</td><td>—</td></tr>
 <tr><td><code>sessions</code></td><td>The agent’s own past conversations</td><td>the declaring agent</td></tr>
 <tr><td><code>skills</code></td><td>The skills the agent named</td><td><code>skills</code></td></tr>
+<tr><td><code>berm.call</code></td><td>Another harness the same agent declared</td><td>the declaring agent</td></tr>
 </tbody>
 </table>
 </div>
-<p>The runtime is reached through one door per operation rather than one door
-carrying every message. A door narrows by existing: <code>sessions::search</code> cannot
+<p>The runtime is reached through one capability per operation rather than one
+carrying every message. Each narrows by existing: <code>sessions::search</code> cannot
 name an agent, because it takes a search and returns hits and there is no field
 in it to mean anything else.</p>
-<p>That is also why the daemon’s own port is not a side door: <code>http</code> can only
+<p>That is also why the daemon’s own port is not a way back in: <code>http</code> can only
 reach a name written in <code>hosts</code>, so <code>localhost</code> is unreachable unless somebody
 put it there.</p>
-<h2 id="the-image-is-the-grant"><a class="header" href="#the-image-is-the-grant">The image is the grant</a></h2>
+<h2 id="calling-another-harness"><a class="header" href="#calling-another-harness">Calling another harness</a></h2>
+<p><code>berm.call</code> takes a harness name, a tool, and the argument blob a model would
+have sent. The name is resolved per call against the declaring agent’s own
+resolution, so what a name means is what that agent declared it to mean — two
+agents installing different images under one name reach their own.</p>
+<p>A caller can tell a target that ran and failed from one that never ran: the
+first is the tool’s own failure, the second a refusal. There is no depth bound.
+The watchdog bounds a chain on time rather than on links, so a cycle reaches
+the host thread’s stack first.</p>
+<h2 id="the-image-is-the-capability"><a class="header" href="#the-image-is-the-capability">The image is the capability</a></h2>
 <p>There is no list of permitted capabilities beside those arguments. A published
 harness is a fixed ELF: one that never calls a capability does not need to be
 stopped from calling it, and one that does is a harness for exactly that. To
@@ -621,13 +627,17 @@ claims to be must not mean running it</strong> — the daemon reads a tool list,
 schema, and usage text out of the file without compiling anything.</p>
 <h2 id="images-are-content-addressed"><a class="header" href="#images-are-content-addressed">Images are content-addressed</a></h2>
 <p>An image is keyed by a digest of what determines it: the ELF, the <code>root</code> and
-<code>hosts</code> bounding it, and the <code>Scope</code> its protocol door closes over. Not by the
-agent that declared it.</p>
+<code>hosts</code> bounding it, the session it resolved under, and the <code>Scope</code> its runtime
+capabilities close over. Not by the agent that declared it.</p>
 <p>Two agents that declare the same ELF against different roots hash differently
 and get two linkers. Two that declare it identically share one image. A rename
 changes nothing, because the agent’s name was never part of the key — but a
 per-agent narrowing <em>is</em> part of it, so two agents holding the same session
 harness deliberately get two images rather than sharing one narrowing.</p>
+<p>The session is in the key for <code>berm.call</code>, which closes over the resolution a
+name is looked up in. Only a session-rooted declaration reaches the bound
+<code>root</code>, so without it a rootless or fixed-root image would be shared across
+sessions while resolving its siblings against whichever one compiled it first.</p>
 <h2 id="invocation"><a class="header" href="#invocation">Invocation</a></h2>
 <p>Memory is per-invocation: a fresh store each call, nothing surviving between
 them. Anything a harness needs to persist belongs in a capability, not in its
@@ -645,10 +655,10 @@ a capability may make.</p>
 <ul>
 <li><strong>Transports</strong> — UDS and TCP listeners. Listening endpoints belong to the daemon, not to individual clients or agents.</li>
 <li><strong>Runtime</strong> — a single shared runtime instance behind <code>RwLock</code>. Agents share the runtime; the runtime is never cloned per conversation.</li>
-<li><strong>Harnesses</strong> — the composite <code>Harness</code>. Two ship today: the one surfacing the tools of each agent’s declared harnesses, and MCP. <code>Harness</code> is public API at the runtime layer, so an embedder registers their own.</li>
+<li><strong>Harnesses</strong> — the composite <code>Harness</code>. Three ship today: the one surfacing the tools of each agent’s declared harness images, MCP, and memory. <code>Harness</code> is public API at the runtime layer, so an embedder registers their own.</li>
 <li><strong>Event bus</strong> — subscription table and fire callback. File-backed by <code>events/subscriptions.toml</code> under the config directory.</li>
 <li><strong>MCP handler</strong> — connections to external MCP servers and routing to the tools they advertise.</li>
-<li><strong>Harness images</strong> — compiled RV64 ELFs, keyed by a content digest of the ELF, its grants, and the scope its capabilities close over.</li>
+<li><strong>Harness images</strong> — compiled RV64 ELFs, keyed by a content digest of the ELF, the arguments bounding its capabilities, the session it resolved under, and the scope those capabilities close over.</li>
 <li><strong>Configuration</strong> — current <code>DaemonConfig</code>, reloaded in place on explicit reload.</li>
 </ul>
 <p>The daemon does not interpret tool semantics. Tool dispatch is the runtime’s responsibility, routed through the composite.</p>
@@ -1726,6 +1736,9 @@ idle_timeout = 1800
 </blockquote>
 <blockquote>
 <p><strong>Updated (2026-08-22).</strong> The sandbox left, which this RFC said it would: berm is <a href="https://github.com/crabtalk/berm">crabtalk/berm</a> and reaches this repository from crates.io as <code>berm</code> and <code>berm-lang</code>. Every <code>berm/*</code> path below names a directory that is no longer here, and the layout it describes is upstream’s to keep. What stays is <code>crates/berm</code> — crabtalk’s side, unchanged.</p>
+</blockquote>
+<blockquote>
+<p><strong>Updated (2026-08-24).</strong> Two things this RFC designed are gone, and one it ruled out has landed. The per-harness allowlist over message types — <code>protocol:read</code>, <code>protocol:sessions</code>, one capability number carrying the whole surface — was removed: the runtime is reached through one capability per operation, and a capability the declaration did not bound is absent from the linker rather than refused on decode. The word <em>grant</em> went with it; the argument bounding a capability is the whole of it, and there is no list beside it. And “Can a harness call another deployed harness?” is answered yes: <code>berm.call</code> resolves a name per call against the declaring agent’s own resolution, which is why the session is now part of an image’s digest.</p>
 </blockquote>
 <blockquote>
 <p><strong>Updated by <a href="#0207---store">0207 (Store)</a> (2026-08-18).</strong> The <code>crates/hooks</code> paths cited below are gone — hooks were deleted as a crate, the internal <code>Hook</code> seam this RFC scoped out is now <code>Harness</code>, and its lifecycle methods were renamed (0207 supersedes 0075). Harness images have a home in the store as <code>image/{digest}</code>, but berm still reads them from <code>HARNESSES_DIR</code> on the filesystem; wiring it to the <code>Harnesses</code> interface is open work.</p>
