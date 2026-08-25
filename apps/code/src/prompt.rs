@@ -30,3 +30,22 @@ summary, and reference code as `path:line` so it can be opened. Do not \
 explain what a command you just ran does when its output is on screen.
 
 Never commit, push, or otherwise touch a remote unless you are asked to.";
+
+/// What crab asks for when a conversation is compacted.
+///
+/// The runtime refuses an empty one, and rightly: the summary replaces
+/// the history the model works from, so what to keep is the client's
+/// decision and nobody else can make it.
+pub const COMPACT: &str = "\
+Summarize this conversation so that you could pick the work up from the \
+summary alone, with none of the messages above it.
+
+Keep: what was being built and why, the decisions taken and what they \
+ruled out, the files touched and what changed in them, commands whose \
+output still matters, and anything the developer asked for that is not \
+done yet.
+
+Drop: tool output that has served its purpose, exploration that led \
+nowhere, and anything restated later.
+
+Write it as notes to yourself, not as a report to a reader.";

@@ -61,6 +61,15 @@ pub struct AgentConfig {
     /// [`AgentConfig::token_budget`].
     #[serde(default = "default_thinking_budget")]
     pub thinking_budget: u32,
+    /// The model's context window, when it is known.
+    ///
+    /// Nothing the runtime reaches carries one: `ModelInfo` on the wire is
+    /// a name and whether it is active, and a provider's catalogue is a
+    /// list of names. So a client that wants to act before a call stops
+    /// fitting — compacting rather than failing — is told the number here
+    /// or does not act at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
     /// Skill names this agent can access. Empty = all skills (crabtalk default).
     #[serde(default)]
     pub skills: Vec<String>,
@@ -159,6 +168,7 @@ impl Default for AgentConfig {
             thinking: false,
             max_tokens: crabllm_core::anthropic::DEFAULT_MAX_TOKENS,
             thinking_budget: DEFAULT_THINKING_BUDGET,
+            context_window: None,
             skills: Vec::new(),
             harnesses: Vec::new(),
             mcps: Vec::new(),

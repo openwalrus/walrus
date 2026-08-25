@@ -11,7 +11,7 @@ use futures_util::StreamExt;
 use proto::{CreateSessionMsg, StreamMsg, server::Server, stream_event::Event};
 use std::{path::PathBuf, sync::Arc};
 use store::{
-    AgentId, HistoryEntry, SessionHandle,
+    AgentConfig, AgentId, HistoryEntry, SessionHandle,
     interface::{Agents, Sessions},
 };
 use tokio::sync::mpsc;
@@ -22,6 +22,7 @@ const STORE_DIR: &str = "store/code";
 pub struct Crab {
     pub handle: CrabTalkHandle<DefaultProvider, Backend>,
     pub store: Arc<Backend>,
+    pub config: AgentConfig,
     pub agent: AgentId,
     pub session: SessionHandle,
     pub root: PathBuf,
@@ -48,9 +49,10 @@ impl Crab {
         // The scaffolded agent is a bare one; what makes it a coding agent
         // is the prompt, so crab writes it every open rather than only on
         // the run that created the record.
-        if let Some(mut config) = store.load_agent(&agent).await?
-            && config.description != prompt::SYSTEM
-        {
+        let Some(mut config) = store.load_agent(&agent).await? else {
+            bail!("the default agent names no record");
+        };
+        if config.description != prompt::SYSTEM {
             config.description = prompt::SYSTEM.to_owned();
             store.upsert_agent(&config).await?;
         }
@@ -71,6 +73,7 @@ impl Crab {
         Ok(Self {
             handle,
             store,
+            config,
             agent,
             session,
             root,
@@ -88,6 +91,32 @@ impl Crab {
         let fresh = Self::open(self.root.clone()).await?;
         let stale = std::mem::replace(self, fresh);
         stale.handle.shutdown().await
+    }
+
+    /// Whether a call carrying `prompt_tokens` plus this agent's output
+    /// allowance would no longer fit the window.
+    ///
+    /// Not a fraction of the window chosen by anyone: the sum either fits
+    /// or it does not, and the answer is `false` whenever the window is
+    /// unknown rather than a guess at one.
+    pub fn overflows(&self, prompt_tokens: u32) -> bool {
+        let Some(window) = self.config.context_window else {
+            return false;
+        };
+        prompt_tokens.saturating_add(self.config.token_budget().0) >= window
+    }
+
+    /// Replace the history with a summary of it, and return the summary.
+    ///
+    /// The messages it covers are dropped rather than kept beside it, so
+    /// this is what the model works from afterwards. What is on screen is
+    /// untouched — scrollback is the record, and the record does not
+    /// shrink because the context did.
+    pub async fn compact(&self) -> Result<String> {
+        self.handle
+            .inner
+            .compact_conversation(self.session.as_str().to_owned(), prompt::COMPACT.to_owned())
+            .await
     }
 
     /// The turns this session already holds, oldest first.

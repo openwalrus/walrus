@@ -103,6 +103,13 @@ struct App {
     input: Input,
     /// The turn in flight, if there is one. Dropping it walks away.
     turn: Option<mpsc::UnboundedReceiver<Result<Chunk>>>,
+    /// Prompt tokens the last call reported. Shown rather than acted on:
+    /// nothing here knows the model's window, so what to do about the
+    /// number is the developer's call.
+    tokens: Option<u32>,
+    /// Set when a turn ends over the window, acted on by the loop —
+    /// summarizing is a round trip and the event handler is not async.
+    compact_due: bool,
     frame: u64,
 }
 
@@ -112,6 +119,8 @@ impl App {
             transcript: Transcript::new(width),
             input: Input::new(History::load(&history_path())),
             turn: None,
+            tokens: None,
+            compact_due: false,
             frame: 0,
             crab,
         }
@@ -145,6 +154,10 @@ impl App {
                 Wake::Turn(Ok(chunk)) => self.chunk(chunk),
                 Wake::Turn(Err(e)) => self.fail(e.to_string()),
                 Wake::Tick => self.frame += 1,
+            }
+
+            if std::mem::take(&mut self.compact_due) {
+                self.compact(true).await;
             }
         }
     }
@@ -231,6 +244,7 @@ impl App {
                 }
                 self.transcript.push(Item::Blank);
             }
+            Command::Compact => self.compact(false).await,
             Command::Unknown(name) => {
                 self.transcript.push(Item::Error {
                     text: format!("no command /{name} — /help lists them"),
@@ -253,15 +267,53 @@ impl App {
                     .collect();
                 self.transcript.push_tool_start(&calls);
             }
+            Chunk::ContextUsage(context) => {
+                self.tokens = context.usage.map(|usage| usage.prompt_tokens)
+            }
             Chunk::ToolResult(result) => self.transcript.push_tool_result(&result.output),
             Chunk::ToolsComplete(_) => self.transcript.push_tool_done(),
             Chunk::End(end) if !end.error.is_empty() => self.fail(end.error),
             Chunk::End(_) => {
                 self.transcript.finish();
                 self.turn = None;
+                self.compact_due = self.tokens.is_some_and(|used| self.crab.overflows(used));
             }
             _ => {}
         }
+    }
+
+    /// Summarize the conversation and work from the summary.
+    ///
+    /// `automatic` when the last turn left no room for the next one, in
+    /// which case it says so — a conversation that rewrites itself
+    /// without a word looks like one that lost its memory.
+    async fn compact(&mut self, automatic: bool) {
+        self.turn = None;
+        self.transcript.finish();
+        if automatic {
+            self.transcript.push(Item::Text {
+                md: "*the next turn would not fit — summarizing*".to_owned(),
+                marker: false,
+            });
+        }
+        match self.crab.compact().await {
+            Ok(summary) => {
+                self.transcript.push(Item::Text {
+                    md: summary,
+                    marker: true,
+                });
+                self.transcript.push(Item::Blank);
+                self.transcript.push(Item::Text {
+                    md: "*the conversation above is now this summary*".to_owned(),
+                    marker: false,
+                });
+                self.tokens = None;
+            }
+            Err(e) => self.transcript.push(Item::Error {
+                text: e.to_string(),
+            }),
+        }
+        self.transcript.push(Item::Blank);
     }
 
     /// Say what went wrong and stay. A failed turn is not a reason to
@@ -340,15 +392,19 @@ impl App {
             (true, false) => "working",
             _ => "ready",
         };
+        let context = match (self.tokens, self.crab.config.context_window) {
+            (Some(tokens), Some(window)) => format!(
+                "  ·  {:.1}k / {:.0}k",
+                tokens as f64 / 1000.0,
+                window as f64 / 1000.0
+            ),
+            (Some(tokens), None) => format!("  ·  {:.1}k context", tokens as f64 / 1000.0),
+            _ => String::new(),
+        };
         Line::from(vec![
             Span::styled(format!("  {state}"), dim),
-            Span::styled(
-                format!(
-                    "  ·  {}  ·  /help  ·  ctrl+d to exit",
-                    self.crab.root.display()
-                ),
-                dim,
-            ),
+            Span::styled(context, dim),
+            Span::styled(format!("  ·  {}  ·  /help", self.crab.root.display()), dim),
         ])
     }
 }
