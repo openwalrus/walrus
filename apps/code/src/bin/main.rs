@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let Some(prompt) = parse()? else {
+    let Some(run) = parse()? else {
         return Ok(());
     };
 
@@ -13,10 +13,19 @@ async fn main() -> Result<()> {
         .with_max_level(tracing::Level::WARN)
         .init();
 
-    crabtalk_code::Crab::open(std::env::current_dir()?)
-        .await?
-        .turn(&prompt)
-        .await
+    let crab = crabtalk_code::Crab::open(std::env::current_dir()?).await?;
+    match run {
+        Run::Print(prompt) => crab.turn(&prompt).await,
+        Run::Chat => crabtalk_code::tui::run(crab).await,
+    }
+}
+
+/// What the arguments asked for.
+enum Run {
+    /// One turn, to stdout.
+    Print(String),
+    /// The terminal session.
+    Chat,
 }
 
 fn usage() -> String {
@@ -26,7 +35,8 @@ fn usage() -> String {
 crab — the crabtalk coding agent
 
 USAGE:
-    crab -p <PROMPT>
+    crab            Start a session in this directory
+    crab -p <TEXT>  Run one turn and write the answer to stdout
 
 OPTIONS:
     -p, --print    Run one turn and write the answer to stdout
@@ -41,12 +51,11 @@ Tools are bound to the directory crab was started in.
     )
 }
 
-/// The prompt to run, or `None` when the argument printed and we are done.
-fn parse() -> Result<Option<String>> {
+/// What to run, or `None` when the argument printed and we are done.
+fn parse() -> Result<Option<Run>> {
     let mut args = std::env::args().skip(1);
     let Some(arg) = args.next() else {
-        print!("{}", usage());
-        return Ok(None);
+        return Ok(Some(Run::Chat));
     };
     match arg.as_str() {
         "-h" | "--help" => {
@@ -58,7 +67,7 @@ fn parse() -> Result<Option<String>> {
             Ok(None)
         }
         "-p" | "--print" => match args.next() {
-            Some(prompt) => Ok(Some(prompt)),
+            Some(prompt) => Ok(Some(Run::Print(prompt))),
             None => bail!("-p takes a prompt\n\n{}", usage()),
         },
         other => bail!("unexpected argument: {other}\n\n{}", usage()),

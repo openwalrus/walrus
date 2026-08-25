@@ -14,6 +14,7 @@ use store::{
     AgentId, SessionHandle,
     interface::{Agents, Sessions},
 };
+use tokio::sync::mpsc;
 
 /// Where crab keeps its own state, beside the daemon's rather than in it.
 const STORE_DIR: &str = "store/code";
@@ -64,19 +65,48 @@ impl Crab {
         })
     }
 
+    /// Start a turn, delivering its events on a channel.
+    ///
+    /// Spawned rather than returned as a stream so the caller can hold it
+    /// across a select loop, and drop it to walk away from a turn.
+    pub fn spawn_turn(&self, prompt: &str) -> mpsc::UnboundedReceiver<Result<Event>> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (crabtalk, req) = (
+            self.handle.inner.clone(),
+            StreamMsg {
+                agent: self.agent.to_string(),
+                content: prompt.to_owned(),
+                session_handle: self.session.as_str().to_owned(),
+                ..Default::default()
+            },
+        );
+        tokio::spawn(async move {
+            let mut stream = std::pin::pin!(crabtalk.stream(req));
+            while let Some(event) = stream.next().await {
+                let event = match event {
+                    Ok(event) => event.event,
+                    Err(e) => {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                };
+                if let Some(event) = event
+                    && tx.send(Ok(event)).is_err()
+                {
+                    return;
+                }
+            }
+        });
+        rx
+    }
+
     /// Run one turn, writing the stream to stdout as it arrives.
     pub async fn turn(&self, prompt: &str) -> Result<()> {
         use std::io::Write;
 
-        let mut stream = std::pin::pin!(self.handle.inner.stream(StreamMsg {
-            agent: self.agent.to_string(),
-            content: prompt.to_owned(),
-            session_handle: self.session.as_str().to_owned(),
-            ..Default::default()
-        }));
-
-        while let Some(event) = stream.next().await {
-            let Some(event) = event?.event else { continue };
+        let mut events = self.spawn_turn(prompt);
+        while let Some(event) = events.recv().await {
+            let event = event?;
             match event {
                 Event::Chunk(chunk) => {
                     print!("{}", chunk.content);
