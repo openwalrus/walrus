@@ -4,14 +4,14 @@
 //! does and skips the listeners, so the only thing between a keystroke
 //! and a tool call is a function call.
 
-use crate::backend::Backend;
+use crate::{backend::Backend, prompt};
 use anyhow::{Result, bail};
 use crabtalk::{Config, CrabTalk, CrabTalkHandle, system::provider::DefaultProvider};
 use futures_util::StreamExt;
 use proto::{CreateSessionMsg, StreamMsg, server::Server, stream_event::Event};
 use std::{path::PathBuf, sync::Arc};
 use store::{
-    AgentId, SessionHandle,
+    AgentId, HistoryEntry, SessionHandle,
     interface::{Agents, Sessions},
 };
 use tokio::sync::mpsc;
@@ -21,6 +21,7 @@ const STORE_DIR: &str = "store/code";
 
 pub struct Crab {
     pub handle: CrabTalkHandle<DefaultProvider, Backend>,
+    pub store: Arc<Backend>,
     pub agent: AgentId,
     pub session: SessionHandle,
     pub root: PathBuf,
@@ -44,6 +45,16 @@ impl Crab {
         let Some(agent) = store.default_agent().await? else {
             bail!("no default agent — the install did not scaffold one");
         };
+        // The scaffolded agent is a bare one; what makes it a coding agent
+        // is the prompt, so crab writes it every open rather than only on
+        // the run that created the record.
+        if let Some(mut config) = store.load_agent(&agent).await?
+            && config.description != prompt::SYSTEM
+        {
+            config.description = prompt::SYSTEM.to_owned();
+            store.upsert_agent(&config).await?;
+        }
+
         let session = SessionHandle::new(root.display().to_string());
         if store.load_session(&session).await?.is_none() {
             handle
@@ -59,10 +70,34 @@ impl Crab {
 
         Ok(Self {
             handle,
+            store,
             agent,
             session,
             root,
         })
+    }
+
+    /// Rebuild the engine from the config as it now reads.
+    ///
+    /// The daemon has no reload — a live one does not re-read its config.
+    /// crab is not one: its runtime lasts as long as the session in front
+    /// of it, so pointing it at a gateway that has come back up is a
+    /// restart it can do without losing the conversation, which is in the
+    /// store either way.
+    pub async fn reconnect(&mut self) -> Result<()> {
+        let fresh = Self::open(self.root.clone()).await?;
+        let stale = std::mem::replace(self, fresh);
+        stale.handle.shutdown().await
+    }
+
+    /// The turns this session already holds, oldest first.
+    pub async fn history(&self) -> Result<Vec<HistoryEntry>> {
+        Ok(self
+            .store
+            .load_session(&self.session)
+            .await?
+            .map(|session| session.history)
+            .unwrap_or_default())
     }
 
     /// Start a turn, delivering its events on a channel.

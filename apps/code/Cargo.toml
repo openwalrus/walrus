@@ -25,6 +25,7 @@ store.workspace = true
 
 anyhow.workspace = true
 chrono.workspace = true
+crabllm-core.workspace = true
 crossterm.workspace = true
 futures-util.workspace = true
 heck.workspace = true

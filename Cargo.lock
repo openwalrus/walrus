@@ -811,6 +811,7 @@ version = "0.0.24"
 dependencies = [
  "anyhow",
  "chrono",
+ "crabllm-core",
  "crabtalk",
  "crabtalk-proto",
  "crabtalk-store",

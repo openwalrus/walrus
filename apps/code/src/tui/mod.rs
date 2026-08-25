@@ -9,6 +9,7 @@
 use crate::{
     crab::Crab,
     tui::{
+        command::{Command, HELP},
         input::{Action, History, Input},
         item::Item,
         stream::Transcript,
@@ -16,7 +17,7 @@ use crate::{
 };
 use anyhow::Result;
 use crossterm::{
-    event::{Event as TermEvent, EventStream, KeyEventKind},
+    event::{Event as TermEvent, EventStream, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures_util::StreamExt;
@@ -32,9 +33,11 @@ use ratatui::{
 use std::{io::Stdout, time::Duration};
 use tokio::sync::mpsc;
 
+mod command;
 mod input;
 mod item;
 mod markdown;
+mod replay;
 mod stream;
 
 /// Rows the viewport keeps for what has not settled: the input box, the
@@ -86,6 +89,14 @@ fn history_path() -> std::path::PathBuf {
     crabup::dirs::CONFIG_DIR.join("code/history")
 }
 
+/// What the loop woke for. Read out of the select rather than handled
+/// inside it, so a handler can borrow the whole app.
+enum Wake {
+    Term(TermEvent),
+    Turn(Result<Chunk>),
+    Tick,
+}
+
 struct App {
     crab: Crab,
     transcript: Transcript,
@@ -107,6 +118,7 @@ impl App {
     }
 
     async fn run(&mut self, terminal: &mut Screen) -> Result<()> {
+        self.replay(terminal).await?;
         let mut keys = EventStream::new();
         let mut tick = tokio::time::interval(TICK);
 
@@ -114,34 +126,71 @@ impl App {
             self.commit(terminal)?;
             terminal.draw(|frame| self.view(frame))?;
 
-            tokio::select! {
-                Some(event) = keys.next() => {
-                    match event? {
-                        TermEvent::Key(key) if key.kind == KeyEventKind::Press => {
-                            if self.key(key) {
-                                return Ok(());
-                            }
-                        }
-                        TermEvent::Resize(width, _) => self.transcript.set_width(width as usize),
-                        _ => {}
+            let wake = tokio::select! {
+                Some(event) = keys.next() => Wake::Term(event?),
+                Some(event) = turn(&mut self.turn) => Wake::Turn(event),
+                _ = tick.tick() => Wake::Tick,
+            };
+
+            match wake {
+                Wake::Term(TermEvent::Key(key)) if key.kind == KeyEventKind::Press => {
+                    if self.key(key).await? {
+                        return Ok(());
                     }
                 }
-                Some(event) = turn(&mut self.turn) => self.chunk(event?),
-                _ = tick.tick() => self.frame += 1,
+                Wake::Term(TermEvent::Resize(width, _)) => {
+                    self.transcript.set_width(width as usize)
+                }
+                Wake::Term(_) => {}
+                Wake::Turn(Ok(chunk)) => self.chunk(chunk),
+                Wake::Turn(Err(e)) => self.fail(e.to_string()),
+                Wake::Tick => self.frame += 1,
             }
         }
     }
 
+    /// Put the stored session back on screen, so resuming shows the
+    /// conversation the model is already holding.
+    async fn replay(&mut self, terminal: &mut Screen) -> Result<()> {
+        let history = self.crab.history().await?;
+        if history.is_empty() {
+            return Ok(());
+        }
+        let width = terminal.size()?.width as usize;
+        let mut lines: Vec<Line> = replay::items(&history)
+            .iter()
+            .flat_map(|item| item.render(width, 0))
+            .collect();
+
+        if lines.len() > replay::MAX_ROWS {
+            let dropped = lines.len() - replay::MAX_ROWS;
+            lines.drain(..dropped);
+            lines.insert(
+                0,
+                Line::from(Span::styled(
+                    format!("  … {dropped} earlier lines not replayed"),
+                    Style::new().add_modifier(Modifier::DIM),
+                )),
+            );
+        }
+        lines.push(Line::raw(""));
+        terminal.insert_before(lines.len() as u16, |buf| {
+            Paragraph::new(lines).render(buf.area, buf);
+        })?;
+        Ok(())
+    }
+
     /// `true` to leave.
-    fn key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+    async fn key(&mut self, key: KeyEvent) -> Result<bool> {
         match self.input.key(key) {
-            Action::Submit(prompt) if !prompt.trim().is_empty() => {
-                self.transcript.push(Item::Prompt {
-                    text: prompt.clone(),
-                });
+            Action::Submit(line) if !line.trim().is_empty() => {
+                if let Some(command) = Command::parse(&line) {
+                    return self.command(command).await;
+                }
+                self.transcript.push(Item::Prompt { text: line.clone() });
                 self.transcript.push(Item::Blank);
                 self.transcript.start();
-                self.turn = Some(self.crab.spawn_turn(&prompt));
+                self.turn = Some(self.crab.spawn_turn(&line));
             }
             Action::Submit(_) => {}
             // A turn walks away; an idle Ctrl+C only clears the line.
@@ -149,10 +198,47 @@ impl App {
                 Some(_) => self.transcript.finish(),
                 None => self.input.clear(),
             },
-            Action::Eof => return true,
+            Action::Eof => return Ok(true),
             Action::Noop => {}
         }
-        false
+        Ok(false)
+    }
+
+    async fn command(&mut self, command: Command) -> Result<bool> {
+        match command {
+            Command::Exit => return Ok(true),
+            Command::Help => {
+                for (name, about) in HELP {
+                    self.transcript.push(Item::Text {
+                        md: format!("`{name}` — {about}"),
+                        marker: false,
+                    });
+                }
+                self.transcript.push(Item::Blank);
+            }
+            Command::Reconnect => {
+                // A turn against the old engine has nowhere to land.
+                self.turn = None;
+                self.transcript.finish();
+                match self.crab.reconnect().await {
+                    Ok(()) => self.transcript.push(Item::Text {
+                        md: "reconnected".to_owned(),
+                        marker: true,
+                    }),
+                    Err(e) => self.transcript.push(Item::Error {
+                        text: e.to_string(),
+                    }),
+                }
+                self.transcript.push(Item::Blank);
+            }
+            Command::Unknown(name) => {
+                self.transcript.push(Item::Error {
+                    text: format!("no command /{name} — /help lists them"),
+                });
+                self.transcript.push(Item::Blank);
+            }
+        }
+        Ok(false)
     }
 
     fn chunk(&mut self, chunk: Chunk) {
@@ -169,15 +255,23 @@ impl App {
             }
             Chunk::ToolResult(result) => self.transcript.push_tool_result(&result.output),
             Chunk::ToolsComplete(_) => self.transcript.push_tool_done(),
-            Chunk::End(end) => {
-                if !end.error.is_empty() {
-                    self.transcript.push_text(&format!("\n{}\n", end.error));
-                }
+            Chunk::End(end) if !end.error.is_empty() => self.fail(end.error),
+            Chunk::End(_) => {
                 self.transcript.finish();
                 self.turn = None;
             }
             _ => {}
         }
+    }
+
+    /// Say what went wrong and stay. A failed turn is not a reason to
+    /// take the session down — the endpoint it could not reach is often
+    /// back by the next one, and `/reconnect` is there for when it is not.
+    fn fail(&mut self, error: String) {
+        self.transcript.finish();
+        self.transcript.push(Item::Error { text: error });
+        self.transcript.push(Item::Blank);
+        self.turn = None;
     }
 
     /// Hand everything final to the terminal, one item at a time.
@@ -249,7 +343,10 @@ impl App {
         Line::from(vec![
             Span::styled(format!("  {state}"), dim),
             Span::styled(
-                format!("  ·  {}  ·  ctrl+d to exit", self.crab.root.display()),
+                format!(
+                    "  ·  {}  ·  /help  ·  ctrl+d to exit",
+                    self.crab.root.display()
+                ),
                 dim,
             ),
         ])

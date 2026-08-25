@@ -61,6 +61,11 @@ pub enum Item {
     Thinking {
         text: String,
     },
+    /// Something that went wrong, said in the transcript rather than by
+    /// ending the session.
+    Error {
+        text: String,
+    },
     Blank,
 }
 
@@ -148,6 +153,15 @@ impl Item {
                         format!("{PAD}{line}"),
                         Style::new().add_modifier(Modifier::DIM | Modifier::ITALIC),
                     ))
+                })
+                .collect(),
+            Item::Error { text } => text
+                .lines()
+                .map(|line| {
+                    Line::from(vec![
+                        Span::styled("⏺ ", Style::new().fg(RED)),
+                        Span::styled(line.to_owned(), Style::new().fg(RED)),
+                    ])
                 })
                 .collect(),
             Item::Blank => vec![Line::raw("")],
